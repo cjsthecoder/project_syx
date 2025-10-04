@@ -244,7 +244,7 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
 **Priority: High**
 
 * **Requirement**: Use LangChain as the abstraction layer for LLM providers.
-* **Default Provider**: OpenAI GPT-4o-mini.
+* **Default Provider**: OpenAI GPT-5.
 * **Future Proofing**: Should support Anthropic, LLaMA, etc. with minimal change.
 * **Success Criteria**: Responses are generated via LangChain `ChatOpenAI` interface.
 
@@ -296,7 +296,7 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
 
 **Priority: High**
 
-* **Interface**: LangChain `ChatOpenAI` (default OpenAI).
+* **Interface**: LangChain `ChatOpenAI` (default OpenAI GPT-5).
 * **Flexibility**: Must support provider swap by config, not refactor.
 * **Success Criteria**: Swapping OpenAI → Anthropic requires minimal changes.
 
@@ -307,7 +307,7 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
 * **Env Variables**:
 
   * `OPENAI_API_KEY` (required).
-  * `MODEL_NAME` (default: `gpt-4o-mini`).
+  * `MODEL_NAME` (default: `gpt-5`).
 * **Success Criteria**: No API key leakage, flexible configuration.
 
 ### 5. Error Handling (TR-005)
@@ -433,7 +433,7 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
 
 ## Success Metrics
 
-* **Chat Functionality**: User can chat via UI and receive responses from OpenAI (via LangChain).
+* **Chat Functionality**: User can chat via UI and receive responses from OpenAI GPT-5 (via LangChain).
 * **Stubbed Features**: `/query_rag`, `/projects`, `/sleep_cycle` return placeholders without breaking.
 * **Extensibility**: Adding FAISS-based RAG in Version 2 requires no backend refactor, only filling in stub.
 

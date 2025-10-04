@@ -6,193 +6,199 @@ It includes endpoints for chat, RAG queries, projects, and sleep cycle managemen
 """
 
 from fastapi import FastAPI, HTTPException
+from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from typing import Optional
 import os
 import logging
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Set up module-level logger
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
+# Import our modules
+from .core.config import get_settings, validate_openai_key
+from .core.models import HealthResponse
+from .api import chat, rag, projects, sleep
+from .utils.logging import setup_logging, get_logger
+
+# Setup logging (only once, check if already configured)
+setup_logging()
+logger = get_logger()  # Use single shared logger
+
+# Get settings
+settings = get_settings()
+
+# Lifespan handler to manage startup/shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("FastAPI startup")
+    try:
+        yield
+    finally:
+        logger.info("FastAPI shutdown: cleaning up resources...")
+
+# Initialize FastAPI app with lifespan
 app = FastAPI(
     title="Morpheus AGI Chatbot API",
     description="Backend API for the Morpheus chatbot framework",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    lifespan=lifespan
 )
 
 # Add CORS middleware for frontend communication
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev servers
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Pydantic models for request/response
-class ChatRequest(BaseModel):
-    message: str
-    project_id: Optional[str] = None
+# Include API routers
+app.include_router(chat.router, tags=["chat"])
+app.include_router(rag.router, tags=["rag"])
+app.include_router(projects.router, tags=["projects"])
+app.include_router(sleep.router, tags=["sleep"])
 
-class ChatResponse(BaseModel):
-    response: str
+# Mount static files (React build output)
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-class RAGRequest(BaseModel):
-    query: str
-    project_id: Optional[str] = None
-
-class RAGResponse(BaseModel):
-    response: str
-
-class ProjectRequest(BaseModel):
-    project_id: Optional[str] = None
-
-class ProjectResponse(BaseModel):
-    response: str
-
-class SleepCycleRequest(BaseModel):
-    project_id: Optional[str] = None
-
-class SleepCycleResponse(BaseModel):
-    response: str
-
-# Health check endpoint
+# Health check endpoints
 @app.get("/")
 async def root():
-    """Health check endpoint"""
-    return {"message": "Morpheus AGI Chatbot API is running"}
+    """Root endpoint - serves React app or API info."""
+    # Check if static files exist (React build)
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    index_file = os.path.join(static_dir, "index.html")
+    
+    if os.path.exists(index_file):
+        # Serve React app
+        return FileResponse(index_file)
+    else:
+        # Return API info if no React build
+        return {
+            "message": "Morpheus AGI Chatbot API is running",
+            "frontend": "Not built - run 'make build' to build React app",
+            "docs": "/api/docs"
+        }
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Detailed health check"""
-    return {
-        "status": "healthy",
-        "service": "morpheus-api",
-        "version": "1.0.0"
-    }
-
-# Chat endpoint - Main conversation interface
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    """
-    Main chat endpoint for user-AI conversation.
-    
-    This endpoint will be connected to LangChain ChatOpenAI in the next implementation phase.
-    Currently returns a placeholder response.
-    """
+    """Detailed health check with dependency status."""
     try:
-        logger.info(f"Chat request received: {request.message[:50]}...")
+        # Check OpenAI API key
+        api_key_status = "configured" if validate_openai_key() else "missing"
         
-        # TODO: Integrate with LangChain ChatOpenAI
-        # For now, return a placeholder response
-        response_text = f"Chat functionality not yet implemented. You said: '{request.message}'"
+        # Check LLM health
+        from .core.llm import get_llm_health
+        llm_health = get_llm_health()
         
-        return ChatResponse(response=response_text)
+        dependencies = {
+            "openai": api_key_status,
+            "langchain": llm_health["status"]
+        }
+        
+        return HealthResponse(
+            status="healthy" if api_key_status == "configured" else "degraded",
+            dependencies=dependencies
+        )
         
     except Exception as e:
-        logger.error(f"Error in chat endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Health check failed: {str(e)}")
+        return HealthResponse(
+            status="unhealthy",
+            dependencies={"error": str(e)}
+        )
 
-# RAG query endpoint - Stubbed for future implementation
-@app.post("/query_rag", response_model=RAGResponse)
-async def query_rag(request: RAGRequest):
-    """
-    RAG (Retrieval-Augmented Generation) query endpoint.
+# Catch-all route for React Router (SPA support)
+@app.get("/{full_path:path}")
+async def serve_react_app(full_path: str):
+    """Serve React app for all non-API routes."""
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    index_file = os.path.join(static_dir, "index.html")
     
-    This endpoint is stubbed for future FAISS integration in Version 2.
-    Currently returns a placeholder response.
-    """
-    try:
-        logger.info(f"RAG query received: {request.query[:50]}...")
-        
-        # TODO: Implement FAISS-based RAG in Version 2
-        response_text = "RAG not implemented. This feature will be available in Version 2."
-        
-        return RAGResponse(response=response_text)
-        
-    except Exception as e:
-        logger.error(f"Error in RAG endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-# Projects endpoint - Stubbed for future multi-project support
-@app.get("/projects", response_model=ProjectResponse)
-async def get_projects():
-    """
-    Get list of available projects.
+    # If it's an API route, let FastAPI handle it
+    if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("redoc"):
+        raise HTTPException(status_code=404, detail="API endpoint not found")
     
-    This endpoint is stubbed for future multi-project memory management in Version 4.
-    Currently returns a placeholder response.
-    """
-    try:
-        logger.info("Projects list requested")
-        
-        # TODO: Implement project management in Version 4
-        response_text = "Project management not implemented. This feature will be available in Version 4."
-        
-        return ProjectResponse(response=response_text)
-        
-    except Exception as e:
-        logger.error(f"Error in projects endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-@app.post("/projects", response_model=ProjectResponse)
-async def switch_project(request: ProjectRequest):
-    """
-    Switch to a different project context.
-    
-    This endpoint is stubbed for future multi-project memory management in Version 4.
-    Currently returns a placeholder response.
-    """
-    try:
-        logger.info(f"Project switch requested: {request.project_id}")
-        
-        # TODO: Implement project switching in Version 4
-        response_text = f"Project switching not implemented. Requested project: {request.project_id or 'default'}"
-        
-        return ProjectResponse(response=response_text)
-        
-    except Exception as e:
-        logger.error(f"Error in project switch endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-# Sleep cycle endpoint - Stubbed for future memory pruning
-@app.post("/sleep_cycle", response_model=SleepCycleResponse)
-async def trigger_sleep_cycle(request: SleepCycleRequest):
-    """
-    Trigger memory pruning and sleep cycle.
-    
-    This endpoint is stubbed for future nightly pruning in Version 3.
-    Currently returns a placeholder response.
-    """
-    try:
-        logger.info(f"Sleep cycle triggered for project: {request.project_id}")
-        
-        # TODO: Implement memory pruning in Version 3
-        response_text = "Sleep cycle not implemented. This feature will be available in Version 3."
-        
-        return SleepCycleResponse(response=response_text)
-        
-    except Exception as e:
-        logger.error(f"Error in sleep cycle endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+    # Serve React app for all other routes
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    else:
+        return {
+            "error": "Frontend not built",
+            "message": "Run 'make build' to build the React frontend",
+            "path": full_path
+        }
 
 if __name__ == "__main__":
     import uvicorn
     
-    # Get configuration from environment variables
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8000"))
-    reload = os.getenv("RELOAD", "true").lower() == "true"
+    # Validate configuration
+    if not validate_openai_key():
+        logger.warning("OpenAI API key not configured. Set OPENAI_API_KEY environment variable.")
+        logger.info("You can still run the server, but chat functionality will not work.")
+    
+    # Get configuration from settings
+    host = settings.host
+    port = settings.port
+    reload = settings.reload
     
     logger.info(f"Starting Morpheus API server on {host}:{port}")
+    logger.info(f"API Documentation: http://{host}:{port}/api/docs")
+    logger.info(f"Health Check: http://{host}:{port}/health")
     
-    uvicorn.run(
-        "main:app",
-        host=host,
-        port=port,
-        reload=reload,
-        log_level="info"
-    )
+    # Suppress uvicorn's direct output by redirecting stdout/stderr temporarily
+    import sys
+    from contextlib import redirect_stdout, redirect_stderr
+    
+    class LoggingRedirect:
+        def __init__(self, logger, level):
+            self.logger = logger
+            self.level = level
+            self.buffer = ""
+        
+        def write(self, text):
+            if text.strip():  # Only log non-empty lines
+                self.logger.log(self.level, text.strip())
+        
+        def flush(self):
+            pass
+    
+    # Redirect stdout and stderr to our logger
+    stdout_redirect = LoggingRedirect(logger, logging.INFO)
+    stderr_redirect = LoggingRedirect(logger, logging.WARNING)
+    
+    try:
+        with redirect_stdout(stdout_redirect), redirect_stderr(stderr_redirect):
+            uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            reload=False,  # Disable reloader completely
+                log_level="info",  # Capture WARNING messages from uvicorn
+                access_log=False,  # Disable uvicorn access logs (we handle our own)
+                use_colors=False,  # Use our custom formatter instead
+                log_config=None  # Disable uvicorn's default logging config
+            )
+    except KeyboardInterrupt:
+        logger.info("Received Ctrl-C (KeyboardInterrupt). Shutting down gracefully...")
+    finally:
+        # Flush and close logging handlers to ensure clean shutdown
+        root_logger = logging.getLogger()
+        for handler in list(root_logger.handlers):
+            try:
+                handler.flush()
+            except Exception:
+                pass
+            try:
+                if hasattr(handler, "close"):
+                    handler.close()
+            except Exception:
+                pass

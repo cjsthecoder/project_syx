@@ -71,7 +71,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         
         # Log LLM response
         llm_logger.log_llm_response(
-            model=llm_response.get("model_used", "gpt-5"),
+            model=llm_response.get("llm_model", "gpt-5"),
             response_length=len(llm_response["response"]),
             tokens_used=llm_response.get("tokens_used"),
             conversation_id=request.conversation_id
@@ -85,7 +85,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 response=llm_response["response"],
                 metadata={
                     "project_id": request.project_id,
-                    "model_used": llm_response.get("model_used"),
+                    "llm_model": llm_response.get("llm_model"),
                     "tokens_used": llm_response.get("tokens_used")
                 }
             )
@@ -94,7 +94,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         response = ChatResponse(
             response=llm_response["response"],
             conversation_id=request.conversation_id,
-            model_used=llm_response.get("model_used"),
+            llm_model=llm_response.get("llm_model"),
             tokens_used=llm_response.get("tokens_used")
         )
         

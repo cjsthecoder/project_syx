@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 
-from .config import get_settings, validate_openai_key
+from .config import get_settings, validate_openai_key, get_model_config
 
 # Set up module-level logger
 logger = logging.getLogger(__name__)
@@ -30,13 +30,13 @@ class LLMProvider:
             if not validate_openai_key():
                 raise ValueError("OpenAI API key is not configured or invalid")
             
-            model_config = self.settings.get_model_config()
+            model_config = get_model_config()
             
             self._llm = ChatOpenAI(
                 openai_api_key=self.settings.openai_api_key,
                 model_name=model_config["model_name"],
                 temperature=model_config["temperature"],
-                max_tokens=model_config["max_tokens"],
+                model_kwargs={"max_completion_tokens": model_config["max_tokens"]},
                 streaming=False,  # Disable streaming for now
             )
             

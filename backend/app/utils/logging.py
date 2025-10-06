@@ -113,12 +113,12 @@ def setup_logging() -> None:
     root_logger.addHandler(console_handler)
     
     # Configure specific loggers to reduce noise and use our formatter
-    logging.getLogger("uvicorn").setLevel(logging.INFO)  # Capture WARNING messages
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-    logging.getLogger("uvicorn.error").setLevel(logging.INFO)  # Capture WARNING messages
+    logging.getLogger("uvicorn").setLevel(logging.INFO)
+    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+    logging.getLogger("uvicorn.error").setLevel(logging.INFO)
     logging.getLogger("fastapi").setLevel(logging.INFO)
-    logging.getLogger("langchain").setLevel(logging.WARNING)
-    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("langchain").setLevel(logging.INFO)
+    logging.getLogger("openai").setLevel(logging.INFO)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     

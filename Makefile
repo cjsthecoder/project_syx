@@ -30,8 +30,8 @@ install-frontend:
 	cd frontend && npm install
 	@echo "✅ Frontend dependencies installed"
 
-# Build React app and copy to FastAPI static folder
-build: build-frontend copy-static
+# Build React app into FastAPI static folder
+build: build-frontend
 	@echo "✅ Build completed successfully"
 
 build-frontend:
@@ -40,10 +40,7 @@ build-frontend:
 	@echo "✅ React app built"
 
 copy-static:
-	@echo "📁 Copying React build to FastAPI static folder..."
-	@mkdir -p backend/app/static
-	@cp -r frontend/dist/* backend/app/static/
-	@echo "✅ Static files copied to backend/app/static/"
+	@echo "ℹ️  Skipping copy: Vite is configured to output directly to backend/app/static"
 
 # Start the unified FastAPI server
 run: build

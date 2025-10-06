@@ -49,12 +49,13 @@ morpheus/
 3. Set environment variables:
    ```bash
    export OPENAI_API_KEY="your-api-key-here"
-   export MODEL_NAME="gpt-4o-mini"  # optional, defaults to gpt-4o-mini
+   export MODEL_NAME="gpt-5"  # optional, defaults to gpt-5
    ```
 
-4. Run the server:
+4. Run the server (served with FastAPI + Uvicorn):
    ```bash
-   uvicorn app.main:app --reload
+   # from the backend directory
+   python -m app.main
    ```
 
 ### Frontend Setup
@@ -65,16 +66,20 @@ morpheus/
    npm install
    ```
 
-2. Start development server:
+2. Build production assets (served by FastAPI at /static):
    ```bash
-   npm run dev
+   npm run build
    ```
+
+After building, open the app at:
+
+- http://localhost:8000  (root served by FastAPI)
 
 ## Features
 
 - **Chat Interface**: Web-based chat UI built with React and Shadcn/UI
 - **Backend API**: FastAPI server with LangChain integration
-- **LLM Support**: OpenAI GPT-4o-mini (extensible to other providers)
+- **LLM Support**: OpenAI gpt-5 (extensible to other providers)
 - **Stubbed Features**: Ready for future RAG, memory pruning, and multi-project support
 
 ## Documentation

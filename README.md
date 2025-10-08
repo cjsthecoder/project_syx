@@ -1,94 +1,28 @@
-# Morpheus AGI Chatbot Framework
+# Morpheus
 
-A modular system that provides a web-based chat interface backed by a FastAPI server and LangChain for LLM integration.
+## Project Overview
+Morpheus is a modular system that provides a web-based chat interface backed by a FastAPI server and LangChain for LLM integration.  
 
-## Project Structure
+## Logging level
+Set log level via the `LOG_LEVEL` environment variable (e.g., DEBUG, INFO):
 
-```
-morpheus/
-├── backend/                # FastAPI + LangChain backend
-│   ├── app/
-│   │   ├── main.py         # FastAPI entry point
-│   │   ├── api/            # API route definitions
-│   │   ├── core/           # Core logic and abstractions
-│   │   └── utils/          # Shared utilities
-│   ├── tests/              # Unit tests
-│   └── requirements.txt    # Python dependencies
-├── frontend/               # React + Shadcn/UI frontend
-│   ├── src/
-│   │   ├── components/     # Reusable UI components
-│   │   ├── pages/          # Page-level containers
-│   │   ├── hooks/          # Custom React hooks
-│   │   └── api/            # API client
-│   ├── public/             # Static assets
-│   └── package.json        # NPM dependencies
-├── docs/                   # Documentation
-│   ├── REQUIREMENTS.md     # Requirements file
-│   └── ARCHITECTURE.md     # High-level design
-└── README.md               # This file
+```bash
+export LOG_LEVEL=DEBUG
 ```
 
-## Quick Start
+Or add it to your `.env` file alongside other settings (see `.env.example`).
 
-### Backend Setup
+## Key environment variables
+- OPENAI_API_KEY
+- MODEL_NAME (default gpt-5)
+- MODEL_TEMPERATURE (default 1.0)
+- MODEL_MAX_TOKENS (default 32000)
+- LOG_LEVEL (default INFO)
+- LOG_FORMAT (json or text)
+- DB_PATH
+- MAX_UPLOAD_MB, MAX_BATCH_MB, STORAGE_LIMIT_MB
+- EMBEDDING_MODEL, CHUNK_SIZE, CHUNK_OVERLAP
+- RAG_ON_CHAT, RAG_TOP_K, RAG_SNIPPET_MAX_TOKENS, RAG_CONTEXT_MAX_TOKENS, RAG_SCORE_THRESHOLD
+- AVAILABLE_MODELS (optional JSON array)
 
-1. Create and activate virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # macOS/Linux
-   # or
-   venv\Scripts\activate    # Windows
-   ```
-
-2. Install dependencies:
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   ```
-
-3. Set environment variables:
-   ```bash
-   export OPENAI_API_KEY="your-api-key-here"
-   export MODEL_NAME="gpt-5"  # optional, defaults to gpt-5
-   ```
-
-4. Run the server (served with FastAPI + Uvicorn):
-   ```bash
-   # from the backend directory
-   python -m app.main
-   ```
-
-### Frontend Setup
-
-1. Install dependencies:
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-2. Build production assets (served by FastAPI at /static):
-   ```bash
-   npm run build
-   ```
-
-After building, open the app at:
-
-- http://localhost:8000  (root served by FastAPI)
-
-## Features
-
-- **Chat Interface**: Web-based chat UI built with React and Shadcn/UI
-- **Backend API**: FastAPI server with LangChain integration
-- **LLM Support**: OpenAI gpt-5 (extensible to other providers)
-- **Stubbed Features**: Ready for future RAG, memory pruning, and multi-project support
-
-## Documentation
-
-See `docs/REQUIREMENTS.md` for detailed specifications and requirements.
-
-## Version 1 Goals
-
-- Establish working chatbot with GUI and stable backend interfaces
-- Extensible architecture for future enhancements
-- Clean separation between frontend and backend
-- LangChain abstraction for LLM providers
+Refer to `docs/REQUIREMENTS.md` for full details.

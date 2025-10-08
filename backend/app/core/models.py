@@ -26,13 +26,15 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000, description="User message")
     project_id: Optional[str] = Field(default=None, description="Project context (stub for V4)")
     conversation_id: Optional[str] = Field(default=None, description="Conversation ID for context")
+    model: Optional[str] = Field(default=None, description="Override model for this request")
     
     class Config:
         json_schema_extra = {
             "example": {
                 "message": "Hello, how can you help me today?",
                 "project_id": "default",
-                "conversation_id": "conv_123"
+                "conversation_id": "conv_123",
+                "model": "gpt-5"
             }
         }
 

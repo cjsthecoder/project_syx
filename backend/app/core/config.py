@@ -13,13 +13,18 @@ from pydantic_settings import BaseSettings
 # Set up module-level logger
 logger = logging.getLogger(__name__)
 
+# Resolve repository root .env path regardless of CWD
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "..", "..", ".."))
+_ENV_FILE = os.path.join(_REPO_ROOT, ".env")
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
     model_config = {
         "protected_namespaces": ("settings_",),
-        "env_file": ".env",
+        "env_file": _ENV_FILE,
         "env_file_encoding": "utf-8",
         "case_sensitive": False
     }
@@ -44,21 +49,39 @@ class Settings(BaseSettings):
         default=["http://localhost:3000", "http://localhost:5173"],
         description="Allowed CORS origins"
     )
+
+    # V2: Database & Storage
+    db_path: str = Field(default="backend/app/data/morpheus.db", description="SQLite DB path")
+    max_upload_mb: int = Field(default=10, gt=0, description="Max upload size per file (MB)")
+    max_batch_mb: int = Field(default=50, gt=0, description="Max total batch size (MB)")
+    storage_limit_mb: int = Field(default=500, gt=0, description="Total storage limit per project (MB)")
+
+    # V2: Embeddings / RAG
+    embedding_model: str = Field(default="text-embedding-3-large", description="OpenAI embedding model")
+    chunk_size: int = Field(default=800, gt=0, description="Chunk size for embeddings")
+    chunk_overlap: int = Field(default=100, ge=0, description="Chunk overlap for embeddings")
+
+    # V2: Model list for selector
+    available_models: list[str] = Field(
+        default=[
+            "gpt-5",
+            "gpt-5-mini",
+            "gpt-5-nano",
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "gpt-4.1-nano",
+        ],
+        description="Whitelisted chat models",
+    )
     
-    # Future Configuration (V2-V4)
-    # RAG Configuration (V2)
-    # rag_index_path: str = Field(default="./data/rag_index", description="RAG index path")
-    # rag_chunk_size: int = Field(default=1000, description="RAG chunk size")
-    # rag_chunk_overlap: int = Field(default=200, description="RAG chunk overlap")
-    
-    # Memory Configuration (V3)
-    # memory_retention_days: int = Field(default=30, description="Memory retention in days")
-    # memory_cleanup_hour: int = Field(default=2, ge=0, le=23, description="Cleanup hour (0-23)")
-    
-    # Project Configuration (V4)
-    # default_project_id: str = Field(default="default", description="Default project ID")
-    # max_projects: int = Field(default=10, gt=0, description="Maximum number of projects")
-    
+    # V2.1: RAG-on-chat controls
+    rag_on_chat: bool = Field(default=True, description="Enable retrieval injection during chat")
+    rag_top_k: int = Field(default=5, gt=0, description="Top-K retrieved chunks")
+    rag_snippet_max_tokens: int = Field(default=500, gt=0, description="Max tokens per snippet")
+    rag_context_max_tokens: int = Field(default=5000, gt=100, description="Max tokens for entire context block")
+    rag_score_threshold: float = Field(default=0.75, ge=0.0, le=1.0, description="Cosine similarity threshold (0..1)")
 
 
 # Global settings instance

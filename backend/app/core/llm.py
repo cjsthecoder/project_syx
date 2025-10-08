@@ -50,7 +50,8 @@ class LLMProvider:
         self, 
         message: str, 
         conversation_history: Optional[List[Dict[str, str]]] = None,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        override_model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Generate a response using the LLM.
@@ -85,8 +86,20 @@ class LLMProvider:
             # Add current user message
             messages.append(HumanMessage(content=message))
             
-            # Generate response
-            response = self._llm.invoke(messages)
+            # Optionally use an override model for this call
+            if override_model and override_model != self.settings.model_name:
+                temp_llm = ChatOpenAI(
+                    openai_api_key=self.settings.openai_api_key,
+                    model_name=override_model,
+                    temperature=self.settings.model_temperature,
+                    model_kwargs={"max_completion_tokens": self.settings.model_max_tokens},
+                    streaming=False,
+                )
+                response = temp_llm.invoke(messages)
+                used_model = override_model
+            else:
+                response = self._llm.invoke(messages)
+                used_model = self.settings.model_name
             
             # Extract response content and metadata
             response_content = response.content if hasattr(response, 'content') else str(response)
@@ -96,8 +109,10 @@ class LLMProvider:
             
             return {
                 "response": response_content,
-                "llm_model": self.settings.model_name,
+                "llm_model": used_model,
                 "tokens_used": token_usage.get("total_tokens", None),
+                "input_tokens": token_usage.get("input_tokens", None),
+                "output_tokens": token_usage.get("output_tokens", None),
                 "success": True
             }
             
@@ -107,6 +122,8 @@ class LLMProvider:
                 "response": f"I apologize, but I encountered an error: {str(e)}",
                 "llm_model": self.settings.model_name,
                 "tokens_used": None,
+                "input_tokens": None,
+                "output_tokens": None,
                 "success": False,
                 "error": str(e)
             }
@@ -157,13 +174,22 @@ def reset_llm_provider() -> None:
 
 
 # Convenience functions
-def generate_chat_response(message: str, conversation_history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
-    """Generate a chat response using the global LLM provider."""
+
+def generate_chat_response(
+    message: str,
+    conversation_history: Optional[List[Dict[str, str]]] = None,
+    system_prompt: Optional[str] = None,
+    override_model: Optional[str] = None,
+) -> Dict[str, Any]:
     provider = get_llm_provider()
-    return provider.generate_response(message, conversation_history)
+    return provider.generate_response(
+        message=message,
+        conversation_history=conversation_history,
+        system_prompt=system_prompt,
+        override_model=override_model,
+    )
 
 
 def get_llm_health() -> Dict[str, str]:
-    """Get LLM provider health status."""
     provider = get_llm_provider()
     return provider.health_check()

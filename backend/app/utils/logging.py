@@ -103,9 +103,9 @@ def setup_logging() -> None:
     )
     file_handler.setFormatter(file_formatter)
     
-    # Create console handler with custom formatter (INFO level, but will show WARNING too)
+    # Create console handler with custom formatter honoring LOG_LEVEL
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)  # This will show INFO and above (WARNING, ERROR, etc.)
+    console_handler.setLevel(log_level)
     console_handler.setFormatter(CustomFormatter())
     
     # Add handlers to root logger
@@ -113,12 +113,20 @@ def setup_logging() -> None:
     root_logger.addHandler(console_handler)
     
     # Configure specific loggers to reduce noise and use our formatter
-    logging.getLogger("uvicorn").setLevel(logging.INFO)
-    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
-    logging.getLogger("uvicorn.error").setLevel(logging.INFO)
-    logging.getLogger("fastapi").setLevel(logging.INFO)
-    logging.getLogger("langchain").setLevel(logging.INFO)
-    logging.getLogger("openai").setLevel(logging.INFO)
+    if log_level == logging.DEBUG:
+        logging.getLogger("uvicorn").setLevel(logging.DEBUG)
+        logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)
+        logging.getLogger("uvicorn.error").setLevel(logging.DEBUG)
+        logging.getLogger("fastapi").setLevel(logging.DEBUG)
+        logging.getLogger("langchain").setLevel(logging.DEBUG)
+        logging.getLogger("openai").setLevel(logging.DEBUG)
+    else:
+        logging.getLogger("uvicorn").setLevel(logging.INFO)
+        logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+        logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+        logging.getLogger("fastapi").setLevel(logging.INFO)
+        logging.getLogger("langchain").setLevel(logging.INFO)
+        logging.getLogger("openai").setLevel(logging.INFO)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     

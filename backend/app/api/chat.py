@@ -11,9 +11,11 @@ from fastapi.responses import JSONResponse
 
 from ..core.models import ChatRequest, ChatResponse, ErrorResponse
 from ..core.llm import generate_chat_response, get_llm_health
-from ..core.memory import store_conversation, get_memory_manager
+from ..core.memory import store_conversation, get_memory_manager, set_last_context_tokens
 from ..utils.logging import RequestLogger, LLMLogger
 from ..utils.errors import handle_llm_error, log_error_context
+from ..core.config import get_settings
+from ..core.rag_manager import retrieve_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -39,18 +41,37 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             user_id=request.conversation_id
         )
         
-        # Get conversation history if conversation_id is provided
+        settings = get_settings()
+        
+        # Get conversation history if conversation_id is provided (chronological: user -> assistant per turn)
         conversation_history = None
         if request.conversation_id:
             memory_manager = get_memory_manager()
             history = memory_manager.get_conversation_history(request.conversation_id, limit=10)
-            conversation_history = [
-                {"role": "user", "content": msg["user_message"]}
-                for msg in history
-            ] + [
-                {"role": "assistant", "content": msg["ai_response"]}
-                for msg in history
-            ]
+            ordered: list[dict] = []
+            for msg in history:
+                if msg.get("user_message"):
+                    ordered.append({"role": "user", "content": msg["user_message"]})
+                if msg.get("ai_response"):
+                    ordered.append({"role": "assistant", "content": msg["ai_response"]})
+            conversation_history = ordered
+        
+        # Optional RAG retrieval
+        system_prompt = None
+        if settings.rag_on_chat and request.project_id:
+            rc = retrieve_context(
+                project_id=request.project_id,
+                query=request.message,
+                top_k=settings.rag_top_k,
+                snippet_max_tokens=settings.rag_snippet_max_tokens,
+                score_threshold=settings.rag_score_threshold,
+                context_max_tokens=settings.rag_context_max_tokens,
+            )
+            if rc.get("context_text"):
+                system_prompt = rc["context_text"]
+                logger.debug(f"Chat: injecting RAG context tokens={rc.get('tokens_used')} snippets_present={bool(rc.get('snippets'))}")
+            else:
+                logger.debug("Chat: no RAG context injected (empty)")
         
         # Log LLM request
         llm_logger.log_llm_request(
@@ -59,10 +80,13 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             conversation_id=request.conversation_id
         )
         
+        logger.debug(f"Chat: model={request.model or 'default'} message_len={len(request.message)} conv_id={request.conversation_id}")
         # Generate response using LangChain
         llm_response = generate_chat_response(
             message=request.message,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            system_prompt=system_prompt,
+            override_model=request.model
         )
         
         # Check if LLM response was successful
@@ -76,6 +100,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             tokens_used=llm_response.get("tokens_used"),
             conversation_id=request.conversation_id
         )
+        logger.debug(f"Chat: response_len={len(llm_response['response'])} tokens_used={llm_response.get('tokens_used')} model={llm_response.get('llm_model')}")
         
         # Store conversation in memory if conversation_id is provided
         if request.conversation_id:
@@ -89,6 +114,23 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                     "tokens_used": llm_response.get("tokens_used")
                 }
             )
+        
+        # Update context tokens for stats (exclude RAG system prompt)
+        try:
+            import tiktoken  # type: ignore
+            enc = tiktoken.get_encoding("cl100k_base")
+            combined_text = ''
+            if conversation_history:
+                for msg in conversation_history:
+                    combined_text += (msg.get('content') or '') + '\n'
+            combined_text += request.message or ''
+            # Include the assistant's latest reply
+            combined_text += '\n' + (llm_response.get('response') or '')
+            context_tokens = len(enc.encode(combined_text))
+            if request.project_id:
+                set_last_context_tokens(request.project_id, context_tokens)
+        except Exception:
+            pass
         
         # Create response
         response = ChatResponse(

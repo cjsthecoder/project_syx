@@ -21,7 +21,10 @@ logger = logging.getLogger(__name__)
 from .core.config import get_settings, validate_openai_key
 from .core.models import HealthResponse
 from .api import chat, rag, projects, sleep
+from .api import files as files_api
+from .api import llm_models
 from .utils.logging import setup_logging, get_logger
+from .core.database import init_db
 
 # Setup logging (only once, check if already configured)
 setup_logging()
@@ -34,6 +37,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("FastAPI startup")
+    init_db()
     try:
         yield
     finally:
@@ -63,6 +67,8 @@ app.include_router(chat.router, tags=["chat"])
 app.include_router(rag.router, tags=["rag"])
 app.include_router(projects.router, tags=["projects"])
 app.include_router(sleep.router, tags=["sleep"])
+app.include_router(files_api.router, tags=["files"])
+app.include_router(llm_models.router, tags=["models"])
 
 # Mount static files (React build output)
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -154,39 +160,54 @@ if __name__ == "__main__":
     logger.info(f"API Documentation: http://{host}:{port}/api/docs")
     logger.info(f"Health Check: http://{host}:{port}/health")
     
-    # Suppress uvicorn's direct output by redirecting stdout/stderr temporarily
+    # Restore stdout/stderr redirection so uvicorn and other libs flow through our logger
     import sys
     from contextlib import redirect_stdout, redirect_stderr
-    
+
     class LoggingRedirect:
         def __init__(self, logger, level):
             self.logger = logger
             self.level = level
             self.buffer = ""
-        
+
         def write(self, text):
-            if text.strip():  # Only log non-empty lines
+            if text.strip():
                 self.logger.log(self.level, text.strip())
-        
+
         def flush(self):
             pass
-    
-    # Redirect stdout and stderr to our logger
+
     stdout_redirect = LoggingRedirect(logger, logging.INFO)
     stderr_redirect = LoggingRedirect(logger, logging.WARNING)
-    
+
+    # Match uvicorn log level to our LOG_LEVEL
+    uvicorn_level = "debug" if get_settings().log_level.upper() == "DEBUG" else "info"
+
     try:
-        with redirect_stdout(stdout_redirect), redirect_stderr(stderr_redirect):
+        if get_settings().log_level.upper() == "DEBUG":
+            # In DEBUG, do not redirect so DEBUG logs print directly to console
             uvicorn.run(
-            app,
-            host=host,
-            port=port,
-            reload=False,  # Disable reloader completely
-                log_level="info",  # Capture WARNING messages from uvicorn
-                access_log=False,  # Disable uvicorn access logs (we handle our own)
-                use_colors=False,  # Use our custom formatter instead
-                log_config=None  # Disable uvicorn's default logging config
+                app,
+                host=host,
+                port=port,
+                reload=False,
+                log_level=uvicorn_level,
+                access_log=False,
+                use_colors=False,
+                log_config=None
             )
+        else:
+            with redirect_stdout(stdout_redirect), redirect_stderr(stderr_redirect):
+                uvicorn.run(
+                    app,
+                    host=host,
+                    port=port,
+                    reload=False,
+                    log_level=uvicorn_level,
+                    access_log=False,
+                    use_colors=False,
+                    log_config=None
+                )
     except KeyboardInterrupt:
         logger.info("Received Ctrl-C (KeyboardInterrupt). Shutting down gracefully...")
     finally:

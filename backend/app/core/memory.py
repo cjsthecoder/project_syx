@@ -18,6 +18,8 @@ class MemoryManager:
     def __init__(self):
         """Initialize the memory manager."""
         self.conversations: Dict[str, List[Dict[str, Any]]] = {}
+        # Track last computed non-RAG context tokens per project
+        self.last_context_tokens_per_project: Dict[str, int] = {}
         logger.info("Memory manager initialized (stub mode)")
     
     def store_message(
@@ -58,6 +60,12 @@ class MemoryManager:
         except Exception as e:
             logger.error(f"Error storing message: {str(e)}")
             return False
+
+    def set_last_context_tokens(self, project_id: str, tokens: int) -> None:
+        self.last_context_tokens_per_project[project_id] = max(0, int(tokens))
+
+    def get_last_context_tokens(self, project_id: str) -> int:
+        return int(self.last_context_tokens_per_project.get(project_id, 0))
     
     def get_conversation_history(
         self, 
@@ -244,6 +252,7 @@ def get_rag_provider() -> RAGProvider:
 
 
 # Convenience functions
+
 def store_conversation(
     conversation_id: str, 
     message: str, 
@@ -253,6 +262,16 @@ def store_conversation(
     """Store a conversation message."""
     manager = get_memory_manager()
     return manager.store_message(conversation_id, message, response, metadata)
+
+
+def set_last_context_tokens(project_id: str, tokens: int) -> None:
+    manager = get_memory_manager()
+    manager.set_last_context_tokens(project_id, tokens)
+
+
+def get_last_context_tokens(project_id: str) -> int:
+    manager = get_memory_manager()
+    return manager.get_last_context_tokens(project_id)
 
 
 def search_conversation_memory(

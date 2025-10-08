@@ -10,6 +10,9 @@ help:
 	@echo "  make install    - Install all dependencies (Python + Node.js)"
 	@echo "  make build      - Build React app and copy to FastAPI static folder"
 	@echo "  make run        - Start the unified FastAPI server"
+	@echo "  make migrate    - Create Alembic revision"
+	@echo "  make upgrade    - Apply DB migrations"
+	@echo "  make downgrade  - Revert DB migrations"
 	@echo "  make clean      - Clean build artifacts and dependencies"
 	@echo "  make test       - Run all tests (backend + frontend)"
 	@echo "  make lint       - Run linting on all code"
@@ -50,6 +53,16 @@ run: build
 	@echo "   Health:   http://localhost:8000/health"
 	@echo ""
 	cd backend && python -m app.main
+
+# Alembic helpers
+migrate:
+	cd backend && alembic revision --autogenerate -m "update"
+
+upgrade:
+	cd backend && alembic upgrade head
+
+downgrade:
+	cd backend && alembic downgrade -1
 
 # Clean build artifacts and dependencies
 clean: clean-backend clean-frontend clean-static

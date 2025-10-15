@@ -389,3 +389,142 @@ Env controls:
 - 404: missing entities
 - 400: validation errors (size limits, missing project)
 - JSON keys in `snake_case`; include `project_id` in file-related responses; sizes in bytes; timestamps ISO 8601 UTC
+
+Persistent Chats and Working Memory
+Overview
+
+Version 2.2 introduces persistent chat history and a unified short-term memory system that maintains up to N recent messages per project.
+This memory is mirrored in both an in-memory buffer (for speed) and the database (for persistence and multi-tab consistency).
+Older messages automatically roll out of the active buffer and will later be moved into long-term memory (RAG) in Version 2.3.
+
+1️⃣ Database Layer
+
+Add a new table to persist chat messages:
+
+class ChatMessage(SQLModel, table=True):
+id: int | None = Field(default=None, primary_key=True)
+project_id: str = Field(foreign_key="project.id")
+role: str # "user" | "assistant" | "system"
+content: str
+created_at: datetime = Field(default_factory=datetime.utcnow)
+
+Each message (user, assistant, or system) is stored as a separate row.
+
+Messages are ordered chronologically for replay.
+
+Retains only the last N messages per project (short-term window).
+
+On insertion, if message count > N, the oldest message is removed from DB and flagged for RAG embedding (in V2.3).
+
+2️⃣ Backend Integration
+
+On startup:
+
+Load the most recent N messages for the active project into an in-memory deque buffer.
+
+The buffer and DB always contain the same messages.
+
+On /chat:
+
+Insert the user message into DB.
+
+Generate assistant response via LangChain → OpenAI.
+
+Insert assistant message into DB.
+
+Append both to the memory buffer.
+
+If buffer exceeds N, pop the oldest message:
+
+Delete it from DB.
+
+(Future) enqueue it for RAG embedding.
+
+On shutdown:
+
+No flush required — DB is always consistent.
+
+On load or multi-tab access:
+
+Each request fetches the latest N messages from DB, ensuring all tabs are synchronized automatically.
+
+3️⃣ Frontend Updates
+
+Chat UI loads the full working memory (last N messages) on startup using:
+
+GET /projects/{id}/chats
+
+Messages are rendered chronologically.
+
+On sending a message:
+
+POST to /chat.
+
+Append both user and assistant messages to UI state.
+
+Optionally refresh the chat list after reply to ensure sync with DB.
+
+No threading or WebSockets needed in V2.2 — the DB ensures state consistency across sessions.
+
+4️⃣ Configuration Variables
+
+Environment configuration for chat memory:
+
+CHAT_HISTORY_LIMIT=20
+
+Number of messages (total user + assistant) kept in working memory per project
+5️⃣ API Endpoints
+
+GET /projects/{id}/chats
+Returns the most recent N messages in chronological order.
+Example:
+{
+"project_id": "proj_20251008_001",
+"messages": [
+{ "role": "user", "content": "What is LangChain?", "created_at": "2025-10-08T10:00:00Z" },
+{ "role": "assistant", "content": "LangChain is a framework for LLM apps.", "created_at": "2025-10-08T10:00:01Z" }
+]
+}
+
+POST /chat
+Receives user message, generates assistant reply, stores both, and returns the reply.
+
+Request:
+{
+"project_id": "proj_20251008_001",
+"message": "Explain FAISS indexing."
+}
+
+Response:
+{
+"response": "FAISS is a library for vector search.",
+"stored": true
+}
+
+6️⃣ Implementation Notes
+
+Use an in-memory deque (Python collections.deque) to maintain the rolling short-term buffer.
+
+Keep DB and memory synchronized — both capped to CHAT_HISTORY_LIMIT.
+
+Use timestamps for ordering and pruning.
+
+The backend should always rebuild the buffer on project load from DB.
+
+No Alembic migration beyond creating the ChatMessage table is required for V2.2.
+
+7️⃣ Future Integration (V2.3 Preview)
+
+Messages rolled out of the DB (older than N) will be embedded and appended to each project’s chat_faiss/ index.
+
+Nightly “sleep cycle” will prune, summarize, and merge chat RAG into long-term FAISS memory.
+
+The same ChatMessage records will include optional embedded and pruned flags for that lifecycle.
+
+✅ Success Criteria
+Requirement	Success Metric
+Persistent chat memory	Survives restarts and reloads
+Working memory cap	Always maintains exactly N most recent messages
+Multi-tab consistency	All tabs see identical conversation state
+Crash safety	No manual save or flush required
+RAG-ready structure	Rolled-off messages easily convertible into embeddings

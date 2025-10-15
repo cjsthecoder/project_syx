@@ -78,7 +78,11 @@ def setup_logging() -> None:
     """Set up application logging configuration with colored console and timestamped files."""
     
     settings = get_settings()
-    log_level = getattr(logging, settings.log_level.upper(), logging.DEBUG)
+    # Legacy global level (retained for component loggers default)
+    log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    # New per-handler levels
+    console_level = getattr(logging, settings.log_level_console.upper(), logging.INFO)
+    file_level = getattr(logging, settings.log_level_file.upper(), logging.DEBUG)
     
     # Create logs directory
     script_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -97,7 +101,7 @@ def setup_logging() -> None:
     
     # Create file handler (DEBUG level for detailed logs)
     file_handler = logging.FileHandler(log_filename)
-    file_handler.setLevel(logging.DEBUG)
+    file_handler.setLevel(file_level)
     file_formatter = logging.Formatter(
         '%(asctime)s - %(levelname)s - %(name)s:%(funcName)s - %(message)s'
     )
@@ -105,7 +109,7 @@ def setup_logging() -> None:
     
     # Create console handler with custom formatter honoring LOG_LEVEL
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(log_level)
+    console_handler.setLevel(console_level)
     console_handler.setFormatter(CustomFormatter())
     
     # Add handlers to root logger
@@ -113,7 +117,7 @@ def setup_logging() -> None:
     root_logger.addHandler(console_handler)
     
     # Configure specific loggers to reduce noise and use our formatter
-    if log_level == logging.DEBUG:
+    if console_level == logging.DEBUG or log_level == logging.DEBUG:
         logging.getLogger("uvicorn").setLevel(logging.DEBUG)
         logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)
         logging.getLogger("uvicorn.error").setLevel(logging.DEBUG)
@@ -146,7 +150,7 @@ def setup_logging() -> None:
     
     # Set our application logger
     app_logger = logging.getLogger("morpheus")
-    app_logger.setLevel(log_level)
+    app_logger.setLevel(min(console_level, file_level, log_level))
     
     # Log initialization
     app_logger.info(f'Logging initialized. Log file: {log_filename}')

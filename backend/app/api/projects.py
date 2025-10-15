@@ -219,6 +219,25 @@ async def project_stats(project_id: str) -> JSONResponse:
                     pass
     # context tokens from memory manager
     context_tokens = get_last_context_tokens(project_id)
+    # If missing/zero, recompute from stored working memory for this project (excludes any RAG system prompts)
+    if not context_tokens:
+        try:
+            mm = get_memory_manager()
+            history = mm.get_project_history(project_id) or []
+            combined_text = "\n".join((m.get("content") or "") for m in history)
+            if combined_text.strip():
+                try:
+                    import tiktoken  # type: ignore
+                    enc = tiktoken.get_encoding("cl100k_base")
+                    context_tokens = len(enc.encode(combined_text))
+                except Exception:
+                    # Fallback: rough estimate by whitespace tokens if encoder unavailable
+                    context_tokens = len([w for w in combined_text.split() if w])
+                # cache for future stats calls
+                mm.set_last_context_tokens(project_id, int(context_tokens))
+        except Exception:
+            # On any failure, leave as zero
+            pass
     return JSONResponse(status_code=200, content={
         "project_id": project_id,
         "storage_bytes": storage_bytes,
@@ -227,3 +246,28 @@ async def project_stats(project_id: str) -> JSONResponse:
         "context_tokens": context_tokens,
         "file_count": file_count,
     })
+
+
+@router.get("/projects/{project_id}/chats")
+async def get_project_chats(project_id: str) -> JSONResponse:
+    """Return the most recent N messages for the project in chronological order."""
+    try:
+        mm = get_memory_manager()
+        messages = mm.get_project_history(project_id)
+        # Normalize datetime to ISO strings for JSON response
+        normalized = [
+            {
+                "id": m.get("id"),
+                "role": m.get("role"),
+                "content": m.get("content"),
+                "created_at": (m.get("created_at").isoformat() if hasattr(m.get("created_at"), "isoformat") else m.get("created_at")),
+            }
+            for m in messages
+        ]
+        return JSONResponse(status_code=200, content={
+            "project_id": project_id,
+            "messages": normalized,
+        })
+    except Exception as e:
+        logger.error(f"Failed to get chats for project {project_id}: {e}")
+        return JSONResponse(status_code=500, content={"error": "Failed to retrieve chats"})

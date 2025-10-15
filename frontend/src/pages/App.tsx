@@ -75,6 +75,16 @@ export default function App() {
     }
   }, [])
 
+  const loadChats = useCallback(async (pid: string) => {
+    try {
+      const data = await api<{ project_id: string; messages: { id: number; role: 'user'|'assistant'; content: string; created_at: string }[] }>(`/projects/${pid}/chats`)
+      const msgs: Message[] = (data.messages || []).map(m => ({ role: m.role, content: m.content }))
+      setMessages(msgs)
+    } catch {
+      setMessages([])
+    }
+  }, [])
+
   const loadStats = useCallback(async (pid: string) => {
     try {
       const data = await api<{ storage_bytes: number; index_size_bytes: number; tokens_indexed: number; context_tokens: number; file_count: number }>(`/projects/${pid}/stats`)
@@ -101,11 +111,12 @@ export default function App() {
 
   useEffect(() => {
     if (projectId) {
+      loadChats(projectId)
       loadFiles(projectId)
       loadStats(projectId)
       loadProjectInfo(projectId)
     }
-  }, [projectId, loadFiles, loadStats, loadProjectInfo])
+  }, [projectId, loadChats, loadFiles, loadStats, loadProjectInfo])
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading])
 
@@ -123,7 +134,10 @@ export default function App() {
       })
       setModel(res.llm_model)
       setMessages((m) => [...m, { role: 'assistant', content: res.response }])
-      if (projectId) loadStats(projectId)
+      if (projectId) {
+        loadStats(projectId)
+        loadChats(projectId)
+      }
     } catch (e: any) {
       setError(e?.message || 'Request failed')
     } finally {

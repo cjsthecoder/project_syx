@@ -1,65 +1,109 @@
 """
 Memory management for Morpheus AGI Chatbot Framework.
 
-This module provides placeholder functionality for future RAG and memory features.
-Currently stubbed for Version 2 (RAG) and Version 3 (Memory Pruning).
+V2.2: Implements per-project working memory deques mirrored to DB `ChatMessage`.
+System (RAG) messages are not stored. Provides last_context_tokens per project for stats.
 """
 
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Deque
 from datetime import datetime, timedelta
+from collections import deque
+
+from sqlmodel import select
+from .database import get_session
+from .db_models import ChatMessage
+from .config import get_settings
 
 logger = logging.getLogger(__name__)
 
 
 class MemoryManager:
-    """Memory management for conversation history and RAG integration."""
-    
+    """Per-project working memory mirrored with DB for persistence."""
+
     def __init__(self):
-        """Initialize the memory manager."""
-        self.conversations: Dict[str, List[Dict[str, Any]]] = {}
-        # Track last computed non-RAG context tokens per project
+        self.project_deques: Dict[str, Deque[Dict[str, Any]]] = {}
         self.last_context_tokens_per_project: Dict[str, int] = {}
-        logger.info("Memory manager initialized (stub mode)")
+        self.limit = get_settings().chat_history_limit
+        logger.info("Memory manager initialized (v2.2 persistent mode)")
     
-    def store_message(
-        self, 
-        conversation_id: str, 
-        message: str, 
-        response: str, 
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> bool:
-        """
-        Store a conversation message in memory.
-        
-        Args:
-            conversation_id: Unique conversation identifier
-            message: User message
-            response: AI response
-            metadata: Additional metadata
-            
-        Returns:
-            True if stored successfully
-        """
+    def _ensure_loaded(self, project_id: str) -> None:
+        if project_id in self.project_deques:
+            return
+        dq: Deque[Dict[str, Any]] = deque(maxlen=self.limit)
         try:
-            if conversation_id not in self.conversations:
-                self.conversations[conversation_id] = []
-            
-            message_data = {
-                "timestamp": datetime.utcnow().isoformat(),
-                "user_message": message,
-                "ai_response": response,
-                "metadata": metadata or {}
-            }
-            
-            self.conversations[conversation_id].append(message_data)
-            
-            logger.debug(f"Stored message for conversation {conversation_id}")
-            return True
-            
+            with get_session() as session:
+                rows = session.exec(
+                    select(ChatMessage)
+                    .where(ChatMessage.project_id == project_id)
+                    .order_by(ChatMessage.created_at.desc())
+                ).all()
+                rows = rows[: self.limit]
+                for r in reversed(rows):
+                    dq.append({
+                        "id": r.id,
+                        "role": r.role,
+                        "content": r.content,
+                        "created_at": r.created_at,
+                    })
         except Exception as e:
-            logger.error(f"Error storing message: {str(e)}")
-            return False
+            logger.error(f"Failed to load history for {project_id}: {e}")
+        self.project_deques[project_id] = dq
+
+    def get_project_history(self, project_id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        self._ensure_loaded(project_id)
+        data = list(self.project_deques.get(project_id, deque()))
+        return data if limit is None else data[-limit:]
+
+    def append_user_message(self, project_id: str, content: str) -> None:
+        if not project_id:
+            return
+        self._ensure_loaded(project_id)
+        now = datetime.utcnow()
+        with get_session() as session:
+            msg = ChatMessage(project_id=project_id, role="user", content=content, created_at=now)
+            session.add(msg)
+            session.commit()
+            session.refresh(msg)
+        self.project_deques[project_id].append({
+            "id": msg.id,
+            "role": "user",
+            "content": content,
+            "created_at": now,
+        })
+        self.prune_to_limit(project_id)
+
+    def append_assistant_message(self, project_id: str, content: str) -> None:
+        if not project_id:
+            return
+        self._ensure_loaded(project_id)
+        now = datetime.utcnow()
+        with get_session() as session:
+            msg = ChatMessage(project_id=project_id, role="assistant", content=content, created_at=now)
+            session.add(msg)
+            session.commit()
+            session.refresh(msg)
+        self.project_deques[project_id].append({
+            "id": msg.id,
+            "role": "assistant",
+            "content": content,
+            "created_at": now,
+        })
+        self.prune_to_limit(project_id)
+
+    def prune_to_limit(self, project_id: str) -> None:
+        self._ensure_loaded(project_id)
+        dq = self.project_deques[project_id]
+        while len(dq) > self.limit:
+            oldest = dq.popleft()
+            try:
+                with get_session() as session:
+                    row = session.get(ChatMessage, oldest.get("id"))
+                    if row:
+                        session.delete(row)
+                        session.commit()
+            except Exception as e:
+                logger.error(f"Failed pruning message {oldest.get('id')}: {e}")
 
     def set_last_context_tokens(self, project_id: str, tokens: int) -> None:
         self.last_context_tokens_per_project[project_id] = max(0, int(tokens))
@@ -68,31 +112,12 @@ class MemoryManager:
         return int(self.last_context_tokens_per_project.get(project_id, 0))
     
     def get_conversation_history(
-        self, 
-        conversation_id: str, 
+        self,
+        conversation_id: str,
         limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
-        """
-        Get conversation history.
-        
-        Args:
-            conversation_id: Conversation identifier
-            limit: Maximum number of messages to return
-            
-        Returns:
-            List of conversation messages
-        """
-        try:
-            history = self.conversations.get(conversation_id, [])
-            
-            if limit:
-                history = history[-limit:]
-            
-            return history
-            
-        except Exception as e:
-            logger.error(f"Error retrieving conversation history: {str(e)}")
-            return []
+        # Deprecated in V2.2 (project-scoped history is used instead)
+        return []
     
     def search_memory(
         self, 

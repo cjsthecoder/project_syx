@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from ..core.models import ChatRequest, ChatResponse, ErrorResponse
 from ..core.llm import generate_chat_response, get_llm_health
-from ..core.memory import store_conversation, get_memory_manager, set_last_context_tokens
+from ..core.memory import get_memory_manager, set_last_context_tokens
 from ..utils.logging import RequestLogger, LLMLogger
 from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings
@@ -43,18 +43,13 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         
         settings = get_settings()
         
-        # Get conversation history if conversation_id is provided (chronological: user -> assistant per turn)
+        # Build conversation history from per-project working memory (V2.2)
         conversation_history = None
-        if request.conversation_id:
+        if request.project_id:
             memory_manager = get_memory_manager()
-            history = memory_manager.get_conversation_history(request.conversation_id, limit=10)
-            ordered: list[dict] = []
-            for msg in history:
-                if msg.get("user_message"):
-                    ordered.append({"role": "user", "content": msg["user_message"]})
-                if msg.get("ai_response"):
-                    ordered.append({"role": "assistant", "content": msg["ai_response"]})
-            conversation_history = ordered
+            proj_msgs = memory_manager.get_project_history(request.project_id)
+            # chronological messages already; map to role/content for LLM
+            conversation_history = [{"role": m["role"], "content": m["content"]} for m in proj_msgs]
         
         # Optional RAG retrieval
         system_prompt = None
@@ -102,18 +97,13 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         )
         logger.debug(f"Chat: response_len={len(llm_response['response'])} tokens_used={llm_response.get('tokens_used')} model={llm_response.get('llm_model')}")
         
-        # Store conversation in memory if conversation_id is provided
-        if request.conversation_id:
-            store_conversation(
-                conversation_id=request.conversation_id,
-                message=request.message,
-                response=llm_response["response"],
-                metadata={
-                    "project_id": request.project_id,
-                    "llm_model": llm_response.get("llm_model"),
-                    "tokens_used": llm_response.get("tokens_used")
-                }
-            )
+        # Persist user and assistant messages (project-scoped working memory)
+        try:
+            if request.project_id:
+                memory_manager.append_user_message(request.project_id, request.message)
+                memory_manager.append_assistant_message(request.project_id, llm_response["response"])
+        except Exception:
+            pass
         
         # Update context tokens for stats (exclude RAG system prompt)
         try:

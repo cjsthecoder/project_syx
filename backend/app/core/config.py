@@ -41,8 +41,10 @@ class Settings(BaseSettings):
     reload: bool = Field(default=True, description="Enable auto-reload in development")
     
     # Logging Configuration
-    log_level: str = Field(default="INFO", description="Logging level")
+    log_level: str = Field(default="INFO", description="Global logging level (legacy)")
     log_format: str = Field(default="json", description="Log format (json or text)")
+    log_level_console: str = Field(default="INFO", description="Console log level")
+    log_level_file: str = Field(default="DEBUG", description="File log level")
     
     # CORS Configuration
     cors_origins: list[str] = Field(
@@ -82,6 +84,9 @@ class Settings(BaseSettings):
     rag_snippet_max_tokens: int = Field(default=500, gt=0, description="Max tokens per snippet")
     rag_context_max_tokens: int = Field(default=5000, gt=100, description="Max tokens for entire context block")
     rag_score_threshold: float = Field(default=0.75, ge=0.0, le=1.0, description="Cosine similarity threshold (0..1)")
+
+    # V2.2: Chat history working memory
+    chat_history_limit: int = Field(default=20, gt=0, description="Number of recent messages kept per project")
 
 
 # Global settings instance

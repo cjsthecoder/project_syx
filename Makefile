@@ -52,7 +52,20 @@ run: build
 	@echo "   API Docs: http://localhost:8000/docs"
 	@echo "   Health:   http://localhost:8000/health"
 	@echo ""
-	cd backend && python -m app.main
+	@if [ -z "$$VIRTUAL_ENV" ]; then \
+		if [ ! -d venv ]; then \
+			echo "🐍 Creating Python virtual environment at ./venv"; \
+			python3 -m venv venv; \
+			echo "📦 Installing backend requirements into ./venv"; \
+			. venv/bin/activate && pip install -r backend/requirements.txt; \
+		else \
+			echo "ℹ️  Using existing ./venv"; \
+		fi; \
+		echo "✅ Virtual environment ready"; \
+		. venv/bin/activate && cd backend && python -m app.main; \
+	else \
+		cd backend && python -m app.main; \
+	fi
 
 # Alembic helpers
 migrate:
@@ -138,13 +151,94 @@ dev-frontend:
 # Environment setup
 setup-env:
 	@echo "⚙️  Setting up environment..."
-	@if [ ! -f .env ]; then \
-		cp .env.example .env; \
-		echo "✅ Created .env file from template"; \
-		echo "⚠️  Please edit .env and add your OPENAI_API_KEY"; \
-	else \
-		echo "✅ .env file already exists"; \
-	fi
+	@if [ -f .env ]; then \
+		echo "🔁 Backing up existing .env to .env.old"; \
+		mv -f .env .env.old; \
+	fi; \
+	echo "📝 Generating .env with defaults"; \
+	{ \
+		echo "# Morpheus AGI Chatbot Framework - Environment Variables"; \
+		echo "# Edit values as needed. Comments are placed after each variable to avoid parser conflicts."; \
+		echo ""; \
+		echo "OPENAI_API_KEY=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"; \
+		echo "# OpenAI API key used for chat and embeddings"; \
+		echo ""; \
+		echo "MODEL_NAME=gpt-5"; \
+		echo "# Default chat model name"; \
+		echo ""; \
+		echo "MODEL_TEMPERATURE=1.0"; \
+		echo "# Sampling temperature (0.0–2.0)"; \
+		echo ""; \
+		echo "MODEL_MAX_TOKENS=32000"; \
+		echo "# Max tokens in a single model response"; \
+		echo ""; \
+		echo "HOST=0.0.0.0"; \
+		echo "# Server host interface"; \
+		echo ""; \
+		echo "PORT=8000"; \
+		echo "# Server port"; \
+		echo ""; \
+		echo "RELOAD=true"; \
+		echo "# Enable auto-reload in development"; \
+		echo ""; \
+		echo "LOG_LEVEL=INFO"; \
+		echo "# Log level (DEBUG, INFO, WARNING, ERROR)"; \
+		echo ""; \
+		echo "LOG_FORMAT=json"; \
+		echo "# Log format: json or text"; \
+		echo ""; \
+		echo "LOG_LEVEL_CONSOLE=INFO"; \
+		echo "# Console log level (DEBUG, INFO, WARNING, ERROR)"; \
+		echo ""; \
+		echo "LOG_LEVEL_FILE=DEBUG"; \
+		echo "# File log level (DEBUG, INFO, WARNING, ERROR)"; \
+		echo ""; \
+		echo "CORS_ORIGINS=[\"http://localhost:3000\",\"http://localhost:5173\"]"; \
+		echo "# Allowed browser origins for API"; \
+		echo ""; \
+		echo "DB_PATH=backend/app/data/morpheus.db"; \
+		echo "# SQLite database file path (or full URL like sqlite:///...)"; \
+		echo ""; \
+		echo "MAX_UPLOAD_MB=10"; \
+		echo "# Max size per uploaded file (MB)"; \
+		echo ""; \
+		echo "MAX_BATCH_MB=50"; \
+		echo "# Max total size per upload request (MB)"; \
+		echo ""; \
+		echo "STORAGE_LIMIT_MB=500"; \
+		echo "# Per-project storage cap (MB)"; \
+		echo ""; \
+		echo "EMBEDDING_MODEL=text-embedding-3-large"; \
+		echo "# Embedding model for document indexing"; \
+		echo ""; \
+		echo "CHUNK_SIZE=800"; \
+		echo "# Text chunk size used during embedding"; \
+		echo ""; \
+		echo "CHUNK_OVERLAP=100"; \
+		echo "# Overlap between chunks during embedding"; \
+		echo ""; \
+		echo "AVAILABLE_MODELS=[\"gpt-5\",\"gpt-5-mini\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
+		echo "# Whitelisted chat models for the UI selector"; \
+		echo ""; \
+		echo "RAG_ON_CHAT=true"; \
+		echo "# If true, inject retrieved context into chat when index exists"; \
+		echo ""; \
+		echo "RAG_TOP_K=10"; \
+		echo "# Number of top snippets to retrieve"; \
+		echo ""; \
+		echo "RAG_SNIPPET_MAX_TOKENS=500"; \
+		echo "# Max tokens per RAG snippet"; \
+		echo ""; \
+		echo "RAG_CONTEXT_MAX_TOKENS=5000"; \
+		echo "# Max total tokens for injected context block"; \
+		echo ""; \
+		echo "RAG_SCORE_THRESHOLD=0.5"; \
+		echo "# Cosine similarity threshold (0..1) to include snippet"; \
+		echo ""; \
+		echo "CHAT_HISTORY_LIMIT=20"; \
+		echo "# Number of recent messages kept per project in working memory"; \
+	} > .env; \
+	echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
 
 # Full setup from scratch
 setup: setup-env install build

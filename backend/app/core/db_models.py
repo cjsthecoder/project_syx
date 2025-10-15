@@ -25,3 +25,12 @@ class File(SQLModel, table=True):
     token_count: int = Field(default=0, description="Tokens computed for this file")
 
 
+
+class ChatMessage(SQLModel, table=True):
+    """Persistent chat messages per project (V2.2)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: str = Field(index=True, foreign_key="project.id")
+    role: str = Field(description="user|assistant")
+    content: str
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+

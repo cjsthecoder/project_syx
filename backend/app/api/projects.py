@@ -21,6 +21,7 @@ from ..utils.errors import handle_project_error, log_error_context
 import uuid
 import os
 from ..core.memory import get_memory_manager, get_last_context_tokens
+from ..core.daily_rag import daily_stats
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -127,23 +128,26 @@ async def create_or_switch_project(request: ProjectRequest) -> JSONResponse:
 @router.patch("/projects/{project_id}")
 async def rename_project(project_id: str, request: ProjectRequest) -> JSONResponse:
     try:
-        if not request.project_name:
-            raise HTTPException(status_code=400, detail={"error": "project_name is required"})
+        if not request.project_name and (request.daily_rag_enabled is None):
+            raise HTTPException(status_code=400, detail={"error": "No fields to update"})
         with get_session() as session:
             obj = session.get(Project, project_id)
             if not obj:
                 raise HTTPException(status_code=404, detail={"error": "Project not found"})
             if obj.system:
                 raise HTTPException(status_code=400, detail={"error": "Cannot modify system project"})
-            # unique name check
-            exists = session.exec(select(Project).where(Project.name.ilike(request.project_name)).where(Project.id != project_id)).first()
-            if exists:
-                raise HTTPException(status_code=409, detail={"error": "Project name already exists"})
-            obj.name = request.project_name.strip()
-            obj.description = request.project_name.strip() if obj.description is None else obj.description
+            if request.project_name:
+                # unique name check
+                exists = session.exec(select(Project).where(Project.name.ilike(request.project_name)).where(Project.id != project_id)).first()
+                if exists:
+                    raise HTTPException(status_code=409, detail={"error": "Project name already exists"})
+                obj.name = request.project_name.strip()
+                obj.description = request.project_name.strip() if obj.description is None else obj.description
+            if request.daily_rag_enabled is not None:
+                obj.daily_rag_enabled = bool(request.daily_rag_enabled)
             session.add(obj)
             session.commit()
-        return JSONResponse(status_code=200, content={"success": True, "response": "Renamed", "project_id": project_id, "name": obj.name})
+        return JSONResponse(status_code=200, content={"success": True, "response": "Updated", "project_id": project_id, "name": obj.name, "daily_rag_enabled": obj.daily_rag_enabled})
     except HTTPException:
         raise
     except Exception as e:
@@ -238,6 +242,14 @@ async def project_stats(project_id: str) -> JSONResponse:
         except Exception:
             # On any failure, leave as zero
             pass
+    # daily stats
+    dstat = daily_stats(project_id)
+    # active pairs from memory manager
+    try:
+        mm2 = get_memory_manager()
+        active_pairs = mm2.get_active_pair_count(project_id)
+    except Exception:
+        active_pairs = 0
     return JSONResponse(status_code=200, content={
         "project_id": project_id,
         "storage_bytes": storage_bytes,
@@ -245,7 +257,36 @@ async def project_stats(project_id: str) -> JSONResponse:
         "tokens_indexed": tokens_indexed,
         "context_tokens": context_tokens,
         "file_count": file_count,
+        "daily_index_size_bytes": dstat.get("daily_index_size_bytes", 0),
+        "daily_tokens_indexed": dstat.get("daily_tokens_indexed", 0),
+        "daily_vector_count": dstat.get("daily_vector_count", 0),
+        "active_pairs": active_pairs,
     })
+
+
+@router.get("/projects/{project_id}")
+async def get_project_detail(project_id: str) -> JSONResponse:
+    try:
+        with get_session() as session:
+            obj = session.get(Project, project_id)
+            if not obj:
+                raise HTTPException(status_code=404, detail={"error": "Project not found"})
+            return JSONResponse(status_code=200, content={
+                "project": {
+                    "id": obj.id,
+                    "name": obj.name,
+                    "description": obj.description,
+                    "created_at": obj.created_at.isoformat(),
+                    "updated_at": obj.updated_at.isoformat(),
+                    "system": obj.system,
+                    "daily_rag_enabled": obj.daily_rag_enabled,
+                }
+            })
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get project detail {project_id}: {e}")
+        return JSONResponse(status_code=500, content={"error": "Failed to retrieve project"})
 
 
 @router.get("/projects/{project_id}/chats")

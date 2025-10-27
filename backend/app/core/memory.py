@@ -6,14 +6,15 @@ System (RAG) messages are not stored. Provides last_context_tokens per project f
 """
 
 import logging
-from typing import Optional, List, Dict, Any, Deque
+from typing import Optional, List, Dict, Any, Deque, Tuple
 from datetime import datetime, timedelta
 from collections import deque
 
 from sqlmodel import select
 from .database import get_session
-from .db_models import ChatMessage
+from .db_models import ChatMessage, Project
 from .config import get_settings
+from .daily_rag import append_pair
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +25,18 @@ class MemoryManager:
     def __init__(self):
         self.project_deques: Dict[str, Deque[Dict[str, Any]]] = {}
         self.last_context_tokens_per_project: Dict[str, int] = {}
-        self.limit = get_settings().chat_history_limit
+        s = get_settings()
+        self.limit = s.chat_history_limit
+        self.pair_limit = s.chat_history_limit_pairs
         logger.info("Memory manager initialized (v2.2 persistent mode)")
     
     def _ensure_loaded(self, project_id: str) -> None:
         if project_id in self.project_deques:
             return
-        dq: Deque[Dict[str, Any]] = deque(maxlen=self.limit)
+        # Use a deque sized to avoid dropping messages before pair-based pruning runs.
+        # Ensure capacity for at least 2*pair_limit messages.
+        maxlen = max(self.pair_limit * 2, self.limit)
+        dq: Deque[Dict[str, Any]] = deque(maxlen=maxlen)
         try:
             with get_session() as session:
                 rows = session.exec(
@@ -38,7 +44,7 @@ class MemoryManager:
                     .where(ChatMessage.project_id == project_id)
                     .order_by(ChatMessage.created_at.desc())
                 ).all()
-                rows = rows[: self.limit]
+                rows = rows[: maxlen]
                 for r in reversed(rows):
                     dq.append({
                         "id": r.id,
@@ -48,6 +54,8 @@ class MemoryManager:
                     })
         except Exception as e:
             logger.error(f"Failed to load history for {project_id}: {e}")
+        # Cleanup unpaired trailing user and orphan leading assistant per V2.3 spec
+        self._cleanup_unpaired_edges(project_id, dq)
         self.project_deques[project_id] = dq
 
     def get_project_history(self, project_id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -94,16 +102,117 @@ class MemoryManager:
     def prune_to_limit(self, project_id: str) -> None:
         self._ensure_loaded(project_id)
         dq = self.project_deques[project_id]
-        while len(dq) > self.limit:
-            oldest = dq.popleft()
+        # If we have at least one complete pair at the head, and pair_limit exceeded, roll off the oldest pair
+        while self._pair_count(dq) > self.pair_limit:
+            self._rolloff_oldest_pair(project_id, dq)
+
+    def _pair_count(self, dq: Deque[Dict[str, Any]]) -> int:
+        count = 0
+        i = 0
+        n = len(dq)
+        while i + 1 < n:
+            if dq[i].get("role") == "user" and dq[i+1].get("role") == "assistant":
+                count += 1
+                i += 2
+            else:
+                i += 1
+        return count
+
+    def _rolloff_oldest_pair(self, project_id: str, dq: Deque[Dict[str, Any]]) -> None:
+        # Ensure the first two form a pair; if not, clean or skip until a pair is found
+        while len(dq) >= 2:
+            first, second = dq[0], dq[1]
+            if first.get("role") == "user" and second.get("role") == "assistant":
+                break
+            # Delete stray message from DB and drop it
             try:
                 with get_session() as session:
-                    row = session.get(ChatMessage, oldest.get("id"))
+                    row = session.get(ChatMessage, dq[0].get("id"))
                     if row:
                         session.delete(row)
                         session.commit()
             except Exception as e:
-                logger.error(f"Failed pruning message {oldest.get('id')}: {e}")
+                logger.error(f"Failed deleting stray message {dq[0].get('id')}: {e}")
+            dq.popleft()
+        if len(dq) < 2:
+            return
+        user_msg = dq.popleft()
+        asst_msg = dq.popleft()
+        pair_text = f"User: {user_msg.get('content')}\nAssistant: {asst_msg.get('content')}"
+        logger.info(
+            "[DailyRAG] Rolled off pair → project=%s | user_id=%s assistant_id=%s | tokens≈%s",
+            project_id,
+            str(user_msg.get("id")),
+            str(asst_msg.get("id")),
+            "?",
+        )
+        logger.debug("[DailyRAG] Prompt: %s", (user_msg.get('content') or '')[:2000])
+        logger.debug("[DailyRAG] Response: %s", (asst_msg.get('content') or '')[:2000])
+        # approximate tokens
+        try:
+            import tiktoken  # type: ignore
+            enc = tiktoken.get_encoding("cl100k_base")
+            tokens = len(enc.encode(pair_text))
+        except Exception:
+            tokens = len((pair_text or "").split())
+        # Append to daily if enabled; on any error we still drop per spec
+        try:
+            if self._is_daily_enabled(project_id):
+                append_pair(project_id, pair_text, int(user_msg.get("id")), int(asst_msg.get("id")), int(tokens))
+            else:
+                logger.info("[DailyRAG] Skipping daily append (disabled for project=%s)", project_id)
+        except Exception as e:
+            logger.error(f"DailyRAG rolloff append failed: {e}")
+        # Delete both rows from DB
+        try:
+            with get_session() as session:
+                for mid in (user_msg.get("id"), asst_msg.get("id")):
+                    row = session.get(ChatMessage, mid)
+                    if row:
+                        session.delete(row)
+                session.commit()
+        except Exception as e:
+            logger.error(f"Failed deleting rolled-off DB rows: {e}")
+
+    def _cleanup_unpaired_edges(self, project_id: str, dq: Deque[Dict[str, Any]]) -> None:
+        """Delete orphan leading assistant messages and trailing unpaired user messages from DB and deque."""
+        # Clean orphan assistants at the head
+        while len(dq) and dq[0].get("role") != "user":
+            try:
+                with get_session() as session:
+                    row = session.get(ChatMessage, dq[0].get("id"))
+                    if row:
+                        session.delete(row)
+                        session.commit()
+            except Exception as e:
+                logger.error(f"Failed deleting orphan assistant {dq[0].get('id')}: {e}")
+            dq.popleft()
+        # Clean trailing unpaired user at the tail
+        while len(dq) and dq[-1].get("role") != "assistant":
+            try:
+                with get_session() as session:
+                    row = session.get(ChatMessage, dq[-1].get("id"))
+                    if row:
+                        session.delete(row)
+                        session.commit()
+            except Exception as e:
+                logger.error(f"Failed deleting trailing unpaired message {dq[-1].get('id')}: {e}")
+            dq.pop()
+
+    def _is_daily_enabled(self, project_id: str) -> bool:
+        try:
+            with get_session() as session:
+                p = session.get(Project, project_id)
+                if p is None:
+                    return True
+                return bool(p.daily_rag_enabled)
+        except Exception:
+            return True
+
+    def get_active_pair_count(self, project_id: str) -> int:
+        self._ensure_loaded(project_id)
+        dq = self.project_deques.get(project_id) or deque()
+        return self._pair_count(dq)
 
     def set_last_context_tokens(self, project_id: str, tokens: int) -> None:
         self.last_context_tokens_per_project[project_id] = max(0, int(tokens))

@@ -101,6 +101,7 @@ class ProjectRequest(BaseModel):
     """Request model for project operations."""
     project_id: Optional[str] = Field(default=None, description="Project ID to switch to")
     project_name: Optional[str] = Field(default=None, description="New project name")
+    daily_rag_enabled: Optional[bool] = Field(default=None, description="Toggle per-project Daily RAG")
     
     class Config:
         json_schema_extra = {

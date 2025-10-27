@@ -24,6 +24,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [ragBuilding, setRagBuilding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [model, setModel] = useState('gpt-5')
   const [models, setModels] = useState<ModelItem[]>(['gpt-5'])
@@ -34,8 +35,8 @@ export default function App() {
   const [newProjectName, setNewProjectName] = useState('')
   const [renameProjectName, setRenameProjectName] = useState('')
   const [files, setFiles] = useState<any[]>([])
-  const [stats, setStats] = useState<{ storage_bytes: number; index_size_bytes: number; tokens_indexed: number; context_tokens: number; file_count: number } | null>(null)
-  const [projectInfo, setProjectInfo] = useState<{ name?: string; description?: string; created_at?: string; system?: boolean } | null>(null)
+  const [stats, setStats] = useState<{ storage_bytes: number; index_size_bytes: number; tokens_indexed: number; context_tokens: number; file_count: number; daily_index_size_bytes?: number; daily_tokens_indexed?: number; daily_vector_count?: number; active_pairs?: number } | null>(null)
+  const [projectInfo, setProjectInfo] = useState<{ name?: string; description?: string; created_at?: string; system?: boolean; daily_rag_enabled?: boolean } | null>(null)
 
   const listRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -87,7 +88,7 @@ export default function App() {
 
   const loadStats = useCallback(async (pid: string) => {
     try {
-      const data = await api<{ storage_bytes: number; index_size_bytes: number; tokens_indexed: number; context_tokens: number; file_count: number }>(`/projects/${pid}/stats`)
+      const data = await api<{ storage_bytes: number; index_size_bytes: number; tokens_indexed: number; context_tokens: number; file_count: number; daily_index_size_bytes?: number; daily_tokens_indexed?: number; daily_vector_count?: number }>(`/projects/${pid}/stats`)
       setStats(data)
     } catch {
       setStats(null)
@@ -123,7 +124,9 @@ export default function App() {
   async function send() {
     if (!canSend) return
     setError(null)
-    setLoading(true)
+    // Indicate RAG builder phase immediately; switch to Thinking… on next tick
+    setRagBuilding(true)
+    setTimeout(() => setLoading(true), 0)
     const userMsg: Message = { role: 'user', content: input }
     setMessages((m) => [...m, userMsg])
     setInput('')
@@ -141,12 +144,15 @@ export default function App() {
     } catch (e: any) {
       setError(e?.message || 'Request failed')
     } finally {
+      setRagBuilding(false)
       setLoading(false)
     }
   }
 
   function fmtMB(bytes?: number) {
-    if (!bytes && bytes !== 0) return '—'
+    if (bytes === undefined || bytes === null) return '—'
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
@@ -231,8 +237,18 @@ export default function App() {
               </option>
             ))}
           </Select>
-          <Button onClick={() => setShowCreateModal(true)}>New</Button>
-          <Button onClick={() => setShowManageModal(true)}>Manage</Button>
+          <Button
+            className="bg-white !text-black hover:bg-gray-100 border-transparent dark:!bg-black dark:!text-white dark:hover:!bg-gray-900"
+            onClick={() => setShowCreateModal(true)}
+          >
+            New
+          </Button>
+          <Button
+            className="bg-white !text-black hover:bg-gray-100 border-transparent dark:!bg-black dark:!text-white dark:hover:!bg-gray-900"
+            onClick={() => setShowManageModal(true)}
+          >
+            Manage
+          </Button>
         </div>
 
         {/* Center: Title */}
@@ -254,10 +270,13 @@ export default function App() {
       {/* Stats Bar */}
       <div className="px-4 py-2 border-b text-sm w-full flex justify-center">
         <div className="flex flex-wrap gap-8 items-center text-center">
-          <div>📁 Files: {fmtMB(stats?.storage_bytes)}</div>
-          <div>🧠 FAISS index: {fmtMB(stats?.index_size_bytes)}</div>
-          <div>🔢 Tokens indexed: {stats?.tokens_indexed ?? '—'}</div>
-          <div>🔢 Context Tokens: {stats?.context_tokens ?? '—'}</div>
+          <div>Files: {fmtMB(stats?.storage_bytes)}</div>
+          <div>FAISS index: {fmtMB(stats?.index_size_bytes)}</div>
+          <div>Tokens indexed: {stats?.tokens_indexed ?? '—'}</div>
+          <div>Context tokens: {stats?.context_tokens ?? '—'}</div>
+          <div>Daily index: {fmtMB(stats?.daily_index_size_bytes)}</div>
+          <div>Daily tokens: {stats?.daily_tokens_indexed ?? '—'}</div>
+          <div>Active pairs: {stats?.active_pairs ?? '—'}</div>
         </div>
       </div>
 
@@ -269,13 +288,15 @@ export default function App() {
                 className={`inline-block rounded px-3 py-2 whitespace-pre-wrap break-words max-w-[800px] w-fit ${
                   m.role === 'user'
                     ? 'mr-[20%] bg-gray-200 text-black'
-                    : 'ml-[20%] bg-gray-900 text-white'
+                    : 'ml-[20%] text-white'
                 }`}
+                style={m.role === 'assistant' ? { backgroundColor: '#202123' } : undefined}
               >
                 {m.content}
               </div>
             </div>
           ))}
+          {ragBuilding && !loading && <div className="text-sm text-gray-500">Building RAG Query…</div>}
           {loading && <div className="text-sm text-gray-500">Thinking…</div>}
         </div>
       </main>
@@ -333,6 +354,24 @@ export default function App() {
             <div><strong>Name:</strong> {projectInfo?.name ?? projectId}</div>
             {projectInfo?.created_at && <div><strong>Created:</strong> {new Date(projectInfo.created_at).toLocaleString()}</div>}
             {projectInfo?.system && <div className="text-amber-600">System project</div>}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-sm">Keep Daily History</label>
+            <input
+              type="checkbox"
+              checked={!!projectInfo?.daily_rag_enabled}
+              onChange={async (e) => {
+                if (!projectId) return
+                try {
+                  await api(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ daily_rag_enabled: e.target.checked }) })
+                  await loadProjectInfo(projectId)
+                  await loadStats(projectId)
+                } catch (err: any) {
+                  setError(err?.message || 'Failed to update setting')
+                }
+              }}
+            />
           </div>
 
           <div className="flex items-center gap-2">

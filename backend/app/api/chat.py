@@ -15,7 +15,10 @@ from ..core.memory import get_memory_manager, set_last_context_tokens
 from ..utils.logging import RequestLogger, LLMLogger
 from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings
-from ..core.rag_manager import retrieve_context
+from ..core.rag_manager import retrieve_context, merge_daily_and_main
+from ..core.database import get_session
+from ..core.db_models import Project
+from ..core.query_builder import build_query
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -51,22 +54,91 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             # chronological messages already; map to role/content for LLM
             conversation_history = [{"role": m["role"], "content": m["content"]} for m in proj_msgs]
         
-        # Optional RAG retrieval
+        # Optional RAG retrieval (V2.3.1: builder + daily/main merge)
         system_prompt = None
         if settings.rag_on_chat and request.project_id:
-            rc = retrieve_context(
-                project_id=request.project_id,
-                query=request.message,
-                top_k=settings.rag_top_k,
-                snippet_max_tokens=settings.rag_snippet_max_tokens,
-                score_threshold=settings.rag_score_threshold,
-                context_max_tokens=settings.rag_context_max_tokens,
-            )
-            if rc.get("context_text"):
-                system_prompt = rc["context_text"]
-                logger.debug(f"Chat: injecting RAG context tokens={rc.get('tokens_used')} snippets_present={bool(rc.get('snippets'))}")
+            # Summarize recent pairs (simple heuristic)
+            summary = ''
+            try:
+                mm = get_memory_manager()
+                hist = mm.get_project_history(request.project_id)
+                tail = hist[-8:] if len(hist) > 8 else hist
+                parts = []
+                for m in tail:
+                    parts.append(f"{m.get('role')}: {(m.get('content') or '')[:120]}")
+                summary = " | ".join(parts)[:1000]
+            except Exception:
+                summary = ''
+            b = build_query(request.project_id, summary, request.message)
+            if b is None:
+                logger.info("builder unavailable; skipping RAG for this turn")
             else:
-                logger.debug("Chat: no RAG context injected (empty)")
+                route = (b.get('route') or '').upper()
+                do_rag = bool(b.get('rag'))
+                conf = float(b.get('confidence') or 0.0)
+                topics = b.get('topics') or []
+                standalone = b.get('standalone') or request.message
+                paraphrases = b.get('paraphrases') or []
+                hyde = b.get('hyde') or ''
+                logger.info(
+                    "builder result route=%s rag=%s conf=%.2f topics=%s standalone=%s paraphrases=%s",
+                    route, do_rag, conf,
+                    ",".join(map(str, topics[:5])),
+                    (standalone[:120] + ("…" if len(standalone) > 120 else "")),
+                    len(paraphrases or []),
+                )
+                # Strict skip: no retrieval for CHITCHAT or rag=false
+                if (not do_rag) or route == 'CHITCHAT':
+                    logger.info("Chat: skipping RAG due to route=%s rag=%s", route, do_rag)
+                else:
+                    # Check per-project toggle for Daily RAG. If disabled, set daily_top_k=0 to skip daily.
+                    daily_enabled = True
+                    try:
+                        with get_session() as session:
+                            p = session.get(Project, request.project_id)
+                            if p is not None:
+                                daily_enabled = bool(p.daily_rag_enabled)
+                    except Exception:
+                        daily_enabled = True
+                    queries = [standalone]
+                    if conf >= settings.builder_confidence_min:
+                        queries.extend(paraphrases[:3])
+                        if hyde:
+                            queries.append(hyde)
+                    preferred_ns = None
+                    if route in ('JIRA','CODE','DOCS'):
+                        preferred_ns = route.lower()
+                    primary_query = queries[0] if queries else request.message
+                    logger.debug(
+                        "Chat: performing merged retrieval (daily+main) for project=%s route=%s conf=%.2f queries=%s",
+                        request.project_id, route, conf, len(queries)
+                    )
+                    rc = merge_daily_and_main(
+                        project_id=request.project_id,
+                        query=primary_query,
+                        main_top_k=settings.rag_top_k,
+                        main_snippet_max_tokens=settings.rag_snippet_max_tokens,
+                        main_threshold=settings.rag_score_threshold,
+                        daily_top_k=(settings.daily_rag_k if daily_enabled else 0),
+                        daily_threshold=settings.daily_rag_score_threshold,
+                        daily_weight=settings.daily_rag_weight,
+                        daily_max_tokens=settings.daily_rag_max_tokens,
+                        global_context_max_tokens=settings.rag_context_max_tokens,
+                        dedupe_exact=settings.dedupe_exact,
+                        dedupe_near=settings.dedupe_near,
+                        dedupe_similarity_threshold=settings.dedupe_similarity_threshold,
+                        prefer_daily=settings.dedupe_keep_daily,
+                        topics=topics,
+                        preferred_namespace=preferred_ns,
+                        topic_boost=settings.topic_boost,
+                        decision_boost=settings.decision_boost,
+                        question_boost=settings.question_boost,
+                    )
+                    if rc.get("context_text"):
+                        system_prompt = rc["context_text"]
+                        logger.debug(f"Chat: injecting merged context tokens={rc.get('tokens_used')}")
+                    else:
+                        logger.debug("Chat: no merged RAG context injected (empty)")
         
         # Log LLM request
         llm_logger.log_llm_request(

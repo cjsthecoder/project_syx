@@ -11,6 +11,7 @@ class Project(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     system: bool = Field(default=False, description="System project (non-deletable/non-renamable)")
+    daily_rag_enabled: bool = Field(default=True, description="V2.3: Keep Daily History per project")
 
 
 class File(SQLModel, table=True):

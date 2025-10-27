@@ -133,6 +133,8 @@ def setup_logging() -> None:
         logging.getLogger("openai").setLevel(logging.INFO)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
+    # Silence noisy model-encoding warnings from langchain_openai embeddings layer
+    logging.getLogger("langchain_openai.embeddings.base").setLevel(logging.ERROR)
     
     # Make uvicorn use our formatter for all its messages
     uvicorn_logger = logging.getLogger("uvicorn")

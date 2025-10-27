@@ -88,6 +88,29 @@ class Settings(BaseSettings):
     # V2.2: Chat history working memory
     chat_history_limit: int = Field(default=20, gt=0, description="Number of recent messages kept per project")
 
+    # V2.3: Daily RAG bridge controls (global defaults)
+    chat_history_limit_pairs: int = Field(default=10, gt=0, description="Number of recent prompt/response pairs kept in working memory")
+    daily_rag_enabled: bool = Field(default=True, description="Enable daily RAG roll-off globally (per-project can override)")
+    daily_rag_k: int = Field(default=3, gt=0, description="Top-K results from daily index")
+    daily_rag_score_threshold: float = Field(default=0.70, ge=0.0, le=1.0, description="Similarity threshold for daily results")
+    daily_rag_max_tokens: int = Field(default=2500, gt=0, description="Max tokens contributed by daily layer")
+    daily_rag_weight: float = Field(default=1.2, gt=0.0, description="Weight multiplier applied to daily scores")
+
+    # V2.3: Deduplication controls
+    dedupe_exact: bool = Field(default=True, description="Enable exact-text deduplication across daily/main snippets")
+    dedupe_near: bool = Field(default=True, description="Enable near-duplicate deduplication via cosine similarity")
+    dedupe_similarity_threshold: float = Field(default=0.98, ge=0.0, le=1.0, description="Cosine threshold for near-duplicate detection")
+    dedupe_keep_daily: bool = Field(default=True, description="Prefer keeping daily snippet on dedupe conflicts")
+
+    # V2.3.1: Builder and reranking
+    builder_model: str = Field(default="gpt-4o-mini", description="LLM used for query builder/router")
+    builder_confidence_min: float = Field(default=0.75, ge=0.0, le=1.0, description="Minimum confidence for full retrieval")
+    builder_max_tokens: int = Field(default=512, gt=0, description="Max tokens for builder output")
+    builder_cache: bool = Field(default=True, description="Enable in-memory cache for builder JSON")
+    topic_boost: float = Field(default=1.10, gt=0.0, description="Multiplicative boost for topic overlap")
+    decision_boost: float = Field(default=1.05, gt=0.0, description="Multiplicative boost for decision overlap")
+    question_boost: float = Field(default=1.02, gt=0.0, description="Multiplicative boost for open-question overlap")
+
 
 # Global settings instance
 settings = Settings()

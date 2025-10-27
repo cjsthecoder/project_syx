@@ -1,228 +1,134 @@
-1) Project identity: 
-Is id immutable and distinct from name? Yes (I assume it is tied to a DB key)
-Allowed chars/length for id (e.g., ^[a-z0-9-_]{1,40}$)? This is not to be for the user, so any unique key works.
-2) Rename: Do we support renaming name and editing description in Manage Project? Yes
-Any endpoint: PATCH /projects/{id}? Yes
-3) Default project: Should a default project always exist and be selected on first load? I would like to create a project called 'Continuum' that is always available.  And will be selected first.
-Behavior if deleted?  I would like this one project to be persistant and not deleteable.
-4) New project auto-select: Always switch to the newly created project on success? Yes
-5) Deletion behavior: On deleting the active project, which project becomes active next (previous selection, default, or none)?  If the curent project is deleted go back to Continuum
-6) Files list: Sort order (default created_at desc)? Any filtering or search needed now?  Sort order can be created_at in desc, no other filters.
+1) Builder input and summary
+Should the “recent summary” be an on-the-fly 1–2 sentence abstraction of the last N messages (how many pairs, or max tokens), or is there a separate summary we should keep updated?
+make a summary of all the message pairs in memory that have not been rolled off to memory.  make it 3-4 sentences max.
 
-7) File actions: Do we need file delete (single/bulk) endpoints? DELETE /projects/{id}/files/{file_id} and optional bulk delete? No bulk delete, but a button to delete each file in the list would be good.
+2) Builder model and limits
+Default BUILDER_MODEL=gpt-4o-mini is fine; confirm we’ll call it via the same OpenAI channel as chat. Any max latency/budget guardrails besides BUILDER_MAX_TOKENS=512 (e.g., timeout ms)?
+yes, same OpenAI channel.  no other latency/budgets
 
-8) File rename: Required? If yes, endpoint PATCH /projects/{id}/files/{file_id} with filename?  No renaming
-9) Upload UX: Allow drag-and-drop + multi-file? Any max files per batch cap (besides size limits)?  allow drag in drop multi file, no cap
-10) Allowed types: Keep .txt, .md, .pdf only for V2.1? Reject others with clear error?  yes
-11) FAISS rebuild: Rebuild index immediately after every successful upload/delete, or batch/rebuild button?  yes, rebuild each time
+3) Failure/timeout behavior
+If the builder times out or returns invalid JSON, should we:
+fallback to current V2.3 flow (no rewrite, normal daily+main retrieval), or
+skip RAG and answer directly?
+log a warning and just don't use RAG
 
-12) RAG in chat: Should /chat automatically retrieve top-k from active project's FAISS and inject as context? If yes, desired k (e.g., 5) and max tokens budget for snippets?  Yes, the starting values are below, but I would like these all to be ENV changeable.
-Parameter	Recommended
-Top-K (k)	5	
-Max Tokens per Snippet	500	
-Embedding Similarity Metric	Cosine distance (default in FAISS)	
-Score Threshold (optional)	0.75 
-Insertion Method	Prepend retrieved context as a system or context block in the LLM prompt.
+4) “rag=false” handling
+When rag=false or route=CHITCHAT, do we strictly bypass any retrieval and run chat normally (still including in-memory conversation history)?
+yes, run chat normally
 
-13) Empty states: What to show when no project is selected or project has no files (helper text, CTA)?  Just proceed without files.  The conversation will eventually be rolled into the RAG.
+5) HYDE/paraphrases count
+Target count for paraphrases and whether HYDE is always included or only when confidence < 1.0. Defaults OK at 2–3 paraphrases + 1 HYDE?
+Yes — defaults are fine.
 
-14) Validation limits: Max lengths for name and description (e.g., 80/500)? Reject duplicates by id or also by name?  make it 255/500, and reject duplicates
-15) Error UX: Toast messages copy for common errors (no project selected, file too large, storage limit exceeded, index rebuild failed)? yes
-16) Storage stats: Show per-project storage used and FAISS artifact size in Manage Project modal?
-I would like to see this data on the main page, on the top after the New/Manage buttons.  Should be like this:
-📁 Files: 12.3 MB   🧠 FAISS index: 3.8 MB   🔢 Tokens indexed: 128,432  🔢 Context Tokens: 128,432
+6) Topic/entity extraction → metadata
+Main index metadata today only has filename, page_number. The spec references chunk #topics, #decisions, #open_questions.
+Should we retrofit existing chunks with a sidecar metadata JSON keyed by docstore id, or re-index to embed these fields into the FAISS docstore metadata?
+If sidecar, where to store and how to key (e.g., memory/{project}/faiss/meta_topics.json)?
+Use a sidecar metadata JSON keyed by FAISS docstore ID.
+Do not re-index everything right now — just extend metadata externally and merge the two sources at retrieval time.
+Store the sidecar at memory/{project}/faiss/meta_topics.json.
+Use a sidecar metadata JSON (memory/{project}/faiss/meta_topics.json) keyed by FAISS docstore ID. Avoid full re-indexing; merge metadata at retrieval time. This keeps updates cheap and flexible.
 
+7) Namespaces/routing
+For “jira”, “code”, “docs” namespaces: how should we map these in our current per-project index? Options:
+File-based tags by directory (e.g., uploads/docs/, uploads/code/) → carry into metadata.
+A new File.category column and tag chunks accordingly.
+Or just a metadata-sidecar with file-to-namespace map. Which do you prefer?
+Use a metadata-sidecar with a file-to-namespace map.
+Don’t restructure directories or modify the DB schema right now.
+Store the mapping in a simple JSON (e.g., memory/{project}/faiss/meta_namespaces.json).
+Use a metadata-sidecar (memory/{project}/faiss/meta_namespaces.json) mapping files to namespaces. Avoid directory restructuring or DB changes; merge at retrieval for filtering/boosting.
 
-17) Concurrency: Keep uploads/index rebuild strictly synchronous for V2.1, no background tasks?  no background tasks
+8) Topic vector cache
+Scope and storage: in-memory per project with LRU/TTL, or persisted to disk (e.g., memory/{project}/daily_topics_cache.json)? What eviction policy is acceptable?
+Keep the topic vector cache in-memory per project with LRU + TTL eviction.
+No need to persist it to disk yet — regenerate on demand.
+If desired later, persist to memory/{project}/daily_topics_cache.json as an optional optimization.
+Use in-memory per-project cache with LRU/TTL eviction (e.g., 24h, max 500 entries). No disk persistence needed now; regenerate embeddings if missing. Optionally persist later as memory/{project}/daily_topics_cache.json.
 
-18) API response shapes: Please confirm response keys for:
-POST /projects (return id, name, description, created_at)
-GET /projects/{id}/files (fields per file)
-POST /projects/{id}/files (list of saved files + index_dir)
-POST /projects
-Purpose: Create a new project.
-Request:
-{
-"name": "Project A",
-"description": "Optional description text"
-}
-Response:
-{
-"id": "proj_20251004_001",
-"name": "Project A",
-"description": "Optional description text",
-"created_at": "2025-10-04T12:00:00Z",
-"updated_at": "2025-10-04T12:00:00Z",
-"storage_bytes": 0,
-"token_count": 0,
-"file_count": 0
-}
-Notes:
+9) Reranking boosts
+Confirm boosts are multiplicative (e.g., score = TOPIC_BOOST) and applied in this order: topic → decision → open_question → then normalize to [0..1] before truncation.
+Any cap on total compounded boost (e.g., clamp to 1.0)?
+Yes — that’s correct”
 
-id is a string (UUID or timestamp-based).
+10) Deduping
+We currently do exact-text dedupe; we can add near-duplicate dedupe with cosine ≥ DEDUPE_SIMILARITY_THRESHOLD. Confirm it should run after merging daily+main and before token budgeting.
+yes, confirmed
 
-Include initial metadata so the frontend can display project stats immediately.
+11) Context budget order
+Confirm final order remains:
+Daily first up to DAILY_RAG_MAX_TOKENS
+Main fills remaining up to RAG_CONTEXT_MAX_TOKENS
+Sections labeled “Daily:” then “Main:”
+yes, confirmed
 
-storage_bytes, token_count, and file_count start at 0.
+12) Confidence threshold behavior
+If confidence < BUILDER_CONFIDENCE_MIN, do we:
+Ask a clarifying question (and pause the turn), or
+Proceed with conservative retrieval (e.g., fewer paraphrases, skip HYDE), or
+Skip RAG and answer directly?
+Proceed with conservative retrieval — use only standalone query, skip HYDE/paraphrases, continue turn. Avoid clarifier interruption or full skip.
 
-GET /projects/{id}/files
-Purpose: List all files in a project.
-Response:
-{
-"project_id": "proj_20251004_001",
-"files": [
-{
-"id": "file_001",
-"filename": "notes.txt",
-"size_bytes": 2048,
-"uploaded_at": "2025-10-04T12:30:00Z",
-"embedding_status": "indexed",
-"page_count": 1,
-"token_count": 512
-},
-{
-"id": "file_002",
-"filename": "paper.pdf",
-"size_bytes": 1048576,
-"uploaded_at": "2025-10-04T13:00:00Z",
-"embedding_status": "indexed",
-"page_count": 12,
-"token_count": 4312
-}
-],
-"storage_bytes": 1050624,
-"token_count": 4824
-}
-Notes:
+13) Caching builder output
+For BUILDER_CACHE=True, cache key = hash(project_id, summary, user_turn) with a short TTL (e.g., 5–10 minutes)? OK to store in memory only?
+Yes — store the builder’s JSON output in an in-memory cache, keyed by a short-lived hash like (project_id, summary, user_turn) with a 5–10 minute TTL.
+No need for disk persistence.
 
-embedding_status → "pending" | "indexed" | "failed".
+14) Logging and visibility
+“logs/builder.log”: rotate by size or date? Redact PII or full JSON OK? Also OK to add route + confidence to stats header temporarily for debugging?
+yes, add extra debugging messages as needed.  but use the existing logger, don't make a new logging system
 
-page_count helps correlate with PDF extraction.
+15) ENV additions
+I will add BUILDER_MODEL, BUILDER_CONFIDENCE_MIN, BUILDER_MAX_TOKENS, BUILDER_CACHE, TOPIC_BOOST, DECISION_BOOST, QUESTION_BOOST to config.py and Makefile setup-env. Any other defaults you want to change from the spec?
+no, that looks good
 
-Include aggregate totals (storage_bytes, token_count) at the top for quick display.
+16) Placement and interfaces
+I plan to add core/query_builder.py with:
+build_query(history_summary: str, user_text: str) -> dict (validated against the JSON schema).
+apply_topic_rerank(snippets, topics, entities, boosts).
+Wire into chat_endpoint before retrieval.
+Confirm this location and interface.
+yes
 
-POST /projects/{id}/files
-Purpose: Upload one or more files, store them, and rebuild the FAISS index.
-Response:
-{
-"project_id": "proj_20251004_001",
-"uploaded": [
-{
-"filename": "notes.txt",
-"status": "ok",
-"size_bytes": 2048,
-"token_count": 512
-},
-{
-"filename": "paper.pdf",
-"status": "ok",
-"size_bytes": 1048576,
-"token_count": 4312
-}
-],
-"index_dir": "memory/proj_20251004_001/faiss/",
-"rebuild_status": "completed",
-"total_files": 2,
-"total_tokens": 4824
-}
-Notes:
-
-index_dir = path to FAISS index on disk (useful for debugging).
-
-rebuild_status → "completed" | "pending" | "failed".
-
-Returns updated total stats for immediate UI refresh.
-
-Consistency Rules
-
-All keys in snake_case.
-
-Always include project_id in file-related responses.
-
-Always return sizes in bytes.
-
-Include timestamps in ISO 8601 UTC format (YYYY-MM-DDTHH:mm:ssZ).
-
-Return full objects, not partials — frontend should never guess fields.
+17) Backward compatibility
+If builder is disabled by ENV or fails, we’ll fall back to the current 2.3 retrieval path without topic reranking. OK?
+yes
 
 
 
-19) Active context: Must a selected project be enforced for all file actions (reject if missing)? Yes
-
-Should /chat also require a project when RAG-on-chat is enabled?
-
-🔹 Enforce Project Context for /chat (when RAG-on-chat is enabled)
-
-Here’s the nuanced part:
-
-Case	Behavior	Rationale
-RAG disabled	/chat can run without a project	Works as a stateless chat.
-RAG enabled	/chat must have an active project	The model needs to know which FAISS index to query.
-“Continuum” project	Acts as the fallback context if no project selected	Prevents user friction while keeping structure consistent.
-
-Note: I want RAG enabled if there is a RAG file for the selected project (otherwise diabled)
+1) Clamp on boosted scores
+After applying topic/decision/open_question boosts, should we clamp final score to 1.0 before sorting/truncation? I’ll default to clamp=1.0 unless you prefer another normalization.
+Yes — clamp boosted scores to 1.0 before sorting/truncation.
 
 
-20) Model selector: Remains in chat header only; any need to display current model inside Manage Project modal?  No need
+2) Builder cache TTL and size
+Exact TTL for builder JSON cache? OK to default to 10 minutes and cap at, say, 500 entries per process?
+yes
+
+3) Logging destination for builder
+You said use the existing logger, not a new system. Should I:
+Log builder records into the main rotating app log with marker type="builder" (no separate file)?
+Or also create a dedicated file handler to logs/builder.log using the same logger config?
+
+Put this at the top of any new python file, logger = logging.getLogger(__name__), and that is enough.  
+
+4) Namespace routing behavior
+When route yields a namespace (e.g., “jira”), should we hard-filter results to that namespace first and only fall back to full corpus if none, or always search full corpus but boost the namespace?
+Boost the namespace first; fall back to full corpus, not a hard filter.
+In other words — always search the full corpus, but strongly boost results from the routed namespace.
 
 
+5) Sidecar meta reads/writes
+I’ll place both sidecars at memory/{project}/faiss/ and guard with a daily.lock-style FileLock. OK to reuse the same lock file (e.g., faiss.lock) for meta reads/writes?
+Yes, reusing a single faiss.lock file for both FAISS index and sidecar metadata reads/writes is acceptable — and actually preferable for simplicity.
+Just make sure it’s a short-lived, well-scoped lock.
 
-1) Continuum identity: What should the immutable id be for the default project (e.g., continuum)? Is its name editable or fully locked?  The ID doesn't matter eccept that it is unique.  name is not editable, it can take files though, otherwise locked.  we could build this as a build step if it doesn't exist, but we can do what ever is easiest.
-2) System flag: OK to add system: bool to Project (true for Continuum) and block delete/rename at API level?  yes
-3) Project schema: Confirm fields id (server-generated), name<=255, description<=500, created_at, updated_at, system (default false).  yes
-4) ID format: Prefer uuid4 or timestamped ids like proj_YYYYMMDD_HHMMSS_xxx? use uuid4
-5) File schema: OK to add uploaded_at, embedding_status (pending|indexed|failed), page_count, token_count?  yes
-6) Token counting: Use OpenAI tokenizer (cl100k_base) to compute token_count for files/snippets, or derive from embedding model tokens?  use tiktoken to calculate the counts
-7) RAG env knobs: Confirm names/defaults: yes
-RAG_TOP_K=5
-RAG_SNIPPET_MAX_TOKENS=500
-RAG_SCORE_THRESHOLD=0.75
-RAG_ON_CHAT=true
-8) RAG insertion: Prefer a single system message containing “Context:” with concatenated snippets, or multiple system messages (one per snippet)?
-Go with a single system message containing a Context: block with concatenated snippets — it’s the most robust, model-friendly, and maintainable approach.
+6) Unmapped namespace default
+If a file isn’t listed in meta_namespaces.json, what default namespace should we assume (“other”)? And include “other” when route is unknown?
+Default to "other" for unmapped files, and always include "other" when the route is unknown.
 
-Use clear separators (e.g., --- or numbered bullets) and cap the entire block at ~3,000 tokens total.
-
-9) RAG fallback: If all retrieved scores fall below threshold, proceed without RAG (no context) rather than lowering threshold? yes
-
-10) File delete API: Confirm DELETE /projects/{id}/files/{file_id} sync-rebuilds FAISS and responds with updated totals and rebuild_status.  yes
-11) Name uniqueness: Enforce unique name globally (case-insensitive)? On conflict return 409? yes and yes
-12) Chat-to-RAG: Defer indexing chat transcripts to a later version, or add behind INDEX_CHAT_IN_RAG=false env now?  defer to later
-13) Continuum fallback in chat: If no project selected, auto-use Continuum for RAG rather than returning an error—correct?  yes
-14) Batch uploads: Keep “no count cap” but still enforce MAX_BATCH_MB and MAX_UPLOAD_MB—correct?  yes
-15) Stats definitions: “Tokens indexed” vs “Context Tokens” — are these identical, or should “Context Tokens” reflect the total tokens included in the last RAG injection?  Tokens indexed is the total tokens in the RAG, Context Tokens is the current amount of tokens used in the context window (outside of RAG)
-
-
-
-1) Continuum creation: Create on API startup if missing (via code), okay? Or prefer an Alembic seed migration? Alembic seed migration
-2) Continuum selection: Since id is uuid4 and name is unique “Continuum”, should first-load selection find the project by system=true or by name == 'Continuum'? name == 'Continuum'
-3) Unique name enforcement: Implemented at DB-level (unique index) or app-level validation (return 409 on conflict)? SQLite case-insensitive uniqueness is tricky; app-level OK?  yes
-4) Project update API: For PATCH /projects/{id}, fields allowed to change are name, description (except system=true which blocks both). Correct?  yes
-5) File timestamps: Use uploaded_at (rename current created_at) in responses? yes
-Keep DB column as is and map in response, or perform a DB migration to rename?  keep column as is
-6) page_count for non-PDF: Set to 1, or null? 1
-7) Token counting: Add dependency tiktoken and compute tokens from extracted text at index time. Approved?  yes
-8) RAG threshold semantics: Apply as “similarity >= RAG_SCORE_THRESHOLD” (0..1), not “distance <= …”. We’ll use cosine similarity; OK? Yes — use cosine similarity, where higher = better.
-9) RAG context cap: Add RAG_CONTEXT_MAX_TOKENS=3000 env to cap the entire Context: block. OK?  High-quality retrieval 5000 tokens
-10) RAG enablement check: Enable RAG-on-chat only if FAISS index exists and has entries for the active project (we’ll detect by loaded index/doc count). OK?
-Condition	                RAG Status	  Chat Behavior
-No FAISS index found	    ❌ Disabled	 Chat runs normally without retrieval
-Index exists but 0 vectors	❌ Disabled	 No context injected
-Index exists with ≥1 vector	✅ Enabled	 Injects retrieved context automatically
-
-11) File delete: DELETE /projects/{id}/files/{file_id} runs synchronous rebuild; UI should show in-progress state to prevent duplicate actions. OK?   yes
-12) Error codes: 409 for duplicate name, 404 for missing entities, 400 for validation (size limits, missing project). Confirm?  yes
-13) Stats endpoint: Add GET /projects/{id}/stats returning storage_bytes, index_size_bytes, tokens_indexed, and last-computed context_tokens. OK?  yes
-14) Context Tokens definition: Report tokens used in the last chat request excluding RAG snippets; update after each chat. OK?  yes
-15) Frontend refresh: Refresh stats after upload/delete and after chat completion; no polling. OK?  yes
-
-
-
-1) Cosine similarity: To get cosine in FAISS we should L2‑normalize embeddings before indexing/query. OK to normalize vectors so scores are cosine-based? yes
-2) Continuum seed: Any preferred description for the seeded “Continuum” project, or use a generic “System project (non-deletable)”? use this as description "The continuous memory stream where all thoughts, ideas, and context flow beyond individual projects."
-3) Name uniqueness: I’ll enforce case-insensitive uniqueness at app-level (lowercased compare) and return 409 on conflicts. Confirm? yes
-4) Stats endpoint: Include file_count alongside storage_bytes, index_size_bytes, tokens_indexed, context_tokens?  yes
-5) Tokens indexed: Compute as sum of per-file token_count (from tiktoken at index time). OK? yes
-6) Index size: Measure index_size_bytes as total bytes of all files under memory/{project_id}/faiss/. OK? yes
-7) File delete: Confirm delete removes disk file and DB row, then rebuilds FAISS.  yes
-8) Uploaded_at: For responses, map DB created_at to uploaded_at (no DB rename). OK?  yes
+7) Low-confidence vs builder failure
+Confirm difference:
+Low confidence (< BUILDER_CONFIDENCE_MIN): conservative retrieval (standalone only; no HYDE/paraphrases).
+Builder failure/timeout/invalid JSON: log warning and skip RAG entirely (answer directly).
+Yes, confirmed

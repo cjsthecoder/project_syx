@@ -1,7 +1,7 @@
 # Morpheus AGI Chatbot Framework - Build Automation
 # Make targets for development and deployment
 
-.PHONY: help install build run clean test lint format
+.PHONY: help install build run clean test lint format generate-docs
 
 # Default target
 help:
@@ -229,11 +229,62 @@ setup-env:
 		echo "RAG_SNIPPET_MAX_TOKENS=500"; \
 		echo "# Max tokens per RAG snippet"; \
 		echo ""; \
-		echo "RAG_CONTEXT_MAX_TOKENS=5000"; \
+		echo "RAG_CONTEXT_MAX_TOKENS=10000"; \
 		echo "# Max total tokens for injected context block"; \
 		echo ""; \
 		echo "RAG_SCORE_THRESHOLD=0.5"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
+		echo ""; \
+		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
+		echo "# V2.3: Number of prompt/response pairs kept in working memory"; \
+		echo ""; \
+		echo "DAILY_RAG_ENABLED=true"; \
+		echo "# V2.3: Global default toggle; per-project override via UI"; \
+		echo ""; \
+		echo "DAILY_RAG_K=9"; \
+		echo "# V2.3: Top-K results from daily index"; \
+		echo ""; \
+		echo "DAILY_RAG_SCORE_THRESHOLD=0.40"; \
+		echo "# V2.3: Similarity threshold for daily results"; \
+		echo ""; \
+		echo "DAILY_RAG_MAX_TOKENS=3000"; \
+		echo "# V2.3: Max tokens contributed by daily layer"; \
+		echo ""; \
+		echo "DAILY_RAG_WEIGHT=1.2"; \
+		echo "# V2.3: Weight multiplier for daily scores before merging"; \
+		echo ""; \
+		echo "DEDUPE_EXACT=true"; \
+		echo "# V2.3: Remove exact-text duplicates across daily/main"; \
+		echo ""; \
+		echo "DEDUPE_NEAR=true"; \
+		echo "# V2.3: Remove near-duplicates by similarity"; \
+		echo ""; \
+		echo "DEDUPE_SIMILARITY_THRESHOLD=0.98"; \
+		echo "# V2.3: Cosine threshold for near-duplicate detection"; \
+		echo ""; \
+		echo "DEDUPE_KEEP_DAILY=true"; \
+		echo "# V2.3: Prefer keeping the daily hit on dedupe"; \
+		echo ""; \
+		echo "BUILDER_MODEL=gpt-4o-mini"; \
+		echo "# V2.3.1: LLM for query builder/router"; \
+		echo ""; \
+		echo "BUILDER_CONFIDENCE_MIN=0.75"; \
+		echo "# V2.3.1: Confidence threshold for full retrieval"; \
+		echo ""; \
+		echo "BUILDER_MAX_TOKENS=512"; \
+		echo "# V2.3.1: Max tokens for builder output"; \
+		echo ""; \
+		echo "BUILDER_CACHE=true"; \
+		echo "# V2.3.1: Enable in-memory builder cache"; \
+		echo ""; \
+		echo "TOPIC_BOOST=1.10"; \
+		echo "# V2.3.1: Multiplicative boost for topic overlap"; \
+		echo ""; \
+		echo "DECISION_BOOST=1.05"; \
+		echo "# V2.3.1: Multiplicative boost for decision overlap"; \
+		echo ""; \
+		echo "QUESTION_BOOST=1.02"; \
+		echo "# V2.3.1: Multiplicative boost for open-question overlap"; \
 		echo ""; \
 		echo "CHAT_HISTORY_LIMIT=20"; \
 		echo "# Number of recent messages kept per project in working memory"; \
@@ -246,3 +297,16 @@ setup: setup-env install build
 	@echo "   Next steps:"
 	@echo "   1. Edit .env file with your OpenAI API key"
 	@echo "   2. Run 'make run' to start the server"
+
+# Generate architecture docs (PNG) from diagrams script
+generate-docs:
+	@echo "🖼  Generating architecture diagram..."
+	@# Run from repo root so output path in script (docs/...) resolves correctly
+	@( \
+		if [ -x venv/bin/python ]; then \
+			venv/bin/python docs/architecture_diagram.py; \
+		else \
+			python docs/architecture_diagram.py; \
+		fi \
+	) && \
+	( [ -f docs/morpheus_architecture.png ] && echo "✅ Diagram updated at docs/morpheus_architecture.png" || (echo "❌ Failed to generate docs/morpheus_architecture.png" && exit 1) )

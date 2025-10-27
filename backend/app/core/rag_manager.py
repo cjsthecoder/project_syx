@@ -13,6 +13,7 @@ import os
 import time
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any
+import json
 import logging
 
 try:
@@ -25,6 +26,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 
 from .config import get_settings
+import os
 from .database import get_session
 from .db_models import File as FileRow
 from sqlmodel import select
@@ -272,5 +274,167 @@ def retrieve_context(
     context_text = "Context:\n---\n" + "\n\n---\n".join(pieces)
     logger.debug(f"RAG: built context block tokens_used={tokens_used} snippets={len(pieces)}")
     return {"context_text": context_text, "snippets": pieces, "tokens_used": tokens_used}
+
+
+def merge_daily_and_main(
+    project_id: str,
+    query: str,
+    main_top_k: int,
+    main_snippet_max_tokens: int,
+    main_threshold: float,
+    daily_top_k: int,
+    daily_threshold: float,
+    daily_weight: float,
+    daily_max_tokens: int,
+    global_context_max_tokens: int,
+    dedupe_exact: bool,
+    dedupe_near: bool,
+    dedupe_similarity_threshold: float,
+    prefer_daily: bool,
+    topics: Optional[List[str]] = None,
+    preferred_namespace: Optional[str] = None,
+    topic_boost: Optional[float] = None,
+    decision_boost: Optional[float] = None,
+    question_boost: Optional[float] = None,
+) -> Dict[str, Any]:
+    """Retrieve from daily and main, apply weights/dedupe/budgets, return labeled context.
+    Returns dict with keys: context_text, tokens_used.
+    """
+    from .daily_rag import retrieve_daily
+    logger.debug(
+        "DailyRAG: starting merged retrieval project=%s main_k=%s daily_k=%s thresholds(main=%.3f,daily=%.3f)", 
+        project_id, main_top_k, daily_top_k, main_threshold, daily_threshold
+    )
+    # main
+    main = retrieve_context(
+        project_id,
+        query,
+        main_top_k,
+        main_snippet_max_tokens,
+        main_threshold,
+        global_context_max_tokens,
+    )
+    main_snips = main.get("snippets", [])
+    # daily
+    daily_results = retrieve_daily(project_id, query, daily_top_k, daily_threshold)
+    logger.debug("DailyRAG: daily results pre-cap=%s", len(daily_results))
+    # build daily text chunks within daily_max_tokens
+    tokens_used_daily = 0
+    daily_texts: List[str] = []
+    for text, score in daily_results:
+        trimmed = _trim_to_tokens(text, main_snippet_max_tokens)
+        t = _count_tokens(trimmed)
+        if tokens_used_daily + t > daily_max_tokens:
+            break
+        daily_texts.append(trimmed)
+        tokens_used_daily += t
+    logger.debug("DailyRAG: daily included=%s tokens=%s", len(daily_texts), tokens_used_daily)
+    # dedupe (exact, and optionally near-duplicate)
+    def _hash(s: str) -> str:
+        return s.strip()
+    merged_daily = []
+    seen_hashes = set()
+    for s in daily_texts:
+        h = _hash(s)
+        if dedupe_exact and h in seen_hashes:
+            continue
+        seen_hashes.add(h)
+        merged_daily.append(s)
+    merged_main = []
+    for s in main_snips:
+        h = _hash(s)
+        if dedupe_exact and h in seen_hashes:
+            continue
+        merged_main.append(s)
+        seen_hashes.add(h)
+    if dedupe_near:
+        def sig(text: str) -> set:
+            toks = (text or "").lower().split()
+            return set(toks)
+        def jaccard(a: set, b: set) -> float:
+            if not a or not b:
+                return 0.0
+            return len(a & b) / len(a | b)
+        kept_daily = []
+        sigs = []
+        for s in merged_daily:
+            sa = sig(s)
+            if any(jaccard(sa, sb) >= dedupe_similarity_threshold for sb in sigs):
+                continue
+            kept_daily.append(s)
+            sigs.append(sa)
+        merged_daily = kept_daily
+        kept_main = []
+        for s in merged_main:
+            sa = sig(s)
+            if any(jaccard(sa, sb) >= dedupe_similarity_threshold for sb in sigs):
+                continue
+            kept_main.append(s)
+            sigs.append(sa)
+        merged_main = kept_main
+    # simple topic and namespace boosting via ordering (no metadata docstore available here)
+    def _boost_score(text: str) -> float:
+        score = 1.0
+        if topics:
+            for t in topics:
+                if t and (t.lower() in (text or "").lower()):
+                    score *= (topic_boost or 1.0)
+                    break
+        # namespace heuristic: parse filename from header if present and match via sidecar
+        if preferred_namespace:
+            try:
+                fn = None
+                # header format includes file=...
+                if "file=" in text:
+                    idx = text.find("file=")
+                    tail = text[idx+5: idx+5+200]
+                    fn = tail.split(",")[0].strip()
+                ns_map = _load_namespace_map(project_id)
+                if fn and ns_map.get(fn) == preferred_namespace:
+                    score *= (topic_boost or 1.0)  # reuse topic_boost weight for namespace preference
+            except Exception:
+                pass
+        return score
+
+    merged_main.sort(key=lambda s: _boost_score(s), reverse=True)
+    merged_daily.sort(key=lambda s: _boost_score(s), reverse=True)
+
+    # assemble labeled context respecting global cap
+    pieces: List[str] = []
+    tokens_used = 0
+    if merged_daily:
+        daily_block = "Context (Daily):\n---\n" + "\n\n---\n".join(merged_daily)
+        td = _count_tokens(daily_block)
+        if tokens_used + td <= global_context_max_tokens:
+            pieces.append(daily_block)
+            tokens_used += td
+    if merged_main and tokens_used < global_context_max_tokens:
+        main_block = "Context (Main):\n---\n" + "\n\n---\n".join(merged_main)
+        tm = _count_tokens(main_block)
+        if tokens_used + tm > global_context_max_tokens:
+            # trim main block to fit
+            remain = global_context_max_tokens - tokens_used
+            main_block = _trim_to_tokens(main_block, remain)
+            tm = _count_tokens(main_block)
+        pieces.append(main_block)
+        tokens_used += tm
+    context_text = "\n\n".join(pieces) if pieces else ""
+    logger.debug("DailyRAG: merged context tokens=%s blocks(daily=%s,main=%s)", tokens_used, 1 if merged_daily else 0, 1 if merged_main else 0)
+    return {"context_text": context_text, "tokens_used": tokens_used}
+
+
+def _load_namespace_map(project_id: str) -> Dict[str, str]:
+    try:
+        base = os.path.join("memory", project_id, "faiss")
+        path = os.path.join(base, "meta_namespaces.json")
+        if not os.path.exists(path):
+            return {}
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return {str(k): str(v) for k, v in data.items()}
+    except Exception:
+        pass
+    return {}
 
 

@@ -57,10 +57,11 @@ _client = None
 _enabled = False
 _base_url: Optional[str] = None
 _session_id: str = str(uuid.uuid4())
+_api_supported: bool = False
 
 
 def _init_client() -> None:
-    global _client, _enabled, _base_url
+    global _client, _enabled, _base_url, _api_supported
     settings = get_settings()
     _enabled = bool(settings.__dict__.get("langfuse_enabled", False))
     _base_url = settings.__dict__.get("langfuse_base_url")
@@ -76,7 +77,13 @@ def _init_client() -> None:
             host=_base_url,
             timeout=1.0,  # seconds
         )
-        logger.info("Langfuse telemetry enabled (session_id=%s)", _session_id)
+        # Check API surface (SDKs may differ)
+        _api_supported = hasattr(_client, "trace")
+        if not _api_supported:
+            logger.warning("Langfuse client lacks 'trace' API, telemetry will no-op. Consider upgrading 'langfuse' Python SDK.")
+            _enabled = False
+        else:
+            logger.info("Langfuse telemetry enabled (session_id=%s)", _session_id)
     except Exception as e:  # pragma: no cover - defensive
         _client = None
         _enabled = False
@@ -84,7 +91,7 @@ def _init_client() -> None:
 
 
 def _client_ready() -> bool:
-    return _enabled and _client is not None
+    return _enabled and _client is not None and _api_supported
 
 
 def start_trace(name: str, metadata: Optional[Dict[str, Any]] = None) -> Any:

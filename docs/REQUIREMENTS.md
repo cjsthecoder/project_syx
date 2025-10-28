@@ -654,7 +654,7 @@ This reduces wasted RAG lookups, increases precision, and lays the groundwork fo
 
 Functional Requirements
 
-FR-2.3.1-1 — Mini Model Router + Query Builder
+FR-2.3.1.1 — Mini Model Router + Query Builder
 • Introduce a lightweight LLM call (builder_llm) before retrieval.
 • Input: 3–4 sentence summary of all in‑memory pairs (not rolled off) + current user turn.
 • Output (JSON): route, rag, standalone, paraphrases, hyde, entities, topics, reason, confidence.
@@ -662,20 +662,20 @@ FR-2.3.1-1 — Mini Model Router + Query Builder
 { "route":"CHITCHAT|CODE|DOCS|OTHER", "rag":true, "standalone":"", "paraphrases":[], "hyde":"", "entities":[], "topics":[], "reason":"", "confidence":0.0 }
 • Use `BUILDER_MODEL` over the same OpenAI channel as chat; no extra latency/budget constraints beyond `BUILDER_MAX_TOKENS`.
 
-FR-2.3.1-2 — Routing Logic
+FR-2.3.1.2 — Routing Logic
 • If rag=false or route="CHITCHAT", skip retrieval and reply directly via chat model (still include in‑memory history).
 • Else embed standalone + 2–3 paraphrases + 1 HYDE and run topic‑aware RAG lookup.
 • If `confidence < BUILDER_CONFIDENCE_MIN`, perform conservative retrieval (standalone only; skip paraphrases/HYDE).
 • If the builder fails/times out/returns invalid JSON: log a warning and skip RAG entirely (answer directly).
 
-FR-2.3.1-3 — Topic and Entity Extraction
+FR-2.3.1.3 — Topic and Entity Extraction
 • Builder emits topics and entities.
 • Sidecar metadata for main RAG: store per‑chunk metadata in `memory/{project}/faiss/meta_topics.json`, keyed by FAISS docstore ID (no full re‑index now). Merge sidecar with existing metadata during retrieval/rerank.
 • Biasing:
 – Exact match boost if topic appears in sidecar (#topics).
 – Partial/semantic boost via embedding similarity of topic terms (with in‑memory per‑project topic vector cache, LRU + TTL ~24h, max ~500 entries).
 
-FR-2.3.1-4 — Metadata-Aware Reranking
+FR-2.3.1.4 — Metadata-Aware Reranking
 • After cosine retrieval, adjust scores multiplicatively (topic → decision → open_question), then clamp to 1.0 before sorting/truncation.
 • Then apply token budget.
 • Optional ENV weights:
@@ -683,20 +683,20 @@ TOPIC_BOOST=1.10
 DECISION_BOOST=1.05
 QUESTION_BOOST=1.02
 
-FR-2.3.1-5 — Query Expansion and Namespacing
+FR-2.3.1.5 — Query Expansion and Namespacing
 • Route selects a preferred namespace (e.g., "jira", "code", "docs").
 • Always search full corpus; strongly boost routed namespace (no hard filter).
 • Maintain file→namespace sidecar `memory/{project}/faiss/meta_namespaces.json`; default namespace "other" for unmapped; include "other" when route unknown.
 • Embed variants with optional prefix “query:”; include topic/entity terms for hybrid search.
 
-FR-2.3.1-6 — Prompt Template (for Builder)
+FR-2.3.1.6 — Prompt Template (for Builder)
 System: “You are a fast query builder and router for RAG. Return strict JSON. No prose.”
 User: “Recent summary: {history} Turn: {user_text}”
 Rules:
 • If small-talk/joke/meta → route=CHITCHAT, rag=false.
 • Else choose domain route and return concise rewritten query set plus topics/entities.
 
-FR-2.3.1-7 — Retrieval Order and Context Assembly
+FR-2.3.1.7 — Retrieval Order and Context Assembly
 • Daily results queried and filled first (up to DAILY_RAG_MAX_TOKENS).
 • Main RAG fills remaining context budget (RAG_CONTEXT_MAX_TOKENS).
 • Label sections clearly in prompt:
@@ -707,7 +707,7 @@ Context:
 
 <main snippets> • Deduplicate exact and near‑duplicates (cosine ≥ 0.98) after merging daily+main and before token budgeting.
 
-FR-2.3.1-8 — Environment Variables
+FR-2.3.1.8 — Environment Variables
 BUILDER_MODEL=gpt-4o-mini
 BUILDER_CONFIDENCE_MIN=0.75
 BUILDER_MAX_TOKENS=512
@@ -717,15 +717,15 @@ DECISION_BOOST=1.05
 QUESTION_BOOST=1.02
 DEDUPE_SIMILARITY_THRESHOLD=0.98
 
-FR-2.3.1-9 — Logging / Debug Visibility
+FR-2.3.1.9 — Logging / Debug Visibility
 • Log builder JSON into the existing app log (no separate file), including timestamp, route, rag, confidence, topics, and trimmed standalone; tag lines clearly (module logger/type="builder").
 • Log applied topic/decision/open_question boost values during reranking.
 • Optionally display route and confidence in chat UI for debug.
 
-FR-2.3.1-10 — Concurrency and Locking
+FR-2.3.1.10 — Concurrency and Locking
 • Use a single `faiss.lock` for FAISS and sidecar metadata reads/writes under `memory/{project}/faiss/`; keep locks short‑lived.
 
-FR-2.3.1-11 — Builder Cache
+FR-2.3.1.11 — Builder Cache
 • If `BUILDER_CACHE=True`, cache builder JSON in memory per process with TTL ≈ 10 minutes and max ≈ 500 entries; key by `(project_id, history_summary, user_turn)`; no disk persistence.
 
 Acceptance Criteria
@@ -737,3 +737,61 @@ Acceptance Criteria
 • Context assembled as “Daily:” then “Main:”.
 • Performance target: ≤ 800 ms avg builder latency.
 
+## Version 2.4 — Langfuse Telemetry Integration
+
+### Purpose
+Introduce structured tracing and observability to Morpheus using Langfuse, allowing full visibility into the builder, retrieval, and chat pipelines.
+This version adds a local Langfuse server and prepares the environment for full integration.
+
+### Summary
+
+2.4 is divided into two sub-versions:
+
+2.4.1 — Langfuse Local Setup (Docker): infrastructure and environment preparation.
+2.4.2 — Langfuse Integration: wiring traces and spans into Morpheus runtime.
+
+2.4.1 must be completed first to validate connectivity, ports, and credentials.
+
+### Version 2.4.1 — Langfuse Local Setup (Docker)
+
+Goal
+Create a self-hosted Langfuse instance inside the Morpheus repository for internal tracing.
+No Morpheus code changes yet — only infrastructure.
+
+Functional Requirements
+
+FR-2.4.1.1 — Repository Structure
+Add a new folder to the Morpheus project. The full path from the repo root should look like:
+morpheus/
+├─ app/
+├─ memory/
+├─ docs/
+├─ langfuse-server/
+├─-- docker-compose.yml
+├─-- .env
+├─-- README.md
+
+FR-2.4.1.2 — Docker Compose Configuration
+The docker-compose file must define services for Langfuse and Postgres.
+Expose the Langfuse web interface at http://localhost:3000
+and use a local volume for persistence under langfuse-server/data.
+Keep configuration minimal and self-contained so it can be started and stopped independently of Morpheus.
+
+FR-2.4.1.3 — Environment Variables
+Add these variables to the main Morpheus .env file:
+LANGFUSE_ENABLED=True
+LANGFUSE_BASE_URL=http://localhost:3000
+
+Log in and create a project and API keys.
+
+Test connectivity using curl or a simple health-check request to the API endpoint /api/public/health.
+
+FR-2.4.1.5 — Documentation and Maintenance
+Include a README.md inside /langfuse-server with setup, shutdown, and maintenance instructions.
+Add a short note to the main Morpheus README explaining that Langfuse provides local telemetry and is located under /langfuse-server.
+
+### Acceptance Criteria
+
+Running docker compose up -d successfully launches Langfuse and Postgres.
+
+The dashboard is accessible at http://localhost:3000

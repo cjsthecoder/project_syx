@@ -11,7 +11,8 @@ langfuse-logs:
 
 langfuse-secrets:
 	@echo "NEXTAUTH_SECRET: $$(openssl rand -base64 32)"
-	@echo "ENCRYPTION_KEY:  $$(openssl rand -base64 32)"
+	@echo "SALT:            $$(openssl rand -hex 32)"
+	@echo "ENCRYPTION_KEY:  $$(openssl rand -hex 32)"
 # Morpheus AGI Chatbot Framework - Build Automation
 # Make targets for development and deployment
 
@@ -302,6 +303,21 @@ setup-env:
 		echo ""; \
 		echo "CHAT_HISTORY_LIMIT=20"; \
 		echo "# Number of recent messages kept per project in working memory"; \
+		echo ""; \
+		echo "LANGFUSE_ENABLED=True"; \
+		echo "# V2.4.2: Enable Langfuse tracing"; \
+		echo ""; \
+		echo "LANGFUSE_BASE_URL=http://localhost:3000"; \
+		echo "# V2.4.1: Langfuse base URL"; \
+		echo ""; \
+		echo "LANGFUSE_PROJECT_ID=cmhayuox200069rdvsnyfdkh7"; \
+		echo "# V2.4.2: Langfuse Project ID"; \
+		echo ""; \
+		echo "LANGFUSE_PUBLIC_KEY=pk-lf-424c82e2-0b37-4b02-9eae-53e8648a03b6"; \
+		echo "# V2.4.2: Langfuse Public key"; \
+		echo ""; \
+		echo "LANGFUSE_SECRET_KEY=sk-lf-f72e1b14-0972-4c31-9eb3-845fae333a6a"; \
+		echo "# V2.4.2: Langfuse Secret key"; \
 	} > .env; \
 	echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
 

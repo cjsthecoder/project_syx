@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -12,7 +10,7 @@ services:
       - ./data/postgres:/var/lib/postgresql/data
 
   langfuse:
-    image: langfuse/langfuse:latest
+    image: langfuse/langfuse:2
     depends_on:
       - postgres
     restart: unless-stopped
@@ -24,7 +22,4 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/langfuse
       NEXTAUTH_URL: http://localhost:3000
       HOSTNAME: 0.0.0.0
-      # You can disable signup after initial admin bootstrap by setting to "true"
-      DISABLE_SIGNUP: "false"
-
-
+      DISABLE_SIGNUP: "true"

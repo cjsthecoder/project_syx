@@ -420,7 +420,13 @@ def merge_daily_and_main(
         tokens_used += tm
     context_text = "\n\n".join(pieces) if pieces else ""
     logger.debug("DailyRAG: merged context tokens=%s blocks(daily=%s,main=%s)", tokens_used, 1 if merged_daily else 0, 1 if merged_main else 0)
-    return {"context_text": context_text, "tokens_used": tokens_used}
+    # Also return the selected texts for optional telemetry events
+    return {
+        "context_text": context_text,
+        "tokens_used": tokens_used,
+        "daily_texts": merged_daily,
+        "main_texts": merged_main,
+    }
 
 
 def _load_namespace_map(project_id: str) -> Dict[str, str]:

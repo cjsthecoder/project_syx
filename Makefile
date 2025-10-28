@@ -318,6 +318,12 @@ setup-env:
 		echo ""; \
 		echo "LANGFUSE_SECRET_KEY=***REMOVED***"; \
 		echo "# V2.4.2: Langfuse Secret key"; \
+		echo ""; \
+		echo "LANGFUSE_SAMPLE_RATE=1.0"; \
+		echo "# V2.4.2: Trace sampling rate (0..1)"; \
+		echo ""; \
+		echo "LANGFUSE_LOG_LEVEL=INFO"; \
+		echo "# V2.4.2: SDK log level"; \
 	} > .env; \
 	echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
 

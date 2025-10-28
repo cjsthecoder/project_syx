@@ -86,6 +86,21 @@ def _init_client() -> None:
             host=_base_url,
             timeout=1.0,  # seconds
         )
+        # Best-effort auth check (does not raise on some SDKs)
+        try:
+            if hasattr(_client, "auth_check"):
+                ok = _client.auth_check()
+                logger.info("Langfuse auth_check: %s", ok)
+        except Exception as e:
+            logger.warning("Langfuse auth_check failed: %s", e)
+
+        # Surface available methods for debugging
+        try:
+            attrs = dir(_client)
+            interesting = [a for a in attrs if any(k in a for k in ("trace","span","event","start","log"))]
+            logger.info("Langfuse client methods: %s", ",".join(sorted(interesting)[:30]))
+        except Exception:
+            pass
         # Detect API surface (SDKs differ between v2 and v3)
         if hasattr(_client, "trace"):
             _api_mode = "v2"
@@ -126,14 +141,14 @@ def start_trace(name: str, metadata: Optional[Dict[str, Any]] = None) -> Any:
         # Ensure truncation for any text fields in metadata
         safe_meta = {k: (_truncate(v) if isinstance(v, str) else v) for k, v in meta.items()}
 
-        if _api_mode == "v2":
+        if _api_mode == "v2" and hasattr(_client, "trace"):
             trace = _client.trace(
                 name=name,
                 user_id=user_id,
                 session_id=_session_id,
                 metadata=safe_meta,
             )
-        else:  # v3
+        elif _api_mode == "v3" and hasattr(_client, "start_trace"):
             # v3 exposes start_trace and returns a trace object
             trace = _client.start_trace(
                 name=name,
@@ -141,6 +156,9 @@ def start_trace(name: str, metadata: Optional[Dict[str, Any]] = None) -> Any:
                 session_id=_session_id,
                 metadata=safe_meta,
             )
+        else:
+            logger.warning("Langfuse: no compatible trace creation method found (mode=%s)", _api_mode)
+            return _NoopTrace()
         # Best-effort log a view link if available
         try:
             url = getattr(trace, "url", None)

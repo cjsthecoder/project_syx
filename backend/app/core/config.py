@@ -118,6 +118,8 @@ class Settings(BaseSettings):
     langfuse_secret_key: Optional[str] = Field(default=None, description="Langfuse secret key")
     langfuse_sample_rate: float = Field(default=1.0, ge=0.0, le=1.0, description="Sampling rate for traces (0..1)")
     langfuse_log_level: str = Field(default="INFO", description="Langfuse SDK log level")
+    # Back-compat: accept LANGFUSE_PROJECT_ID from .env but not used by SDK (keys are project-scoped)
+    langfuse_project_id: Optional[str] = Field(default=None, description="Optional project identifier tag; not required")
 
 
 # Global settings instance

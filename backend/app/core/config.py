@@ -111,6 +111,14 @@ class Settings(BaseSettings):
     decision_boost: float = Field(default=1.05, gt=0.0, description="Multiplicative boost for decision overlap")
     question_boost: float = Field(default=1.02, gt=0.0, description="Multiplicative boost for open-question overlap")
 
+    # V2.4.2: Langfuse telemetry
+    langfuse_enabled: bool = Field(default=False, description="Enable Langfuse tracing")
+    langfuse_base_url: Optional[str] = Field(default=None, description="Langfuse base URL, e.g., http://localhost:3000")
+    langfuse_public_key: Optional[str] = Field(default=None, description="Langfuse public key")
+    langfuse_secret_key: Optional[str] = Field(default=None, description="Langfuse secret key")
+    langfuse_sample_rate: float = Field(default=1.0, ge=0.0, le=1.0, description="Sampling rate for traces (0..1)")
+    langfuse_log_level: str = Field(default="INFO", description="Langfuse SDK log level")
+
 
 # Global settings instance
 settings = Settings()

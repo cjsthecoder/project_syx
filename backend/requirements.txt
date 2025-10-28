@@ -1,7 +1,7 @@
 # Morpheus AGI Chatbot Framework - Backend Dependencies
 
 # FastAPI and ASGI server
-fastapi==0.104.1
+fastapi
 uvicorn[standard]==0.24.0
 
 # LangChain and OpenAI integration (latest versions)
@@ -12,7 +12,7 @@ openai>=1.6.1,<2.0.0
 
 # Telemetry (V2.4.2)
 # Pin to v2 API and keep anyio<4 for FastAPI 0.104 compatibility
-langfuse==2.39.0
+langfuse==2.24.0
 anyio<4
 
 # Data validation and serialization

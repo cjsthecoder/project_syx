@@ -57,11 +57,11 @@ _client = None
 _enabled = False
 _base_url: Optional[str] = None
 _session_id: str = str(uuid.uuid4())
-_api_supported: bool = False
+_api_mode: str = "none"  # "v2" uses .trace/.span/.event, "v3" uses .start_trace/.start_span/.log_event
 
 
 def _init_client() -> None:
-    global _client, _enabled, _base_url, _api_supported
+    global _client, _enabled, _base_url, _api_mode
     settings = get_settings()
     _enabled = bool(settings.__dict__.get("langfuse_enabled", False))
     _base_url = settings.__dict__.get("langfuse_base_url")
@@ -77,13 +77,17 @@ def _init_client() -> None:
             host=_base_url,
             timeout=1.0,  # seconds
         )
-        # Check API surface (SDKs may differ)
-        _api_supported = hasattr(_client, "trace")
-        if not _api_supported:
-            logger.warning("Langfuse client lacks 'trace' API, telemetry will no-op. Consider upgrading 'langfuse' Python SDK.")
-            _enabled = False
+        # Detect API surface (SDKs differ between v2 and v3)
+        if hasattr(_client, "trace"):
+            _api_mode = "v2"
+        elif hasattr(_client, "start_trace"):
+            _api_mode = "v3"
         else:
-            logger.info("Langfuse telemetry enabled (session_id=%s)", _session_id)
+            _api_mode = "none"
+            _enabled = False
+            logger.warning("Langfuse client lacks trace APIs, telemetry will no-op. Consider installing langfuse>=2.x or 3.x.")
+        if _enabled and _api_mode in ("v2", "v3"):
+            logger.info("Langfuse telemetry enabled (mode=%s, session_id=%s)", _api_mode, _session_id)
     except Exception as e:  # pragma: no cover - defensive
         _client = None
         _enabled = False
@@ -91,7 +95,7 @@ def _init_client() -> None:
 
 
 def _client_ready() -> bool:
-    return _enabled and _client is not None and _api_supported
+    return _enabled and _client is not None and _api_mode in ("v2", "v3")
 
 
 def start_trace(name: str, metadata: Optional[Dict[str, Any]] = None) -> Any:
@@ -111,12 +115,21 @@ def start_trace(name: str, metadata: Optional[Dict[str, Any]] = None) -> Any:
         # Ensure truncation for any text fields in metadata
         safe_meta = {k: (_truncate(v) if isinstance(v, str) else v) for k, v in meta.items()}
 
-        trace = _client.trace(
-            name=name,
-            user_id=user_id,
-            session_id=_session_id,
-            metadata=safe_meta,
-        )
+        if _api_mode == "v2":
+            trace = _client.trace(
+                name=name,
+                user_id=user_id,
+                session_id=_session_id,
+                metadata=safe_meta,
+            )
+        else:  # v3
+            # v3 exposes start_trace and returns a trace object
+            trace = _client.start_trace(
+                name=name,
+                user_id=user_id,
+                session_id=_session_id,
+                metadata=safe_meta,
+            )
         # Best-effort log a view link if available
         try:
             url = getattr(trace, "url", None)
@@ -136,7 +149,12 @@ def start_span(trace: Any, name: str, metadata: Optional[Dict[str, Any]] = None)
     try:
         meta = metadata or {}
         safe_meta = {k: (_truncate(v) if isinstance(v, str) else v) for k, v in meta.items()}
-        span = trace.span(name=name, metadata=safe_meta)
+        if hasattr(trace, "span") and _api_mode == "v2":
+            span = trace.span(name=name, metadata=safe_meta)
+        elif hasattr(trace, "start_span"):
+            span = trace.start_span(name=name, metadata=safe_meta)
+        else:
+            return _NoopSpan()
         return span
     except Exception as e:  # pragma: no cover
         logger.warning("Langfuse start_span failed: %s", e)
@@ -149,7 +167,10 @@ def log_event(holder: Any, name: str, metadata: Optional[Dict[str, Any]] = None)
     try:
         meta = metadata or {}
         safe_meta = {k: (_truncate(v) if isinstance(v, str) else v) for k, v in meta.items()}
-        holder.event(name=name, metadata=safe_meta)
+        if hasattr(holder, "event") and _api_mode == "v2":
+            holder.event(name=name, metadata=safe_meta)
+        elif hasattr(holder, "log_event"):
+            holder.log_event(name=name, metadata=safe_meta)
     except Exception as e:  # pragma: no cover
         logger.warning("Langfuse log_event failed: %s", e)
         return None

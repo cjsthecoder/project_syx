@@ -66,10 +66,19 @@ def _init_client() -> None:
     _enabled = bool(settings.__dict__.get("langfuse_enabled", False))
     _base_url = settings.__dict__.get("langfuse_base_url")
     if not _enabled:
+        logger.info("Langfuse init skipped: enabled=False")
         return
     try:
         # Lazy import to avoid hard dependency when disabled
         from langfuse import Langfuse  # type: ignore
+
+        logger.info(
+            "Langfuse init starting: enabled=%s host=%s pub_key=%s sec_key=%s",
+            _enabled,
+            _base_url,
+            bool(settings.__dict__.get("langfuse_public_key")),
+            bool(settings.__dict__.get("langfuse_secret_key")),
+        )
 
         _client = Langfuse(
             public_key=settings.__dict__.get("langfuse_public_key"),
@@ -102,9 +111,11 @@ def start_trace(name: str, metadata: Optional[Dict[str, Any]] = None) -> Any:
     """Start a trace. Returns a trace object with .start_span(), .log_event(), .end().
     Fail-open to a noop trace on any error.
     """
+    logger.debug("start_trace called: client=%s enabled=%s mode=%s", bool(_client), _enabled, _api_mode)
     if _client is None and get_settings():
         # Initialize on first use
         _init_client()
+        logger.debug("post-init: client=%s enabled=%s mode=%s", bool(_client), _enabled, _api_mode)
 
     if not _client_ready():
         return _NoopTrace()

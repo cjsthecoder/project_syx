@@ -22,6 +22,9 @@ wheels/
 MANIFEST
 questions.txt
 
+# Langfuse local data and secrets
+langfuse-server/data/
+langfuse-server/.env
 # Virtual Environment
 venv/
 env/

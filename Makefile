@@ -1,3 +1,17 @@
+.PHONY: langfuse-up langfuse-down langfuse-logs langfuse-secrets
+
+langfuse-up:
+	docker compose -f langfuse-server/docker-compose.yml up -d
+
+langfuse-down:
+	docker compose -f langfuse-server/docker-compose.yml down
+
+langfuse-logs:
+	docker compose -f langfuse-server/docker-compose.yml logs -f --tail=200
+
+langfuse-secrets:
+	@echo "NEXTAUTH_SECRET: $$(openssl rand -base64 32)"
+	@echo "ENCRYPTION_KEY:  $$(openssl rand -base64 32)"
 # Morpheus AGI Chatbot Framework - Build Automation
 # Make targets for development and deployment
 

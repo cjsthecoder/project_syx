@@ -12,6 +12,8 @@ langfuse-logs:
 # Create/refresh dev views expected by Langfuse UI when running Postgres-only v2
 langfuse-fix-views:
 	@echo "Creating/refreshing observations_view and traces_view in Postgres..."
+	docker compose -f langfuse-server/docker-compose.yml exec postgres psql -U postgres -d langfuse -c "DROP VIEW IF EXISTS observations_view;"
+	docker compose -f langfuse-server/docker-compose.yml exec postgres psql -U postgres -d langfuse -c "DROP VIEW IF EXISTS traces_view;"
 	docker compose -f langfuse-server/docker-compose.yml exec postgres psql -U postgres -d langfuse -c "CREATE OR REPLACE VIEW observations_view AS SELECT id, start_time, total_tokens, calculated_total_cost, type, trace_id, model, project_id, 0::bigint AS prompt_tokens, 0::bigint AS completion_tokens FROM observations;"
 	docker compose -f langfuse-server/docker-compose.yml exec postgres psql -U postgres -d langfuse -c "CREATE OR REPLACE VIEW traces_view AS SELECT id, timestamp, 0::numeric AS duration, name, project_id FROM traces;"
 

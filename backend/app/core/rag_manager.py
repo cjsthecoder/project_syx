@@ -225,6 +225,7 @@ def retrieve_context(
     filtered: List[Tuple[str, dict, float]] = []
     details = []
     scored: List[Tuple[str, dict, float, float]] = []  # (content, meta, cos, dist)
+    passed_cosines: List[float] = []
     for doc, dist in results:
         # dist is L2 distance; FAISS in LangChain returns distance (not squared) sometimes;
         # use d^2 approximation for cosine if needed
@@ -236,6 +237,7 @@ def retrieve_context(
         cos = max(min(cos_a, 1.0), min(cos_b, 1.0))
         if cos >= score_threshold:
             filtered.append((doc.page_content, doc.metadata or {}, cos))
+            passed_cosines.append(cos)
         scored.append((doc.page_content, doc.metadata or {}, cos, d))
         details.append({
             "file": (doc.metadata or {}).get("filename"),
@@ -267,13 +269,13 @@ def retrieve_context(
             header = f"Snippet 1 (fallback, score={cos:.2f}, file={meta.get('filename')}, page={meta.get('page_number')})\n"
             context_text = "Context:\n---\n" + header + trimmed
             logger.debug("RAG: fallback applied - included top-scoring snippet despite threshold")
-            return {"context_text": context_text, "snippets": [trimmed], "tokens_used": tokens_used}
+            return {"context_text": context_text, "snippets": [trimmed], "tokens_used": tokens_used, "hit_count": len(passed_cosines), "hit_avg": (sum(passed_cosines)/len(passed_cosines) if passed_cosines else 0.0)}
         logger.debug("RAG: no snippets selected after token capping and no fallback available")
-        return {"context_text": "", "snippets": [], "tokens_used": 0}
+        return {"context_text": "", "snippets": [], "tokens_used": 0, "hit_count": len(passed_cosines), "hit_avg": (sum(passed_cosines)/len(passed_cosines) if passed_cosines else 0.0)}
 
     context_text = "Context:\n---\n" + "\n\n---\n".join(pieces)
     logger.debug(f"RAG: built context block tokens_used={tokens_used} snippets={len(pieces)}")
-    return {"context_text": context_text, "snippets": pieces, "tokens_used": tokens_used}
+    return {"context_text": context_text, "snippets": pieces, "tokens_used": tokens_used, "hit_count": len(passed_cosines), "hit_avg": (sum(passed_cosines)/len(passed_cosines) if passed_cosines else 0.0)}
 
 
 def merge_daily_and_main(
@@ -315,9 +317,13 @@ def merge_daily_and_main(
         global_context_max_tokens,
     )
     main_snips = main.get("snippets", [])
+    main_hits = int(main.get("hit_count", 0))
+    main_avg = float(main.get("hit_avg", 0.0))
     # daily
     daily_results = retrieve_daily(project_id, query, daily_top_k, daily_threshold)
     logger.debug("DailyRAG: daily results pre-cap=%s", len(daily_results))
+    daily_hits = int(len(daily_results))
+    daily_avg = float(sum(s for _, s in daily_results)/daily_hits) if daily_hits else 0.0
     # build daily text chunks within daily_max_tokens
     tokens_used_daily = 0
     daily_texts: List[str] = []
@@ -330,6 +336,8 @@ def merge_daily_and_main(
         tokens_used_daily += t
     logger.debug("DailyRAG: daily included=%s tokens=%s", len(daily_texts), tokens_used_daily)
     # dedupe (exact, and optionally near-duplicate)
+    daily_before_exact = len(daily_texts)
+    main_before_exact = len(main_snips)
     def _hash(s: str) -> str:
         return s.strip()
     merged_daily = []
@@ -347,6 +355,7 @@ def merge_daily_and_main(
             continue
         merged_main.append(s)
         seen_hashes.add(h)
+    exact_removed = (daily_before_exact + main_before_exact) - 0  # will adjust after building merged_* lists
     if dedupe_near:
         def sig(text: str) -> set:
             toks = (text or "").lower().split()
@@ -372,6 +381,11 @@ def merge_daily_and_main(
             kept_main.append(s)
             sigs.append(sa)
         merged_main = kept_main
+        # compute removals
+    exact_removed = (daily_before_exact + main_before_exact) - (len(merged_daily) + len(merged_main))
+    before_near_total = len(merged_daily) + len(merged_main)
+    # after near stage, merged_* already updated
+    near_removed = max(0, before_near_total - (len(merged_daily) + len(merged_main)))
     # simple topic and namespace boosting via ordering (no metadata docstore available here)
     def _boost_score(text: str) -> float:
         score = 1.0
@@ -426,6 +440,15 @@ def merge_daily_and_main(
         "tokens_used": tokens_used,
         "daily_texts": merged_daily,
         "main_texts": merged_main,
+        "main_hits": main_hits,
+        "main_avg": main_avg,
+        "daily_hits": daily_hits,
+        "daily_avg": daily_avg,
+        "total_hits": int(main_hits + daily_hits),
+        "dedupe_exact_removed": int(max(0, exact_removed)),
+        "dedupe_near_removed": int(max(0, near_removed)),
+        "main_threshold": float(main_threshold),
+        "daily_threshold": float(daily_threshold),
     }
 
 

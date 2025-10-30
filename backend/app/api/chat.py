@@ -5,6 +5,8 @@ This module provides the main chat functionality with LangChain integration.
 """
 
 import logging
+import time
+import uuid
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import JSONResponse
@@ -12,7 +14,7 @@ from fastapi.responses import JSONResponse
 from ..core.models import ChatRequest, ChatResponse, ErrorResponse
 from ..core.llm import generate_chat_response, get_llm_health
 from ..core.memory import get_memory_manager, set_last_context_tokens
-from ..utils.logging import RequestLogger, LLMLogger
+from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id
 from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings, get_model_config
 from ..core.rag_manager import retrieve_context, merge_daily_and_main
@@ -37,15 +39,23 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
     It supports conversation history and project context (stubbed for V4).
     """
     try:
+        t0 = time.time()
+        msg_id = str(uuid.uuid4())
+        set_message_id(msg_id)
+        proj = request.project_id or "Continuum"
         # (Telemetry removed)
         # Log the incoming request
-        request_logger.log_request(
-            endpoint="/chat",
-            method="POST",
-            user_id=request.conversation_id
+        request_logger.log_request(endpoint="/chat", method="POST", user_id=request.conversation_id)
+        # [PROMPT]
+        settings = get_settings()
+        preview = (request.message or "")[:settings.log_preview_max_chars]
+        logger.debug(
+            "[PROMPT] project_id=%s message_id=%s preview=\"%s\"",
+            proj,
+            msg_id,
+            preview,
         )
         
-        settings = get_settings()
         
         # Build conversation history from per-project working memory (V2.2)
         conversation_history = None
@@ -73,7 +83,18 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             # (Telemetry removed)
             b = build_query(request.project_id, summary, request.message)
             if b is None:
-                logger.info("builder unavailable; skipping RAG for this turn")
+                # [BUILDER] failure
+                logger.debug(
+                    "[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview=\"%s\"",
+                    proj,
+                    msg_id,
+                    "UNKNOWN",
+                    "false",
+                    0.00,
+                    0,
+                    preview,
+                )
+                logger.debug("builder unavailable; skipping RAG for this turn")
             else:
                 route = (b.get('route') or '').upper()
                 do_rag = bool(b.get('rag'))
@@ -82,12 +103,17 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 standalone = b.get('standalone') or request.message
                 paraphrases = b.get('paraphrases') or []
                 hyde = b.get('hyde') or ''
-                logger.info(
-                    "builder result route=%s rag=%s conf=%.2f topics=%s standalone=%s paraphrases=%s",
-                    route, do_rag, conf,
-                    ",".join(map(str, topics[:5])),
-                    (standalone[:120] + ("…" if len(standalone) > 120 else "")),
-                    len(paraphrases or []),
+                # [BUILDER]
+                builder_prev = (standalone or preview or "")[:settings.log_preview_max_chars]
+                logger.debug(
+                    "[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview=\"%s\"",
+                    proj,
+                    msg_id,
+                    route or "UNKNOWN",
+                    "true" if do_rag else "false",
+                    conf,
+                    len(topics or []),
+                    builder_prev,
                 )
                 # Strict skip: no retrieval for CHITCHAT or rag=false
                 if (not do_rag) or route == 'CHITCHAT':
@@ -137,6 +163,23 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                         decision_boost=settings.decision_boost,
                         question_boost=settings.question_boost,
                     )
+                    # [RETRIEVAL]
+                    logger.debug(
+                        "[RETRIEVAL] project_id=%s message_id=%s route=%s rag_used=%s main_hits=%s main_avg=%.2f main_threshold=%.2f daily_hits=%s daily_avg=%.2f daily_threshold=%.2f total_hits=%s dedupe_exact_removed=%s dedupe_near_removed=%s",
+                        proj,
+                        msg_id,
+                        route or "UNKNOWN",
+                        "true",
+                        int(rc.get("main_hits", 0)),
+                        float(rc.get("main_avg", 0.0)),
+                        float(rc.get("main_threshold", settings.rag_score_threshold)),
+                        int(rc.get("daily_hits", 0)),
+                        float(rc.get("daily_avg", 0.0)),
+                        float(rc.get("daily_threshold", settings.daily_rag_score_threshold)),
+                        int(rc.get("total_hits", 0)),
+                        int(rc.get("dedupe_exact_removed", 0)),
+                        int(rc.get("dedupe_near_removed", 0)),
+                    )
                     if rc.get("context_text"):
                         system_prompt = rc["context_text"]
                         logger.debug(f"Chat: injecting merged context tokens={rc.get('tokens_used')}")
@@ -152,12 +195,14 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         
         logger.debug(f"Chat: model={request.model or 'default'} message_len={len(request.message)} conv_id={request.conversation_id}")
         # Generate response using LangChain
+        t_model0 = time.time()
         llm_response = generate_chat_response(
             message=request.message,
             conversation_history=conversation_history,
             system_prompt=system_prompt,
             override_model=request.model
         )
+        t_model1 = time.time()
         
         # Check if LLM response was successful
         if not llm_response.get("success", False):
@@ -206,6 +251,19 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         )
         
         # Log successful response
+        latency_ms = int((time.time() - t0) * 1000)
+        model_ms = int((t_model1 - t_model0) * 1000)
+        resp_prev = (llm_response.get("response") or "")[:settings.log_preview_max_chars]
+        logger.debug(
+            "[RESPONSE] project_id=%s message_id=%s llm_model=%s tokens_used=%s latency_ms=%s model_ms=%s response_preview=\"%s\"",
+            proj,
+            msg_id,
+            llm_response.get("llm_model", ""),
+            str(llm_response.get("tokens_used")),
+            str(latency_ms),
+            str(model_ms),
+            resp_prev,
+        )
         request_logger.log_response(
             endpoint="/chat",
             status_code=200,
@@ -217,10 +275,16 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         
     except Exception as e:
         # Log error
-        request_logger.log_error(
-            endpoint="/chat",
-            error=e,
-            user_id=request.conversation_id
+        request_logger.log_error(endpoint="/chat", error=e, user_id=request.conversation_id)
+        # [ERROR]
+        proj = request.project_id or "Continuum"
+        mid = get_message_id() or "-"
+        err_prev = (str(e) or "")[:get_settings().log_preview_max_chars]
+        logger.debug(
+            "[ERROR] project_id=%s message_id=%s error=\"%s\"",
+            proj,
+            mid,
+            err_prev,
         )
         
         # Log error context
@@ -247,7 +311,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 }
             )
     finally:
-        pass
+        clear_message_id()
 
 
 @router.get("/chat/health")

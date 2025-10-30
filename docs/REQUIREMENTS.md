@@ -538,7 +538,7 @@ This yields an effectively unlimited context window while isolating transient da
 
 ### Functional Requirements
 
-#### FR-2.3-1 — Rolling Window by Pair Count
+#### FR-2.3.1 — Rolling Window by Pair Count
 Maintain an in-memory deque of the most recent N prompt/response pairs.
 
 - Configurable limit: `CHAT_HISTORY_LIMIT_PAIRS=10` (replaces `CHAT_HISTORY_LIMIT` from V2.2)
@@ -551,7 +551,7 @@ Maintain an in-memory deque of the most recent N prompt/response pairs.
   - On startup/load, if a trailing unpaired user message exists, delete it
   - If an orphan assistant message is detected, delete it as well (rare)
 
-#### FR-2.3-2 — Incremental Embedding → Daily FAISS
+#### FR-2.3.2 — Incremental Embedding → Daily FAISS
 Append embeddings to a single FAISS file per project: `memory/{project_id}/daily.faiss`.
 
 - Do not rebuild the index each time; use incremental adds
@@ -602,7 +602,7 @@ When a pair is rolled off:
 
 Ensure logs are readable for inspection and troubleshooting. Use the standard application logger (console/file levels configurable).
 
-#### FR-2.3-5 — Environment Variables
+#### FR-2.3.5 — Environment Variables
 
 - `CHAT_HISTORY_LIMIT_PAIRS=10` — number of prompt/response pairs kept in working memory
 - `DAILY_RAG_ENABLED=true` — global default toggle; per-project toggle overrides
@@ -618,7 +618,7 @@ Ensure logs are readable for inspection and troubleshooting. Use the standard ap
 
 (Daily RAG values are tuned separately from main RAG for recall vs precision.)
 
-#### FR-2.3-6 — UI Integration
+#### FR-2.3.6 — UI Integration
 In the Manage Project modal display:
 
 - “Active Pairs” count (deque length)
@@ -737,157 +737,58 @@ Acceptance Criteria
 • Context assembled as “Daily:” then “Main:”.
 • Performance target: ≤ 800 ms avg builder latency.
 
-## Version 2.4 — Langfuse Telemetry Integration
+## Version 2.4 — Expanded Logging & Trace Flags
 
 ### Purpose
-Introduce structured tracing and observability to Morpheus using Langfuse, allowing full visibility into the builder, retrieval, and chat pipelines.
-This version adds a local Langfuse server and prepares the environment for full integration.
-
-### Summary
-
-2.4 is divided into two sub-versions:
-
-2.4.1 — Langfuse Local Setup (Docker): infrastructure and environment preparation.
-2.4.2 — Langfuse Integration: wiring traces and spans into Morpheus runtime.
-
-2.4.1 must be completed first to validate connectivity, ports, and credentials.
-
-### Version 2.4.1 — Langfuse Local Setup (Docker)
-
-Goal
-Create a self-hosted Langfuse instance inside the Morpheus repository for internal tracing.
-No Morpheus code changes yet — only infrastructure.
-
-Functional Requirements
-
-FR-2.4.1.1 — Repository Structure
-Add a new folder to the Morpheus project. The full path from the repo root should look like:
-morpheus/
-├─ app/
-├─ memory/
-├─ docs/
-├─ langfuse-server/
-├─-- docker-compose.yml
-├─-- .env
-├─-- README.md
-
-FR-2.4.1.2 — Docker Compose Configuration
-The docker-compose file must define services for Langfuse and Postgres.
-Expose the Langfuse web interface at http://localhost:3000
-and use a local volume for persistence under langfuse-server/data.
-Keep configuration minimal and self-contained so it can be started and stopped independently of Morpheus.
-
-Notes (dev setup):
-- Use Langfuse v2 (Postgres-only) for local development to avoid ClickHouse.
-- After admin creation, set `DISABLE_SIGNUP="true"` for hardening.
-
-FR-2.4.1.3 — Environment Variables
-Add these variables to the main Morpheus .env file:
-LANGFUSE_ENABLED=True
-LANGFUSE_BASE_URL=http://localhost:3000
-
-Langfuse v2 secrets format (in `langfuse-server/.env`):
-- `NEXTAUTH_SECRET`: base64 (e.g., `openssl rand -base64 32`)
-- `SALT`: 64 hex chars (e.g., `openssl rand -hex 32`)
-- `ENCRYPTION_KEY`: 64 hex chars (e.g., `openssl rand -hex 32`)
-
-Log in and create a project and API keys.
-
-Test connectivity using curl or a simple health-check request to the API endpoint /api/public/health.
-
-FR-2.4.1.5 — Documentation and Maintenance
-Include a README.md inside /langfuse-server with setup, shutdown, and maintenance instructions.
-Add a short note to the main Morpheus README explaining that Langfuse provides local telemetry and is located under /langfuse-server.
-
-### Acceptance Criteria
-
-Running docker compose up -d successfully launches Langfuse and Postgres.
-
-The dashboard is accessible at http://localhost:3000
-
-Dev-only note: If the dashboard charts error on `dashboard.chart` due to missing
-Postgres views, create lightweight views to satisfy queries:
-`observations_view` (selected columns from `observations`) and `traces_view`
-(selected columns from `traces`).
-
-### Version 2.4.2 — Langfuse Integration (Runtime Telemetry)
-
-### Purpose
-Integrate Langfuse tracing into the Morpheus runtime for structured observability.
-Each chat request, builder LLM call, and RAG retrieval will emit detailed telemetry to the local Langfuse server.
-This enables end-to-end monitoring of query routing, retrieval quality, and model responses.
+Improve observability and debugging by ensuring every major pipeline step (input, builder, retrieval, response, roll-off) is logged with clear, consistent tags.  
+This replaces the previously planned Langfuse integration with a lightweight, built-in structured logging approach.
 
 ### Functional Requirements
 
-FR-2.4.2.1 — Dependency and Setup
-Add the Langfuse Python SDK to the project dependencies and initialize it when LANGFUSE_ENABLED=True.
-Use the credentials and base URL defined in the Morpheus .env file.
-- Use latest stable SDK (no version pin) during development; pin to a tested
-  minor version before release.
+#### FR-2.4.1 — Structured Log Format
+Continue using the existing global logger, but standardize all messages to a common tagged format:
 
-FR-2.4.2.2 — Initialization and Configuration
-Create a small module (for example core/telemetry.py) that initializes a global Langfuse client and exposes helper functions start_trace, start_span, log_event, and end_span.
-Configuration values (base URL, keys) come from the .env file. Project
-identification is implied by the keys (no need to pass project id); optionally
-include a human-readable project name as a tag.
-If LANGFUSE_ENABLED=False, all helper functions should safely no-op.
-Implementation details:
-- Single global client (thread-safe), one per process.
-- Client timeout ≈ 1s and fail-open (never block chat or affect latency).
-- Sampling and log level controlled via env (defaults below).
+```
+[timestamp] [level] [module] [TAG] message
+```
 
-FR-2.4.2.3 — Trace Structure
-Each chat request creates one root trace with metadata including project_id, user_id, route, rag_used, and timestamp.
-Within that trace, define spans for:
-• builder_llm — captures the router/query-builder input, JSON output, and confidence.
-• rag_retrieval — logs retrieval activity and metrics.
-• chat_completion — wraps the final model response generation.
-Attribution defaults:
-- `user_id="local_user"`
-- `session_id`: generated once per server start (UUID)
+Example:
+```
+2025-10-29 09:42:13 INFO app.core.chat [PROMPT] project=Continuum msg_id=153 text="How does RAG merge daily?"
+```
 
-FR-2.4.2.4 — RAG Instrumentation
-Inside the rag_manager, emit a span that logs:
-query string, builder JSON summary, number of daily/main hits, merged hit count, average similarity, thresholds, deduped count, and total context tokens.
-For each retrieved chunk, log a lightweight event (not a child span) with metadata fields source (daily or main), filename, similarity score, topic tags, and a short text preview.
-End the span with aggregate metrics: total_hits, used_hits, daily_hits, main_hits, and context_token_count.
+#### FR-2.4.2 — Mandatory Log Points
+Every chat request must include the following tagged log entries:
+- **[PROMPT]** – user input received by `/chat`
+- **[BUILDER]** – query-builder output (route, rag flag, confidence)
+- **[RETRIEVAL]** – RAG query details (hit count, avg similarity)
+- **[RESPONSE]** – model output summary (token count, short preview)
+- **[ROLLOFF]** – when a pair is embedded into `daily.faiss`
+- **[ERROR]** – any exception during request processing
 
-FR-2.4.2.5 — Builder Instrumentation
-Wrap the builder LLM call in its own span.
-Log the prompt (truncated), raw model output (truncated), parsed JSON, route, rag flag, topics, and confidence.
-Add duration, model name, and token counts to span metadata.
+#### FR-2.4.3 — Optional Context Data
+Each log entry should include:
+- `project_id`
+- `message_id`
+- `route`
+- `rag_used`
+- short preview of text (≤ 200 chars)
 
-FR-2.4.2.6 — Chat Completion Instrumentation
-Wrap the final chat generation call in a span.
-Record system prompt length, context token count, total tokens sent and received, and response latency.
-Log final model name, temperature, and any relevant sampling parameters.
-Token counts may be approximate when exact counts are not available.
+This makes it easy to trace specific projects, conversations, and decisions.
 
-FR-2.4.2.7 — Metadata and Tagging Standards
-Each trace and span must include consistent fields so Langfuse dashboards can correlate runs:
-project_id, route, rag_used, builder_confidence, retrieval_count, context_tokens, response_tokens, response_time_ms, and success (true/false).
-Include model and temperature where applicable (e.g., on `chat_completion`).
-All fields are lower-case snake_case.
+#### FR-2.4.4 — Log Destination and Rotation
+- Keep default console + file handlers.  
+- Add rotation policy: `logs/morpheus.log`, 10 MB × 5 files.  
 
-FR-2.4.2.8 — UI and Debug Links
-In developer mode, display the Langfuse trace_id in the FastAPI log output and optionally provide a “View Trace” link in the Morpheus debug panel when LANGFUSE_ENABLED=True.
-Log the “View Trace” URL at INFO on success; WARN if emitting fails. No UI change required for production mode.
-
-FR-2.4.2.9 — Environment Variables
-Confirm these keys exist in .env:
-LANGFUSE_ENABLED, LANGFUSE_BASE_URL, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY.
-`LANGFUSE_PROJECT` is optional and used only as a tag for human readability; project context is derived from the API keys.
-Add optional toggles for controlling verbosity:
-LANGFUSE_LOG_LEVEL=INFO and LANGFUSE_SAMPLE_RATE=1.0.
-
-FR-2.4.2.10 — Logging and Safety
-Ensure that no personally identifiable user data or sensitive text snippets longer than 200 characters are logged.
-Truncate fields (e.g., prompts, outputs) to ≤200 chars before sending to Langfuse. Fail-open on telemetry errors (no impact to chat latency).
+#### FR-2.4.5 — Verification Checklist
+- Each chat request produces a full `[PROMPT] → [BUILDER] → [RETRIEVAL] → [RESPONSE]` chain in the logs.
+- Roll-off events show the complete prompt/response pair content.
+- No sensitive or overly long text (>200 chars) is logged.
+- Average latency impact of logging < 10 ms per request.
 
 ### Acceptance Criteria
-
-• Langfuse dashboard shows traces for each chat request with builder, retrieval, and completion spans.
-• Each span includes duration, token usage, and core metadata.
-• Retrieved RAG chunks appear as structured events with similarity and source info.
-• All logging gracefully disables when LANGFUSE_ENABLED=False.
-• Average trace overhead remains under 100 ms per request.
+- Logs clearly trace every request lifecycle from prompt to response.  
+- Each log entry includes a standardized `[TAG]` identifier.  
+- Developers can quickly grep for stages like `[RETRIEVAL]` or `[ROLLOFF]`.  
+- No external tracing tools required; system is fully observable through native logs.  
+- Old Langfuse references removed; same logger reused for all instrumentation.

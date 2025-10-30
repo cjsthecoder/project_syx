@@ -225,6 +225,9 @@ setup-env:
 		echo "LOG_BACKUP_COUNT=5"; \
 		echo "# Number of rotated log files per session"; \
 		echo ""; \
+		echo "NAMESPACE_BOOST=1.20"; \
+		echo "# V2.5: Multiplicative boost for namespace match"; \
+		echo ""; \
 		echo "LOG_PREVIEW_MAX_CHARS=1024"; \
 		echo "# Max chars for log previews"; \
 		echo ""; \

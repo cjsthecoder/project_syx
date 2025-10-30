@@ -11,6 +11,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
 from .config import get_settings
+from ..utils.logging import get_route
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg
     with FileLock(lock_path):
         entries = _load_metadata(meta_path)
         day_sequence = (entries[-1]["day_sequence"] + 1) if entries else 1
+        ns = (get_route() or "general").lower() or "general"
         entry = {
             "id": f"{int(time.time()*1000)}-{len(entries)+1}",
             "project_id": project_id,
@@ -85,6 +87,7 @@ def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg
             "embedding_model": settings.embedding_model,
             "source": "chat",
             "scope": "daily",
+            "namespace": ns,
             "confidence": 1.0,
             "tags": ["rolled_off"],
             "day_sequence": day_sequence,
@@ -106,11 +109,11 @@ def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg
             if vs is None:
                 # create new with normalize_L2 when available
                 try:
-                    vs = FAISS.from_texts(texts=[pair_text], embedding=embeddings, metadatas=[{"source": "daily"}], normalize_L2=True)
+                    vs = FAISS.from_texts(texts=[pair_text], embedding=embeddings, metadatas=[{"source": "daily", "namespace": ns}], normalize_L2=True)
                 except TypeError:
-                    vs = FAISS.from_texts(texts=[pair_text], embedding=embeddings, metadatas=[{"source": "daily"}])
+                    vs = FAISS.from_texts(texts=[pair_text], embedding=embeddings, metadatas=[{"source": "daily", "namespace": ns}])
             else:
-                vs.add_texts([pair_text], metadatas=[{"source": "daily"}])
+                vs.add_texts([pair_text], metadatas=[{"source": "daily", "namespace": ns}])
             vs.save_local(faiss_dir)
         except Exception as e:
             logger.error(f"DailyRAG: failed to update FAISS daily index: {e}")
@@ -122,8 +125,8 @@ def _cosine_from_l2_dist_sq(d2: float) -> float:
     return max(0.0, min(1.0, 1.0 - (d2 / 2.0)))
 
 
-def retrieve_daily(project_id: str, query: str, top_k: int, score_threshold: float) -> List[Tuple[str, float]]:
-    """Retrieve from daily FAISS index. Returns list of (text, cosine)."""
+def retrieve_daily(project_id: str, query: str, top_k: int, score_threshold: float) -> List[Tuple[str, float, Optional[str]]]:
+    """Retrieve from daily FAISS index. Returns list of (text, cosine, namespace)."""
     settings = get_settings()
     faiss_dir, meta_path, lock_path = _project_daily_paths(project_id)
     with FileLock(lock_path):
@@ -162,7 +165,7 @@ def retrieve_daily(project_id: str, query: str, top_k: int, score_threshold: flo
         results = vs.similarity_search_with_score(query, k=top_k)  # type: ignore[name-defined]
     except Exception:
         results = []
-    scored: List[Tuple[str, float]] = []
+    scored: List[Tuple[str, float, Optional[str]]] = []
     for doc, dist in results:
         d = float(dist)
         d2 = d * d
@@ -170,7 +173,8 @@ def retrieve_daily(project_id: str, query: str, top_k: int, score_threshold: flo
         cos_b = _cosine_from_l2_dist_sq(d) if d >= 0 else 0.0
         cos = max(min(cos_a, 1.0), min(cos_b, 1.0))
         if cos >= score_threshold:
-            scored.append((doc.page_content, cos))
+            ns = (getattr(doc, "metadata", None) or {}).get("namespace")
+            scored.append((doc.page_content, cos, ns))
     scored.sort(key=lambda t: t[1], reverse=True)
     return scored[:top_k]
 

@@ -32,6 +32,56 @@ from .db_models import File as FileRow
 from sqlmodel import select
 
 logger = logging.getLogger(__name__)
+def _load_route_config() -> Dict[str, Dict[str, Any]]:
+    """Load route configuration from backend/app/config/meta_namespaces.json.
+    Returns dict keyed by route name with namespaces, rag_k, score_threshold.
+    """
+    try:
+        base_dir = os.path.join(os.path.dirname(__file__), "..", "config")
+        path = os.path.abspath(os.path.join(base_dir, "meta_namespaces.json"))
+        if not os.path.isfile(path):
+            logger.debug("Route config not found at %s; using defaults", path)
+            return {}
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return data
+    except Exception as e:
+        logger.debug("Failed loading route config: %s", e)
+    return {}
+
+
+def _load_namespace_globs_map(project_id: str) -> Dict[str, List[str]]:
+    """Load per-project namespace map (namespace -> [globs]) from memory/{project}/namespace_map.json.
+    Returns empty dict if missing.
+    """
+    try:
+        base = os.path.join("memory", project_id)
+        path = os.path.join(base, "namespace_map.json")
+        if not os.path.isfile(path):
+            logger.warning("Namespace map missing for project=%s; defaulting to 'general' for all files", project_id)
+            return {}
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return {str(ns): list(v) for ns, v in data.items() if isinstance(v, list)}
+    except Exception as e:
+        logger.warning("Failed to load namespace map for project=%s: %s", project_id, e)
+    return {}
+
+
+def _resolve_namespace(project_id: str, uploads_rel_path: str, ns_map: Optional[Dict[str, List[str]]] = None) -> str:
+    """Resolve namespace for a given file path relative to uploads/ using case-insensitive, first-match-wins globs."""
+    import fnmatch
+    if ns_map is None:
+        ns_map = _load_namespace_map(project_id)
+    path_l = uploads_rel_path.replace("\\", "/").lower()
+    for ns, patterns in ns_map.items():
+        for pat in patterns:
+            pat_l = str(pat).replace("\\", "/").lower()
+            if fnmatch.fnmatch(path_l, pat_l):
+                return ns
+    return "general"
 
 try:
     import tiktoken  # type: ignore
@@ -105,7 +155,10 @@ def rebuild_faiss_index(project_id: str) -> str:
     # For per-file stats
     file_token_sums: Dict[str, int] = {}
     file_page_max: Dict[str, int] = {}
+    ns_map = _load_namespace_globs_map(project_id)
     for f in files:
+        uploads_rel = os.path.relpath(f, uploads_dir).replace("\\", "/")
+        file_ns = _resolve_namespace(project_id, uploads_rel, ns_map)
         for raw_text, meta in _read_file_text(f):
             collected.append((raw_text, meta))
             fname = meta.get("filename") or os.path.basename(f)
@@ -137,6 +190,7 @@ def rebuild_faiss_index(project_id: str) -> str:
                 "page_number": base_meta.get("page_number"),
                 "chunk_id": i,
                 "timestamp": now_iso,
+                "namespace": file_ns,
             }
             metadatas.append(m)
 
@@ -205,6 +259,8 @@ def retrieve_context(
     snippet_max_tokens: int,
     score_threshold: float,
     context_max_tokens: int,
+    route_namespaces: Optional[List[str]] = None,
+    namespace_boost: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Retrieve top-k snippets and assemble a single Context: block string.
 
@@ -226,6 +282,8 @@ def retrieve_context(
     details = []
     scored: List[Tuple[str, dict, float, float]] = []  # (content, meta, cos, dist)
     passed_cosines: List[float] = []
+    rn_set = set(route_namespaces or [])
+    nb = float(namespace_boost or 1.0)
     for doc, dist in results:
         # dist is L2 distance; FAISS in LangChain returns distance (not squared) sometimes;
         # use d^2 approximation for cosine if needed
@@ -235,6 +293,13 @@ def retrieve_context(
         cos_a = _cosine_from_l2_dist_sq(d2)
         cos_b = _cosine_from_l2_dist_sq(d) if d >= 0 else 0.0
         cos = max(min(cos_a, 1.0), min(cos_b, 1.0))
+        # Namespace boost before thresholding
+        try:
+            ns = (doc.metadata or {}).get("namespace")
+            if ns and ns in rn_set and nb > 1.0:
+                cos = min(1.0, cos * nb)
+        except Exception:
+            pass
         if cos >= score_threshold:
             filtered.append((doc.page_content, doc.metadata or {}, cos))
             passed_cosines.append(cos)
@@ -298,6 +363,8 @@ def merge_daily_and_main(
     topic_boost: Optional[float] = None,
     decision_boost: Optional[float] = None,
     question_boost: Optional[float] = None,
+    route_namespaces: Optional[List[str]] = None,
+    namespace_boost: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Retrieve from daily and main, apply weights/dedupe/budgets, return labeled context.
     Returns dict with keys: context_text, tokens_used.
@@ -315,6 +382,8 @@ def merge_daily_and_main(
         main_snippet_max_tokens,
         main_threshold,
         global_context_max_tokens,
+        route_namespaces=route_namespaces,
+        namespace_boost=namespace_boost,
     )
     main_snips = main.get("snippets", [])
     main_hits = int(main.get("hit_count", 0))
@@ -323,11 +392,19 @@ def merge_daily_and_main(
     daily_results = retrieve_daily(project_id, query, daily_top_k, daily_threshold)
     logger.debug("DailyRAG: daily results pre-cap=%s", len(daily_results))
     daily_hits = int(len(daily_results))
-    daily_avg = float(sum(s for _, s in daily_results)/daily_hits) if daily_hits else 0.0
+    daily_avg = float(sum(s for _, s, _ in daily_results)/daily_hits) if daily_hits else 0.0
     # build daily text chunks within daily_max_tokens
     tokens_used_daily = 0
     daily_texts: List[str] = []
-    for text, score in daily_results:
+    rn_set = set(route_namespaces or [])
+    nb = float(namespace_boost or 1.0)
+    for text, score, ns in daily_results:
+        # apply namespace boost before token cap and weighting
+        try:
+            if ns and ns in rn_set and nb > 1.0:
+                score = min(1.0, score * nb)
+        except Exception:
+            pass
         trimmed = _trim_to_tokens(text, main_snippet_max_tokens)
         t = _count_tokens(trimmed)
         if tokens_used_daily + t > daily_max_tokens:
@@ -394,20 +471,7 @@ def merge_daily_and_main(
                 if t and (t.lower() in (text or "").lower()):
                     score *= (topic_boost or 1.0)
                     break
-        # namespace heuristic: parse filename from header if present and match via sidecar
-        if preferred_namespace:
-            try:
-                fn = None
-                # header format includes file=...
-                if "file=" in text:
-                    idx = text.find("file=")
-                    tail = text[idx+5: idx+5+200]
-                    fn = tail.split(",")[0].strip()
-                ns_map = _load_namespace_map(project_id)
-                if fn and ns_map.get(fn) == preferred_namespace:
-                    score *= (topic_boost or 1.0)  # reuse topic_boost weight for namespace preference
-            except Exception:
-                pass
+        # namespace heuristic removed in V2.5 (route-based boosting now applied earlier)
         return score
 
     merged_main.sort(key=lambda s: _boost_score(s), reverse=True)
@@ -452,18 +516,6 @@ def merge_daily_and_main(
     }
 
 
-def _load_namespace_map(project_id: str) -> Dict[str, str]:
-    try:
-        base = os.path.join("memory", project_id, "faiss")
-        path = os.path.join(base, "meta_namespaces.json")
-        if not os.path.exists(path):
-            return {}
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                return {str(k): str(v) for k, v in data.items()}
-    except Exception:
-        pass
-    return {}
+# Legacy FAISS sidecar namespace map support removed in V2.5; namespaces are embedded during indexing.
 
 

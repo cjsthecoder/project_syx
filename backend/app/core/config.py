@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     log_format: str = Field(default="json", description="Log format (json or text)")
     log_level_console: str = Field(default="INFO", description="Console log level")
     log_level_file: str = Field(default="DEBUG", description="File log level")
+    log_max_bytes: int = Field(default=10 * 1024 * 1024, description="Max bytes per log file before rotation")
+    log_backup_count: int = Field(default=5, description="Number of rotated log files to keep")
+    log_preview_max_chars: int = Field(default=1024, gt=0, description="Max chars for log previews")
     
     # CORS Configuration
     cors_origins: list[str] = Field(

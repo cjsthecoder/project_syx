@@ -1,4 +1,3 @@
-.PHONY:
 # Morpheus AGI Chatbot Framework - Build Automation
 # Make targets for development and deployment
 
@@ -8,16 +7,42 @@
 help:
 	@echo "Morpheus AGI Chatbot Framework - Available Commands:"
 	@echo ""
-	@echo "  make install    - Install all dependencies (Python + Node.js)"
-	@echo "  make build      - Build React app and copy to FastAPI static folder"
-	@echo "  make run        - Start the unified FastAPI server"
-	@echo "  make migrate    - Create Alembic revision"
-	@echo "  make upgrade    - Apply DB migrations"
-	@echo "  make downgrade  - Revert DB migrations"
-	@echo "  make clean      - Clean build artifacts and dependencies"
-	@echo "  make test       - Run all tests (backend + frontend)"
-	@echo "  make lint       - Run linting on all code"
-	@echo "  make format     - Format all code"
+	@echo "Core:"
+	@echo "  make install              - Install all dependencies (Python + Node.js)"
+	@echo "  make build                - Build React app (Vite)"
+	@echo "  make run                  - Start unified FastAPI server"
+	@echo "  make setup                - Generate .env, install, and build"
+	@echo "  make setup-env            - Generate a fresh .env with defaults"
+	@echo ""
+	@echo "Dev:"
+	@echo "  make dev-backend          - Run backend only (FastAPI)"
+	@echo "  make dev-frontend         - Run frontend only (Vite dev server)"
+	@echo "  make copy-static          - No-op (Vite outputs directly to backend/app/static)"
+	@echo ""
+	@echo "Database:"
+	@echo "  make migrate              - Create Alembic revision (autogenerate)"
+	@echo "  make upgrade              - Apply DB migrations"
+	@echo "  make downgrade            - Revert last DB migration"
+	@echo ""
+	@echo "Quality:"
+	@echo "  make test                 - Run all tests (backend + frontend)"
+	@echo "  make test-backend         - Run backend tests"
+	@echo "  make test-frontend        - Run frontend tests"
+	@echo "  make lint                 - Lint all code"
+	@echo "  make lint-backend         - Lint Python code"
+	@echo "  make lint-frontend        - Lint TypeScript/React code"
+	@echo "  make format               - Format all code"
+	@echo "  make format-backend       - Format Python code"
+	@echo "  make format-frontend      - Format TypeScript/React code"
+	@echo ""
+	@echo "Maintenance:"
+	@echo "  make clean                - Clean build artifacts (all)"
+	@echo "  make clean-backend        - Clean Python artifacts"
+	@echo "  make clean-frontend       - Clean Node.js artifacts"
+	@echo "  make clean-static         - Clean FastAPI static files"
+	@echo ""
+	@echo "Docs:"
+	@echo "  make generate-docs        - Generate architecture diagram"
 	@echo ""
 
 # Install all dependencies
@@ -194,6 +219,15 @@ setup-env:
 		echo "LOG_LEVEL_FILE=DEBUG"; \
 		echo "# File log level (DEBUG, INFO, WARNING, ERROR)"; \
 		echo ""; \
+		echo "LOG_MAX_BYTES=10485760"; \
+		echo "# Max bytes per rotating log file"; \
+		echo ""; \
+		echo "LOG_BACKUP_COUNT=5"; \
+		echo "# Number of rotated log files per session"; \
+		echo ""; \
+		echo "LOG_PREVIEW_MAX_CHARS=1024"; \
+		echo "# Max chars for log previews"; \
+		echo ""; \
 		echo "CORS_ORIGINS=[\"http://localhost:3000\",\"http://localhost:5173\"]"; \
 		echo "# Allowed browser origins for API"; \
 		echo ""; \
@@ -284,15 +318,14 @@ setup-env:
 		echo "DECISION_BOOST=1.05"; \
 		echo "# V2.3.1: Multiplicative boost for decision overlap"; \
 		echo ""; \
-		echo "QUESTION_BOOST=1.02"; \
+        echo "QUESTION_BOOST=1.02"; \
 		echo "# V2.3.1: Multiplicative boost for open-question overlap"; \
 		echo ""; \
 		echo "CHAT_HISTORY_LIMIT=20"; \
 		echo "# Number of recent messages kept per project in working memory"; \
 		echo ""; \
-
-	} > .env; \
-	echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
+	} > .env
+	@echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
 
 # Full setup from scratch
 setup: setup-env install build

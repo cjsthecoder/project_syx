@@ -15,6 +15,7 @@ from .database import get_session
 from .db_models import ChatMessage, Project
 from .config import get_settings
 from .daily_rag import append_pair
+from ..utils.logging import get_message_id
 
 logger = logging.getLogger(__name__)
 
@@ -139,15 +140,6 @@ class MemoryManager:
         user_msg = dq.popleft()
         asst_msg = dq.popleft()
         pair_text = f"User: {user_msg.get('content')}\nAssistant: {asst_msg.get('content')}"
-        logger.info(
-            "[DailyRAG] Rolled off pair → project=%s | user_id=%s assistant_id=%s | tokens≈%s",
-            project_id,
-            str(user_msg.get("id")),
-            str(asst_msg.get("id")),
-            "?",
-        )
-        logger.debug("[DailyRAG] Prompt: %s", (user_msg.get('content') or '')[:2000])
-        logger.debug("[DailyRAG] Response: %s", (asst_msg.get('content') or '')[:2000])
         # approximate tokens
         try:
             import tiktoken  # type: ignore
@@ -155,6 +147,20 @@ class MemoryManager:
             tokens = len(enc.encode(pair_text))
         except Exception:
             tokens = len((pair_text or "").split())
+        mid = get_message_id() or "-"
+        limit = get_settings().log_preview_max_chars
+        pp = (user_msg.get('content') or '')[:limit]
+        rp = (asst_msg.get('content') or '')[:limit]
+        logger.debug(
+            "[ROLLOFF] project_id=%s message_id=%s user_id=%s assistant_id=%s tokens_approx=%s prompt_preview=\"%s\" response_preview=\"%s\"",
+            project_id,
+            mid,
+            str(user_msg.get("id")),
+            str(asst_msg.get("id")),
+            str(tokens),
+            pp,
+            rp,
+        )
         # Append to daily if enabled; on any error we still drop per spec
         try:
             if self._is_daily_enabled(project_id):

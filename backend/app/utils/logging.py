@@ -7,6 +7,8 @@ This module provides structured logging with colored console output and timestam
 import os
 import sys
 import logging
+from logging.handlers import RotatingFileHandler
+import contextvars
 from datetime import datetime
 from typing import Optional
 
@@ -99,8 +101,12 @@ def setup_logging() -> None:
     root_logger.setLevel(logging.DEBUG)
     root_logger.handlers.clear()
     
-    # Create file handler (DEBUG level for detailed logs)
-    file_handler = logging.FileHandler(log_filename)
+    # Create rotating file handler (DEBUG level for detailed logs)
+    file_handler = RotatingFileHandler(
+        log_filename,
+        maxBytes=int(settings.log_max_bytes),
+        backupCount=int(settings.log_backup_count)
+    )
     file_handler.setLevel(file_level)
     file_formatter = logging.Formatter(
         '%(asctime)s - %(levelname)s - %(name)s:%(funcName)s - %(message)s'
@@ -156,6 +162,22 @@ def setup_logging() -> None:
     
     # Log initialization
     app_logger.info(f'Logging initialized. Log file: {log_filename}')
+
+
+# Context variable for per-request message correlation id
+_message_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("message_id", default=None)
+
+
+def set_message_id(message_id: str | None) -> None:
+    _message_id_var.set(message_id)
+
+
+def get_message_id() -> str | None:
+    return _message_id_var.get()
+
+
+def clear_message_id() -> None:
+    _message_id_var.set(None)
 
 
 def get_logger(name: str = None) -> logging.Logger:

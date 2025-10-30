@@ -72,14 +72,16 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
             streaming=False,
         )
         # Log the prompt for debug visibility (trimmed)
+        settings = get_settings()
+        cap = settings.log_preview_max_chars
         logger.debug(
             "builder prompt summary=%s turn=%s",
-            (history_summary[:300] + ("…" if len(history_summary) > 300 else "")),
-            (user_text[:300] + ("…" if len(user_text) > 300 else "")),
+            (history_summary[:cap] + ("…" if len(history_summary) > cap else "")),
+            (user_text[:cap] + ("…" if len(user_text) > cap else "")),
         )
         resp = llm.invoke([SystemMessage(content=sys), HumanMessage(content=user)])
         raw = getattr(resp, "content", "").strip()
-        logger.debug("builder raw=%s", (raw[:1000] + ("…" if len(raw) > 1000 else "")))
+        logger.debug("builder raw=%s", (raw[:cap] + ("…" if len(raw) > cap else "")))
         data = json.loads(raw)
         # Basic shape validation
         if not isinstance(data, dict) or "route" not in data or "rag" not in data:

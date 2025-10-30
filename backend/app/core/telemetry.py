@@ -57,7 +57,41 @@ _client = None
 _enabled = False
 _base_url: Optional[str] = None
 _session_id: str = str(uuid.uuid4())
-_api_mode: str = "none"  # "v2" uses .trace/.span/.event, "v3" uses .start_trace/.start_span/.log_event
+_api_mode: str = "none"  # "v2" uses .trace/.span/.event, "v3" uses .start_as_current_span/.start_span/.create_event
+
+
+class _V3Ctx:
+    """Wrapper for Langfuse v3 current-span context manager.
+
+    Holds the client and the active context manager to allow explicit end().
+    """
+    def __init__(self, client: Any, ctxmgr: Any) -> None:
+        self._client = client
+        self._cm = ctxmgr
+
+    def start_span(self, name: str, metadata: Optional[Dict[str, Any]] = None) -> "_V3Ctx":
+        cm = self._client.start_as_current_span(name=name, metadata=metadata or {})
+        cm.__enter__()
+        return _V3Ctx(self._client, cm)
+
+    def log_event(self, name: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+        try:
+            self._client.create_event(name=name, metadata=metadata or {})
+        except Exception:
+            pass
+
+    def end(self, metadata: Optional[Dict[str, Any]] = None) -> None:
+        try:
+            if metadata:
+                # Attach metadata to the current span before closing
+                self._client.update_current_span(metadata=metadata)
+        except Exception:
+            pass
+        finally:
+            try:
+                self._cm.__exit__(None, None, None)
+            except Exception:
+                pass
 
 
 def _init_client() -> None:
@@ -86,14 +120,6 @@ def _init_client() -> None:
             host=_base_url,
             timeout=1.0,  # seconds
         )
-        # Best-effort auth check (does not raise on some SDKs)
-        try:
-            if hasattr(_client, "auth_check"):
-                ok = _client.auth_check()
-                logger.info("Langfuse auth_check: %s", ok)
-        except Exception as e:
-            logger.warning("Langfuse auth_check failed: %s", e)
-
         # Surface available methods for debugging
         try:
             attrs = dir(_client)
@@ -104,7 +130,7 @@ def _init_client() -> None:
         # Detect API surface (SDKs differ between v2 and v3)
         if hasattr(_client, "trace"):
             _api_mode = "v2"
-        elif hasattr(_client, "start_trace"):
+        elif hasattr(_client, "start_as_current_span") or hasattr(_client, "start_span"):
             _api_mode = "v3"
         else:
             _api_mode = "none"
@@ -148,20 +174,25 @@ def start_trace(name: str, metadata: Optional[Dict[str, Any]] = None) -> Any:
                 session_id=_session_id,
                 metadata=safe_meta,
             )
-        elif _api_mode == "v3" and hasattr(_client, "start_trace"):
-            # v3 exposes start_trace and returns a trace object
-            trace = _client.start_trace(
-                name=name,
-                user_id=user_id,
-                session_id=_session_id,
-                metadata=safe_meta,
-            )
+        elif _api_mode == "v3" and (hasattr(_client, "start_as_current_span") or hasattr(_client, "start_span")):
+            # v3: use current-span context manager
+            if hasattr(_client, "start_as_current_span"):
+                cm = _client.start_as_current_span(name=name, metadata=safe_meta)
+            else:
+                cm = _client.start_span(name=name, metadata=safe_meta)
+            cm.__enter__()
+            trace = _V3Ctx(_client, cm)
         else:
             logger.warning("Langfuse: no compatible trace creation method found (mode=%s)", _api_mode)
             return _NoopTrace()
         # Best-effort log a view link if available
         try:
-            url = getattr(trace, "url", None)
+            url = None
+            if hasattr(trace, "url"):
+                url = getattr(trace, "url", None)
+            elif hasattr(_client, "get_trace_url"):
+                # best-effort when supported
+                url = _client.get_trace_url()
             if url:
                 logger.info("Langfuse trace started: %s", url)
         except Exception:
@@ -180,8 +211,13 @@ def start_span(trace: Any, name: str, metadata: Optional[Dict[str, Any]] = None)
         safe_meta = {k: (_truncate(v) if isinstance(v, str) else v) for k, v in meta.items()}
         if hasattr(trace, "span") and _api_mode == "v2":
             span = trace.span(name=name, metadata=safe_meta)
-        elif hasattr(trace, "start_span"):
-            span = trace.start_span(name=name, metadata=safe_meta)
+        elif _api_mode == "v3" and (hasattr(_client, "start_as_current_span") or hasattr(_client, "start_span")):
+            if hasattr(_client, "start_as_current_span"):
+                cm = _client.start_as_current_span(name=name, metadata=safe_meta)
+            else:
+                cm = _client.start_span(name=name, metadata=safe_meta)
+            cm.__enter__()
+            span = _V3Ctx(_client, cm)
         else:
             return _NoopSpan()
         return span
@@ -198,8 +234,8 @@ def log_event(holder: Any, name: str, metadata: Optional[Dict[str, Any]] = None)
         safe_meta = {k: (_truncate(v) if isinstance(v, str) else v) for k, v in meta.items()}
         if hasattr(holder, "event") and _api_mode == "v2":
             holder.event(name=name, metadata=safe_meta)
-        elif hasattr(holder, "log_event"):
-            holder.log_event(name=name, metadata=safe_meta)
+        elif _api_mode == "v3" and hasattr(_client, "create_event"):
+            _client.create_event(name=name, metadata=safe_meta)
     except Exception as e:  # pragma: no cover
         logger.warning("Langfuse log_event failed: %s", e)
         return None
@@ -211,7 +247,18 @@ def end_span(span: Any, metadata: Optional[Dict[str, Any]] = None) -> None:
     try:
         meta = metadata or {}
         safe_meta = {k: (_truncate(v) if isinstance(v, str) else v) for k, v in meta.items()}
-        span.end(metadata=safe_meta)
+        if _api_mode == "v2" and hasattr(span, "end"):
+            span.end(metadata=safe_meta)
+        elif _api_mode == "v3":
+            try:
+                if metadata and hasattr(_client, "update_current_span"):
+                    _client.update_current_span(metadata=safe_meta)
+            finally:
+                try:
+                    if isinstance(span, _V3Ctx):
+                        span.end({})
+                except Exception:
+                    pass
     except Exception as e:  # pragma: no cover
         logger.warning("Langfuse end_span failed: %s", e)
         return None
@@ -223,7 +270,18 @@ def end_trace(trace: Any, metadata: Optional[Dict[str, Any]] = None) -> None:
     try:
         meta = metadata or {}
         safe_meta = {k: (_truncate(v) if isinstance(v, str) else v) for k, v in meta.items()}
-        trace.end(metadata=safe_meta)
+        if _api_mode == "v2" and hasattr(trace, "end"):
+            trace.end(metadata=safe_meta)
+        elif _api_mode == "v3":
+            try:
+                if metadata and hasattr(_client, "update_current_trace"):
+                    _client.update_current_trace(metadata=safe_meta)
+            finally:
+                try:
+                    if isinstance(trace, _V3Ctx):
+                        trace.end({})
+                except Exception:
+                    pass
     except Exception as e:  # pragma: no cover
         logger.warning("Langfuse end_trace failed: %s", e)
         return None

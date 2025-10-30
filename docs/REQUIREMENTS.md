@@ -777,10 +777,19 @@ Expose the Langfuse web interface at http://localhost:3000
 and use a local volume for persistence under langfuse-server/data.
 Keep configuration minimal and self-contained so it can be started and stopped independently of Morpheus.
 
+Notes (dev setup):
+- Use Langfuse v2 (Postgres-only) for local development to avoid ClickHouse.
+- After admin creation, set `DISABLE_SIGNUP="true"` for hardening.
+
 FR-2.4.1.3 — Environment Variables
 Add these variables to the main Morpheus .env file:
 LANGFUSE_ENABLED=True
 LANGFUSE_BASE_URL=http://localhost:3000
+
+Langfuse v2 secrets format (in `langfuse-server/.env`):
+- `NEXTAUTH_SECRET`: base64 (e.g., `openssl rand -base64 32`)
+- `SALT`: 64 hex chars (e.g., `openssl rand -hex 32`)
+- `ENCRYPTION_KEY`: 64 hex chars (e.g., `openssl rand -hex 32`)
 
 Log in and create a project and API keys.
 
@@ -795,3 +804,90 @@ Add a short note to the main Morpheus README explaining that Langfuse provides l
 Running docker compose up -d successfully launches Langfuse and Postgres.
 
 The dashboard is accessible at http://localhost:3000
+
+Dev-only note: If the dashboard charts error on `dashboard.chart` due to missing
+Postgres views, create lightweight views to satisfy queries:
+`observations_view` (selected columns from `observations`) and `traces_view`
+(selected columns from `traces`).
+
+### Version 2.4.2 — Langfuse Integration (Runtime Telemetry)
+
+### Purpose
+Integrate Langfuse tracing into the Morpheus runtime for structured observability.
+Each chat request, builder LLM call, and RAG retrieval will emit detailed telemetry to the local Langfuse server.
+This enables end-to-end monitoring of query routing, retrieval quality, and model responses.
+
+### Functional Requirements
+
+FR-2.4.2.1 — Dependency and Setup
+Add the Langfuse Python SDK to the project dependencies and initialize it when LANGFUSE_ENABLED=True.
+Use the credentials and base URL defined in the Morpheus .env file.
+- Use latest stable SDK (no version pin) during development; pin to a tested
+  minor version before release.
+
+FR-2.4.2.2 — Initialization and Configuration
+Create a small module (for example core/telemetry.py) that initializes a global Langfuse client and exposes helper functions start_trace, start_span, log_event, and end_span.
+Configuration values (base URL, keys) come from the .env file. Project
+identification is implied by the keys (no need to pass project id); optionally
+include a human-readable project name as a tag.
+If LANGFUSE_ENABLED=False, all helper functions should safely no-op.
+Implementation details:
+- Single global client (thread-safe), one per process.
+- Client timeout ≈ 1s and fail-open (never block chat or affect latency).
+- Sampling and log level controlled via env (defaults below).
+
+FR-2.4.2.3 — Trace Structure
+Each chat request creates one root trace with metadata including project_id, user_id, route, rag_used, and timestamp.
+Within that trace, define spans for:
+• builder_llm — captures the router/query-builder input, JSON output, and confidence.
+• rag_retrieval — logs retrieval activity and metrics.
+• chat_completion — wraps the final model response generation.
+Attribution defaults:
+- `user_id="local_user"`
+- `session_id`: generated once per server start (UUID)
+
+FR-2.4.2.4 — RAG Instrumentation
+Inside the rag_manager, emit a span that logs:
+query string, builder JSON summary, number of daily/main hits, merged hit count, average similarity, thresholds, deduped count, and total context tokens.
+For each retrieved chunk, log a lightweight event (not a child span) with metadata fields source (daily or main), filename, similarity score, topic tags, and a short text preview.
+End the span with aggregate metrics: total_hits, used_hits, daily_hits, main_hits, and context_token_count.
+
+FR-2.4.2.5 — Builder Instrumentation
+Wrap the builder LLM call in its own span.
+Log the prompt (truncated), raw model output (truncated), parsed JSON, route, rag flag, topics, and confidence.
+Add duration, model name, and token counts to span metadata.
+
+FR-2.4.2.6 — Chat Completion Instrumentation
+Wrap the final chat generation call in a span.
+Record system prompt length, context token count, total tokens sent and received, and response latency.
+Log final model name, temperature, and any relevant sampling parameters.
+Token counts may be approximate when exact counts are not available.
+
+FR-2.4.2.7 — Metadata and Tagging Standards
+Each trace and span must include consistent fields so Langfuse dashboards can correlate runs:
+project_id, route, rag_used, builder_confidence, retrieval_count, context_tokens, response_tokens, response_time_ms, and success (true/false).
+Include model and temperature where applicable (e.g., on `chat_completion`).
+All fields are lower-case snake_case.
+
+FR-2.4.2.8 — UI and Debug Links
+In developer mode, display the Langfuse trace_id in the FastAPI log output and optionally provide a “View Trace” link in the Morpheus debug panel when LANGFUSE_ENABLED=True.
+Log the “View Trace” URL at INFO on success; WARN if emitting fails. No UI change required for production mode.
+
+FR-2.4.2.9 — Environment Variables
+Confirm these keys exist in .env:
+LANGFUSE_ENABLED, LANGFUSE_BASE_URL, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY.
+`LANGFUSE_PROJECT` is optional and used only as a tag for human readability; project context is derived from the API keys.
+Add optional toggles for controlling verbosity:
+LANGFUSE_LOG_LEVEL=INFO and LANGFUSE_SAMPLE_RATE=1.0.
+
+FR-2.4.2.10 — Logging and Safety
+Ensure that no personally identifiable user data or sensitive text snippets longer than 200 characters are logged.
+Truncate fields (e.g., prompts, outputs) to ≤200 chars before sending to Langfuse. Fail-open on telemetry errors (no impact to chat latency).
+
+### Acceptance Criteria
+
+• Langfuse dashboard shows traces for each chat request with builder, retrieval, and completion spans.
+• Each span includes duration, token usage, and core metadata.
+• Retrieved RAG chunks appear as structured events with similarity and source info.
+• All logging gracefully disables when LANGFUSE_ENABLED=False.
+• Average trace overhead remains under 100 ms per request.

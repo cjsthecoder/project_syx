@@ -14,7 +14,8 @@ from fastapi.responses import JSONResponse
 from ..core.models import ChatRequest, ChatResponse, ErrorResponse
 from ..core.llm import generate_chat_response, get_llm_health
 from ..core.memory import get_memory_manager, set_last_context_tokens
-from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id
+from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id, set_route, clear_route
+from ..core.rag_manager import _load_route_config
 from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings, get_model_config
 from ..core.rag_manager import retrieve_context, merge_daily_and_main
@@ -94,6 +95,16 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                     0,
                     preview,
                 )
+                # [ROUTE] log with CHITCHAT-like bypass baseline
+                logger.debug(
+                    "[ROUTE] project_id=%s message_id=%s route=%s namespaces=%s rag_k=%s score_threshold=%.2f",
+                    proj,
+                    msg_id,
+                    "UNKNOWN",
+                    [],
+                    0,
+                    0.0,
+                )
                 logger.debug("builder unavailable; skipping RAG for this turn")
             else:
                 route = (b.get('route') or '').upper()
@@ -115,6 +126,25 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                     len(topics or []),
                     builder_prev,
                 )
+                # [ROUTE] selection and logging
+                try:
+                    rcfg = _load_route_config()
+                except Exception:
+                    rcfg = {}
+                rdef = rcfg.get(route or "OTHER") or rcfg.get("OTHER") or {}
+                namespaces = rdef.get("namespaces") or []
+                rag_k_route = int(rdef.get("rag_k", settings.rag_top_k))
+                score_th = float(rdef.get("score_threshold", settings.rag_score_threshold))
+                logger.debug(
+                    "[ROUTE] project_id=%s message_id=%s route=%s namespaces=%s rag_k=%s score_threshold=%.2f",
+                    proj,
+                    msg_id,
+                    route or "UNKNOWN",
+                    namespaces,
+                    rag_k_route,
+                    score_th,
+                )
+                set_route(route or "UNKNOWN")
                 # Strict skip: no retrieval for CHITCHAT or rag=false
                 if (not do_rag) or route == 'CHITCHAT':
                     logger.info("Chat: skipping RAG due to route=%s rag=%s", route, do_rag)
@@ -134,10 +164,9 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                         queries.extend(paraphrases[:3])
                         if hyde:
                             queries.append(hyde)
-                    preferred_ns = None
-                    if route in ('JIRA','CODE','DOCS'):
-                        preferred_ns = route.lower()
-                    primary_query = queries[0] if queries else request.message
+                    # Simple multi-query expansion: join variants to widen recall
+                    q_join = "\n".join([q for q in queries if q])
+                    primary_query = q_join if q_join else (request.message or "")
                     logger.debug(
                         "Chat: performing merged retrieval (daily+main) for project=%s route=%s conf=%.2f queries=%s",
                         request.project_id, route, conf, len(queries)
@@ -145,11 +174,11 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                     rc = merge_daily_and_main(
                         project_id=request.project_id,
                         query=primary_query,
-                        main_top_k=settings.rag_top_k,
+                        main_top_k=rag_k_route,
                         main_snippet_max_tokens=settings.rag_snippet_max_tokens,
-                        main_threshold=settings.rag_score_threshold,
-                        daily_top_k=(settings.daily_rag_k if daily_enabled else 0),
-                        daily_threshold=settings.daily_rag_score_threshold,
+                        main_threshold=score_th,
+                        daily_top_k=(rag_k_route if daily_enabled else 0),
+                        daily_threshold=score_th,
                         daily_weight=settings.daily_rag_weight,
                         daily_max_tokens=settings.daily_rag_max_tokens,
                         global_context_max_tokens=settings.rag_context_max_tokens,
@@ -158,10 +187,12 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                         dedupe_similarity_threshold=settings.dedupe_similarity_threshold,
                         prefer_daily=settings.dedupe_keep_daily,
                         topics=topics,
-                        preferred_namespace=preferred_ns,
+                        preferred_namespace=None,
                         topic_boost=settings.topic_boost,
                         decision_boost=settings.decision_boost,
                         question_boost=settings.question_boost,
+                        route_namespaces=namespaces,
+                        namespace_boost=settings.namespace_boost,
                     )
                     # [RETRIEVAL]
                     logger.debug(

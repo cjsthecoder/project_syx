@@ -166,6 +166,7 @@ def setup_logging() -> None:
 
 # Context variable for per-request message correlation id
 _message_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("message_id", default=None)
+_route_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("route", default=None)
 
 
 def set_message_id(message_id: str | None) -> None:
@@ -178,6 +179,18 @@ def get_message_id() -> str | None:
 
 def clear_message_id() -> None:
     _message_id_var.set(None)
+
+
+def set_route(route: str | None) -> None:
+    _route_var.set(route)
+
+
+def get_route() -> str | None:
+    return _route_var.get()
+
+
+def clear_route() -> None:
+    _route_var.set(None)
 
 
 def get_logger(name: str = None) -> logging.Logger:

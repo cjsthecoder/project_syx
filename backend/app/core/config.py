@@ -113,6 +113,7 @@ class Settings(BaseSettings):
     topic_boost: float = Field(default=1.10, gt=0.0, description="Multiplicative boost for topic overlap")
     decision_boost: float = Field(default=1.05, gt=0.0, description="Multiplicative boost for decision overlap")
     question_boost: float = Field(default=1.02, gt=0.0, description="Multiplicative boost for open-question overlap")
+    namespace_boost: float = Field(default=1.05, gt=0.0, description="Multiplicative boost for namespace match")
 
 
 # Global settings instance

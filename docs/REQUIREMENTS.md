@@ -792,3 +792,88 @@ This makes it easy to trace specific projects, conversations, and decisions.
 - Developers can quickly grep for stages like `[RETRIEVAL]` or `[ROLLOFF]`.  
 - No external tracing tools required; system is fully observable through native logs.  
 - Old Langfuse references removed; same logger reused for all instrumentation.
+
+
+## Version 2.5 — Route-Aware Retrieval
+
+### Purpose
+Improve RAG precision and contextual relevance by adjusting retrieval behavior based on the semantic intent (“route”) identified by the query builder.
+Each incoming message is classified as CODE, DOCS, OTHER, or CHITCHAT, and retrieval parameters (namespaces, thresholds, K-values) are tuned accordingly.
+
+### Functional Requirements
+
+#### FR-2.5.1 — Builder Output Utilization
+Use the existing builder LLM output to extract route and rag flags:
+
+```
+{"route": "CODE", "rag": true, "confidence": 0.91}
+```
+
+If `rag=false` or `route="CHITCHAT"`, skip retrieval entirely.
+
+#### FR-2.5.2 — Route Configuration Map
+Create `/app/config/meta_namespaces.json` defining namespaces and retrieval parameters per route:
+
+```
+{
+  "CODE": {
+    "namespaces": ["code", "config", "api"],
+    "rag_k": 8,
+    "score_threshold": 0.70
+  },
+  "DOCS": {
+    "namespaces": ["docs", "requirements", "notes"],
+    "rag_k": 5,
+    "score_threshold": 0.75
+  },
+  "OTHER": {
+    "namespaces": ["general", "project"],
+    "rag_k": 6,
+    "score_threshold": 0.72
+  },
+  "CHITCHAT": {
+    "namespaces": [],
+    "rag_k": 0,
+    "score_threshold": 0.0
+  }
+}
+```
+
+#### FR-2.5.3 — Retrieval Logic Update
+Modify `rag_manager.retrieve_context()` to:
+- Load the route configuration from `meta_namespaces.json`.
+- Retrieve top-K results from both `daily.faiss` and `index.faiss` using the selected namespaces.
+- Filter by `score_threshold`.
+- Merge, rank by similarity, and return the top K items.
+
+#### FR-2.5.4 — Namespace Boosting
+When embeddings are stored, include metadata such as:
+
+```
+{"namespace": "docs", "source": "REQUIREMENTS.md"}
+```
+
+During retrieval, apply a small boost (e.g., `similarity *= 1.05`) if the namespace matches one of the configured route namespaces.
+
+#### FR-2.5.5 — Logging Integration
+Add a `[ROUTE]` log event before retrieval:
+
+```
+[ROUTE] route=CODE namespaces=['code','config','api'] k=8 threshold=0.70
+```
+
+and after retrieval:
+
+```
+[RETRIEVAL] route=CODE hits=12 used=8 avg_similarity=0.82
+```
+
+#### FR-2.5.6 — Fallback Behavior
+If the builder route is unknown or the config file is missing, default to the “OTHER” route configuration.
+
+### Acceptance Criteria
+- CODE and DOCS queries retrieve from different namespaces with tuned thresholds.
+- CHITCHAT messages bypass RAG retrieval.
+- Logging clearly displays route and applied settings.
+- Retrieval results align with route-specific context (e.g., code for technical prompts, docs for requirements).
+- No breaking changes to the existing RAG pipeline or database schema.

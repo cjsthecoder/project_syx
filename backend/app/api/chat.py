@@ -5,7 +5,6 @@ This module provides the main chat functionality with LangChain integration.
 """
 
 import logging
-import time
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import JSONResponse
@@ -17,7 +16,6 @@ from ..utils.logging import RequestLogger, LLMLogger
 from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings, get_model_config
 from ..core.rag_manager import retrieve_context, merge_daily_and_main
-from ..core.telemetry import start_trace as tf_start_trace, start_span as tf_start_span, log_event as tf_log_event, end_span as tf_end_span, end_trace as tf_end_trace
 from ..core.database import get_session
 from ..core.db_models import Project
 from ..core.query_builder import build_query
@@ -39,15 +37,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
     It supports conversation history and project context (stubbed for V4).
     """
     try:
-        t0 = time.perf_counter()
-        trace = tf_start_trace(
-            name="chat_request",
-            metadata={
-                "project_id": request.project_id,
-                "conversation_id": request.conversation_id,
-                "message_chars": len(request.message or ""),
-            },
-        )
+        # (Telemetry removed)
         # Log the incoming request
         request_logger.log_request(
             endpoint="/chat",
@@ -80,14 +70,10 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 summary = " | ".join(parts)[:1000]
             except Exception:
                 summary = ''
-            builder_span = tf_start_span(trace, name="builder_llm", metadata={
-                "summary_preview": (summary[:200] if summary else None),
-                "user_preview": (request.message[:200] if request.message else None),
-            })
+            # (Telemetry removed)
             b = build_query(request.project_id, summary, request.message)
             if b is None:
                 logger.info("builder unavailable; skipping RAG for this turn")
-                tf_end_span(builder_span, metadata={"success": False})
             else:
                 route = (b.get('route') or '').upper()
                 do_rag = bool(b.get('rag'))
@@ -96,13 +82,6 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 standalone = b.get('standalone') or request.message
                 paraphrases = b.get('paraphrases') or []
                 hyde = b.get('hyde') or ''
-                tf_end_span(builder_span, metadata={
-                    "success": True,
-                    "route": route,
-                    "rag_used": do_rag,
-                    "builder_confidence": conf,
-                    "topics": ",".join(map(str, topics[:5])) if topics else None,
-                })
                 logger.info(
                     "builder result route=%s rag=%s conf=%.2f topics=%s standalone=%s paraphrases=%s",
                     route, do_rag, conf,
@@ -113,11 +92,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 # Strict skip: no retrieval for CHITCHAT or rag=false
                 if (not do_rag) or route == 'CHITCHAT':
                     logger.info("Chat: skipping RAG due to route=%s rag=%s", route, do_rag)
-                    rag_span = tf_start_span(trace, name="rag_retrieval", metadata={
-                        "skipped": True,
-                        "reason": ("route=CHITCHAT" if route == 'CHITCHAT' else "rag=false"),
-                    })
-                    tf_end_span(rag_span)
+                    # (Telemetry removed)
                 else:
                     # Check per-project toggle for Daily RAG. If disabled, set daily_top_k=0 to skip daily.
                     daily_enabled = True
@@ -141,11 +116,6 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                         "Chat: performing merged retrieval (daily+main) for project=%s route=%s conf=%.2f queries=%s",
                         request.project_id, route, conf, len(queries)
                     )
-                    rag_span = tf_start_span(trace, name="rag_retrieval", metadata={
-                        "route": route,
-                        "rag_used": True,
-                        "builder_confidence": conf,
-                    })
                     rc = merge_daily_and_main(
                         project_id=request.project_id,
                         query=primary_query,
@@ -170,24 +140,8 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                     if rc.get("context_text"):
                         system_prompt = rc["context_text"]
                         logger.debug(f"Chat: injecting merged context tokens={rc.get('tokens_used')}")
-                        # Emit per-snippet events (lightweight)
-                        for s in (rc.get("daily_texts") or []):
-                            tf_log_event(rag_span, name="rag_item", metadata={
-                                "source": "daily",
-                                "text_preview": s[:200],
-                            })
-                        for s in (rc.get("main_texts") or []):
-                            tf_log_event(rag_span, name="rag_item", metadata={
-                                "source": "main",
-                                "text_preview": s[:200],
-                            })
-                        tf_end_span(rag_span, metadata={
-                            "retrieval_count": len((rc.get("daily_texts") or [])) + len((rc.get("main_texts") or [])),
-                            "context_tokens": rc.get("tokens_used"),
-                        })
                     else:
                         logger.debug("Chat: no merged RAG context injected (empty)")
-                        tf_end_span(rag_span, metadata={"retrieval_count": 0, "context_tokens": 0})
         
         # Log LLM request
         llm_logger.log_llm_request(
@@ -198,9 +152,6 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         
         logger.debug(f"Chat: model={request.model or 'default'} message_len={len(request.message)} conv_id={request.conversation_id}")
         # Generate response using LangChain
-        comp_span = tf_start_span(trace, name="chat_completion", metadata={
-            "model": (request.model or get_model_config().get("model_name")),
-        })
         llm_response = generate_chat_response(
             message=request.message,
             conversation_history=conversation_history,
@@ -219,10 +170,6 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             tokens_used=llm_response.get("tokens_used"),
             conversation_id=request.conversation_id
         )
-        tf_end_span(comp_span, metadata={
-            "model": llm_response.get("llm_model"),
-            "response_tokens": llm_response.get("tokens_used"),
-        })
         logger.debug(f"Chat: response_len={len(llm_response['response'])} tokens_used={llm_response.get('tokens_used')} model={llm_response.get('llm_model')}")
         
         # Persist user and assistant messages (project-scoped working memory)
@@ -266,10 +213,6 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             user_id=request.conversation_id
         )
         
-        tf_end_trace(trace, metadata={
-            "success": True,
-            "response_time_ms": int((time.perf_counter() - t0) * 1000),
-        })
         return response
         
     except Exception as e:
@@ -304,11 +247,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 }
             )
     finally:
-        try:
-            # Ensure trace ends on any early return/exception
-            tf_end_trace(locals().get("trace"))
-        except Exception:
-            pass
+        pass
 
 
 @router.get("/chat/health")

@@ -10,11 +10,6 @@ langchain-openai==0.0.2
 langchain-community==0.0.13
 openai>=1.6.1,<2.0.0
 
-# Telemetry (V2.4.2)
-# Pin to v2 API and keep anyio<4 for FastAPI 0.104 compatibility
-langfuse==2.24.0
-anyio<4
-
 # Data validation and serialization
 pydantic==2.5.0
 pydantic-settings==2.1.0

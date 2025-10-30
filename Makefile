@@ -1,97 +1,4 @@
-.PHONY: langfuse-up langfuse-down langfuse-logs langfuse-secrets langfuse-fix-views langfuse-restart
-
-langfuse-build:
-	@if [ ! -d "langfuse-source" ]; then \
-		echo "📦 Cloning Langfuse source..."; \
-		git clone https://github.com/langfuse/langfuse.git langfuse-source; \
-	fi
-	@cd langfuse-source && git fetch --tags && git checkout main
-	@if [ -d ".env.build" ]; then \
-		echo "⚠️  .env.build is a directory — fixing it..."; \
-		rm -rf .env.build; \
-	fi
-	@if [ ! -f ".env.build" ]; then \
-		echo "🧩 Creating default .env.build for build-time variables..."; \
-		cat > .env.build <<'EOF' ;\
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/langfuse ;\
-NEXTAUTH_SECRET=dummysecret ;\
-NEXTAUTH_URL=http://localhost:3000 ;\
-SALT=dummysalt ;\
-CLICKHOUSE_URL=clickhouse://langfuse:langfuse@clickhouse:9000/langfuse ;\
-CLICKHOUSE_USER=langfuse ;\
-CLICKHOUSE_PASSWORD=langfuse ;\
-LANGFUSE_S3_EVENT_UPLOAD_BUCKET=dummy-bucket ;\
-LANGFUSE_S3_EVENT_UPLOAD_REGION=us-east-1 ;\
-LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID=dummy-access-key ;\
-LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY=dummy-secret-key ;\
-LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT=http://localhost:9000 ;\
-LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE=true ;\
-SENTRY_SUPPRESS_GLOBAL_ERROR_HANDLER_FILE_WARNING=1 ;\
-NEXT_BUILD_SKIP_TYPE_CHECK=1 ;\
-EOF ;\
-	fi
-	@echo "🏗️  Building Langfuse locally in Docker..."
-	docker run --rm -it \
-		-e COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
-		-e NODE_OPTIONS="--max-old-space-size=32768" \
-		-e HUSKY=0 \
-		-e CI=true \
-		-e SENTRY_SUPPRESS_GLOBAL_ERROR_HANDLER_FILE_WARNING=1 \
-		-v "$$(pwd)/langfuse-source":/app \
-		-v "$$(pwd)/.env.build:/app/.env" \
-		-w /app \
-		node:20-alpine sh -c "\
-			apk add --no-cache git && \
-			npm install -g corepack && \
-			corepack enable && \
-			pnpm install --no-frozen-lockfile && \
-			pnpm build && \
-			echo '✅ Build complete: package builds created (husky disabled, 32GB heap)'"
-	@echo "📁 Copying built artifacts into langfuse-server/dist..."
-	mkdir -p langfuse-server/dist
-	cp -r langfuse-source/web/.next langfuse-server/dist/web || true
-	cp -r langfuse-source/worker/dist langfuse-server/dist/worker || true
-	cp -r langfuse-source/ee/dist langfuse-server/dist/ee || true
-	cp -r langfuse-source/packages/shared/dist langfuse-server/dist/shared || true
-	@echo "✅ Langfuse build artifacts copied to langfuse-server/dist"
-
-langfuse-rebuild:
-	@echo "🧹 Cleaning old build artifacts..."
-	rm -rf langfuse-server/dist || true
-	docker compose -f langfuse-server/docker-compose.yml down || true
-	docker system prune -f --volumes || true
-	@echo "🏗️  Rebuilding Langfuse..."
-	make langfuse-build
-	@echo "🚀 Restarting Langfuse stack..."
-	make langfuse-up
-	@echo "✅ Rebuild complete. Langfuse is live on http://localhost:3000"
-
-langfuse-up:
-	docker compose -f langfuse-server/docker-compose.yml up -d
-
-langfuse-down:
-	docker compose -f langfuse-server/docker-compose.yml down
-
-langfuse-logs:
-	docker compose -f langfuse-server/docker-compose.yml logs -f --tail=200
-
-langfuse-restart:
-	@echo "Restarting Langfuse stack (down -> up)..."
-	$(MAKE) langfuse-down
-	$(MAKE) langfuse-up
-
-# Create/refresh dev views expected by Langfuse UI when running Postgres-only v2
-langfuse-fix-views:
-	@echo "Creating/refreshing observations_view and traces_view in Postgres..."
-	docker compose -f langfuse-server/docker-compose.yml exec postgres psql -U postgres -d langfuse -c "DROP VIEW IF EXISTS observations_view;"
-	docker compose -f langfuse-server/docker-compose.yml exec postgres psql -U postgres -d langfuse -c "DROP VIEW IF EXISTS traces_view;"
-	docker compose -f langfuse-server/docker-compose.yml exec postgres psql -U postgres -d langfuse -c "CREATE OR REPLACE VIEW observations_view AS SELECT id, start_time, end_time, total_tokens, calculated_total_cost, 0::numeric AS calculated_input_cost, 0::numeric AS calculated_output_cost, type, trace_id, model, project_id, 0::bigint AS prompt_tokens, 0::bigint AS completion_tokens FROM observations;"
-	docker compose -f langfuse-server/docker-compose.yml exec postgres psql -U postgres -d langfuse -c "CREATE OR REPLACE VIEW traces_view AS SELECT id, timestamp, 0::numeric AS duration, name, project_id FROM traces;"
-
-langfuse-secrets:
-	@echo "NEXTAUTH_SECRET: $$(openssl rand -base64 32)"
-	@echo "SALT:            $$(openssl rand -hex 32)"
-	@echo "ENCRYPTION_KEY:  $$(openssl rand -hex 32)"
+.PHONY:
 # Morpheus AGI Chatbot Framework - Build Automation
 # Make targets for development and deployment
 
@@ -383,26 +290,7 @@ setup-env:
 		echo "CHAT_HISTORY_LIMIT=20"; \
 		echo "# Number of recent messages kept per project in working memory"; \
 		echo ""; \
-		echo "LANGFUSE_ENABLED=True"; \
-		echo "# V2.4.2: Enable Langfuse tracing"; \
-		echo ""; \
-		echo "LANGFUSE_BASE_URL=http://localhost:3000"; \
-		echo "# V2.4.1: Langfuse base URL"; \
-		echo ""; \
-		echo "LANGFUSE_PROJECT_ID=cmhayuox200069rdvsnyfdkh7"; \
-		echo "# V2.4.2: Langfuse Project ID"; \
-		echo ""; \
-		echo "LANGFUSE_PUBLIC_KEY=***REMOVED***"; \
-		echo "# V2.4.2: Langfuse Public key"; \
-		echo ""; \
-		echo "LANGFUSE_SECRET_KEY=***REMOVED***"; \
-		echo "# V2.4.2: Langfuse Secret key"; \
-		echo ""; \
-		echo "LANGFUSE_SAMPLE_RATE=1.0"; \
-		echo "# V2.4.2: Trace sampling rate (0..1)"; \
-		echo ""; \
-		echo "LANGFUSE_LOG_LEVEL=INFO"; \
-		echo "# V2.4.2: SDK log level"; \
+
 	} > .env; \
 	echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
 

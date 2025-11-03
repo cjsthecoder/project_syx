@@ -115,6 +115,20 @@ class Settings(BaseSettings):
     question_boost: float = Field(default=1.02, gt=0.0, description="Multiplicative boost for open-question overlap")
     namespace_boost: float = Field(default=1.05, gt=0.0, description="Multiplicative boost for namespace match")
 
+    # V2.6: Defaults and file paths
+    default_system_prompt_path: str = Field(
+        default="backend/app/config/defaults/system_prompt.txt",
+        description="Path to the default system prompt file"
+    )
+    default_personality_prompt_path: str = Field(
+        default="backend/app/config/defaults/personality.json",
+        description="Path to the default personality JSON file"
+    )
+    # V2.6: Size caps
+    system_prompt_max_bytes: int = Field(default=64 * 1024, gt=0, description="Max size of system_prompt.txt in bytes")
+    personality_max_bytes: int = Field(default=8 * 1024, gt=0, description="Max size of personality.json in bytes")
+    payload_max_bytes: int = Field(default=128 * 1024, gt=0, description="Max size of combined request payload in bytes")
+
 
 # Global settings instance
 settings = Settings()

@@ -25,6 +25,7 @@ from .api import files as files_api
 from .api import llm_models
 from .utils.logging import setup_logging, get_logger
 from .core.database import init_db
+from .core.personality import backfill_all_projects
 
 # Setup logging (only once, check if already configured)
 setup_logging()
@@ -38,6 +39,11 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     logger.info("FastAPI startup")
     init_db()
+    # V2.6: Backfill system prompt and personality defaults for existing projects
+    try:
+        backfill_all_projects()
+    except Exception:
+        pass
     try:
         yield
     finally:

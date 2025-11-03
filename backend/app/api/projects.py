@@ -21,6 +21,13 @@ from ..utils.errors import handle_project_error, log_error_context
 import uuid
 import os
 from ..core.memory import get_memory_manager, get_last_context_tokens
+from ..core.personality import (
+    load_project_system_prompt,
+    load_project_personality,
+    save_project_system_prompt,
+    save_project_personality,
+    seed_project_defaults,
+)
 from ..core.daily_rag import daily_stats
 
 logger = logging.getLogger(__name__)
@@ -97,6 +104,11 @@ async def create_or_switch_project(request: ProjectRequest) -> JSONResponse:
                 obj = Project(id=new_id, name=request.project_name.strip(), description=request.project_name.strip(), system=False)
                 session.add(obj)
                 session.commit()
+                # V2.6: seed default prompt/personality files
+                try:
+                    seed_project_defaults(obj.id)
+                except Exception:
+                    pass
                 _current_project = obj.id
                 message = f"Created and switched to new project '{obj.name}'"
         with get_session() as session:
@@ -312,3 +324,67 @@ async def get_project_chats(project_id: str) -> JSONResponse:
     except Exception as e:
         logger.error(f"Failed to get chats for project {project_id}: {e}")
         return JSONResponse(status_code=500, content={"error": "Failed to retrieve chats"})
+
+
+@router.get("/projects/{project_id}/personality")
+async def get_project_personality(project_id: str) -> JSONResponse:
+    """Return the project's personality JSON and current system prompt."""
+    try:
+        p = load_project_personality(project_id)
+        sp = load_project_system_prompt(project_id)
+        try:
+            logger.debug(
+                "[PROJECT] personality_get project_id=%s sp_bytes=%s tone=%s verbosity=%s format=%s",
+                project_id,
+                len((sp or "").encode("utf-8")),
+                p.get("tone"),
+                p.get("verbosity"),
+                p.get("format"),
+            )
+        except Exception:
+            pass
+        return JSONResponse(status_code=200, content={
+            "project_id": project_id,
+            "personality": p,
+            "system_prompt": sp,
+            "system_prompt_bytes": len((sp or "").encode("utf-8")),
+        })
+    except Exception as e:
+        logger.error(f"Failed to load personality for project {project_id}: {e}")
+        return JSONResponse(status_code=500, content={"error": "Failed to load personality"})
+
+
+@router.patch("/projects/{project_id}/personality")
+async def patch_project_personality(project_id: str, payload: dict) -> JSONResponse:
+    """Update the project's personality JSON. Normalizes and persists immediately."""
+    try:
+        current = load_project_personality(project_id)
+        current.update(payload or {})
+        saved = save_project_personality(project_id, current)
+        return JSONResponse(status_code=200, content={
+            "project_id": project_id,
+            "personality": saved,
+        })
+    except ValueError as ve:
+        return JSONResponse(status_code=400, content={"error": str(ve)})
+    except Exception as e:
+        logger.error(f"Failed to save personality for project {project_id}: {e}")
+        return JSONResponse(status_code=500, content={"error": "Failed to save personality"})
+
+
+@router.put("/projects/{project_id}/system_prompt")
+async def put_project_system_prompt(project_id: str, payload: dict) -> JSONResponse:
+    """Replace the project's system prompt text with provided content."""
+    try:
+        content = str((payload or {}).get("content", ""))
+        save_project_system_prompt(project_id, content)
+        return JSONResponse(status_code=200, content={
+            "project_id": project_id,
+            "content": content,
+            "bytes": len(content.encode("utf-8")),
+        })
+    except ValueError as ve:
+        return JSONResponse(status_code=400, content={"error": str(ve)})
+    except Exception as e:
+        logger.error(f"Failed to save system prompt for project {project_id}: {e}")
+        return JSONResponse(status_code=500, content={"error": "Failed to save system prompt"})

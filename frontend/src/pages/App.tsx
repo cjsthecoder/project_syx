@@ -38,6 +38,15 @@ export default function App() {
   const [stats, setStats] = useState<{ storage_bytes: number; index_size_bytes: number; tokens_indexed: number; context_tokens: number; file_count: number; daily_index_size_bytes?: number; daily_tokens_indexed?: number; daily_vector_count?: number; active_pairs?: number } | null>(null)
   const [projectInfo, setProjectInfo] = useState<{ name?: string; description?: string; created_at?: string; system?: boolean; daily_rag_enabled?: boolean } | null>(null)
 
+  // V2.6 Personality UI state
+  const [showPersonalityModal, setShowPersonalityModal] = useState(false)
+  const [systemPrompt, setSystemPrompt] = useState('')
+  const [tone, setTone] = useState<'analytical'|'friendly'|'creative'|'formal'>('analytical')
+  const [verbosity, setVerbosity] = useState<'concise'|'balanced'|'detailed'>('concise')
+  const [formatPref, setFormatPref] = useState<'markdown'|'plain'|'html'>('markdown')
+  const [creativity, setCreativity] = useState(0.4)
+  const [domainFocus, setDomainFocus] = useState('')
+
   const listRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
@@ -116,6 +125,8 @@ export default function App() {
       loadFiles(projectId)
       loadStats(projectId)
       loadProjectInfo(projectId)
+      // Preload personality when switching projects
+      loadPersonality(projectId)
     }
   }, [projectId, loadChats, loadFiles, loadStats, loadProjectInfo])
 
@@ -212,6 +223,45 @@ export default function App() {
       await loadStats(projectId)
     } catch (e: any) {
       setError(e?.message || 'Delete failed')
+    }
+  }
+
+  // V2.6: Personality endpoints
+  async function loadPersonality(pid: string) {
+    try {
+      const data = await api<{ project_id: string; personality: any; system_prompt: string }>(`/projects/${pid}/personality`)
+      const p = data.personality || {}
+      setSystemPrompt(data.system_prompt || '')
+      setTone((p.tone || 'analytical').toLowerCase())
+      setVerbosity((p.verbosity || 'concise').toLowerCase())
+      setFormatPref((p.format || 'markdown').toLowerCase())
+      setCreativity(parseFloat(p.creativity ?? 0.4) || 0.4)
+      setDomainFocus(Array.isArray(p.domain_focus) ? p.domain_focus.join(', ') : '')
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load personality')
+    }
+  }
+
+  async function savePersonality() {
+    if (!projectId) return
+    try {
+      await api(`/projects/${projectId}/system_prompt`, { method: 'PUT', body: JSON.stringify({ content: systemPrompt }) })
+      const payload = {
+        tone,
+        verbosity,
+        format: formatPref,
+        creativity,
+        domain_focus: domainFocus.split(',').map((s) => s.trim()).filter(Boolean),
+      }
+      await api(`/projects/${projectId}/personality`, { method: 'PATCH', body: JSON.stringify(payload) })
+      setShowPersonalityModal(false)
+      // Return to Manage Project modal after saving
+      if (projectId) {
+        try { await loadProjectInfo(projectId) } catch {}
+      }
+      setTimeout(() => setShowManageModal(true), 0)
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save personality')
     }
   }
 
@@ -346,6 +396,55 @@ export default function App() {
         </DialogFooter>
       </Dialog>
 
+      {/* Personality Modal (V2.6) */}
+      <Dialog open={showPersonalityModal} onClose={() => setShowPersonalityModal(false)}>
+        <DialogHeader>Project Personality</DialogHeader>
+        <div className="space-y-4 px-4 pb-2">
+          <div>
+            <label className="block text-sm mb-1">System Prompt</label>
+            <Textarea className="w-full min-h-[700px]" value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-3 gap-3 items-end">
+            <div>
+              <label className="block text-sm mb-1">Tone</label>
+              <Select value={tone} onChange={(e) => setTone(e.target.value as any)}>
+                {['analytical','friendly','creative','formal'].map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <label className="block text-sm mb-1">Verbosity</label>
+              <Select value={verbosity} onChange={(e) => setVerbosity(e.target.value as any)}>
+                {['concise','balanced','detailed'].map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <label className="block text-sm mb-1">Format</label>
+              <Select value={formatPref} onChange={(e) => setFormatPref(e.target.value as any)}>
+                {['markdown','plain','html'].map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Creativity ({creativity.toFixed(2)})</label>
+            <input type="range" min={0} max={1} step={0.01} value={creativity} onChange={(e) => setCreativity(parseFloat(e.target.value))} className="w-full" />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Domain Focus (comma-separated)</label>
+            <input className="border rounded px-2 py-1 w-full" value={domainFocus} onChange={(e) => setDomainFocus(e.target.value)} placeholder="AI, neuroscience" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={() => setShowPersonalityModal(false)}>Cancel</Button>
+          <Button onClick={savePersonality}>Save</Button>
+        </DialogFooter>
+      </Dialog>
+
       {/* Manage Project Modal */}
       <Dialog open={showManageModal} onClose={() => { setShowManageModal(false); if (projectId) loadStats(projectId) }}>
         <DialogHeader>Manage Project</DialogHeader>
@@ -354,6 +453,22 @@ export default function App() {
             <div><strong>Name:</strong> {projectInfo?.name ?? projectId}</div>
             {projectInfo?.created_at && <div><strong>Created:</strong> {new Date(projectInfo.created_at).toLocaleString()}</div>}
             {projectInfo?.system && <div className="text-amber-600">System project</div>}
+          </div>
+
+          {/* V2.6: Personality manager entry point */}
+          <div className="flex items-center justify-start">
+            <Button
+              className="bg-black !text-white hover:bg-gray-900 border-transparent dark:!bg-black dark:!text-white dark:hover:!bg-gray-900"
+              onClick={async () => {
+                if (projectId) {
+                  await loadPersonality(projectId)
+                }
+                setShowManageModal(false)
+                setTimeout(() => setShowPersonalityModal(true), 0)
+              }}
+            >
+              Personality
+            </Button>
           </div>
 
           <div className="flex items-center gap-2">

@@ -19,6 +19,7 @@ from ..core.rag_manager import _load_route_config
 from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings, get_model_config
 from ..core.rag_manager import retrieve_context, merge_daily_and_main
+from ..core.personality import load_project_system_prompt, load_project_personality
 from ..core.database import get_session
 from ..core.db_models import Project
 from ..core.query_builder import build_query
@@ -65,9 +66,34 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             proj_msgs = memory_manager.get_project_history(request.project_id)
             # chronological messages already; map to role/content for LLM
             conversation_history = [{"role": m["role"], "content": m["content"]} for m in proj_msgs]
-        
+
+        # V2.6: Load project system prompt and personality (if project context)
+        base_system_prompt = None
+        assistant_hint = None
+        personality_creativity = None
+        if request.project_id:
+            try:
+                base_system_prompt = load_project_system_prompt(request.project_id)
+                p = load_project_personality(request.project_id)
+                personality_creativity = float(p.get("creativity") or 0.0)
+                # Assistant hint using standard template
+                tone = p.get("tone") or "analytical"
+                verb = p.get("verbosity") or "concise"
+                fmt = p.get("format") or "markdown"
+                domains = p.get("domain_focus") or []
+                if not isinstance(domains, list):
+                    domains = []
+                assistant_hint = (
+                    f"Follow these preferences: tone={tone}, verbosity={verb}, format={fmt}, "
+                    f"domain_focus={domains}. Respond concisely in the chosen format."
+                )
+            except Exception:
+                base_system_prompt = None
+                assistant_hint = None
+                personality_creativity = None
+
         # Optional RAG retrieval (V2.3.1: builder + daily/main merge)
-        system_prompt = None
+        rag_system_prompt = None
         if settings.rag_on_chat and request.project_id:
             # Summarize recent pairs (simple heuristic)
             summary = ''
@@ -212,12 +238,28 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                         int(rc.get("dedupe_near_removed", 0)),
                     )
                     if rc.get("context_text"):
-                        system_prompt = rc["context_text"]
+                        rag_system_prompt = rc["context_text"]
                         logger.debug(f"Chat: injecting merged context tokens={rc.get('tokens_used')}")
                     else:
                         logger.debug("Chat: no merged RAG context injected (empty)")
-        
+        # Enforce model whitelist if override provided
+        if request.model:
+            try:
+                if request.model not in settings.available_models:
+                    raise HTTPException(status_code=400, detail={"error": "Model not allowed"})
+            except Exception:
+                pass
         # Log LLM request
+        try:
+            logger.debug(
+                "[PROMPT] base_sys_bytes=%s rag_sys_bytes=%s hint_bytes=%s base_sys_preview=\"%s\"",
+                len((base_system_prompt or "").encode("utf-8")),
+                len((rag_system_prompt or "").encode("utf-8")),
+                len((assistant_hint or "").encode("utf-8")),
+                ((base_system_prompt or "")[:200].replace("\n", " ")),
+            )
+        except Exception:
+            pass
         llm_logger.log_llm_request(
             model="gpt-5",  # Will be dynamic in future
             message_length=len(request.message),
@@ -230,8 +272,11 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         llm_response = generate_chat_response(
             message=request.message,
             conversation_history=conversation_history,
-            system_prompt=system_prompt,
-            override_model=request.model
+            base_system_prompt=base_system_prompt,
+            assistant_hint=assistant_hint,
+            rag_system_prompt=rag_system_prompt,
+            override_model=request.model,
+            temperature_override=personality_creativity,
         )
         t_model1 = time.time()
         

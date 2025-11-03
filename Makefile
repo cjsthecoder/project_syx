@@ -273,7 +273,7 @@ setup-env:
 		echo "RAG_SCORE_THRESHOLD=0.5"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
-		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
+		echo "CHAT_HISTORY_LIMIT_PAIRS=10"; \
 		echo "# V2.3: Number of prompt/response pairs kept in working memory"; \
 		echo ""; \
 		echo "DAILY_RAG_ENABLED=true"; \
@@ -326,6 +326,12 @@ setup-env:
 		echo ""; \
 		echo "CHAT_HISTORY_LIMIT=20"; \
 		echo "# Number of recent messages kept per project in working memory"; \
+		echo ""; \
+		echo "DEFAULT_SYSTEM_PROMPT_PATH=app/config/defaults/system_prompt.txt"; \
+		echo "# V2.6: Default system prompt file path (relative to backend/ cwd)"; \
+		echo ""; \
+		echo "DEFAULT_PERSONALITY_PROMPT_PATH=app/config/defaults/personality.json"; \
+		echo "# V2.6: Default personality JSON file path (relative to backend/ cwd)"; \
 		echo ""; \
 	} > .env
 	@echo "✅ Created .env with defaults (update OPENAI_API_KEY)"

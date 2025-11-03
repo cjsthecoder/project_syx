@@ -22,6 +22,8 @@ class LLMProvider:
         """Initialize the LLM provider."""
         self.settings = get_settings()
         self._llm: Optional[ChatOpenAI] = None
+        # Cache of models that do not support non-default temperature
+        self._temp_unsupported: set[str] = set()
         self._initialize_llm()
     
     def _initialize_llm(self) -> None:
@@ -47,11 +49,14 @@ class LLMProvider:
             raise
     
     def generate_response(
-        self, 
-        message: str, 
+        self,
+        message: str,
         conversation_history: Optional[List[Dict[str, str]]] = None,
-        system_prompt: Optional[str] = None,
-        override_model: Optional[str] = None
+        base_system_prompt: Optional[str] = None,
+        assistant_hint: Optional[str] = None,
+        rag_system_prompt: Optional[str] = None,
+        override_model: Optional[str] = None,
+        temperature_override: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Generate a response using the LLM.
@@ -71,9 +76,15 @@ class LLMProvider:
             # Build message history
             messages = []
             
-            # Add system prompt if provided
-            if system_prompt:
-                messages.append(SystemMessage(content=system_prompt))
+            # V2.6: Add base project system prompt first
+            if base_system_prompt:
+                messages.append(SystemMessage(content=base_system_prompt))
+            # V2.6: Add assistant personality hint
+            if assistant_hint:
+                messages.append(AIMessage(content=assistant_hint))
+            # V2.6: Add RAG merged context as system message (after hint, before user)
+            if rag_system_prompt:
+                messages.append(SystemMessage(content=rag_system_prompt))
             
             # Add conversation history
             if conversation_history:
@@ -85,21 +96,70 @@ class LLMProvider:
             
             # Add current user message
             messages.append(HumanMessage(content=message))
+
+            # Debug: show roles and content lengths of messages being sent
+            try:
+                roles = [getattr(m, "type", m.__class__.__name__) for m in messages]
+                lens = [len(getattr(m, "content", "") or "") for m in messages]
+                logger.debug("[PROMPT] sending messages roles=%s lens=%s", roles, lens)
+            except Exception:
+                pass
             
-            # Optionally use an override model for this call
-            if override_model and override_model != self.settings.model_name:
-                temp_llm = ChatOpenAI(
+            # Determine temperature
+            temp_value = (
+                float(temperature_override)
+                if temperature_override is not None
+                else self.settings.model_temperature
+            )
+            # Optionally use an override model for this call with temperature fallback + model capability cache
+            def _invoke_with(model_name: str, temperature: float):
+                llm = ChatOpenAI(
                     openai_api_key=self.settings.openai_api_key,
-                    model_name=override_model,
-                    temperature=self.settings.model_temperature,
+                    model_name=model_name,
+                    temperature=temperature,
                     model_kwargs={"max_completion_tokens": self.settings.model_max_tokens},
                     streaming=False,
                 )
-                response = temp_llm.invoke(messages)
-                used_model = override_model
+                return llm.invoke(messages)
+
+            used_model = self.settings.model_name
+            model_to_use = override_model or self.settings.model_name
+            # Decide effective temperature based on cache (skip override if unsupported for this model)
+            if model_to_use in self._temp_unsupported:
+                effective_temp = self.settings.model_temperature
             else:
-                response = self._llm.invoke(messages)
-                used_model = self.settings.model_name
+                effective_temp = (
+                    float(temperature_override)
+                    if temperature_override is not None
+                    else self.settings.model_temperature
+                )
+            try:
+                if override_model and override_model != self.settings.model_name:
+                    used_model = override_model
+                    response = _invoke_with(override_model, effective_temp)
+                else:
+                    if effective_temp != self.settings.model_temperature:
+                        response = _invoke_with(self.settings.model_name, effective_temp)
+                    else:
+                        response = self._llm.invoke(messages)
+            except Exception as e:
+                # Fallback: retry with default temperature if temperature override is not supported
+                msg = str(e).lower()
+                if "temperature" in msg or "unsupported_value" in msg or "invalid_request_error" in msg:
+                    # Remember that this model doesn't support non-default temperature
+                    first_time = model_to_use not in self._temp_unsupported
+                    self._temp_unsupported.add(model_to_use)
+                    if first_time:
+                        logger.info("LLM model %s does not support temperature; using default thereafter", model_to_use)
+                    # Retry once with default temperature, silently on subsequent calls
+                    if override_model and override_model != self.settings.model_name:
+                        response = _invoke_with(override_model, self.settings.model_temperature)
+                        used_model = override_model
+                    else:
+                        response = _invoke_with(self.settings.model_name, self.settings.model_temperature)
+                        used_model = self.settings.model_name
+                else:
+                    raise
             
             # Extract response content and metadata
             response_content = response.content if hasattr(response, 'content') else str(response)
@@ -178,15 +238,21 @@ def reset_llm_provider() -> None:
 def generate_chat_response(
     message: str,
     conversation_history: Optional[List[Dict[str, str]]] = None,
-    system_prompt: Optional[str] = None,
+    base_system_prompt: Optional[str] = None,
+    assistant_hint: Optional[str] = None,
+    rag_system_prompt: Optional[str] = None,
     override_model: Optional[str] = None,
+    temperature_override: Optional[float] = None,
 ) -> Dict[str, Any]:
     provider = get_llm_provider()
     return provider.generate_response(
         message=message,
         conversation_history=conversation_history,
-        system_prompt=system_prompt,
+        base_system_prompt=base_system_prompt,
+        assistant_hint=assistant_hint,
+        rag_system_prompt=rag_system_prompt,
         override_model=override_model,
+        temperature_override=temperature_override,
     )
 
 

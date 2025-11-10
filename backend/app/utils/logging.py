@@ -167,6 +167,7 @@ def setup_logging() -> None:
 # Context variable for per-request message correlation id
 _message_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("message_id", default=None)
 _route_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("route", default=None)
+_ns_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("namespace", default=None)
 
 
 def set_message_id(message_id: str | None) -> None:
@@ -191,6 +192,18 @@ def get_route() -> str | None:
 
 def clear_route() -> None:
     _route_var.set(None)
+
+
+def set_namespace(namespace: str | None) -> None:
+    _ns_var.set(namespace)
+
+
+def get_namespace() -> str | None:
+    return _ns_var.get()
+
+
+def clear_namespace() -> None:
+    _ns_var.set(None)
 
 
 def get_logger(name: str = None) -> logging.Logger:
@@ -231,7 +244,7 @@ class RequestLogger:
         **kwargs
     ) -> None:
         """Log a response."""
-        self.logger.info(
+        self.logger.debug(
             f"Response: {endpoint} -> {status_code} ({response_time:.3f}s)",
             extra={
                 "endpoint": endpoint,

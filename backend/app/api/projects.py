@@ -28,7 +28,11 @@ from ..core.personality import (
     save_project_personality,
     seed_project_defaults,
 )
+from ..core.database import get_session
+from ..core.db_models import ChatMessage
 from ..core.daily_rag import daily_stats
+from ..core.rag_manager import rebuild_faiss_index
+import shutil
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -107,10 +111,31 @@ async def create_or_switch_project(request: ProjectRequest) -> JSONResponse:
                 # V2.6: seed default prompt/personality files
                 try:
                     seed_project_defaults(obj.id)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("[PROJECT] Failed to seed defaults for project %s: %s", obj.id, e, exc_info=True)
                 _current_project = obj.id
                 message = f"Created and switched to new project '{obj.name}'"
+                # V2.8: Seed DEFAULT_RAG.txt and rebuild RAG
+                try:
+                    uploads_dir = os.path.join("memory", obj.id, "uploads")
+                    os.makedirs(uploads_dir, exist_ok=True)
+                    default_src = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "defaults", "DEFAULT_RAG.txt"))
+                    default_dst = os.path.join(uploads_dir, "DEFAULT_RAG.txt")
+                    if os.path.isfile(default_src):
+                        if os.path.exists(default_dst):
+                            logger.warning("[INIT] DEFAULT_RAG.txt already exists for project %s; skipping copy", obj.id)
+                        else:
+                            shutil.copy(default_src, default_dst)
+                            logger.info("[INIT] Added default RAG file to %s", default_dst)
+                    else:
+                        logger.warning("[WARN] DEFAULT_RAG.txt not found; project %s created without baseline knowledge.", obj.id)
+                    try:
+                        rebuild_faiss_index(obj.id)
+                        logger.info("[INIT] RAG rebuilt for project %s (includes DEFAULT_RAG.txt when present)", obj.id)
+                    except Exception as re:
+                        logger.warning("[INIT] RAG rebuild failed for project %s: %s", obj.id, re)
+                except Exception as se:
+                    logger.warning("[INIT] Failed seeding default RAG for project %s: %s", obj.id, se)
         with get_session() as session:
             rows = session.exec(select(Project)).all()
             available_projects = [p.id for p in rows]
@@ -159,7 +184,10 @@ async def rename_project(project_id: str, request: ProjectRequest) -> JSONRespon
                 obj.daily_rag_enabled = bool(request.daily_rag_enabled)
             session.add(obj)
             session.commit()
-        return JSONResponse(status_code=200, content={"success": True, "response": "Updated", "project_id": project_id, "name": obj.name, "daily_rag_enabled": obj.daily_rag_enabled})
+            # capture values before session context exits to avoid DetachedInstanceError
+            name_val = obj.name
+            daily_val = obj.daily_rag_enabled
+        return JSONResponse(status_code=200, content={"success": True, "response": "Updated", "project_id": project_id, "name": name_val, "daily_rag_enabled": daily_val})
     except HTTPException:
         raise
     except Exception as e:
@@ -185,16 +213,16 @@ async def delete_project(project_id: str) -> JSONResponse:
                     for name in files:
                         try:
                             os.remove(os.path.join(root, name))
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning("[PROJECT] Failed removing file %s: %s", os.path.join(root, name), e)
                     for name in dirs:
                         try:
                             os.rmdir(os.path.join(root, name))
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning("[PROJECT] Failed removing dir %s: %s", os.path.join(root, name), e)
                 os.rmdir(base)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[PROJECT] Failed cleaning project directory %s: %s", base, e)
         # Reset current project to Continuum if needed
         global _current_project
         if _current_project == project_id:
@@ -314,6 +342,8 @@ async def get_project_chats(project_id: str) -> JSONResponse:
                 "role": m.get("role"),
                 "content": m.get("content"),
                 "created_at": (m.get("created_at").isoformat() if hasattr(m.get("created_at"), "isoformat") else m.get("created_at")),
+                "forget": (bool(m.get("forget")) if m.get("role") == "assistant" else None),
+                "keep": (bool(m.get("keep")) if m.get("role") == "assistant" else None),
             }
             for m in messages
         ]
@@ -322,8 +352,56 @@ async def get_project_chats(project_id: str) -> JSONResponse:
             "messages": normalized,
         })
     except Exception as e:
-        logger.error(f"Failed to get chats for project {project_id}: {e}")
-        return JSONResponse(status_code=500, content={"error": "Failed to retrieve chats"})
+        logger.error("Failed to get chats for project %s: %s", project_id, e, exc_info=True)
+        return JSONResponse(status_code=500, content={"error": "Failed to retrieve chats", "detail": str(e)})
+
+
+@router.patch("/projects/{project_id}/chats/{assistant_msg_id}")
+async def set_chat_forget(project_id: str, assistant_msg_id: int, payload: dict) -> JSONResponse:
+    """Set the forget and/or keep flags for an assistant message (pair-level control)."""
+    try:
+        forget_val_present = "forget" in (payload or {})
+        keep_val_present = "keep" in (payload or {})
+        if not forget_val_present and not keep_val_present:
+            return JSONResponse(status_code=400, content={"error": "No updatable fields in payload"})
+        forget_val = bool((payload or {}).get("forget", False)) if forget_val_present else None
+        keep_val = bool((payload or {}).get("keep", False)) if keep_val_present else None
+        with get_session() as session:
+            row = session.get(ChatMessage, assistant_msg_id)
+            if not row or row.project_id != project_id or row.role != "assistant":
+                return JSONResponse(status_code=404, content={"error": "Assistant message not found"})
+            if forget_val_present:
+                row.forget = bool(forget_val)  # type: ignore[attr-defined]
+            if keep_val_present:
+                setattr(row, "keep", bool(keep_val))
+            session.add(row)
+            session.commit()
+        # Also update in-memory deque if present
+        try:
+            mm = get_memory_manager()
+            dq = mm.project_deques.get(project_id)
+            if dq:
+                for m in dq:
+                    if m.get("id") == assistant_msg_id and m.get("role") == "assistant":
+                        if forget_val_present:
+                            m["forget"] = bool(forget_val)
+                        if keep_val_present:
+                            m["keep"] = bool(keep_val)
+                        break
+        except Exception:
+            pass
+        return JSONResponse(
+            status_code=200,
+            content={
+                "project_id": project_id,
+                "assistant_msg_id": assistant_msg_id,
+                **({"forget": bool(forget_val)} if forget_val_present else {}),
+                **({"keep": bool(keep_val)} if keep_val_present else {}),
+            }
+        )
+    except Exception as e:
+        logger.error("Failed to update forget flag project_id=%s assistant_msg_id=%s: %s", project_id, str(assistant_msg_id), e, exc_info=True)
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @router.get("/projects/{project_id}/personality")

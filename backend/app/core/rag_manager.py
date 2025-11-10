@@ -59,7 +59,7 @@ def _load_namespace_globs_map(project_id: str) -> Dict[str, List[str]]:
         base = os.path.join("memory", project_id)
         path = os.path.join(base, "namespace_map.json")
         if not os.path.isfile(path):
-            logger.warning("Namespace map missing for project=%s; defaulting to 'general' for all files", project_id)
+            logger.info("Namespace map missing for project=%s; defaulting to 'general' for all files", project_id)
             return {}
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -74,7 +74,7 @@ def _resolve_namespace(project_id: str, uploads_rel_path: str, ns_map: Optional[
     """Resolve namespace for a given file path relative to uploads/ using case-insensitive, first-match-wins globs."""
     import fnmatch
     if ns_map is None:
-        ns_map = _load_namespace_map(project_id)
+        ns_map = _load_namespace_globs_map(project_id)
     path_l = uploads_rel_path.replace("\\", "/").lower()
     for ns, patterns in ns_map.items():
         for pat in patterns:
@@ -146,8 +146,9 @@ def rebuild_faiss_index(project_id: str) -> str:
 
     files = []
     if os.path.isdir(uploads_dir):
-        for name in os.listdir(uploads_dir):
-            files.append(os.path.join(uploads_dir, name))
+        for root, _, names in os.walk(uploads_dir):
+            for name in names:
+                files.append(os.path.join(root, name))
 
     texts: List[str] = []
     metadatas: List[dict] = []
@@ -160,7 +161,7 @@ def rebuild_faiss_index(project_id: str) -> str:
         uploads_rel = os.path.relpath(f, uploads_dir).replace("\\", "/")
         file_ns = _resolve_namespace(project_id, uploads_rel, ns_map)
         for raw_text, meta in _read_file_text(f):
-            collected.append((raw_text, meta))
+            collected.append((raw_text, meta, file_ns))
             fname = meta.get("filename") or os.path.basename(f)
             file_token_sums[fname] = file_token_sums.get(fname, 0) + _count_tokens(raw_text)
             pg = int(meta.get("page_number") or 1)
@@ -181,7 +182,7 @@ def rebuild_faiss_index(project_id: str) -> str:
     )
 
     now_iso = datetime.utcnow().isoformat()
-    for raw_text, base_meta in collected:
+    for raw_text, base_meta, file_ns in collected:
         for i, chunk in enumerate(splitter.split_text(raw_text)):
             texts.append(chunk)
             m = {

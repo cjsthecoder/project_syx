@@ -8,9 +8,14 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
 
 ---
 
-## Core Functional Requirements
+## Version 1 — Core Chat & Stubs
 
-### 1. Chat Interface (FR-001)
+### Purpose
+Establish a working chatbot with a web UI and stable backend interfaces, laying the foundation for future RAG, memory, and multi‑project features.
+
+### Functional Requirements
+
+#### 1. Chat Interface (FR-001)
 **Priority:** High  
 - **Requirement:** Provide a web-based chat UI for user ↔ AI interaction.  
 - **Frontend:** Built in React with Shadcn/UI.  
@@ -22,7 +27,7 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
 
 ---
 
-### 2. Chat Endpoint (FR-002)
+#### 2. Chat Endpoint (FR-002)
 **Priority:** High  
 - **Requirement:** Backend endpoint for handling user messages.  
 - **Implementation:** FastAPI `/chat` route.  
@@ -32,7 +37,7 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
 
 ---
 
-### 3. LangChain Integration (FR-003)
+#### 3. LangChain Integration (FR-003)
 **Priority:** High  
 - **Requirement:** Use LangChain as the abstraction layer for LLM providers.  
 - **Default Provider:** OpenAI GPT-5.  
@@ -41,7 +46,7 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
 
 ---
 
-### 4. Stubbed Feature Hooks (FR-004)
+#### 4. Stubbed Feature Hooks (FR-004)
 **Priority:** Medium  
 - **Requirement:** Provide backend routes for future functionality.  
 - **Endpoints:**
@@ -52,7 +57,7 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
 
 ---
 
-### 5. Project Awareness (FR-005)
+#### 5. Project Awareness (FR-005)
 **Priority:** Medium  
 - **Requirement:** Define project-based separation of future memory indexes.  
 - **Implementation:** Project ID included in requests (stub only in V1).  
@@ -60,7 +65,12 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
 
 ---
 
-## Technical Requirements
+### Acceptance Criteria
+- End-to-end chat works between UI and FastAPI via LangChain.
+- Stub endpoints respond with placeholders and are invokable from the UI.
+- Requests accept `project_id` to establish future project context.
+
+## Technical Requirements (V1)
 
 ### 1. Backend (TR-001)
 **Priority:** High  
@@ -134,6 +144,12 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
   - API endpoints accessible at direct paths (`/chat`, `/query_rag`, etc.).  
   - React routing works with FastAPI catch-all route to `index.html`.  
   - Single command deployment (`python main.py`).
+
+### Acceptance Criteria
+- Backend exposes the required endpoints with consistent JSON shapes.
+- Frontend renders core chat UI and successfully calls the API.
+- Configuration is driven by `.env` without hardcoding secrets.
+- A single FastAPI server serves both API and built frontend.
 
 ---
 
@@ -893,7 +909,12 @@ Create a text file for each project containing its base system prompt.
 - Loaded automatically at project startup or when the user switches projects.
 - Automatically inserted as the first system message for every `/chat` request.
 - Editable from the UI (“Edit Project Prompt” button).
-- If missing, fall back to `core.config.DEFAULT_SYSTEM_PROMPT`.
+- If missing or empty, fall back to the default prompt file referenced by `DEFAULT_SYSTEM_PROMPT_PATH`.
+
+Env:
+- `DEFAULT_SYSTEM_PROMPT_PATH` (e.g., `app/config/defaults/system_prompt.txt`)
+- `DEFAULT_PERSONALITY_PROMPT_PATH` (e.g., `app/config/defaults/personality.json`)
+  - Values are written by the Makefile to `.env` and read by the backend.
 
 Example content:
 ```
@@ -919,6 +940,12 @@ Add a companion JSON file to capture tone, verbosity, and stylistic preferences.
 - Accessible via `GET /projects/{id}/personality`
 - Editable via `PATCH /projects/{id}/personality`
 - When changed, updates persist immediately to disk.
+- Normalization and mapping:
+  - `tone`, `verbosity`, `format` are normalized to lowercase.
+  - `creativity` is a float 0.0–1.0 and maps directly to model temperature (passthrough) when supported by the selected model.
+  - `domain_focus` is preserved as provided and used as phrasing hints (no retrieval bias in 2.6).
+- Caching: prompt and personality are cached per project and invalidated on `PATCH`/`PUT` so the next `/chat` uses new values without restart.
+- System project (Continuum) is editable for both prompt and personality.
 
 #### FR-2.6.3 — Prompt Injection Layer
 Integrate both the system prompt and personality profile into model calls.
@@ -928,7 +955,15 @@ Integrate both the system prompt and personality profile into model calls.
   - temperature
   - max tokens
   - or inject phrasing hints (e.g., “Respond concisely in Markdown.”)
-- Insert user message after system content, followed by any RAG context.
+- Message ordering (final):
+  1) `system` → project system prompt
+  2) `assistant` → "personality hint" derived from `personality.json`
+  3) `system` → merged RAG context (when retrieval is used)
+  4) `user` → current user message
+
+Notes:
+- Some models reject non-default temperatures. The system detects this once per model and thereafter skips the temperature override for that model, silently using the default.
+- Model override on `/chat` is validated against `settings.available_models`; invalid models return HTTP 400.
 
 Example message structure:
 ```python
@@ -982,6 +1017,17 @@ Example layout (using shadcn/ui):
   [PROJECT] Using default system prompt and personality
   ```
 - Confirm new settings apply to the next chat message (no restart required).
+- Additional debug (optional but recommended for verification):
+  - Default paths, existence, and byte sizes on startup:
+    - `Default system_prompt path=… exists=… size_bytes=…`
+    - `Default personality path=… exists=… size_bytes=…`
+  - On load/save per project:
+    - `Loaded project system_prompt path=… bytes=…`
+    - `Loaded project personality path=… keys=[…]`
+    - `Saved project system_prompt path=… bytes=…`
+  - On each `/chat` turn (trimmed):
+    - `[PROMPT] base_sys_bytes=… rag_sys_bytes=… hint_bytes=… base_sys_preview="…"`
+    - `[PROMPT] sending messages roles=[…] lens=[…]`
 
 ### Acceptance Criteria
 - Each project loads and applies its unique system prompt and personality automatically.
@@ -989,4 +1035,225 @@ Example layout (using shadcn/ui):
 - Default fallback works cleanly if project-specific files don’t exist.
 - Personality Manager UI can view, edit, and save personality and prompt files.
 - Log entries verify proper load and fallback behavior.
+
+
+
+## Version 2.7 — Cleanup & Sleep Prep
+
+### Purpose
+Finalize the 2.x foundation by polishing UI behavior and adding infrastructure needed for the upcoming 3.0 Sleep Cycle. This version adds a daily text export, a global sleep lock (to safely pause interactions), and a user-facing **Remember / Forget** toggle that controls whether a chat pair is persisted to daily memory.
+
+### Functional Requirements
+
+#### FR-2.7.1 — Daily Text Snapshot for Pruning
+Ensure each project maintains a single plain‑text mirror of its daily context for summarization and review.
+
+- File path: `memory/{project}/daily.txt` (one file per project; no date‑based rotation)
+- Source of truth & flow:
+  - Working chat history is persisted in the database (`ChatMessage`) per project.
+  - When a user→assistant pair rolls off the working set, and the assistant’s `forget` flag is false, the pair is:
+    - Appended to `daily.txt` as a text block
+    - Added to the daily FAISS index under `memory/{project}/daily_faiss/`
+    - Recorded in `daily.json` metadata for backfill and stats
+  - Rolled‑off DB rows for that pair are deleted.
+- Generated automatically:
+  - On each roll‑off: append the pruned pair as text.
+  - On sleep initiation (`POST /sleep/start`) if `daily.txt` is missing: backfill from `daily.json`.
+- Each entry block includes:
+  ```
+  [timestamp] [route: <namespace>]
+  prompt: <user text>
+  response: <assistant text>
+  ```
+- Purpose:
+  - Human‑readable backup of the daily FAISS index (`memory/{project}/daily_faiss/`).
+  - Input source for future summarization and pruning logic.
+- Backfill policy on `/sleep/start`:
+  - If `daily.json` has entries but `daily.txt` is missing, backfill each entry as a block in the above format and log a warning.
+- Remember/Forget policy:
+  - Pairs where the assistant message has `forget=true` are not written to `daily.txt`, `daily.json`, or the daily FAISS index.
+
+#### FR-2.7.2 — Global Sleep Lock
+Prevent user interactions during the sleep cycle.
+
+- Implement lock flag:
+  - File‑based: `runtime/sleep.lock`
+  - In‑memory: `core.state.is_sleeping`
+- While active:
+  - All writes (POST/PUT/PATCH/DELETE) return HTTP **423 (Locked)** with message: `"System is sleeping. Try again later."`
+  - Reads (GET) remain allowed.
+  - Frontend shows overlay modal: “Morpheus is sleeping — consolidating memory. Please wait…”
+  - No roll‑off or daily.txt writes occur while sleeping; submissions fail with 423.
+- Status: `GET /sleep/status` → `{ sleeping: true|false, since: <ISO8601>, lock_path: "..." }`
+- Startup behavior: if `runtime/sleep.lock` exists, start with `is_sleeping=true` and log a Warning.
+- On wake: remove `sleep.lock` and set `is_sleeping = False`.
+- Log entries:
+  ```
+  [SLEEP] Lock engaged at <time>
+  [SLEEP] Lock released at <time>
+  ```
+
+#### FR-2.7.3 — Sleep Cycle Stub Endpoint
+Add a placeholder endpoint to initiate and log the sleep cycle.
+
+- `POST /sleep/start`
+- Behavior:
+  - Engage sleep lock (global; all projects).
+  - Log start and completion messages.
+  - Generate or update `daily.txt` for each project; perform backfill if needed (see FR‑2.7.1).
+  - Return JSON: `{ "status": "sleep cycle initiated" }` (project is not required; applies globally).
+  - No summarization yet (implemented in 3.0).
+
+#### FR-2.7.4 — “Remember / Forget” Toggle
+Add a toggle control at the top of each assistant response bubble that determines whether that chat pair will be persisted to the daily memory.
+
+- Component: small toggle, left‑justified above each assistant response.
+  - Left (default): **Remember** — pair will be embedded and rolled into daily RAG.
+  - Right: **Forget** — pair is skipped during roll‑off.
+- Visual:
+  - Use `Toggle` from `shadcn/ui` (or equivalent).
+  - Label aligned right: “Forget”; when active, style in muted red.
+- Behavior:
+  - Persist state in chat record metadata (`ChatMessage.forget: true|false`, default `false`).
+  - Roll‑off logic checks this flag before embedding:
+    ```python
+    if not pair.get("forget", False):
+        embed_to_daily(pair)
+    else:
+        logger.info("[ROLLOFF] Skipped pair (forget flag set).")
+    ```
+  - UI reload reflects stored state.
+- API:
+  - `PATCH /projects/{id}/chats/{assistant_msg_id}` with body `{ "forget": true|false }` to update the flag.
+  - GET `/projects/{id}/chats` includes `forget` for assistant messages.
+- Logging:
+  ```
+  [FORGET] Pair <id> skipped from daily memory.
+  ```
+
+#### FR-2.7.5 — UI & UX Enhancements
+Polish interface consistency and readability.
+
+- Enable Markdown and code‑block rendering for assistant messages:
+  - Support fenced code (```python) and inline code (`example`).
+  - Use `react-markdown` + `rehype-highlight` with a GitHub‑style theme.
+- Ensure layouts and spacing are consistent across chat, memory, and personality tabs.
+
+#### FR-2.7.6 — Code & Log Cleanup
+- Normalize logger names and message styles (standard `[TAG]` syntax).
+- Add/standardize tags: `[SLEEP]`, `[FORGET]`, `[DAILYTXT]` (daily text writes).
+- Remove deprecated references (e.g., `preferred_namespace`).
+- Verify old log files rotate correctly and remove any stale lock files on startup.
+
+#### FR-2.7.7 — “Keep” Toggle and Daily Tag
+Add a second toggle next to the existing Forget control to carry a “keep” flag through to daily history.
+
+- UI:
+  - Add a “Keep” checkbox next to the “Forget” checkbox (same row, a small horizontal gap; unchecked by default).
+  - Render adjacent to the Forget control for each assistant message.
+  - State persists and reflects when the chat reloads.
+
+- Behavior:
+  - The Keep flag is metadata only; it does not change roll-off behavior.
+  - Forget takes precedence: if `forget=true`, the pair is not written to daily memory regardless of Keep.
+  - If the pair is persisted (i.e., not forgotten and daily history is enabled), include the Keep flag in the `daily.txt` header line.
+
+- Persistence:
+  - Store per-assistant message as `ChatMessage.keep: bool` (default `false`), similar to `ChatMessage.namespace` and `ChatMessage.forget`.
+  - Include `keep` in `daily.json` metadata entries written on roll-off for backfill and stats.
+
+- daily.txt format:
+  - Extend the header to include the keep flag alongside the namespace/route tag.
+  - Example format:
+    ```
+    [timestamp] [route: <namespace>] [keep: true|false]
+    prompt: <user text>
+    response: <assistant text>
+    ```
+    - Projects already emitting `[namespace: <ns>]` may continue doing so; the Keep tag is appended similarly, e.g. `[namespace: other] [keep: true]`.
+
+- API:
+  - Update `GET /projects/{id}/chats` to include `keep` for assistant messages.
+  - Extend `PATCH /projects/{id}/chats/{assistant_msg_id}` to accept `{ "keep": true|false }` (in addition to `forget`) and persist to `ChatMessage.keep`.
+
+- Roll-off integration:
+  - On roll-off, read `keep` and `namespace` from the assistant message and:
+    - Write `[keep: true|false]` in `daily.txt` header.
+    - Persist `keep` in `daily.json` for that entry.
+  - If `forget=true`, skip writing to `daily.txt`, `daily.json`, and the daily FAISS index.
+
+- Backfill:
+  - When `POST /sleep/start` performs backfill (if `daily.txt` missing), include `[keep: true|false]` in reconstructed headers using the `daily.json` metadata (default to `false` if missing).
+
+### Acceptance Criteria
+- `daily.txt` is generated/updated automatically and mirrors `daily.faiss` content.
+- “Forget” toggles correctly prevent a chat pair from being embedded or written to daily memory.
+- System enters “sleeping” state when `/sleep/start` is called:
+  - API returns **423 (Locked)** during the cycle.
+  - UI overlay displayed until lock is released.
+- Logs show clean sleep engagement/release timestamps.
+- Markdown/code rendering works across chat messages.
+- No blocking issues or schema changes introduced.
+
+
+## Version 2.8 — Default Global RAG File
+
+### Purpose
+Ensure every new project starts with a consistent baseline of Morpheus system knowledge, even if the user never uploads any files.  
+This version simplifies the earlier design by copying a shared **DEFAULT_RAG.txt** into each project’s uploads directory on creation and triggering a RAG rebuild automatically.
+
+### Functional Requirements
+
+#### FR-2.8.1 — Default RAG Source File
+- Shared baseline file path:
+  ```
+  backend/app/config/defaults/DEFAULT_RAG.txt
+  ```
+
+#### FR-2.8.2 — Project Initialization Behavior
+During project creation:
+1. Create required folders:
+   ```
+   memory/{project}/uploads/
+   ```
+2. Copy the default baseline file:
+   ```python
+   shutil.copy("backend/app/config/defaults/DEFAULT_RAG.txt",
+               f"memory/{project}/uploads/DEFAULT_RAG.txt")
+   ```
+3. Log initialization:
+   ```
+   [INIT] Added default RAG file to memory/{project}/uploads/
+   ```
+
+#### FR-2.8.3 — Automatic RAG Rebuild
+After copying the default file:
+- Automatically trigger a RAG rebuild (or “embed all uploads” process) to ensure the default file is indexed immediately, even if the user never uploads additional content.
+- Example:
+  ```python
+  rebuild_rag(project_id)
+  ```
+- Log confirmation:
+  ```
+  [INIT] RAG rebuilt for project continuum (includes DEFAULT_RAG.txt)
+  ```
+
+#### FR-2.8.4 — Maintenance and Visibility
+- The default file appears in the project’s **uploads directory** and can be viewed, edited, or replaced like any user file.
+- If the project is rebuilt or reindexed, the default file is re-embedded automatically.
+- No special handling (e.g., `system=true`) is required — the file name identifies it as part of the baseline.
+- Missing default file:
+  - Log a warning but do **not** block project creation.
+  ```
+  [WARN] DEFAULT_RAG.txt not found; project created without baseline knowledge.
+  ```
+
+### Acceptance Criteria
+- Each new project automatically includes `DEFAULT_RAG.txt` in `uploads/`.
+- RAG rebuild runs immediately after creation, ensuring the default file is embedded.
+- Default file visible in the uploads list and re-embeds on rebuild.
+- Logs confirm default file copy and rebuild actions.
+- Missing default file logs a warning but does not cause failure.
+
+**End of Version 2.x Series — Ready for 3.0 Sleep Cycle.**
 

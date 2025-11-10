@@ -82,7 +82,19 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
         resp = llm.invoke([SystemMessage(content=sys), HumanMessage(content=user)])
         raw = getattr(resp, "content", "").strip()
         logger.debug("builder raw=%s", (raw[:cap] + ("…" if len(raw) > cap else "")))
-        data = json.loads(raw)
+        # Clean output to ensure strict JSON parsing
+        clean = raw
+        if clean.startswith("```"):
+            lines = [ln for ln in clean.splitlines() if not ln.strip().startswith("```")]
+            clean = "\n".join(lines).strip()
+        try:
+            data = json.loads(clean)
+        except json.JSONDecodeError:
+            import re
+            m = re.search(r"\{[\s\S]*\}", clean)
+            if not m:
+                raise
+            data = json.loads(m.group(0))
         # Basic shape validation
         if not isinstance(data, dict) or "route" not in data or "rag" not in data:
             raise ValueError("invalid builder json")

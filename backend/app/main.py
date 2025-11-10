@@ -25,7 +25,12 @@ from .api import files as files_api
 from .api import llm_models
 from .utils.logging import setup_logging, get_logger
 from .core.database import init_db
+from .core.state import init_from_disk, is_sleeping
 from .core.personality import backfill_all_projects
+from .core.database import get_session
+from .core.db_models import Project
+from .core.rag_manager import rebuild_faiss_index
+import shutil
 
 # Setup logging (only once, check if already configured)
 setup_logging()
@@ -33,6 +38,7 @@ logger = get_logger()  # Use single shared logger
 
 # Get settings
 settings = get_settings()
+logger.info("Config: DB_PATH=%s", settings.db_path)
 
 # Lifespan handler to manage startup/shutdown
 @asynccontextmanager
@@ -42,8 +48,39 @@ async def lifespan(app: FastAPI):
     # V2.6: Backfill system prompt and personality defaults for existing projects
     try:
         backfill_all_projects()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[PROJECT] Backfill defaults failed: %s", e, exc_info=True)
+    # V2.7: Initialize sleep lock from disk if present
+    try:
+        init_from_disk()
+    except Exception as e:
+        logger.warning("[SLEEP] Failed to init lock from disk: %s", e, exc_info=True)
+    # V2.8: Seed DEFAULT_RAG for Continuum if present and missing
+    try:
+        from sqlmodel import select
+        with get_session() as session:
+            row = session.exec(select(Project).where(Project.name.ilike("Continuum"))).first()
+        if row:
+            pid = row.id
+            uploads_dir = os.path.join("memory", pid, "uploads")
+            os.makedirs(uploads_dir, exist_ok=True)
+            default_src = os.path.abspath(os.path.join(os.path.dirname(__file__), "config", "defaults", "DEFAULT_RAG.txt"))
+            default_dst = os.path.join(uploads_dir, "DEFAULT_RAG.txt")
+            if os.path.isfile(default_src):
+                if os.path.exists(default_dst):
+                    logger.warning("[INIT] DEFAULT_RAG.txt already exists for project %s; skipping copy", pid)
+                else:
+                    shutil.copy(default_src, default_dst)
+                    logger.info("[INIT] Added default RAG file to %s", default_dst)
+                    try:
+                        rebuild_faiss_index(pid)
+                        logger.info("[INIT] RAG rebuilt for project %s (includes DEFAULT_RAG.txt)", pid)
+                    except Exception as re:
+                        logger.warning("[INIT] RAG rebuild failed for project %s: %s", pid, re)
+            else:
+                logger.warning("[WARN] DEFAULT_RAG.txt not found; Continuum created without baseline knowledge.")
+    except Exception as e:
+        logger.warning("[INIT] Continuum seed failed: %s", e, exc_info=True)
     try:
         yield
     finally:
@@ -75,6 +112,18 @@ app.include_router(projects.router, tags=["projects"])
 app.include_router(sleep.router, tags=["sleep"])
 app.include_router(files_api.router, tags=["files"])
 app.include_router(llm_models.router, tags=["models"])
+
+# V2.7: Write-blocking middleware during sleep
+from fastapi.responses import JSONResponse
+
+@app.middleware("http")
+async def sleep_guard(request, call_next):
+    try:
+        if is_sleeping() and request.method.upper() != "GET":
+            return JSONResponse(status_code=423, content={"error": "System is sleeping. Try again later."})
+    except Exception:
+        pass
+    return await call_next(request)
 
 # Mount static files (React build output)
 static_dir = os.path.join(os.path.dirname(__file__), "static")

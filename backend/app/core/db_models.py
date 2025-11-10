@@ -34,4 +34,7 @@ class ChatMessage(SQLModel, table=True):
     role: str = Field(description="user|assistant")
     content: str
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    forget: bool = Field(default=False, description="V2.7: if true, skip roll-off embedding and daily.txt")
+    namespace: Optional[str] = Field(default=None, description="V2.7: primary namespace captured at assistant creation")
+    keep: bool = Field(default=False, description="V2.7.7: user preference tag propagated into daily headers/metadata")
 

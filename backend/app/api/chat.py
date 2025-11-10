@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from ..core.models import ChatRequest, ChatResponse, ErrorResponse
 from ..core.llm import generate_chat_response, get_llm_health
 from ..core.memory import get_memory_manager, set_last_context_tokens
-from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id, set_route, clear_route
+from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id, set_route, clear_route, set_namespace, clear_namespace
 from ..core.rag_manager import _load_route_config
 from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings, get_model_config
@@ -94,6 +94,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
 
         # Optional RAG retrieval (V2.3.1: builder + daily/main merge)
         rag_system_prompt = None
+        primary_ns = None
         if settings.rag_on_chat and request.project_id:
             # Summarize recent pairs (simple heuristic)
             summary = ''
@@ -171,6 +172,15 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                     score_th,
                 )
                 set_route(route or "UNKNOWN")
+                # Choose a primary namespace (persist the builder route; fallback to general)
+                try:
+                    if route:
+                        primary_ns = (route or "general").lower()
+                    else:
+                        primary_ns = "general"
+                except Exception:
+                    primary_ns = "general"
+                set_namespace(primary_ns)
                 # Strict skip: no retrieval for CHITCHAT or rag=false
                 if (not do_rag) or route == 'CHITCHAT':
                     logger.info("Chat: skipping RAG due to route=%s rag=%s", route, do_rag)
@@ -297,9 +307,19 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         try:
             if request.project_id:
                 memory_manager.append_user_message(request.project_id, request.message)
-                memory_manager.append_assistant_message(request.project_id, llm_response["response"])
-        except Exception:
-            pass
+                memory_manager.append_assistant_message(
+                    request.project_id,
+                    llm_response["response"],
+                    namespace=(primary_ns or "general"),
+                )
+        except Exception as e:
+            logger.error(
+                "Persist failed project_id=%s message_id=%s detail=%s",
+                request.project_id,
+                msg_id,
+                str(e),
+                exc_info=True,
+            )
         
         # Update context tokens for stats (exclude RAG system prompt)
         try:
@@ -357,7 +377,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         mid = get_message_id() or "-"
         err_prev = (str(e) or "")[:get_settings().log_preview_max_chars]
         logger.debug(
-            "[ERROR] project_id=%s message_id=%s error=\"%s\"",
+            "project_id=%s message_id=%s error=\"%s\"",
             proj,
             mid,
             err_prev,
@@ -388,6 +408,10 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             )
     finally:
         clear_message_id()
+        try:
+            clear_namespace()
+        except Exception:
+            pass
 
 
 @router.get("/chat/health")

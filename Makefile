@@ -103,6 +103,29 @@ upgrade:
 downgrade:
 	cd backend && alembic downgrade -1
 
+# Danger: wipe all project data and DB; recreate schema
+HARD_RESET:
+	@echo "⚠️  HARD RESET will DELETE all project data and the SQLite DB."
+	@echo "   - Removing memory/*"
+	@echo "   - Removing backend/app/data/morpheus.db"
+	@echo "   - Recreating empty DB (alembic upgrade)"
+	@echo ""
+	@read -p "Type 'YES' to proceed: " CONFIRM; \
+	if [ "$$CONFIRM" != "YES" ]; then echo "Aborted."; exit 1; fi; \
+	echo "Deleting memory/* ..."; \
+	rm -rf memory/* 2>/dev/null || true; \
+	rm -rf backend/memory/* 2>/dev/null || true; \
+	echo "Deleting SQLite DB ..."; \
+	rm -f backend/app/data/morpheus.db 2>/dev/null || true; \
+	echo "Removing runtime sleep lock if present ..."; \
+	rm -f backend/runtime/sleep.lock 2>/dev/null || true; \
+	echo "Deleting logs ..."; \
+	rm -f backend/logs/*.log 2>/dev/null || true; \
+	echo "Recreating DB schema ..."; \
+	mkdir -p backend/app/data; \
+	cd backend && alembic upgrade head; \
+	echo "✅ HARD RESET complete. Start the server and Continuum will be reseeded."
+
 # Clean build artifacts and dependencies
 clean: clean-backend clean-frontend clean-static
 	@echo "🧹 Cleanup completed"
@@ -234,7 +257,7 @@ setup-env:
 		echo "CORS_ORIGINS=[\"http://localhost:3000\",\"http://localhost:5173\"]"; \
 		echo "# Allowed browser origins for API"; \
 		echo ""; \
-		echo "DB_PATH=backend/app/data/morpheus.db"; \
+		echo "DB_PATH=app/data/morpheus.db"; \
 		echo "# SQLite database file path (or full URL like sqlite:///...)"; \
 		echo ""; \
 		echo "MAX_UPLOAD_MB=10"; \
@@ -273,8 +296,8 @@ setup-env:
 		echo "RAG_SCORE_THRESHOLD=0.5"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
-		echo "CHAT_HISTORY_LIMIT_PAIRS=10"; \
-		echo "# V2.3: Number of prompt/response pairs kept in working memory"; \
+		echo "CHAT_HISTORY_LIMIT_PAIRS=2"; \
+		echo "# V2.3: Number of prompt/response pairs kept in working memory:: 10 is working well"; \
 		echo ""; \
 		echo "DAILY_RAG_ENABLED=true"; \
 		echo "# V2.3: Global default toggle; per-project override via UI"; \

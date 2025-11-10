@@ -15,7 +15,7 @@ from .database import get_session
 from .db_models import ChatMessage, Project
 from .config import get_settings
 from .daily_rag import append_pair
-from ..utils.logging import get_message_id
+from ..utils.logging import get_message_id, get_namespace
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,9 @@ class MemoryManager:
                         "role": r.role,
                         "content": r.content,
                         "created_at": r.created_at,
+                        "forget": getattr(r, 'forget', False),
+                        "namespace": getattr(r, 'namespace', None),
+                        "keep": getattr(r, 'keep', False),
                     })
         except Exception as e:
             logger.error(f"Failed to load history for {project_id}: {e}")
@@ -82,13 +85,14 @@ class MemoryManager:
         })
         self.prune_to_limit(project_id)
 
-    def append_assistant_message(self, project_id: str, content: str) -> None:
+    def append_assistant_message(self, project_id: str, content: str, namespace: Optional[str] = None) -> None:
         if not project_id:
             return
         self._ensure_loaded(project_id)
         now = datetime.utcnow()
+        ns = (namespace or get_namespace() or "general").lower()
         with get_session() as session:
-            msg = ChatMessage(project_id=project_id, role="assistant", content=content, created_at=now)
+            msg = ChatMessage(project_id=project_id, role="assistant", content=content, created_at=now, namespace=ns, keep=False)
             session.add(msg)
             session.commit()
             session.refresh(msg)
@@ -97,6 +101,9 @@ class MemoryManager:
             "role": "assistant",
             "content": content,
             "created_at": now,
+            "forget": False,
+            "namespace": ns,
+            "keep": False,
         })
         self.prune_to_limit(project_id)
 
@@ -145,7 +152,8 @@ class MemoryManager:
             import tiktoken  # type: ignore
             enc = tiktoken.get_encoding("cl100k_base")
             tokens = len(enc.encode(pair_text))
-        except Exception:
+        except Exception as e:
+            logger.debug("Token count fallback used due to error: %s", e)
             tokens = len((pair_text or "").split())
         mid = get_message_id() or "-"
         limit = get_settings().log_preview_max_chars
@@ -161,10 +169,14 @@ class MemoryManager:
             pp,
             rp,
         )
-        # Append to daily if enabled; on any error we still drop per spec
+        # Append to daily if enabled and not forgotten; on any error we still drop per spec
         try:
-            if self._is_daily_enabled(project_id):
-                append_pair(project_id, pair_text, int(user_msg.get("id")), int(asst_msg.get("id")), int(tokens))
+            if bool(asst_msg.get("forget")):
+                logger.info("[FORGET] Skipped pair (forget flag set) user_id=%s assistant_id=%s", str(user_msg.get("id")), str(asst_msg.get("id")))
+            elif self._is_daily_enabled(project_id):
+                ns = (asst_msg.get("namespace") or get_namespace() or "general").lower()
+                keep = bool(asst_msg.get("keep"))
+                append_pair(project_id, pair_text, int(user_msg.get("id")), int(asst_msg.get("id")), int(tokens), namespace=ns, keep=keep)
             else:
                 logger.info("[DailyRAG] Skipping daily append (disabled for project=%s)", project_id)
         except Exception as e:
@@ -212,7 +224,8 @@ class MemoryManager:
                 if p is None:
                     return True
                 return bool(p.daily_rag_enabled)
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to read project daily flag for %s: %s; defaulting to True", project_id, e)
             return True
 
     def get_active_pair_count(self, project_id: str) -> int:
@@ -289,13 +302,12 @@ class MemoryManager:
     
     def get_memory_stats(self) -> Dict[str, Any]:
         """Get memory usage statistics."""
-        total_conversations = len(self.conversations)
-        total_messages = sum(len(conv) for conv in self.conversations.values())
-        
+        total_projects = len(self.project_deques)
+        total_messages = sum(len(dq) for dq in self.project_deques.values())
         return {
-            "total_conversations": total_conversations,
+            "total_conversations": total_projects,
             "total_messages": total_messages,
-            "memory_mode": "stub",
+            "memory_mode": "persistent",
             "features_available": {
                 "rag_search": False,
                 "memory_pruning": False,

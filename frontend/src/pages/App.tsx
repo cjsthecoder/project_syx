@@ -5,7 +5,7 @@ import { Select } from '@/components/ui/select'
 import { Toast } from '@/components/ui/toast'
 import { Dialog, DialogHeader, DialogFooter } from '@/components/ui/dialog'
 
-type Message = { role: 'user' | 'assistant'; content: string }
+type Message = { id?: number; role: 'user' | 'assistant'; content: string; forget?: boolean; keep?: boolean }
 type Project = { id: string; name?: string }
 type ModelItem = string
 
@@ -87,8 +87,8 @@ export default function App() {
 
   const loadChats = useCallback(async (pid: string) => {
     try {
-      const data = await api<{ project_id: string; messages: { id: number; role: 'user'|'assistant'; content: string; created_at: string }[] }>(`/projects/${pid}/chats`)
-      const msgs: Message[] = (data.messages || []).map(m => ({ role: m.role, content: m.content }))
+      const data = await api<{ project_id: string; messages: { id: number; role: 'user'|'assistant'; content: string; created_at: string; forget?: boolean|null; keep?: boolean|null }[] }>(`/projects/${pid}/chats`)
+      const msgs: Message[] = (data.messages || []).map(m => ({ id: m.id, role: m.role, content: m.content, forget: !!m.forget, keep: !!m.keep }))
       setMessages(msgs)
     } catch {
       setMessages([])
@@ -335,7 +335,7 @@ export default function App() {
           {messages.map((m, i) => (
             <div key={i} className={m.role === 'user' ? 'text-right' : 'text-left'}>
               <div
-                className={`inline-block rounded px-3 py-2 whitespace-pre-wrap break-words max-w-[800px] w-fit ${
+                className={`inline-block rounded px-3 py-2 whitespace-pre-wrap break-words max-w-[800px] w-fit text-left ${
                   m.role === 'user'
                     ? 'mr-[20%] bg-gray-200 text-black'
                     : 'ml-[20%] text-white'
@@ -344,6 +344,44 @@ export default function App() {
               >
                 {m.content}
               </div>
+              {m.role === 'assistant' && (
+                <div className="ml-[20%] mt-1 flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!!m.forget}
+                      onChange={async (e) => {
+                        if (!projectId || m.id == null) return
+                        const next = e.target.checked
+                        try {
+                          await api(`/projects/${projectId}/chats/${m.id}`, { method: 'PATCH', body: JSON.stringify({ forget: next }) })
+                          setMessages((list) => list.map((mm, idx) => idx === i ? { ...mm, forget: next } : mm))
+                        } catch (err: any) {
+                          setError(err?.message || 'Failed to update forget flag')
+                        }
+                      }}
+                    />
+                    <span>Forget</span>
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!!(m as any).keep}
+                      onChange={async (e) => {
+                        if (!projectId || m.id == null) return
+                        const next = e.target.checked
+                        try {
+                          await api(`/projects/${projectId}/chats/${m.id}`, { method: 'PATCH', body: JSON.stringify({ keep: next }) })
+                          setMessages((list) => list.map((mm, idx) => idx === i ? { ...mm, keep: next } : mm))
+                        } catch (err: any) {
+                          setError(err?.message || 'Failed to update keep flag')
+                        }
+                      }}
+                    />
+                    <span>Keep</span>
+                  </label>
+                </div>
+              )}
             </div>
           ))}
           {ragBuilding && !loading && <div className="text-sm text-gray-500">Building RAG Query…</div>}
@@ -364,7 +402,7 @@ export default function App() {
             }}
           >
             <Textarea
-              className="w-full min-h-[96px] max-h-64 resize-y"
+              className="w-full min-h-[96px] max-h-64 resize-y text-left"
               placeholder="Type your message..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -471,23 +509,25 @@ export default function App() {
             </Button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <label className="text-sm">Keep Daily History</label>
-            <input
-              type="checkbox"
-              checked={!!projectInfo?.daily_rag_enabled}
-              onChange={async (e) => {
-                if (!projectId) return
-                try {
-                  await api(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ daily_rag_enabled: e.target.checked }) })
-                  await loadProjectInfo(projectId)
-                  await loadStats(projectId)
-                } catch (err: any) {
-                  setError(err?.message || 'Failed to update setting')
-                }
-              }}
-            />
-          </div>
+          {!projectInfo?.system && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm">Keep Daily History</label>
+              <input
+                type="checkbox"
+                checked={!!projectInfo?.daily_rag_enabled}
+                onChange={async (e) => {
+                  if (!projectId) return
+                  try {
+                    await api(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ daily_rag_enabled: e.target.checked }) })
+                    await loadProjectInfo(projectId)
+                    await loadStats(projectId)
+                  } catch (err: any) {
+                    setError(err?.message || 'Failed to update setting')
+                  }
+                }}
+              />
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <input className="border rounded px-2 py-1 flex-1" placeholder="Rename to…" value={renameProjectName} onChange={(e) => setRenameProjectName(e.target.value)} />

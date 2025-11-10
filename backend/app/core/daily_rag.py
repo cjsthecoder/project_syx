@@ -16,14 +16,15 @@ from ..utils.logging import get_route
 logger = logging.getLogger(__name__)
 
 
-def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
+def _project_daily_paths(project_id: str) -> Tuple[str, str, str, str]:
     base_dir = os.path.join("memory", project_id)
     os.makedirs(base_dir, exist_ok=True)
     faiss_dir = os.path.join(base_dir, "daily_faiss")
     os.makedirs(faiss_dir, exist_ok=True)
     meta_path = os.path.join(base_dir, "daily.json")
     lock_path = os.path.join(base_dir, "daily.lock")
-    return faiss_dir, meta_path, lock_path
+    txt_path = os.path.join(base_dir, "daily.txt")
+    return faiss_dir, meta_path, lock_path, txt_path
 
 
 def _load_metadata(meta_path: str) -> List[Dict[str, Any]]:
@@ -45,7 +46,7 @@ def _save_metadata(meta_path: str, entries: List[Dict[str, Any]]) -> None:
 
 
 def reset_daily(project_id: str) -> None:
-    faiss_dir, meta_path, lock_path = _project_daily_paths(project_id)
+    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
     with FileLock(lock_path):
         # remove faiss dir contents
         try:
@@ -53,30 +54,30 @@ def reset_daily(project_id: str) -> None:
                 for n in os.listdir(faiss_dir):
                     try:
                         os.remove(os.path.join(faiss_dir, n))
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+                    except Exception as e:
+                        logger.warning("DailyRAG: failed to remove %s: %s", os.path.join(faiss_dir, n), e)
+        except Exception as e:
+            logger.warning("DailyRAG: failed to clean faiss dir %s: %s", faiss_dir, e)
         # remove metadata
         for p in (meta_path,):
             try:
                 if os.path.exists(p):
                     os.remove(p)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("DailyRAG: failed to remove metadata %s: %s", p, e)
         logger.info(f"DailyRAG: reset daily files for project={project_id}")
 
 
-def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg_id: int, tokens: int) -> bool:
+def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg_id: int, tokens: int, namespace: Optional[str] = None, keep: bool = False) -> bool:
     """Append a single embedded pair to the daily index and metadata.
     Note: We don't persist raw FAISS via langchain here; for V2.3 we only track metadata and rely on embeddings at retrieval-time for simplicity.
     """
     settings = get_settings()
-    faiss_dir, meta_path, lock_path = _project_daily_paths(project_id)
+    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
     with FileLock(lock_path):
         entries = _load_metadata(meta_path)
         day_sequence = (entries[-1]["day_sequence"] + 1) if entries else 1
-        ns = (get_route() or "general").lower() or "general"
+        ns = (namespace or "general").lower()
         entry = {
             "id": f"{int(time.time()*1000)}-{len(entries)+1}",
             "project_id": project_id,
@@ -88,12 +89,30 @@ def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg
             "source": "chat",
             "scope": "daily",
             "namespace": ns,
+            "keep": bool(keep),
             "confidence": 1.0,
             "tags": ["rolled_off"],
             "day_sequence": day_sequence,
         }
         entries.append(entry)
         _save_metadata(meta_path, entries)
+        # Append to daily.txt (human-readable)
+        try:
+            ts = entry["created_at"]
+            # Split pair_text into user and assistant parts safely
+            if "\nAssistant:" in pair_text:
+                _user_part, _assistant_part = pair_text.split("\nAssistant:", 1)
+                user_text = _user_part.replace("User:", "", 1).strip()
+                assistant_text = _assistant_part.strip()
+            else:
+                user_text = ""
+                assistant_text = pair_text.strip()
+            block = f"[{ts}] [route: {ns}] [keep: {str(bool(keep)).lower()}]\nprompt: {user_text}\nresponse: {assistant_text}\n\n"
+            with open(txt_path, "a", encoding="utf-8") as tf:
+                tf.write(block)
+            logger.debug("[DAILYTXT] project=%s wrote %s bytes", project_id, len(block.encode('utf-8')))
+        except Exception as te:
+            logger.error("DailyRAG: failed writing daily.txt: %s", te)
         # Append to FAISS index (directory-based)
         try:
             embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
@@ -128,7 +147,7 @@ def _cosine_from_l2_dist_sq(d2: float) -> float:
 def retrieve_daily(project_id: str, query: str, top_k: int, score_threshold: float) -> List[Tuple[str, float, Optional[str]]]:
     """Retrieve from daily FAISS index. Returns list of (text, cosine, namespace)."""
     settings = get_settings()
-    faiss_dir, meta_path, lock_path = _project_daily_paths(project_id)
+    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
     with FileLock(lock_path):
         try:
             embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
@@ -142,14 +161,21 @@ def retrieve_daily(project_id: str, query: str, top_k: int, score_threshold: flo
             try:
                 entries = _load_metadata(meta_path)
                 if entries:
-                    texts = [e.get("text") or "" for e in entries if e.get("text")]
+                    texts = []
+                    metas = []
+                    for e in entries:
+                        t = e.get("text")
+                        if not t:
+                            continue
+                        texts.append(t)
+                        metas.append({"source": "daily", "namespace": (e.get("namespace") or "general")})
                     if texts:
                         try:
                             embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
                             try:
-                                vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=[{"source": "daily"}] * len(texts), normalize_L2=True)
+                                vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metas, normalize_L2=True)
                             except TypeError:
-                                vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=[{"source": "daily"}] * len(texts))
+                                vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metas)
                             vs.save_local(faiss_dir)
                             logger.info(f"DailyRAG: backfilled daily FAISS index for project={project_id} from metadata ({len(texts)} entries)")
                         except Exception as be:
@@ -180,7 +206,7 @@ def retrieve_daily(project_id: str, query: str, top_k: int, score_threshold: flo
 
 
 def daily_stats(project_id: str) -> Dict[str, int]:
-    faiss_dir, meta_path, lock_path = _project_daily_paths(project_id)
+    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
     with FileLock(lock_path):
         entries = _load_metadata(meta_path)
     size_bytes = 0
@@ -212,5 +238,36 @@ def daily_stats(project_id: str) -> Dict[str, int]:
         os.path.exists(meta_path),
     )
     return {"daily_index_size_bytes": size_bytes, "daily_tokens_indexed": tokens, "daily_vector_count": len(entries)}
+
+
+def backfill_daily_txt_from_meta(project_id: str) -> bool:
+    """If daily.json exists and daily.txt missing, write out text blocks for all entries."""
+    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    if os.path.isfile(txt_path):
+        return False
+    with FileLock(lock_path):
+        entries = _load_metadata(meta_path)
+        if not entries:
+            return False
+        try:
+            with open(txt_path, "a", encoding="utf-8") as tf:
+                for e in entries:
+                    ts = e.get("created_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                    ns = e.get("namespace") or "general"
+                    keep = bool(e.get("keep", False))
+                    text = e.get("text") or ""
+                    # Best-effort split back into prompt/response
+                    if "\nAssistant:" in text:
+                        u, a = text.split("\nAssistant:", 1)
+                        u = u.replace("User:", "", 1)
+                        block = f"[{ts}] [route: {ns}] [keep: {str(keep).lower()}]\nprompt: {u.strip()}\nresponse: {a.strip()}\n\n"
+                    else:
+                        block = f"[{ts}] [route: {ns}] [keep: {str(keep).lower()}]\nprompt: \nresponse: {text.strip()}\n\n"
+                    tf.write(block)
+            logger.warning("[DAILYTXT] Backfilled daily.txt from daily.json for project=%s", project_id)
+            return True
+        except Exception as e:
+            logger.error("[DAILYTXT] Failed backfill for project=%s: %s", project_id, e)
+            return False
 
 

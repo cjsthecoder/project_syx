@@ -14,6 +14,12 @@ logger = logging.getLogger(__name__)
 
 from ..core.models import SleepCycleRequest, SleepCycleResponse, ErrorResponse
 from ..core.memory import get_memory_manager
+from ..core.state import engage_lock, release_lock, is_sleeping, since, lock_path
+from ..core.database import get_session
+from ..core.db_models import Project
+from sqlmodel import select
+from ..core.daily_rag import backfill_daily_txt_from_meta
+import time
 from ..utils.logging import RequestLogger
 from ..utils.errors import handle_memory_error, log_error_context
 
@@ -87,6 +93,52 @@ async def sleep_cycle_endpoint(request: SleepCycleRequest) -> SleepCycleResponse
         
         # Handle memory errors
         raise handle_memory_error(e)
+
+
+@router.get("/sleep/status")
+async def sleep_status() -> JSONResponse:
+    try:
+        return JSONResponse(status_code=200, content={
+            "sleeping": bool(is_sleeping()),
+            "since": (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(since() or 0)) if is_sleeping() else None),
+            "lock_path": lock_path(),
+        })
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/sleep/start")
+async def sleep_start() -> JSONResponse:
+    """Engage global sleep lock and update daily.txt for all projects (stub for 3.0)."""
+    try:
+        request_logger.log_request(endpoint="/sleep/start", method="POST")
+        engage_lock()
+        logger.info("[SLEEP] Lock engaged at %s", time.strftime("%H:%M", time.localtime()))
+        # Update or backfill daily.txt for all projects
+        try:
+            with get_session() as session:
+                rows = session.exec(select(Project)).all()
+        except Exception:
+            rows = []
+        updated = 0
+        for p in rows or []:
+            try:
+                if backfill_daily_txt_from_meta(p.id):
+                    updated += 1
+            except Exception:
+                pass
+        release_lock()
+        logger.info("[SLEEP] Lock released at %s", time.strftime("%H:%M", time.localtime()))
+        return JSONResponse(status_code=200, content={
+            "status": "sleep cycle initiated",
+            "updated_projects": updated,
+        })
+    except Exception as e:
+        try:
+            release_lock()
+        except Exception:
+            pass
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @router.get("/sleep_cycle/status")

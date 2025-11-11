@@ -129,6 +129,10 @@ class Settings(BaseSettings):
     personality_max_bytes: int = Field(default=8 * 1024, gt=0, description="Max size of personality.json in bytes")
     payload_max_bytes: int = Field(default=128 * 1024, gt=0, description="Max size of combined request payload in bytes")
 
+    # V3.1: Sleep scheduler
+    enable_scheduler: bool = Field(default=True, description="Enable sleep cycle scheduler (daily)")
+    sleep_cycle_hour: int = Field(default=3, ge=0, le=23, description="Local hour (0-23) to run sleep cycle")
+    sleep_cycle_minute: int = Field(default=0, ge=0, le=59, description="Local minute (0-59) to run sleep cycle")
 
 # Global settings instance
 settings = Settings()

@@ -22,6 +22,10 @@ from ..core.daily_rag import backfill_daily_txt_from_meta
 import time
 from ..utils.logging import RequestLogger
 from ..utils.errors import handle_memory_error, log_error_context
+import threading
+import os
+from ..core.state import release_lock
+import re
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -29,6 +33,178 @@ router = APIRouter()
 # Initialize logger
 request_logger = RequestLogger("sleep")
 
+# V3.1: unified sleep runner (background thread)
+_runner_lock = threading.Lock()
+_runner_thread: Optional[threading.Thread] = None
+from ..core.sleep_prompts import generate_pruning_prompt, generate_formatting_prompt
+from ..core.summarization import execute_prompt, execute_prompt_chunked, _count_tokens
+
+def _sleep_cycle_worker():
+    try:
+        engage_lock()
+        logger.info("[SLEEP] Lock engaged")
+        logger.info("[SLEEP] Thread started")
+        # Backfill daily.txt if missing (current V2.x behavior)
+        updated = 0
+        try:
+            with get_session() as session:
+                rows = session.exec(select(Project)).all()
+        except Exception:
+            rows = []
+        for p in rows or []:
+            try:
+                if backfill_daily_txt_from_meta(p.id):
+                    updated += 1
+            except Exception as e:
+                logger.warning("[SLEEP] Backfill failed for project=%s: %s", p.id, e)
+        # V3.2: Summarization pipeline (per project with non-empty daily.txt)
+        projects_processed = 0
+        pruned_count = 0
+        formatted_count = 0
+        skipped_no_daily = 0
+        for p in rows or []:
+            pid = p.id
+            base_dir = os.path.join("memory", pid)
+            daily_path = os.path.join(base_dir, "daily.txt")
+            if not os.path.isfile(daily_path) or os.path.getsize(daily_path) == 0:
+                skipped_no_daily += 1
+                logger.info("[SLEEP] Skipped project (no daily.txt) project=%s", pid)
+                continue
+            projects_processed += 1
+            try:
+                with open(daily_path, "r", encoding="utf-8") as f:
+                    daily_text = f.read()
+                # Append END tag in-memory only (do not persist)
+                end_tag_date = time.strftime("%m/%d/%Y", time.localtime())
+                source_text = daily_text.rstrip() + f"\n\n=== END DAILY MEMORY: {end_tag_date} ===\n\n"
+            except Exception as e:
+                logger.warning("[SLEEP][ERROR] Failed reading daily.txt project=%s: %s", pid, e)
+                continue
+            # Pruning (chunked if needed)
+            pruned_path = os.path.join(base_dir, "pruned.txt")
+            try:
+                max_tokens = 96000  # expanded chunk threshold to leverage 128k context
+                if _count_tokens(source_text) > max_tokens:
+                    pruned = execute_prompt_chunked(generate_pruning_prompt, source_text, max_tokens=max_tokens, overlap=200)
+                else:
+                    pruned = execute_prompt(generate_pruning_prompt(source_text))
+                with open(pruned_path, "w", encoding="utf-8") as pf:
+                    pf.write(pruned)
+                pruned_count += 1
+                try:
+                    lines = len(pruned.splitlines())
+                    size = len(pruned.encode("utf-8"))
+                    logger.info("[SLEEP][PRUNE] Completed project=%s (bytes=%s, lines=%s)", pid, size, lines)
+                except Exception:
+                    logger.info("[SLEEP][PRUNE] Completed project=%s", pid)
+            except Exception as e:
+                logger.error("[SLEEP][ERROR] Pruning failed project=%s: %s", pid, e, exc_info=True)
+                continue
+            # Formatting (chunk-format if needed, then aggregate)
+            summary_path = os.path.join(base_dir, "sleep_summary.txt")
+            try:
+                if _count_tokens(pruned) > max_tokens:
+                    formatted_chunks = []
+                    chunks = []
+                    # reuse chunker from summarization by calling chunk_by_tokens indirectly via execute_prompt_chunked
+                    # but we need chunks to aggregate appendices; simple split by sections to avoid nested calls
+                    # fallback: re-chunk pruned by tokens
+                    from ..core.summarization import chunk_by_tokens
+                    chunks = chunk_by_tokens(pruned, max_tokens=max_tokens, overlap=200)
+                    decisions = set()
+                    openqs = set()
+                    main_parts = []
+                    for ch in chunks:
+                        out = execute_prompt(generate_formatting_prompt(ch))
+                        # crude split to extract appendices
+                        part = out
+                        decs = []
+                        oqs = []
+                        if "[Decisions Log]" in out:
+                            part, tail = out.split("[Decisions Log]", 1)
+                            decs_section = tail.split("[Open Questions]")[0] if "[Open Questions]" in tail else tail
+                            decs = [ln.strip("- ").strip() for ln in decs_section.splitlines() if ln.strip() and not ln.strip().startswith("[")]
+                            if "[Open Questions]" in tail:
+                                oqs_section = tail.split("[Open Questions]", 1)[1]
+                                oqs = [ln.strip("- ").strip() for ln in oqs_section.splitlines() if ln.strip() and not ln.strip().startswith("[")]
+                        main_parts.append(part.strip())
+                        for d in decs:
+                            if d:
+                                decisions.add(d)
+                        for q in oqs:
+                            if q:
+                                openqs.add(q)
+                    # Merge formatted chunks and normalize boundary tags (keep first BEGIN, last END)
+                    main_body = "\n\n".join(mp for mp in main_parts if mp)
+                    # Build appendices
+                    appx = "\n\n[Decisions Log]\n"
+                    for d in sorted(decisions):
+                        appx += f"- {d}\n"
+                    appx += "\n[Open Questions]\n"
+                    for q in sorted(openqs):
+                        appx += f"- {q}\n"
+                    # Find first BEGIN and last END markers
+                    lines = main_body.splitlines()
+                    begin_line = None
+                    end_line = None
+                    end_idxs = []
+                    for i, l in enumerate(lines):
+                        s = l.strip()
+                        if begin_line is None and s.startswith("=== BEGIN DAILY MEMORY:"):
+                            begin_line = l.strip()
+                        if s.startswith("=== END DAILY MEMORY:"):
+                            end_idxs.append(i)
+                    if end_idxs:
+                        end_line = lines[end_idxs[-1]].strip()
+                    # Remove all tag lines from the body
+                    body_wo_tags = "\n".join(
+                        l for l in lines
+                        if not l.strip().startswith("=== BEGIN DAILY MEMORY:")
+                        and not l.strip().startswith("=== END DAILY MEMORY:")
+                    ).rstrip()
+                    # Assemble final: first BEGIN, body, appendices, last END
+                    final_parts = []
+                    if begin_line:
+                        final_parts.append(begin_line + "\n")
+                    final_parts.append(body_wo_tags)
+                    final_parts.append(appx.rstrip())
+                    if end_line:
+                        final_parts.append("\n" + end_line)
+                    final = "\n\n".join(part for part in final_parts if part is not None)
+                else:
+                    final = execute_prompt(generate_formatting_prompt(pruned))
+                with open(summary_path, "w", encoding="utf-8") as sf:
+                    sf.write(final)
+                formatted_count += 1
+                logger.info("[SLEEP][FORMAT] Completed project=%s", pid)
+            except Exception as e:
+                logger.error("[SLEEP][ERROR] Formatting failed project=%s: %s", pid, e, exc_info=True)
+                continue
+        logger.info("[SLEEP] Completed (updated_projects=%s, projects_processed=%s, pruned=%s, formatted=%s, skipped_no_daily=%s)",
+                    updated, projects_processed, pruned_count, formatted_count, skipped_no_daily)
+    except Exception as e:
+        logger.error("[SLEEP][ERROR] %s", e, exc_info=True)
+    finally:
+        try:
+            release_lock()
+            logger.info("[SLEEP] Lock released")
+        except Exception:
+            pass
+
+def start_sleep_cycle_async() -> bool:
+    """Start sleep cycle in background if not already sleeping. Returns True if started."""
+    if is_sleeping():
+        logger.info("[SLEEP] Already running, skipping.")
+        return False
+    global _runner_thread
+    with _runner_lock:
+        if is_sleeping():
+            logger.info("[SLEEP] Already running, skipping.")
+            return False
+        t = threading.Thread(target=_sleep_cycle_worker, name="sleep-cycle", daemon=True)
+        _runner_thread = t
+        t.start()
+        return True
 
 @router.post("/sleep_cycle", response_model=SleepCycleResponse)
 async def sleep_cycle_endpoint(request: SleepCycleRequest) -> SleepCycleResponse:
@@ -109,37 +285,27 @@ async def sleep_status() -> JSONResponse:
 
 @router.post("/sleep/start")
 async def sleep_start() -> JSONResponse:
-    """Engage global sleep lock and update daily.txt for all projects (stub for 3.0)."""
+    """Start the sleep cycle in the background; returns immediately."""
     try:
         request_logger.log_request(endpoint="/sleep/start", method="POST")
-        engage_lock()
-        logger.info("[SLEEP] Lock engaged at %s", time.strftime("%H:%M", time.localtime()))
-        # Update or backfill daily.txt for all projects
-        try:
-            with get_session() as session:
-                rows = session.exec(select(Project)).all()
-        except Exception:
-            rows = []
-        updated = 0
-        for p in rows or []:
-            try:
-                if backfill_daily_txt_from_meta(p.id):
-                    updated += 1
-            except Exception:
-                pass
-        release_lock()
-        logger.info("[SLEEP] Lock released at %s", time.strftime("%H:%M", time.localtime()))
-        return JSONResponse(status_code=200, content={
-            "status": "sleep cycle initiated",
-            "updated_projects": updated,
-        })
+        if is_sleeping():
+            return JSONResponse(status_code=423, content={"error": "System is sleeping. Try again later."})
+        started = start_sleep_cycle_async()
+        if not started:
+            return JSONResponse(status_code=423, content={"error": "System is sleeping. Try again later."})
+        return JSONResponse(status_code=200, content={"status": "sleep cycle started"})
     except Exception as e:
-        try:
-            release_lock()
-        except Exception:
-            pass
         return JSONResponse(status_code=500, content={"error": str(e)})
 
+
+@router.post("/sleep/unlock")
+async def sleep_force_unlock() -> JSONResponse:
+    """Force release the global sleep lock."""
+    try:
+        release_lock()
+        return JSONResponse(status_code=200, content={"status": "unlocked"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 @router.get("/sleep_cycle/status")
 async def sleep_cycle_status() -> JSONResponse:

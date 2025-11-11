@@ -5,12 +5,13 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
 
 **Version 1 Goal:** Establish a working chatbot with a GUI and stable backend interfaces that can be extended later with RAG, memory pruning, and multi-project support.  
 **Version 2 Goal:** Add persistent Project Management, File Upload + RAG initialization, and dynamic Model Selection.
+**Version 2 Goal:** mplement autonomous long-term memory consolidation through a nightly Sleep Cycle that prunes, summarizes, and rebuilds each project’s RAG automatically. This release transforms Morpheus from a reactive chat system into one that learns and maintains knowledge over time, preparing the foundation for Dreaming (creative synthesis) in version 4.
 
 ---
 
-## Version 1 — Core Chat & Stubs
+# Version 1 — Core Chat & Stubs
 
-### Purpose
+## Purpose
 Establish a working chatbot with a web UI and stable backend interfaces, laying the foundation for future RAG, memory, and multi‑project features.
 
 ### Functional Requirements
@@ -153,9 +154,9 @@ Establish a working chatbot with a web UI and stable backend interfaces, laying 
 
 ---
 
-## Version 2 — Project Management and Model Selection
+# Version 2 — Project Management and Model Selection
 
-### Overview
+## Overview
 Version 2 introduces persistent **Project Management**, **File Upload + RAG Initialization**, and a **Dynamic Model Selector**.  
 These upgrades make Morpheus a multi-project, persistent knowledge system.
 
@@ -1257,3 +1258,135 @@ After copying the default file:
 
 **End of Version 2.x Series — Ready for 3.0 Sleep Cycle.**
 
+# Version 3 — Sleep Cycle and Memory Consolidation
+
+## Overview
+Version 3 introduces **autonomous long-term memory consolidation** through a nightly **Sleep Cycle** that prunes, summarizes, and rebuilds each project’s RAG automatically.
+This version transforms Morpheus from a reactive chat system into one that maintains knowledge over time, preparing the foundation for **Version 4 — Dreaming**.
+
+---
+
+## Version 3.1 — Sleep Scheduler and Lock Framework
+
+### Overview
+Version 3.1 implements the foundational scheduling and locking mechanism that controls the Sleep Cycle.  
+This version focuses purely on automation, concurrency safety, and lifecycle logging — no summarization or RAG rebuilding yet.
+
+---
+
+### Purpose
+Provide a stable framework for triggering and managing the Sleep Cycle automatically or manually, ensuring that all chat and upload actions are paused while the system performs maintenance.
+
+### Functional Requirements
+
+#### FR-3.1.1 — Global Sleep Lock
+- On scheduler trigger or manual `/sleep/start`, create `runtime/sleep.lock`.
+- While lock exists, all non-GET endpoints return `HTTP 423 (Locked)` (strict write block).
+- Remove the lock after completion.
+- If a lock already exists at start, log `[SLEEP] Already running, skipping.`
+
+#### FR-3.1.2 — Internal Scheduler
+- Integrate **APScheduler** (BackgroundScheduler).
+- Configuration:
+  - `ENABLE_SCHEDULER=True`
+  - `SLEEP_CYCLE_HOUR=3` (default 3 AM)
+- Scheduler invokes the same internal background runner used by the `/sleep/start` endpoint.
+- If the system is already sleeping when the scheduler fires, log `[SLEEP] Already running, skipping.` and do nothing (no catch-up runs).
+- Manual endpoint behavior:
+  - `POST /sleep/start` starts the background runner and returns immediately with `200`.
+  - If already sleeping, it returns `423` with `{ "error": "System is sleeping. Try again later." }`.
+
+#### FR-3.1.3 — Background Thread Execution
+- When triggered, spawn a background thread to simulate the sleep operation.
+  - Log `[SLEEP] Thread started`.
+  - Perform the existing V2.x daily backfill behavior (for each project: if `daily.txt` is missing and `daily.json` exists, write `daily.txt` from metadata). Log count in `[SLEEP] Completed (updated_projects=N)`.
+  - Sleep for ~60 seconds to simulate the maintenance window (testing aid).
+  - Log `[SLEEP] Completed`.
+- On any exception, log `[SLEEP][ERROR]` and release the lock.
+
+#### FR-3.1.4 — Logging
+- Mandatory log sequence for every run:
+  `[SLEEP] Lock engaged → [SLEEP] Thread started → [SLEEP] Completed → [SLEEP] Lock released`.
+
+---
+
+### Acceptance Criteria
+- Scheduler fires automatically at the configured local hour and can be triggered manually via `/sleep/start`.
+- Lock file is created and removed correctly; all non-GET endpoints return `HTTP 423` during the lock window (≈60s).
+- Logs show the complete `[SLEEP]` sequence from start to finish, including the updated_projects count in the Completed message when backfill runs.
+- Daily backfill (only if `daily.txt` is missing and `daily.json` exists) executes inside the sleep window; no summarization or RAG rebuilds occur in 3.1.
+
+
+## Version 3.2 — Daily Summarization Pipeline
+
+### Overview
+Version 3.2 extends the Sleep Cycle to perform nightly consolidation of daily memory.  
+Each project with a valid `daily.txt` is pruned and reformatted into a structured summary file (`sleep_summary.txt`).  
+This lays the groundwork for 3.3, which will rebuild the project RAG from these summaries.
+
+---
+
+### Purpose
+Automate the transformation of each project's `daily.txt` into a structured long-term memory file using a two-step summarization process (Pruning → Formatting).
+
+### Functional Requirements
+
+#### FR-3.2.1 — Project Scan
+- During the sleep thread (after lock engaged), iterate through all `memory/{project}/` directories.
+- If `daily.txt` exists and is non-empty → process it.
+- Else, log `[SLEEP] Skipped project (no daily.txt)`.
+
+#### FR-3.2.2 — Pruning Stage
+- Apply `generate_pruning_prompt(daily.txt)` using the LLM interface.
+- Output `memory/{project}/pruned.txt`.
+- Preserve all header lines, decisions, timestamps, and references.
+- Log `[SLEEP][PRUNE] Completed project={id}` with size/line count.
+
+#### FR-3.2.3 — Formatting Stage
+- Apply `generate_formatting_prompt(pruned.txt)` to structure content into topic sections with metadata and appendices.
+- Output `memory/{project}/sleep_summary.txt`.
+- Log `[SLEEP][FORMAT] Completed project={id}`.
+
+#### FR-3.2.4 — Cleanup and Archival
+- Optionally remove intermediate files after verification (initially commented out for testing).
+
+Example code block (commented):
+```python
+# import os
+# try:
+#     os.remove(f"memory/{project}/daily.txt")
+#     os.remove(f"memory/{project}/pruned.txt")
+#     logger.info(f"[SLEEP][CLEANUP] Removed daily.txt and pruned.txt for project {project}")
+# except Exception as e:
+#     logger.warning(f"[SLEEP][CLEANUP][ERROR] {e}")
+```
+- Keep `sleep_summary.txt` for verification and later RAG rebuild (3.3).
+- Log `[SLEEP] Consolidation complete for {id}`.
+
+#### FR-3.2.5 — Logging
+- Mandatory log chain per project:
+  `[SLEEP] Lock engaged → [SLEEP][PRUNE] → [SLEEP][FORMAT] → [SLEEP] Completed → [SLEEP] Lock released`.
+- On exceptions, log `[SLEEP][ERROR] project={id}` and continue to next project.
+
+---
+
+#### FR-3.2.6 — Daily File BEGIN/END Tags
+- When `daily.txt` is first created for a project, write a file header:
+  ```
+  === BEGIN DAILY MEMORY: MM/DD/YYYY ===
+  ```
+  (Local date; followed by a blank line.)
+- Immediately before the pruning stage runs during the sleep cycle, append a closing tag ONLY to the in‑memory content sent to the LLM (do not persist back to `daily.txt`):
+  ```
+  === END DAILY MEMORY: MM/DD/YYYY ===
+  ```
+  (Local date; surrounded by blank lines.)
+- The BEGIN/END tags bracket the daily memory window for clearer summarization context, without altering the on‑disk daily file beyond the first‑write header.
+
+### Acceptance Criteria
+- Each project with a `daily.txt` produces `pruned.txt` and `sleep_summary.txt`.
+- Skipped projects are logged clearly.
+- Lock and thread behavior remain identical to 3.1.
+- Logs show `[PRUNE]` and `[FORMAT]` entries for each processed project.
+- Cleanup code for `daily.txt` and `pruned.txt` is present but commented out until verified.
+- No RAG rebuild yet — only summarization and cleanup verified.

@@ -218,7 +218,7 @@ setup-env:
 		echo "MODEL_TEMPERATURE=1.0"; \
 		echo "# Sampling temperature (0.0–2.0)"; \
 		echo ""; \
-		echo "MODEL_MAX_TOKENS=32000"; \
+		echo "MODEL_MAX_TOKENS=128000"; \
 		echo "# Max tokens in a single model response"; \
 		echo ""; \
 		echo "HOST=0.0.0.0"; \
@@ -296,7 +296,7 @@ setup-env:
 		echo "RAG_SCORE_THRESHOLD=0.5"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
-		echo "CHAT_HISTORY_LIMIT_PAIRS=2"; \
+		echo "CHAT_HISTORY_LIMIT_PAIRS=6"; \
 		echo "# V2.3: Number of prompt/response pairs kept in working memory:: 10 is working well"; \
 		echo ""; \
 		echo "DAILY_RAG_ENABLED=true"; \
@@ -356,8 +356,21 @@ setup-env:
 		echo "DEFAULT_PERSONALITY_PROMPT_PATH=app/config/defaults/personality.json"; \
 		echo "# V2.6: Default personality JSON file path (relative to backend/ cwd)"; \
 		echo ""; \
+		echo "ENABLE_SCHEDULER=true"; \
+		echo "# V3.1: Enable daily sleep scheduler"; \
+		echo ""; \
+		echo "SLEEP_CYCLE_HOUR=15"; \
+		echo "# V3.1: Local hour of day (0-23) to run sleep cycle"; \
+		echo ""; \
+		echo "SLEEP_CYCLE_MINUTE=17"; \
+		echo "# V3.1: Local minute of day (0-59) to run sleep cycle"; \
+		echo ""; \
 	} > .env
 	@echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
+
+unlock-sleep:
+	@rm -f backend/runtime/sleep.lock backend/app/runtime/sleep.lock 2>/dev/null || true
+	@echo "✅ Sleep lock cleared (if it existed)"
 
 # Full setup from scratch
 setup: setup-env install build

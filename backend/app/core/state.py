@@ -49,3 +49,22 @@ def init_from_disk() -> None:
     if os.path.exists(_LOCK_PATH):
         set_sleeping(True)
 
+
+def clear_stale_lock(max_age_seconds: int = 2 * 60 * 60) -> bool:
+    """
+    Remove a stale lock file if it's older than max_age_seconds.
+    Returns True if a stale lock was cleared.
+    """
+    try:
+        if os.path.exists(_LOCK_PATH):
+            mtime = os.path.getmtime(_LOCK_PATH)
+            if (time.time() - mtime) > max_age_seconds:
+                try:
+                    os.remove(_LOCK_PATH)
+                finally:
+                    set_sleeping(False)
+                return True
+    except Exception:
+        pass
+    return False
+

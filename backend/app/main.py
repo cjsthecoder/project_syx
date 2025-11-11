@@ -31,6 +31,9 @@ from .core.database import get_session
 from .core.db_models import Project
 from .core.rag_manager import rebuild_faiss_index
 import shutil
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from .api.sleep import start_sleep_cycle_async, is_sleeping
 
 # Setup logging (only once, check if already configured)
 setup_logging()
@@ -45,6 +48,13 @@ logger.info("Config: DB_PATH=%s", settings.db_path)
 async def lifespan(app: FastAPI):
     logger.info("FastAPI startup")
     init_db()
+    # Clear any leftover lock on startup to avoid stuck sleep state
+    try:
+        from .core.state import release_lock
+        release_lock()
+        logger.info("[SLEEP] Cleared any existing lock on startup")
+    except Exception as e:
+        logger.warning("[SLEEP] Failed clearing startup lock: %s", e)
     # V2.6: Backfill system prompt and personality defaults for existing projects
     try:
         backfill_all_projects()
@@ -67,9 +77,7 @@ async def lifespan(app: FastAPI):
             default_src = os.path.abspath(os.path.join(os.path.dirname(__file__), "config", "defaults", "DEFAULT_RAG.txt"))
             default_dst = os.path.join(uploads_dir, "DEFAULT_RAG.txt")
             if os.path.isfile(default_src):
-                if os.path.exists(default_dst):
-                    logger.warning("[INIT] DEFAULT_RAG.txt already exists for project %s; skipping copy", pid)
-                else:
+                if not os.path.exists(default_dst):
                     shutil.copy(default_src, default_dst)
                     logger.info("[INIT] Added default RAG file to %s", default_dst)
                     try:
@@ -81,6 +89,24 @@ async def lifespan(app: FastAPI):
                 logger.warning("[WARN] DEFAULT_RAG.txt not found; Continuum created without baseline knowledge.")
     except Exception as e:
         logger.warning("[INIT] Continuum seed failed: %s", e, exc_info=True)
+    # V3.1: Start daily scheduler if enabled
+    try:
+        if get_settings().enable_scheduler:
+            sched = BackgroundScheduler(timezone=None)
+            hour = int(get_settings().sleep_cycle_hour)
+            minute = int(get_settings().sleep_cycle_minute)
+            sched.add_job(
+                lambda: (_schedule_entrypoint()),
+                trigger=CronTrigger(hour=hour, minute=minute),
+                id="sleep_cycle_job",
+                replace_existing=True,
+                misfire_grace_time=6 * 60 * 60,
+                coalesce=True,
+            )
+            sched.start()
+            logger.info("[SCHED] Sleep scheduler started (hour=%s, minute=%s)", hour, minute)
+    except Exception as e:
+        logger.warning("[SCHED] Failed to start scheduler: %s", e, exc_info=True)
     try:
         yield
     finally:
@@ -115,6 +141,7 @@ app.include_router(llm_models.router, tags=["models"])
 
 # V2.7: Write-blocking middleware during sleep
 from fastapi.responses import JSONResponse
+from .core.state import clear_stale_lock
 
 @app.middleware("http")
 async def sleep_guard(request, call_next):
@@ -124,6 +151,22 @@ async def sleep_guard(request, call_next):
     except Exception:
         pass
     return await call_next(request)
+
+def _schedule_entrypoint():
+    try:
+        # Clear stale lock if present (older than default window)
+        try:
+            cleared = clear_stale_lock()
+            if cleared:
+                logger.info("[SLEEP] Cleared stale lock before scheduled run")
+        except Exception:
+            pass
+        if not is_sleeping():
+            start_sleep_cycle_async()
+        else:
+            logger.info("[SLEEP] Already running, skipping.")
+    except Exception as e:
+        logger.warning("[SCHED] Schedule entrypoint failed: %s", e, exc_info=True)
 
 # Mount static files (React build output)
 static_dir = os.path.join(os.path.dirname(__file__), "static")

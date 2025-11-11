@@ -23,7 +23,7 @@ class BaseResponse(BaseModel):
 # Chat Models
 class ChatRequest(BaseModel):
     """Request model for chat endpoint."""
-    message: str = Field(..., min_length=1, max_length=4000, description="User message")
+    message: str = Field(..., min_length=1, max_length=200000, description="User message")
     project_id: Optional[str] = Field(default=None, description="Project context (stub for V4)")
     conversation_id: Optional[str] = Field(default=None, description="Conversation ID for context")
     model: Optional[str] = Field(default=None, description="Override model for this request")

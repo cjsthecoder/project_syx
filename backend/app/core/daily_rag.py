@@ -98,6 +98,14 @@ def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg
         _save_metadata(meta_path, entries)
         # Append to daily.txt (human-readable)
         try:
+            # If first write, add BEGIN header with local date (MM/DD/YYYY)
+            try:
+                if (not os.path.isfile(txt_path)) or os.path.getsize(txt_path) == 0:
+                    begin_date = time.strftime("%m/%d/%Y", time.localtime())
+                    with open(txt_path, "a", encoding="utf-8") as tf:
+                        tf.write(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n")
+            except Exception:
+                pass
             ts = entry["created_at"]
             # Split pair_text into user and assistant parts safely
             if "\nAssistant:" in pair_text:
@@ -107,7 +115,24 @@ def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg
             else:
                 user_text = ""
                 assistant_text = pair_text.strip()
-            block = f"[{ts}] [route: {ns}] [keep: {str(bool(keep)).lower()}]\nprompt: {user_text}\nresponse: {assistant_text}\n\n"
+            # New V3.2 header + block format (local time MM-DD-YYYY_HH:MM:SS)
+            try:
+                tstruct = time.strptime(ts.replace("Z", ""), "%Y-%m-%dT%H:%M:%S")
+                ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime(time.mktime(tstruct)))
+            except Exception:
+                ts_local = ts
+            block = (
+                f"#timestamp: {ts_local}\n"
+                f"#route: {ns}\n"
+                f"#keep: {str(bool(keep)).lower()}\n"
+                f"\n"
+                f"--- USER (data-message-author-role: user) ---\n"
+                f"{user_text}\n"
+                f"\n"
+                f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
+                f"{assistant_text}\n"
+                f"\n"
+            )
             with open(txt_path, "a", encoding="utf-8") as tf:
                 tf.write(block)
             logger.debug("[DAILYTXT] project=%s wrote %s bytes", project_id, len(block.encode('utf-8')))
@@ -241,7 +266,7 @@ def daily_stats(project_id: str) -> Dict[str, int]:
 
 
 def backfill_daily_txt_from_meta(project_id: str) -> bool:
-    """If daily.json exists and daily.txt missing, write out text blocks for all entries."""
+    """If daily.json exists and daily.txt missing, write out text blocks for all entries (V3.2 format)."""
     faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
     if os.path.isfile(txt_path):
         return False
@@ -251,20 +276,41 @@ def backfill_daily_txt_from_meta(project_id: str) -> bool:
             return False
         try:
             with open(txt_path, "a", encoding="utf-8") as tf:
+                # Write BEGIN header once (local date MM/DD/YYYY)
+                begin_date = time.strftime("%m/%d/%Y", time.localtime())
+                tf.write(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n")
                 for e in entries:
                     ts = e.get("created_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                    ns = e.get("namespace") or "general"
+                    ns = (e.get("namespace") or "general").lower()
                     keep = bool(e.get("keep", False))
                     text = e.get("text") or ""
+                    # Localize timestamp to MM-DD-YYYY_HH:MM:SS
+                    try:
+                        tstruct = time.strptime(ts.replace("Z", ""), "%Y-%m-%dT%H:%M:%S")
+                        ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime(time.mktime(tstruct)))
+                    except Exception:
+                        ts_local = ts
                     # Best-effort split back into prompt/response
                     if "\nAssistant:" in text:
                         u, a = text.split("\nAssistant:", 1)
-                        u = u.replace("User:", "", 1)
-                        block = f"[{ts}] [route: {ns}] [keep: {str(keep).lower()}]\nprompt: {u.strip()}\nresponse: {a.strip()}\n\n"
+                        u = u.replace("User:", "", 1).strip()
+                        a = a.strip()
                     else:
-                        block = f"[{ts}] [route: {ns}] [keep: {str(keep).lower()}]\nprompt: \nresponse: {text.strip()}\n\n"
+                        u, a = "", text.strip()
+                    block = (
+                        f"#timestamp: {ts_local}\n"
+                        f"#route: {ns}\n"
+                        f"#keep: {str(keep).lower()}\n"
+                        f"\n"
+                        f"--- USER (data-message-author-role: user) ---\n"
+                        f"{u}\n"
+                        f"\n"
+                        f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
+                        f"{a}\n"
+                        f"\n"
+                    )
                     tf.write(block)
-            logger.warning("[DAILYTXT] Backfilled daily.txt from daily.json for project=%s", project_id)
+            logger.warning("[DAILYTXT] Backfilled daily.txt (V3.2 format) for project=%s", project_id)
             return True
         except Exception as e:
             logger.error("[DAILYTXT] Failed backfill for project=%s: %s", project_id, e)

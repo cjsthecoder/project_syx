@@ -57,6 +57,7 @@ class LLMProvider:
         rag_system_prompt: Optional[str] = None,
         override_model: Optional[str] = None,
         temperature_override: Optional[float] = None,
+        completion_tokens_override: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Generate a response using the LLM.
@@ -117,7 +118,13 @@ class LLMProvider:
                     openai_api_key=self.settings.openai_api_key,
                     model_name=model_name,
                     temperature=temperature,
-                    model_kwargs={"max_completion_tokens": self.settings.model_max_tokens},
+                    model_kwargs={
+                        "max_completion_tokens": (
+                            int(completion_tokens_override)
+                            if completion_tokens_override is not None
+                            else self.settings.model_max_tokens
+                        )
+                    },
                     streaming=False,
                 )
                 return llm.invoke(messages)

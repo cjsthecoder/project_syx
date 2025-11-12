@@ -296,7 +296,7 @@ setup-env:
 		echo "RAG_SCORE_THRESHOLD=0.5"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
-		echo "CHAT_HISTORY_LIMIT_PAIRS=6"; \
+		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
 		echo "# V2.3: Number of prompt/response pairs kept in working memory:: 10 is working well"; \
 		echo ""; \
 		echo "DAILY_RAG_ENABLED=true"; \
@@ -364,6 +364,9 @@ setup-env:
 		echo ""; \
 		echo "SLEEP_CYCLE_MINUTE=17"; \
 		echo "# V3.1: Local minute of day (0-59) to run sleep cycle"; \
+		echo ""; \
+		echo "VERIFY_RAG=true"; \
+		echo "# V3.3: Enable post-rebuild verification"; \
 		echo ""; \
 	} > .env
 	@echo "✅ Created .env with defaults (update OPENAI_API_KEY)"

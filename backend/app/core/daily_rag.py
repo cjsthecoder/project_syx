@@ -71,7 +71,17 @@ def reset_daily(project_id: str) -> None:
         logger.info(f"DailyRAG: reset daily files for project={project_id}")
 
 
-def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg_id: int, tokens: int, namespace: Optional[str] = None, keep: bool = False) -> bool:
+def append_pair(
+    project_id: str,
+    pair_text: str,
+    user_msg_id: int,
+    assistant_msg_id: int,
+    tokens: int,
+    namespace: Optional[str] = None,
+    keep: bool = False,
+    embed_override: Optional[str] = None,
+    tags_meta: Optional[Dict[str, str]] = None,
+) -> bool:
     """Append a single embedded pair to the daily index and metadata.
     Note: We don't persist raw FAISS via langchain here; for V2.3 we only track metadata and rely on embeddings at retrieval-time for simplicity.
     """
@@ -97,6 +107,8 @@ def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg
             "tags": ["rolled_off"],
             "day_sequence": day_sequence,
         }
+        if tags_meta:
+            entry["tags_meta"] = tags_meta
         entries.append(entry)
         _save_metadata(meta_path, entries)
         # Append to daily.txt (human-readable)
@@ -145,6 +157,8 @@ def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg
         try:
             embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
             vs: Optional[FAISS] = None
+            # Use override text for vector content when provided (V3.4 tagging)
+            text_for_faiss = embed_override if embed_override else pair_text
             try:
                 # load existing
                 try:
@@ -156,11 +170,11 @@ def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg
             if vs is None:
                 # create new with normalize_L2 when available
                 try:
-                    vs = FAISS.from_texts(texts=[pair_text], embedding=embeddings, metadatas=[{"source": "daily", "namespace": ns}], normalize_L2=True)
+                    vs = FAISS.from_texts(texts=[text_for_faiss], embedding=embeddings, metadatas=[{"source": "daily", "namespace": ns}], normalize_L2=True)
                 except TypeError:
-                    vs = FAISS.from_texts(texts=[pair_text], embedding=embeddings, metadatas=[{"source": "daily", "namespace": ns}])
+                    vs = FAISS.from_texts(texts=[text_for_faiss], embedding=embeddings, metadatas=[{"source": "daily", "namespace": ns}])
             else:
-                vs.add_texts([pair_text], metadatas=[{"source": "daily", "namespace": ns}])
+                vs.add_texts([text_for_faiss], metadatas=[{"source": "daily", "namespace": ns}])
             vs.save_local(faiss_dir)
         except Exception as e:
             logger.error(f"DailyRAG: failed to update FAISS daily index: {e}")

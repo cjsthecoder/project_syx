@@ -1465,3 +1465,152 @@ Required sequence for each project:
 Implementation Notes
 - 3.3 runs per project immediately after 3.2 formatting within the same sleep thread. If 3.2 fails for a project, skip 3.3 for that project and continue others; log the skip.
 - `sleep_summary_all.txt` may contain multiple BEGIN/END pairs over time; this is expected and desired (append verbatim without normalization).
+
+
+## Version 3.4 — Rolling Context Tagger
+
+### Overview
+Extend the daytime “Awake Phase” to semantically tag each chat pair as it rolls off the active context buffer.  
+Tags are embedded into the daily vector text for improved retrieval; `daily.txt` remains unchanged.
+
+---
+
+### Purpose
+Automate lightweight tagging of prompt/response pairs in real time using the model defined by `BUILDER_MODEL`.  
+The tags enrich the text stored in `daily_faiss`, improving daily retrieval quality immediately.
+
+### Functional Requirements
+
+#### FR-3.4.1 — Trigger
+- When the deque exceeds `CHAT_HISTORY_LIMIT_PAIRS`, the oldest complete pair is rolled off.  
+- Before embedding into `daily_faiss`, run the tagger.
+
+#### FR-3.4.2 — Tagging Prompt
+For each rolled-off pair (optionally including the previous pair for brief context), call `BUILDER_MODEL` with a short prompt targeting a compact response:
+
+```
+Classify this exchange for memory tagging.
+Return 1-3 metadata lines only in this format:
+#topics: <keywords>
+#intent: <purpose>
+#type: <category such as technical, design, story, system, etc.>
+```
+
+Constraints:
+- Keep response minimal (≈ 3 short lines), fast (small tokens), and deterministic (temperature ~ 0).
+- Timeout budget is small; if exceeded, skip tags (see Fail‑Safe).
+
+#### FR-3.4.3 — Integration (Vectors Only)
+- Do not modify `daily.txt` formatting. Keep the current V3.2 block format.
+- Prepend the returned lines to the text that is embedded into `daily_faiss` only:
+  ```
+  #topics: …
+  #intent: …
+  #type: …
+  User: …
+  Assistant: …
+  ```
+- Optionally store the parsed fields in `daily.json` for analytics/backfill as:
+  `tags_meta: { topics, intent, type }` (optional).
+
+#### FR-3.4.4 — Fail‑Safe
+- On timeout/error/invalid output, log `[TAGGER][WARN] …` and embed the original pair text unmodified (no tags).
+
+#### FR-3.4.5 — Logging
+- On success, log `[TAGGER] topics=…, intent=…, type=…` (truncate fields in logs for brevity).
+
+---
+
+### Acceptance Criteria
+- >90% of daily_faiss vectors for rolled‑off pairs include the three tag lines.
+- Daily retrieval quality measurably improves (qualitative check acceptable for V3).
+- Tags survive the daily retrieval path (as they are part of the embedded text).
+- Average tagging overhead < ~100 ms per rolled‑off pair.
+
+---
+
+### Benefits
+- Daily vector store becomes semantically rich immediately (before sleep).
+- RAG quality improves for same‑day queries.
+- Sleep summarization remains clean and unchanged for `daily.txt` and 3.2/3.3 flows.
+
+## Version 3.5 — Streaming Chat Responses
+
+### Overview
+Enable progressive, token-by-token streaming of assistant responses so users can read output as it is generated, without waiting for completion. The existing synchronous `/chat` endpoint remains unchanged.
+
+---
+
+### Purpose
+Improve responsiveness and perceived latency during the “Awake Phase” by streaming model output to the UI while preserving current RAG, persistence, and locking semantics.
+
+### Functional Requirements
+
+#### FR-3.5.1 — Backend Streaming Endpoint
+- Add a new endpoint:
+  - `POST /chat/stream`
+  - Request shape: same as `/chat` (`message`, `project_id`, optional `model`), JSON body.
+  - Response: HTTP 200 with a streaming body; transport is newline-delimited chunks (text/plain) suitable for `fetch()` streaming in browsers.
+- Behavior:
+  - Load project system prompt, personality, and merged RAG context as in `/chat`.
+  - Persist the user message to DB immediately on stream start.
+  - Begin model generation with streaming enabled; flush partial text chunks as they arrive.
+  - On completion, persist the full assistant message to DB and trigger normal roll-off if limits exceeded.
+  - On error/mid-stream abort: close the stream; do not persist partial assistant content (or persist a short “[error] …” stub if feasible).
+- Locking:
+  - If the stream starts before the sleep lock engages, it continues until done.
+  - If the lock is already active at start, return HTTP 423 (Locked).
+
+#### FR-3.5.2 — Frontend Streaming Integration
+- Add a streaming path in the UI (e.g., “Stream” mode):
+  - Use `fetch('/chat/stream', { method: 'POST', body: JSON.stringify({...}) })`.
+  - Read from `response.body.getReader()` and append incoming chunks to the active assistant bubble in real time.
+  - On “done”, finalize the message and re-enable input.
+  - On error, show an error toast and leave partial text in-place (or clear), per UX preference.
+- Keep `/chat` (non-streaming) as the default fallback; allow a toggle in the UI to enable/disable streaming.
+
+#### FR-3.5.3 — Chunk Format
+- Transport: newline-delimited UTF-8 text chunks.
+- Chunk types:
+  - Data chunks: raw assistant text segments.
+  - Control messages (optional): lines starting with `::event: done` to indicate completion or `::event: error` to indicate errors.
+- The client must tolerate arbitrary chunk boundaries and merge in-order.
+
+#### FR-3.5.4 — Logging
+- Log sequence per request:
+  - `[STREAM] Start project_id=… msg_id=…`
+  - `[STREAM] Chunks_emitted=N bytes=M`
+  - `[STREAM] Done` or `[STREAM][ERROR] …`
+- Keep existing `[PROMPT]`, `[ROUTE]`, `[RETRIEVAL]` logs when applicable.
+
+#### FR-3.5.5 — Limits and Timeouts
+- Model timeout and stream timeout enforced (e.g., 60–120s default).
+- Backpressure: flush at least every 50–100 ms while tokens are incoming.
+- If the model or connection stalls beyond timeout, abort stream and log `[STREAM][ERROR] timeout`.
+
+#### FR-3.5.6 — DB Persistence Semantics
+- Persist user message at stream start.
+- Persist assistant message only on successful completion with the full text.
+- Roll-off logic runs exactly as in the synchronous flow, only after assistant persist.
+- No incremental DB writes during the stream.
+
+#### FR-3.5.7 — Sleep Lock Semantics
+- Streams initiated before lock continue; new streaming or non-streaming POSTs during lock receive HTTP 423.
+- GET endpoints continue to work during sleep.
+
+#### FR-3.5.8 — Configuration
+- Env flags (add to `.env` via Makefile):
+  - `STREAMING_ENABLED=true`
+  - `STREAM_FLUSH_MS=50` (flush cadence for chunks)
+  - `STREAM_TIMEOUT_MS=60000` (overall stream timeout)
+- If `STREAMING_ENABLED=false`, `/chat/stream` returns HTTP 503 with `{ "error": "Streaming disabled" }`.
+
+---
+
+### Acceptance Criteria
+- Tokens appear progressively in the UI during generation (visible typing effect).
+- On completion, the assistant message appears in DB and in `/projects/{id}/chats`.
+- RAG context injection, system prompt, and personality are applied the same as `/chat`.
+- Lock behavior: streams can continue across lock; new POSTs during lock get 423.
+- Logs show `[STREAM]` entries for start, chunk counts, and completion or error.
+- If streaming is disabled by env, the endpoint returns a clear 503 error.

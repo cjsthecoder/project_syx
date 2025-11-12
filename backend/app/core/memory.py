@@ -16,6 +16,7 @@ from .db_models import ChatMessage, Project
 from .config import get_settings
 from .daily_rag import append_pair
 from ..utils.logging import get_message_id, get_namespace
+from .tagger import tag_pair
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,9 @@ class MemoryManager:
             return
         user_msg = dq.popleft()
         asst_msg = dq.popleft()
-        pair_text = f"User: {user_msg.get('content')}\nAssistant: {asst_msg.get('content')}"
+        user_text = user_msg.get('content') or ''
+        asst_text = asst_msg.get('content') or ''
+        pair_text = f"User: {user_text}\nAssistant: {asst_text}"
         # approximate tokens
         try:
             import tiktoken  # type: ignore
@@ -176,7 +179,33 @@ class MemoryManager:
             elif self._is_daily_enabled(project_id):
                 ns = (asst_msg.get("namespace") or get_namespace() or "general").lower()
                 keep = bool(asst_msg.get("keep"))
-                append_pair(project_id, pair_text, int(user_msg.get("id")), int(asst_msg.get("id")), int(tokens), namespace=ns, keep=keep)
+                # V3.4: attempt to generate tag lines and embed them into FAISS text (daily.txt unchanged)
+                tags_lines = None
+                try:
+                    tags_lines = tag_pair(user_text, asst_text, previous_pair_text=None)
+                except Exception:
+                    tags_lines = None
+                embed_text = (("\n".join(tags_lines) + "\n" + pair_text) if tags_lines else pair_text)
+                tags_meta = None
+                if tags_lines:
+                    try:
+                        topics = tags_lines[0][8:].strip()
+                        intent = tags_lines[1][8:].strip()
+                        tag_type = tags_lines[2][6:].strip()
+                        tags_meta = {"topics": topics, "intent": intent, "type": tag_type}
+                    except Exception:
+                        tags_meta = None
+                append_pair(
+                    project_id,
+                    pair_text,
+                    int(user_msg.get("id")),
+                    int(asst_msg.get("id")),
+                    int(tokens),
+                    namespace=ns,
+                    keep=keep,
+                    embed_override=embed_text,
+                    tags_meta=tags_meta,
+                )
             else:
                 logger.info("[DailyRAG] Skipping daily append (disabled for project=%s)", project_id)
         except Exception as e:

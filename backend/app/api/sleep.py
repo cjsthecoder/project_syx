@@ -38,6 +38,13 @@ _runner_lock = threading.Lock()
 _runner_thread: Optional[threading.Thread] = None
 from ..core.sleep_prompts import generate_pruning_prompt, generate_formatting_prompt
 from ..core.summarization import execute_prompt, execute_prompt_chunked, _count_tokens
+from ..core.rag_manager import rebuild_faiss_index, load_faiss_index
+from filelock import FileLock
+from ..core.config import get_settings
+from ..core.daily_rag import _project_daily_paths
+def _nl(s: str) -> str:
+    """Normalize line endings to LF to avoid mixed terminators."""
+    return s.replace("\r\n", "\n").replace("\r", "\n")
 
 def _sleep_cycle_worker():
     try:
@@ -88,8 +95,8 @@ def _sleep_cycle_worker():
                     pruned = execute_prompt_chunked(generate_pruning_prompt, source_text, max_tokens=max_tokens, overlap=200)
                 else:
                     pruned = execute_prompt(generate_pruning_prompt(source_text))
-                with open(pruned_path, "w", encoding="utf-8") as pf:
-                    pf.write(pruned)
+                with open(pruned_path, "w", encoding="utf-8", newline="\n") as pf:
+                    pf.write(_nl(pruned))
                 pruned_count += 1
                 try:
                     lines = len(pruned.splitlines())
@@ -173,10 +180,99 @@ def _sleep_cycle_worker():
                     final = "\n\n".join(part for part in final_parts if part is not None)
                 else:
                     final = execute_prompt(generate_formatting_prompt(pruned))
-                with open(summary_path, "w", encoding="utf-8") as sf:
-                    sf.write(final)
+                with open(summary_path, "w", encoding="utf-8", newline="\n") as sf:
+                    sf.write(_nl(final))
                 formatted_count += 1
                 logger.info("[SLEEP][FORMAT] Completed project=%s", pid)
+                # 3.3 Merge and RAG rebuild
+                try:
+                    # Validate summary presence and non-empty (beyond just boundary tags)
+                    if not os.path.isfile(summary_path) or os.path.getsize(summary_path) == 0:
+                        logger.warning("[SLEEP][MERGE] Skipped project=%s (empty or missing sleep_summary.txt)", pid)
+                        continue
+                    with open(summary_path, "r", encoding="utf-8") as fsum:
+                        sum_text = fsum.read()
+                    content_only = "\n".join(
+                        ln for ln in (sum_text or "").splitlines()
+                        if not ln.strip().startswith("=== BEGIN DAILY MEMORY:")
+                        and not ln.strip().startswith("=== END DAILY MEMORY:")
+                    ).strip()
+                    if len(content_only) == 0:
+                        logger.warning("[SLEEP][MERGE] Skipped (empty) project=%s", pid)
+                        continue
+                    logger.info("[SLEEP][MERGE] Initiating RAG update for %s", pid)
+                    uploads_dir = os.path.join("memory", pid, "uploads")
+                    os.makedirs(uploads_dir, exist_ok=True)
+                    cumulative_path = os.path.join(uploads_dir, "sleep_summary_all.txt")
+                    merge_lock = os.path.join("memory", pid, "merge.lock")
+                    with FileLock(merge_lock):
+                        # Create file with one-time header if missing
+                        created = False
+                        if not os.path.exists(cumulative_path):
+                            with open(cumulative_path, "w", encoding="utf-8", newline="\n") as cf:
+                                cf.write(_nl("#source: sleep_summary\n\n"))
+                            created = True
+                        # Append two newlines and then the entire summary verbatim
+                        with open(cumulative_path, "a", encoding="utf-8", newline="\n") as cf:
+                            cf.write("\n\n")
+                            cf.write(_nl(sum_text))
+                        logger.info("[SLEEP][MERGE] Appended summary to uploads/sleep_summary_all.txt (created=%s)", created)
+                        # Rebuild full uploads index
+                        rebuild_faiss_index(pid)
+                        logger.info("[MERGE] RAG rebuild complete for %s", pid)
+                        # Optional verification
+                        ok = True
+                        if get_settings().verify_rag:
+                            ok = load_faiss_index(pid) is not None
+                            if ok:
+                                logger.info("[VERIFY] OK %s", pid)
+                            else:
+                                logger.error("[VERIFY][ERROR] %s", pid)
+                        # Cleanup only if all succeeded
+                        if ok:
+                            try:
+                                os.remove(summary_path)
+                                logger.info("[SLEEP][CLEANUP] Removed individual summary for %s", pid)
+                            except Exception as ce:
+                                logger.warning("[SLEEP][CLEANUP] Failed removing summary for %s: %s", pid, ce)
+                            # Also remove pruned.txt and daily.txt per finalized cleanup policy
+                            try:
+                                if os.path.exists(pruned_path):
+                                    os.remove(pruned_path)
+                                logger.info("[SLEEP][CLEANUP] Removed pruned.txt for %s", pid)
+                            except Exception as pe:
+                                logger.warning("[SLEEP][CLEANUP] Failed removing pruned.txt for %s: %s", pid, pe)
+                            # Clear daily_faiss and remove daily.json so daily memory moves into main RAG
+                            try:
+                                faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(pid)
+                                with FileLock(lock_path):
+                                    # clear daily_faiss files
+                                    if os.path.isdir(faiss_dir):
+                                        for n in os.listdir(faiss_dir):
+                                            fp = os.path.join(faiss_dir, n)
+                                            if os.path.isfile(fp):
+                                                try:
+                                                    os.remove(fp)
+                                                except Exception:
+                                                    pass
+                                    # remove daily.json
+                                    if os.path.exists(meta_path):
+                                        try:
+                                            os.remove(meta_path)
+                                        except Exception:
+                                            pass
+                                    # remove daily.txt
+                                    if os.path.exists(txt_path):
+                                        try:
+                                            os.remove(txt_path)
+                                            logger.info("[SLEEP][CLEANUP] Removed daily.txt for %s", pid)
+                                        except Exception as te:
+                                            logger.warning("[SLEEP][CLEANUP] Failed removing daily.txt for %s: %s", pid, te)
+                                logger.info("[SLEEP][MERGE] Cleared daily_faiss and removed daily.json for %s", pid)
+                            except Exception as de:
+                                logger.warning("[SLEEP][MERGE] Post-merge daily cleanup error for %s: %s", pid, de)
+                except Exception as me:
+                    logger.error("[SLEEP][MERGE][ERROR] project=%s: %s", pid, me, exc_info=True)
             except Exception as e:
                 logger.error("[SLEEP][ERROR] Formatting failed project=%s: %s", pid, e, exc_info=True)
                 continue

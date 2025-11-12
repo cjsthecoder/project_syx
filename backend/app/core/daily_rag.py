@@ -15,6 +15,9 @@ from ..utils.logging import get_route
 
 logger = logging.getLogger(__name__)
 
+def _nl(s: str) -> str:
+    """Normalize line endings to LF to avoid mixed terminators."""
+    return s.replace("\r\n", "\n").replace("\r", "\n")
 
 def _project_daily_paths(project_id: str) -> Tuple[str, str, str, str]:
     base_dir = os.path.join("memory", project_id)
@@ -102,8 +105,8 @@ def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg
             try:
                 if (not os.path.isfile(txt_path)) or os.path.getsize(txt_path) == 0:
                     begin_date = time.strftime("%m/%d/%Y", time.localtime())
-                    with open(txt_path, "a", encoding="utf-8") as tf:
-                        tf.write(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n")
+                    with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                        tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
             except Exception:
                 pass
             ts = entry["created_at"]
@@ -133,8 +136,8 @@ def append_pair(project_id: str, pair_text: str, user_msg_id: int, assistant_msg
                 f"{assistant_text}\n"
                 f"\n"
             )
-            with open(txt_path, "a", encoding="utf-8") as tf:
-                tf.write(block)
+            with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                tf.write(_nl(block))
             logger.debug("[DAILYTXT] project=%s wrote %s bytes", project_id, len(block.encode('utf-8')))
         except Exception as te:
             logger.error("DailyRAG: failed writing daily.txt: %s", te)
@@ -275,10 +278,10 @@ def backfill_daily_txt_from_meta(project_id: str) -> bool:
         if not entries:
             return False
         try:
-            with open(txt_path, "a", encoding="utf-8") as tf:
+            with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
                 # Write BEGIN header once (local date MM/DD/YYYY)
                 begin_date = time.strftime("%m/%d/%Y", time.localtime())
-                tf.write(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n")
+                tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
                 for e in entries:
                     ts = e.get("created_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                     ns = (e.get("namespace") or "general").lower()
@@ -309,7 +312,7 @@ def backfill_daily_txt_from_meta(project_id: str) -> bool:
                         f"{a}\n"
                         f"\n"
                     )
-                    tf.write(block)
+                    tf.write(_nl(block))
             logger.warning("[DAILYTXT] Backfilled daily.txt (V3.2 format) for project=%s", project_id)
             return True
         except Exception as e:

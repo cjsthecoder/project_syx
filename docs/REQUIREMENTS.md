@@ -5,7 +5,7 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
 
 **Version 1 Goal:** Establish a working chatbot with a GUI and stable backend interfaces that can be extended later with RAG, memory pruning, and multi-project support.  
 **Version 2 Goal:** Add persistent Project Management, File Upload + RAG initialization, and dynamic Model Selection.
-**Version 2 Goal:** mplement autonomous long-term memory consolidation through a nightly Sleep Cycle that prunes, summarizes, and rebuilds each project’s RAG automatically. This release transforms Morpheus from a reactive chat system into one that learns and maintains knowledge over time, preparing the foundation for Dreaming (creative synthesis) in version 4.
+**Version 2 Goal:** Implement autonomous long-term memory consolidation through a nightly Sleep Cycle that prunes, summarizes, and rebuilds each project’s RAG automatically. This release transforms Morpheus from a reactive chat system into one that learns and maintains knowledge over time, preparing the foundation for Dreaming (creative synthesis) in version 4.
 
 ---
 
@@ -1390,3 +1390,78 @@ Example code block (commented):
 - Logs show `[PRUNE]` and `[FORMAT]` entries for each processed project.
 - Cleanup code for `daily.txt` and `pruned.txt` is present but commented out until verified.
 - No RAG rebuild yet — only summarization and cleanup verified.
+
+
+## Version 3.3 — RAG Rebuild and Verification
+
+### Overview
+Version 3.3 completes the Sleep Cycle by merging the newly generated `sleep_summary.txt` from 3.2 directly into the project’s long-term memory and rebuilding the FAISS index immediately—no directory rescan required.
+
+---
+
+### Purpose
+Finalize nightly memory consolidation by updating each project’s RAG index using the freshly formatted, tagged, and delimited `sleep_summary.txt`.
+
+### Functional Requirements
+
+#### FR-3.3.1 — Immediate Merge Trigger
+- Executed directly after `sleep_summary.txt` is written during the same sleep thread.
+- For each processed project, confirm that:
+  - `sleep_summary.txt` exists.
+  - File size > 0 bytes.
+- Log `[SLEEP][MERGE] Initiating RAG update for {project}`.
+
+#### FR-3.3.2 — Append to Long-Term Summary
+- Append the existing, pre-delimited `sleep_summary.txt` to a persistent cumulative file:  
+  `memory/{project}/uploads/sleep_summary_all.txt`
+- Append the entire file verbatim (including `=== BEGIN/END DAILY MEMORY ===` tags).
+- If the cumulative file does not exist, create it and write the new content. On first create only, prepend a single header line `#source: sleep_summary` and never duplicate it on later appends.
+- Insert two newlines between appended summaries for readability.
+- If the cumulative file already exists but is missing the `#source: sleep_summary` header, leave it as-is (do not retroactively modify).
+- Guard appends with a per-project file lock: `memory/{project}/merge.lock` (covers append+rebuild for that project).
+- Log `[SLEEP][MERGE] Appended summary to uploads/sleep_summary_all.txt`.
+
+#### FR-3.3.3 — Trigger RAG Rebuild
+- Immediately call:
+  ```python
+  rebuild_rag(project_id)
+  ```
+- Use the same function used by the file-upload route; rebuild the entire uploads index (full rebuild).
+- Wait for completion (synchronous for prototype).
+- Log `[MERGE] RAG rebuild complete for {project}`.
+
+#### FR-3.3.4 — Optional Verification
+- Controlled by env `VERIFY_RAG` (default: true). If enabled, run `verify_rag(project_id)` to confirm:
+  - `index.faiss` and `index.json` exist and timestamps updated.
+  - Vector count > 0.
+- Log `[VERIFY] OK {project}` or `[VERIFY][ERROR]`.
+
+#### FR-3.3.5 — Cleanup
+- Delete `sleep_summary.txt` only when append + rebuild + (verify if enabled) all succeed.
+- If append succeeds but rebuild fails, leave `sleep_summary_all.txt` as-is, keep `sleep_summary.txt` for retry next cycle, and log an error.
+- If `sleep_summary.txt` is empty or contains only boundary tags, skip append/rebuild and log a warning (`[SLEEP][MERGE] Skipped (empty)`).
+- Retain `sleep_summary_all.txt` in uploads for historical context.
+- Log `[SLEEP][CLEANUP] Removed individual summary for {project}`.
+
+#### FR-3.3.6 — Logging
+Required sequence for each project:
+```
+[SLEEP][MERGE] Initiating RAG update
+[SLEEP][MERGE] Appended summary
+[MERGE] RAG rebuild complete
+[VERIFY] OK
+[SLEEP][CLEANUP]
+```
+
+---
+
+### Acceptance Criteria
+- After each sleep cycle, `sleep_summary.txt` is appended to `uploads/sleep_summary_all.txt`.
+- The project’s FAISS index rebuilds immediately.
+- Optional verification passes (when `VERIFY_RAG=true`).
+- All actions occur within the same sleep cycle (no rescan).
+- Log chain completes without errors.
+
+Implementation Notes
+- 3.3 runs per project immediately after 3.2 formatting within the same sleep thread. If 3.2 fails for a project, skip 3.3 for that project and continue others; log the skip.
+- `sleep_summary_all.txt` may contain multiple BEGIN/END pairs over time; this is expected and desired (append verbatim without normalization).

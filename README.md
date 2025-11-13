@@ -50,4 +50,30 @@ Or add it to your `.env` file alongside other settings (see `.env.example`).
 - RAG_ON_CHAT, RAG_TOP_K, RAG_SNIPPET_MAX_TOKENS, RAG_CONTEXT_MAX_TOKENS, RAG_SCORE_THRESHOLD
 - AVAILABLE_MODELS (optional JSON array)
 
+# Organization Verification Required for Streaming
+
+Some OpenAI models require your organization to be verified before streaming responses is allowed.
+
+## Why Verification Is Needed
+
+Certain models (including newer GPT-5 series models) will return errors if streaming is requested before the organization is verified. This typically appears as:
+
+```
+Your organization must be verified to stream this model.
+```
+
+## Verification Steps
+
+1. Sign in to your OpenAI account.
+2. Navigate to **Settings → Organization → General**.
+3. Click **Verify Organization**.
+4. Submit a valid government-issued ID and a portrait photo.
+5. Verification usually completes within about 30 minutes.
+
+## Notes
+
+* If verification is pending, you can temporarily disable streaming (`STREAMING_ENABLED=false`) or use a model that does not require verification.
+* Verification is required even when using these models through external platforms such as Azure.
+
+
 Refer to `docs/REQUIREMENTS.md` for full details.

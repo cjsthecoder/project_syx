@@ -135,27 +135,65 @@ export default function App() {
   async function send() {
     if (!canSend) return
     setError(null)
-    // Indicate RAG builder phase immediately; switch to Thinking… on next tick
-    setRagBuilding(true)
-    setTimeout(() => setLoading(true), 0)
+    setLoading(true)
     const userMsg: Message = { role: 'user', content: input }
+    // Add user only; defer assistant bubble until first token arrives
     setMessages((m) => [...m, userMsg])
+    const toSend = input
     setInput('')
     try {
-      const res = await api<{ response: string; llm_model: string }>('/chat', {
+      const res = await fetch('/chat/stream', {
         method: 'POST',
-        body: JSON.stringify({ message: userMsg.content, project_id: projectId, model }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, message: toSend, model }),
       })
-      setModel(res.llm_model)
-      setMessages((m) => [...m, { role: 'assistant', content: res.response }])
+      if (!res.ok || !res.body) {
+        const txt = await res.text().catch(() => '')
+        throw new Error(txt || `HTTP ${res.status}`)
+      }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let done = false
+      let assistantCreated = false
+      while (!done) {
+        const { value, done: d } = await reader.read()
+        done = d
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true })
+          const text = chunk.replace(/\n::event:\s*done\s*\n?/g, '')
+          // Only act on non-whitespace text
+          if (text && text.trim().length > 0) {
+            setMessages((m) => {
+              if (m.length === 0) return m
+              // Create assistant bubble on first token
+              if (!assistantCreated) {
+                assistantCreated = true
+                // Hide "Thinking..." once real content starts streaming
+                setLoading(false)
+                return [...m, { role: 'assistant', content: text }]
+              }
+              // Append to latest assistant message
+              const copy = [...m]
+              const idx = copy.length - 1
+              if (copy[idx]?.role !== 'assistant') {
+                // If somehow last isn't assistant, create one
+                return [...copy, { role: 'assistant', content: text }]
+              }
+              copy[idx] = { ...copy[idx], content: (copy[idx].content || '') + text }
+              return copy
+            })
+          }
+        }
+      }
+      // Refresh stats/chats to sync with DB-persisted assistant entry
       if (projectId) {
-        loadStats(projectId)
-        loadChats(projectId)
+        try { await loadStats(projectId) } catch {}
+        try { await loadChats(projectId) } catch {}
       }
     } catch (e: any) {
-      setError(e?.message || 'Request failed')
+      setError(e?.message || 'Stream failed')
     } finally {
-      setRagBuilding(false)
+      // If no content ever arrived, clear "Thinking..." now
       setLoading(false)
     }
   }
@@ -344,7 +382,7 @@ export default function App() {
               >
                 {m.content}
               </div>
-              {m.role === 'assistant' && (
+              {m.role === 'assistant' && m.id != null && (
                 <div className="ml-[20%] mt-1 flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
                   <label className="inline-flex items-center gap-2">
                     <input

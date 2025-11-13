@@ -134,6 +134,10 @@ class Settings(BaseSettings):
     sleep_cycle_hour: int = Field(default=3, ge=0, le=23, description="Local hour (0-23) to run sleep cycle")
     sleep_cycle_minute: int = Field(default=0, ge=0, le=59, description="Local minute (0-59) to run sleep cycle")
     verify_rag: bool = Field(default=True, description="V3.3: enable post-rebuild verification step")
+    # V3.5: Streaming
+    streaming_enabled: bool = Field(default=True, description="Enable streaming chat endpoint")
+    stream_flush_ms: int = Field(default=50, gt=0, description="Flush cadence for streaming chunks in milliseconds")
+    stream_timeout_ms: int = Field(default=60000, gt=0, description="Overall stream timeout in milliseconds")
 
 # Global settings instance
 settings = Settings()

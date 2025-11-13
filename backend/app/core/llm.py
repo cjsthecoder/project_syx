@@ -35,11 +35,11 @@ class LLMProvider:
             model_config = get_model_config()
             
             self._llm = ChatOpenAI(
-                openai_api_key=self.settings.openai_api_key,
-                model_name=model_config["model_name"],
-                temperature=model_config["temperature"],
+                api_key=self.settings.openai_api_key,
+                model=model_config["model_name"],
+                temperature=1.0,
                 model_kwargs={"max_completion_tokens": model_config["max_tokens"]},
-                streaming=False,  # Disable streaming for now
+                streaming=False,
             )
             
             logger.info(f"LLM provider initialized with model: {model_config['model_name']}")
@@ -115,8 +115,8 @@ class LLMProvider:
             # Optionally use an override model for this call with temperature fallback + model capability cache
             def _invoke_with(model_name: str, temperature: float):
                 llm = ChatOpenAI(
-                    openai_api_key=self.settings.openai_api_key,
-                    model_name=model_name,
+                    api_key=self.settings.openai_api_key,
+                    model=model_name,
                     temperature=temperature,
                     model_kwargs={
                         "max_completion_tokens": (
@@ -126,7 +126,7 @@ class LLMProvider:
                         )
                     },
                     streaming=False,
-                )
+                 )
                 return llm.invoke(messages)
 
             used_model = self.settings.model_name
@@ -160,26 +160,29 @@ class LLMProvider:
                         logger.info("LLM model %s does not support temperature; using default thereafter", model_to_use)
                     # Retry once with default temperature, silently on subsequent calls
                     if override_model and override_model != self.settings.model_name:
-                        response = _invoke_with(override_model, self.settings.model_temperature)
+                        response = _invoke_with(override_model, 1.0)
                         used_model = override_model
                     else:
-                        response = _invoke_with(self.settings.model_name, self.settings.model_temperature)
+                        response = _invoke_with(self.settings.model_name, 1.0)
                         used_model = self.settings.model_name
                 else:
                     raise
             
             # Extract response content and metadata
-            response_content = response.content if hasattr(response, 'content') else str(response)
-            
-            # Get token usage if available
-            token_usage = getattr(response, 'usage_metadata', {})
+            response_content = getattr(response, "content", str(response)) or ""
+            # Get token usage if available (LangChain 0.2.x)
+            meta = getattr(response, "response_metadata", {}) or {}
+            token_usage = meta.get("token_usage", {}) or {}
+            input_tok = token_usage.get("prompt_tokens") or token_usage.get("input_tokens")
+            output_tok = token_usage.get("completion_tokens") or token_usage.get("output_tokens")
+            total_tok = token_usage.get("total_tokens")
             
             return {
                 "response": response_content,
                 "llm_model": used_model,
-                "tokens_used": token_usage.get("total_tokens", None),
-                "input_tokens": token_usage.get("input_tokens", None),
-                "output_tokens": token_usage.get("output_tokens", None),
+                "tokens_used": total_tok,
+                "input_tokens": input_tok,
+                "output_tokens": output_tok,
                 "success": True
             }
             

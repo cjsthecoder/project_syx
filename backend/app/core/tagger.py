@@ -30,8 +30,8 @@ def tag_pair(user_text: str, assistant_text: str, previous_pair_text: Optional[s
             temperature_override=0.0,
             completion_tokens_override=settings.builder_max_tokens,
         )
-        if not resp.get("success"):
-            logger.warning("[TAGGER][WARN] failed: %s", resp.get("error"))
+        if not resp or not isinstance(resp, dict) or not resp.get("success"):
+            logger.warning("[TAGGER][WARN] failed: %s", (resp or {}).get("error") if isinstance(resp, dict) else "unknown")
             return None
         raw = resp.get("response") or ""
         lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]

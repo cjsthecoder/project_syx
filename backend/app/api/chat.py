@@ -9,7 +9,7 @@ import time
 import uuid
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from ..core.models import ChatRequest, ChatResponse, ErrorResponse
 from ..core.llm import generate_chat_response, get_llm_health
@@ -23,6 +23,17 @@ from ..core.personality import load_project_system_prompt, load_project_personal
 from ..core.database import get_session
 from ..core.db_models import Project
 from ..core.query_builder import build_query
+from itertools import islice
+from langchain_openai import ChatOpenAI
+try:
+    # Preferred path for LC 0.2.x
+    from langchain.callbacks.streaming_aiter import AsyncIteratorCallbackHandler  # type: ignore
+except Exception:
+    try:
+        from langchain.callbacks import AsyncIteratorCallbackHandler  # type: ignore
+    except Exception:
+        AsyncIteratorCallbackHandler = None  # type: ignore
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage  # type: ignore
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -413,6 +424,219 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         except Exception:
             pass
 
+
+@router.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """
+    Streaming chat endpoint (V3.5).
+    Streams model tokens to the client as they arrive.
+    """
+    settings = get_settings()
+    try:
+        t0 = time.time()
+        msg_id = str(uuid.uuid4())
+        set_message_id(msg_id)
+        request_logger.log_request(endpoint="/chat/stream", method="POST", user_id=request.conversation_id)
+        proj = request.project_id or "Continuum"
+        # Build conversation history
+        conversation_history = None
+        primary_ns = None
+        if request.project_id:
+            mm = get_memory_manager()
+            hist = mm.get_project_history(request.project_id)
+            conversation_history = [{"role": m["role"], "content": m["content"]} for m in hist]
+        # Load system prompt + personality
+        base_system_prompt = None
+        assistant_hint = None
+        personality_creativity = None
+        if request.project_id:
+            try:
+                base_system_prompt = load_project_system_prompt(request.project_id)
+                p = load_project_personality(request.project_id)
+                personality_creativity = float(p.get("creativity") or 0.0)
+                tone = p.get("tone") or "analytical"
+                verb = p.get("verbosity") or "concise"
+                fmt = p.get("format") or "markdown"
+                domains = p.get("domain_focus") or []
+                if not isinstance(domains, list):
+                    domains = []
+                assistant_hint = f"Follow these preferences: tone={tone}, verbosity={verb}, format={fmt}, domain_focus={domains}. Respond concisely in the chosen format."
+            except Exception:
+                base_system_prompt = None
+                assistant_hint = None
+                personality_creativity = None
+        # Optional RAG assembly (reuse same logic as /chat but simplified)
+        rag_system_prompt = None
+        preview = (request.message or "")[:settings.log_preview_max_chars]
+        if settings.rag_on_chat and request.project_id:
+            try:
+                mm = get_memory_manager()
+                hist = mm.get_project_history(request.project_id)
+                tail = hist[-8:] if len(hist) > 8 else hist
+                parts = []
+                for m in tail:
+                    parts.append(f"{m.get('role')}: {(m.get('content') or '')[:120]}")
+                summary = " | ".join(parts)[:1000]
+            except Exception:
+                summary = ""
+            b = build_query(request.project_id, summary, request.message)
+            if b:
+                route = (b.get('route') or '').upper()
+                do_rag = bool(b.get('rag'))
+                conf = float(b.get('confidence') or 0.0)
+                standalone = b.get('standalone') or request.message
+                paraphrases = b.get('paraphrases') or []
+                # Select namespaces and build merged context if enabled
+                try:
+                    rcfg = _load_route_config()
+                except Exception:
+                    rcfg = {}
+                rdef = rcfg.get(route or "OTHER") or rcfg.get("OTHER") or {}
+                namespaces = rdef.get("namespaces") or []
+                rag_k_route = int(rdef.get("rag_k", settings.rag_top_k))
+                score_th = float(rdef.get("score_threshold", settings.rag_score_threshold))
+                try:
+                    primary_ns = (route or "general").lower() if route else "general"
+                except Exception:
+                    primary_ns = "general"
+                if do_rag and (route != "CHITCHAT"):
+                    # daily enabled?
+                    daily_enabled = True
+                    try:
+                        with get_session() as session:
+                            p = session.get(Project, request.project_id)
+                            if p is not None:
+                                daily_enabled = bool(p.daily_rag_enabled)
+                    except Exception:
+                        daily_enabled = True
+                    queries = [standalone]
+                    if conf >= settings.builder_confidence_min:
+                        queries.extend(paraphrases[:3])
+                    q_join = "\n".join([q for q in queries if q])
+                    primary_query = q_join if q_join else (request.message or "")
+                    rc = merge_daily_and_main(
+                        project_id=request.project_id,
+                        query=primary_query,
+                        main_top_k=rag_k_route,
+                        main_snippet_max_tokens=settings.rag_snippet_max_tokens,
+                        main_threshold=score_th,
+                        daily_top_k=(rag_k_route if daily_enabled else 0),
+                        daily_threshold=score_th,
+                        daily_weight=settings.daily_rag_weight,
+                        daily_max_tokens=settings.daily_rag_max_tokens,
+                        global_context_max_tokens=settings.rag_context_max_tokens,
+                        dedupe_exact=settings.dedupe_exact,
+                        dedupe_near=settings.dedupe_near,
+                        dedupe_similarity_threshold=settings.dedupe_similarity_threshold,
+                        prefer_daily=settings.dedupe_keep_daily,
+                        topics=b.get('topics') or [],
+                        preferred_namespace=None,
+                        topic_boost=settings.topic_boost,
+                        decision_boost=settings.decision_boost,
+                        question_boost=settings.question_boost,
+                        route_namespaces=namespaces,
+                        namespace_boost=settings.namespace_boost,
+                    )
+                    if rc.get("context_text"):
+                        rag_system_prompt = rc["context_text"]
+        # Persist user immediately
+        if request.project_id:
+            try:
+                get_memory_manager().append_user_message(request.project_id, request.message)
+            except Exception:
+                pass
+        # Fallback: if streaming is disabled, return a simulated stream using the non-streaming path
+        if not settings.streaming_enabled:
+            async def fake_stream():
+                try:
+                    resp = generate_chat_response(
+                        message=request.message or "",
+                        conversation_history=conversation_history,
+                        base_system_prompt=base_system_prompt,
+                        assistant_hint=assistant_hint,
+                        rag_system_prompt=rag_system_prompt,
+                    )
+                    text = (resp or {}).get("response") or ""
+                    # Persist assistant once complete
+                    try:
+                        if request.project_id:
+                            get_memory_manager().append_assistant_message(
+                                request.project_id,
+                                text,
+                                namespace=(primary_ns or "general"),
+                            )
+                    except Exception:
+                        pass
+                    # Simulate streaming by yielding characters
+                    for ch in text:
+                        yield ch
+                    yield "\n::event: done\n"
+                except Exception as e:
+                    yield f"\n[error] {str(e)}\n"
+            return StreamingResponse(fake_stream(), media_type="text/plain; charset=utf-8")
+        # True streaming via LangChain callback iterator
+        # Build messages list
+        msgs = []
+        if base_system_prompt:
+            msgs.append(SystemMessage(content=base_system_prompt))
+        if assistant_hint:
+            msgs.append(AIMessage(content=assistant_hint))
+        if rag_system_prompt:
+            msgs.append(SystemMessage(content=rag_system_prompt))
+        if conversation_history:
+            for m in conversation_history:
+                if m.get("role") == "user":
+                    msgs.append(HumanMessage(content=m.get("content") or ""))
+                elif m.get("role") == "assistant":
+                    msgs.append(AIMessage(content=m.get("content") or ""))
+        msgs.append(HumanMessage(content=request.message or ""))
+
+        # Initialize streaming LLM client (LangChain 0.2.x native astream)
+        # Force temperature to 1.0 for maximum compatibility with small models
+        llm = ChatOpenAI(
+            api_key=settings.openai_api_key,
+            model=(request.model or settings.model_name),
+            temperature=1.0,
+            model_kwargs={"max_completion_tokens": settings.model_max_tokens},
+            streaming=True,
+        )
+
+        # Token stream using astream (yields AIMessageChunk with incremental content)
+        async def token_stream():
+            collected = []
+            try:
+                async for chunk in llm.astream(msgs):
+                    # Only emit actual text content; skip metadata/header chunks
+                    piece = getattr(chunk, "content", None)
+                    if not piece:
+                        piece = getattr(chunk, "delta", None)
+                    if isinstance(piece, str) and piece:
+                        collected.append(piece)
+                        yield piece
+                # Signal end of stream
+                yield "\n::event: done\n"
+            finally:
+                # Persist assistant once complete
+                try:
+                    if request.project_id:
+                        full_text = "".join(collected)
+                        get_memory_manager().append_assistant_message(
+                            request.project_id,
+                            full_text,
+                            namespace=(primary_ns or "general"),
+                        )
+                except Exception:
+                    pass
+
+        return StreamingResponse(token_stream(), media_type="text/plain; charset=utf-8")
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        clear_message_id()
+        try:
+            clear_namespace()
+        except Exception:
+            pass
 
 @router.get("/chat/health")
 async def chat_health() -> JSONResponse:

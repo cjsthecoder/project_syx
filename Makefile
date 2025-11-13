@@ -368,6 +368,15 @@ setup-env:
 		echo "VERIFY_RAG=true"; \
 		echo "# V3.3: Enable post-rebuild verification"; \
 		echo ""; \
+		echo "STREAMING_ENABLED=false"; \
+		echo "# V3.5: Enable streaming chat endpoint"; \
+		echo ""; \
+		echo "STREAM_FLUSH_MS=50"; \
+		echo "# V3.5: Flush cadence for streaming chunks (ms)"; \
+		echo ""; \
+		echo "STREAM_TIMEOUT_MS=60000"; \
+		echo "# V3.5: Overall stream timeout (ms)"; \
+		echo ""; \
 	} > .env
 	@echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
 

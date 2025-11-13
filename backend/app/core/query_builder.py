@@ -65,9 +65,9 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
 
     try:
         llm = ChatOpenAI(
-            openai_api_key=settings.openai_api_key,
-            model_name=settings.builder_model,
-            temperature=0.0,
+            api_key=settings.openai_api_key,
+            model=settings.builder_model,
+            temperature=1.0,
             model_kwargs={"max_completion_tokens": settings.builder_max_tokens},
             streaming=False,
         )

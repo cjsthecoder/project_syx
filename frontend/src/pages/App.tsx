@@ -37,6 +37,8 @@ export default function App() {
   const [files, setFiles] = useState<any[]>([])
   const [stats, setStats] = useState<{ storage_bytes: number; index_size_bytes: number; tokens_indexed: number; context_tokens: number; file_count: number; daily_index_size_bytes?: number; daily_tokens_indexed?: number; daily_vector_count?: number; active_pairs?: number } | null>(null)
   const [projectInfo, setProjectInfo] = useState<{ name?: string; description?: string; created_at?: string; system?: boolean; daily_rag_enabled?: boolean } | null>(null)
+  const [showSleepModal, setShowSleepModal] = useState(false)
+  const [sleepSince, setSleepSince] = useState<string | null>(null)
 
   // V2.6 Personality UI state
   const [showPersonalityModal, setShowPersonalityModal] = useState(false)
@@ -113,6 +115,20 @@ export default function App() {
     }
   }, [])
 
+  async function checkSleeping(): Promise<boolean> {
+    try {
+      const r = await fetch('/sleep/status')
+      if (!r.ok) return false
+      const j = await r.json()
+      if (j && j.sleeping) {
+        setSleepSince(j.since || null)
+        setShowSleepModal(true)
+        return true
+      }
+    } catch {}
+    return false
+  }
+
   useEffect(() => {
     loadProjects()
     loadModels()
@@ -136,6 +152,11 @@ export default function App() {
     if (!canSend) return
     setError(null)
     setLoading(true)
+    // If sleeping, show modal and bail early
+    if (await checkSleeping()) {
+      setLoading(false)
+      return
+    }
     const userMsg: Message = { role: 'user', content: input }
     // Add user only; defer assistant bubble until first token arrives
     setMessages((m) => [...m, userMsg])
@@ -149,6 +170,10 @@ export default function App() {
       })
       if (!res.ok || !res.body) {
         const txt = await res.text().catch(() => '')
+        if (res.status === 423 || /sleep/i.test(txt)) {
+          await checkSleeping()
+          throw new Error('System is sleeping')
+        }
         throw new Error(txt || `HTTP ${res.status}`)
       }
       const reader = res.body.getReader()
@@ -459,6 +484,18 @@ export default function App() {
           </form>
         </div>
       </footer>
+
+      {/* System Sleeping Modal */}
+      <Dialog open={showSleepModal} onClose={() => setShowSleepModal(false)}>
+        <DialogHeader>System Sleeping</DialogHeader>
+        <div className="px-4 pb-2 text-sm">
+          The system is currently running its sleep cycle. Please try again after it finishes.
+          {sleepSince && <div className="mt-2 text-gray-600">Sleeping since: {sleepSince}</div>}
+        </div>
+        <DialogFooter>
+          <Button onClick={() => setShowSleepModal(false)}>OK</Button>
+        </DialogFooter>
+      </Dialog>
 
       {/* Create Project Modal */}
       <Dialog open={showCreateModal} onClose={() => setShowCreateModal(false)}>

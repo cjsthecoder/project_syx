@@ -48,9 +48,11 @@ def _nl(s: str) -> str:
 
 def _sleep_cycle_worker():
     try:
+        t0 = time.monotonic()
+        start_iso = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime())
         engage_lock()
         logger.info("[SLEEP] Lock engaged")
-        logger.info("[SLEEP] Thread started")
+        logger.info("[SLEEP] Thread started t=%s", start_iso)
         # Backfill daily.txt if missing (current V2.x behavior)
         updated = 0
         try:
@@ -282,6 +284,16 @@ def _sleep_cycle_worker():
         logger.error("[SLEEP][ERROR] %s", e, exc_info=True)
     finally:
         try:
+            # Duration logging (even on errors)
+            try:
+                elapsed = time.monotonic() - t0  # type: ignore[name-defined]
+                h = int(elapsed // 3600)
+                m = int((elapsed % 3600) // 60)
+                s = int(elapsed % 60)
+                logger.info("[SLEEP] Duration elapsed=%.2fs (%02d:%02d:%02d) since=%s",
+                            elapsed, h, m, s, start_iso)
+            except Exception:
+                pass
             release_lock()
             logger.info("[SLEEP] Lock released")
         except Exception:

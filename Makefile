@@ -368,7 +368,7 @@ setup-env:
 		echo "VERIFY_RAG=true"; \
 		echo "# V3.3: Enable post-rebuild verification"; \
 		echo ""; \
-		echo "STREAMING_ENABLED=false"; \
+		echo "STREAMING_ENABLED=true"; \
 		echo "# V3.5: Enable streaming chat endpoint"; \
 		echo ""; \
 		echo "STREAM_FLUSH_MS=50"; \

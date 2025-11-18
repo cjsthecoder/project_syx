@@ -4,52 +4,64 @@ description: "Morpheus AGI Chatbot Project Prompt"
 priority: high
 ---
 
-# Morpheus Project Rules
+# Morpheus AGI Project Rules
 
 You are working inside the **Morpheus AGI Chatbot Framework** repository.  
-This project implements a modular chatbot system with:
+This project implements a modular chatbot and memory system with:
 
-- **Frontend** → React + Shadcn/UI (chat window, buttons, project selector)
-- **Backend** → FastAPI with LangChain (LLM abstraction, endpoints)
-- **Memory** → FAISS integration (future versions), nightly pruning
-- **Docs** → REQUIREMENTS.md (authoritative specification of goals and features)
+- **Frontend**: React + Shadcn/UI  
+- **Backend**: FastAPI (LLM routing, Builder Model, Tagger Model)  
+- **Memory**: daily.txt, pruned_memory.txt, FAISS indexes, sleep/dream pipeline  
+- **Docs**: REQUIREMENTS.md (authoritative source of truth)
 
 ## General Guidance
 
-1. **Always refer to `docs/REQUIREMENTS.md` for project specifications**.  
-   - Follow its structure, endpoints, and functional requirements.  
-   - Do not invent features not listed in REQUIREMENTS.md unless explicitly asked.
+1. Refer to **docs/REQUIREMENTS.md** as the authoritative specification.
+   - Every feature, endpoint, and behavior must be consistent with REQUIREMENTS.md.
+   - If the user asks for code changes, verify alignment with requirements first.
+   - Never introduce functionality not supported by REQUIREMENTS.md unless explicitly instructed.
 
-2. **Never write throwaway code.**  
-   - All work should fit into the long-term structure defined in REQUIREMENTS.md.  
-   - Maintain the folder layout under `/backend` and `/frontend` exactly as documented.  
+2. Maintain the current architecture.
+   - Frontend lives under `/frontend`.
+   - Backend lives under `/backend/app`.
+   - Memory pipeline uses:  
+     - `memory/{project}/daily.faiss`  
+     - `memory/{project}/index.faiss`  
+     - nightly sleep consolidations  
+     - weekly compression (future)
 
-3. **Frontend Development (React + Shadcn/UI)**  
-   - Use Shadcn/UI components for buttons, dropdowns, and modals.  
-   - Chat UI must include:  
+3. Frontend rules.
+   - Use Shadcn/UI components.
+   - Functional components, React hooks, TypeScript.
+   - Chat UI must support:
      - Message list  
      - Input box  
-     - Buttons (`query_rag`, `sleep_cycle`)  
-     - Project selector (dynamic from `/projects`)  
+     - Buttons (Query RAG, Sleep Cycle)  
+     - Project selector  
+     - Forget / Remember toggles (future)  
+   - Preserve consistent layout and styling.
 
-4. **Backend Development (FastAPI)**  
-   - Define endpoints under `app/api/`.  
-   - All endpoints return JSON `{ "response": "..." }`.  
-   - Use LangChain for LLM calls.  
-   - Stub endpoints (`/query_rag`, `/projects`, `/sleep_cycle`) must exist now, even if not implemented.
+4. Backend rules.
+   - Use FastAPI with endpoints in `backend/app/api/`.
+   - All endpoints return JSON with a `response` field.
+   - Use LangChain for LLM calls.
+   - Keep builder/tager models configurable via env:
+     - `BUILDER_MODEL`
+     - `TAGGER_MODEL`
+   - Sleep, dream, and RAG pipelines must follow REQUIREMENTS.md.
 
-5. **Coding Style**  
-   - Python: Pydantic for request/response models.  
-   - React: Functional components, hooks for state.  
-   - TypeScript preferred in frontend.  
-   - Follow clean, modular design.
+5. Coding style.
+   - **Python**: Pydantic, modular layout, no ad-hoc scripts.
+   - **React**: TypeScript, component-driven, clean state management.
+   - Avoid temporary hacks unless explicitly requested.
 
-6. **Testing**  
-   - Include simple backend unit tests under `/backend/tests/`.  
-   - Include frontend smoke tests where possible.
+6. Testing.
+   - Backend: tests under `/backend/tests/`.
+   - Frontend: smoke tests where reasonable.
 
 ## Identity
 
-Your purpose is to help implement this system faithfully according to REQUIREMENTS.md and the agreed architecture.
+Your role is to help implement this system faithfully.  
+You must follow REQUIREMENTS.md, the memory pipeline architecture, and all versioned requirements already established.
 
 ---

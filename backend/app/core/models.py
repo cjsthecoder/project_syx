@@ -34,7 +34,7 @@ class ChatRequest(BaseModel):
                 "message": "Hello, how can you help me today?",
                 "project_id": "default",
                 "conversation_id": "conv_123",
-                "model": "gpt-5"
+                "model": "gpt-5.1"
             }
         }
 
@@ -52,7 +52,7 @@ class ChatResponse(BaseResponse):
                 "success": True,
                 "response": "Hello! I'm here to help you with any questions or tasks you have.",
                 "conversation_id": "conv_123",
-                "llm_model": "gpt-5",
+                "llm_model": "gpt-5.1",
                 "tokens_used": 25,
                 "timestamp": "2024-01-01T12:00:00Z"
             }

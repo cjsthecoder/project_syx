@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     
     # OpenAI Configuration
     openai_api_key: str = Field(..., description="OpenAI API key (required)")
-    model_name: str = Field(default="gpt-5", description="OpenAI model name")
+    model_name: str = Field(default="gpt-5.1", description="OpenAI model name")
     model_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Model temperature")
     model_max_tokens: int = Field(default=32000, gt=0, description="Maximum tokens per response")
     
@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     # V2: Model list for selector
     available_models: list[str] = Field(
         default=[
+            "gpt-5.1",
+            "gpt-5.1-mini",
+            "gpt-5.1-nano",
             "gpt-5",
             "gpt-5-mini",
             "gpt-5-nano",

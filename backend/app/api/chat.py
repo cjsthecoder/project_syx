@@ -282,7 +282,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         except Exception:
             pass
         llm_logger.log_llm_request(
-            model="gpt-5",  # Will be dynamic in future
+            model=(request.model or settings.model_name),
             message_length=len(request.message),
             conversation_id=request.conversation_id
         )
@@ -307,7 +307,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         
         # Log LLM response
         llm_logger.log_llm_response(
-            model=llm_response.get("llm_model", "gpt-5"),
+            model=llm_response.get("llm_model", settings.model_name),
             response_length=len(llm_response["response"]),
             tokens_used=llm_response.get("tokens_used"),
             conversation_id=request.conversation_id

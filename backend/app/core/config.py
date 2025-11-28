@@ -141,6 +141,9 @@ class Settings(BaseSettings):
     streaming_enabled: bool = Field(default=True, description="Enable streaming chat endpoint")
     stream_flush_ms: int = Field(default=50, gt=0, description="Flush cadence for streaming chunks in milliseconds")
     stream_timeout_ms: int = Field(default=60000, gt=0, description="Overall stream timeout in milliseconds")
+    # V4.1: Dream orchestrator
+    enable_dream: bool = Field(default=True, description="Enable Dream orchestrator")
+    max_workers: int = Field(default=1, description="Dream executor worker count (MAX_WORKERS)")
 
 # Global settings instance
 settings = Settings()

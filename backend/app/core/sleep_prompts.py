@@ -78,12 +78,38 @@ RULES:
    - #open_questions:
    - #user_context:
    After that, include the original USER/ASSISTANT blocks and headers verbatim under the topic (no rewording).
-6) Appendices must appear BEFORE the END tag:
-   [Decisions Log]
-   - One item per line prefixed with '- '
-   [Open Questions]
-   - One item per line prefixed with '- '
-   Deduplicate items.
+
+6) Appendices must appear BEFORE the END tag in this exact order:
+
+[Decisions Log]
+- One item per line prefixed with '- '
+
+[Open Questions]
+Return a single JSON object with this structure:
+
+{{
+  "questions": [
+    {{
+      "question": "<exact question text>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<ignore | remind_user | answer_local | answer_remote>"
+    }}
+  ]
+}}
+
+Rules for JSON:
+- Deduplicate items.
+- Group questions by their originating Topic block.
+- Extract the exact question text without rewriting.
+- The topic field must contain the normalized Topic title (from the === TOPIC: ... === header).
+- The resolution field must classify the preferred method for resolving the question based on the entire daily memory:
+  - "ignore" for questions that should not be included in the final output because they are rhetorical, obsolete, duplicates, or already answered in the daily memory. These questions must be classified internally but omitted from the returned JSON.
+  - "remind_user" for questions requiring a user choice or creative decision.
+  - "answer_local" for questions that can likely be answered using the daily summary or existing project memory.
+  - "answer_remote" for questions requiring external factual or technical research.
+- If no open questions exist, return {{ "questions": [] }}.
+- Return the JSON object EXACTLY as shown with no surrounding explanation.
+
 7) Return ONLY the formatted output. No explanations.
 
 Here is the pruned content:

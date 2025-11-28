@@ -233,7 +233,7 @@ def _sleep_cycle_worker():
                         # Cleanup only if all succeeded
                         if ok:
                             try:
-                                os.remove(summary_path)
+                                # os.remove(summary_path)
                                 logger.info("[SLEEP][CLEANUP] Removed individual summary for %s", pid)
                             except Exception as ce:
                                 logger.warning("[SLEEP][CLEANUP] Failed removing summary for %s: %s", pid, ce)
@@ -275,6 +275,19 @@ def _sleep_cycle_worker():
                                 logger.warning("[SLEEP][MERGE] Post-merge daily cleanup error for %s: %s", pid, de)
                 except Exception as me:
                     logger.error("[SLEEP][MERGE][ERROR] project=%s: %s", pid, me, exc_info=True)
+                # 4.1.1 Dream submission (no persistence, log only)
+                try:
+                    if get_settings().enable_dream:
+                        try:
+                            from ..core.dream import submit_open_questions
+                            fut = submit_open_questions(pid, final)
+                            # Block until completion for this project
+                            _ = fut.result()
+                        except Exception as de:
+                            logger.error("[DREAM][ERROR] project=%s %s", pid, de, exc_info=True)
+                except Exception:
+                    # Non-fatal; continue loop
+                    pass
             except Exception as e:
                 logger.error("[SLEEP][ERROR] Formatting failed project=%s: %s", pid, e, exc_info=True)
                 continue

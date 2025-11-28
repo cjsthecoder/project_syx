@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 from .core.config import get_settings, validate_openai_key
 from .core.models import HealthResponse
 from .api import chat, rag, projects, sleep
+from .api import dream as dream_api
 from .api import files as files_api
 from .api import llm_models
 from .utils.logging import setup_logging, get_logger
@@ -107,10 +108,23 @@ async def lifespan(app: FastAPI):
             logger.info("[SCHED] Sleep scheduler started (hour=%s, minute=%s)", hour, minute)
     except Exception as e:
         logger.warning("[SCHED] Failed to start scheduler: %s", e, exc_info=True)
+    # V4.1: Initialize Dream executor if enabled
+    try:
+        if get_settings().enable_dream:
+            from .core.dream import init_dream_executor
+            init_dream_executor(max_workers=int(get_settings().max_workers))
+    except Exception as e:
+        logger.warning("[DREAM] Executor init failed: %s", e, exc_info=True)
     try:
         yield
     finally:
         logger.info("FastAPI shutdown: cleaning up resources...")
+        # V4.1: Dream executor shutdown
+        try:
+            from .core.dream import shutdown_dream_executor
+            shutdown_dream_executor()
+        except Exception as e:
+            logger.warning("[DREAM] Shutdown hook failed: %s", e)
 
 # Initialize FastAPI app with lifespan
 app = FastAPI(
@@ -138,6 +152,7 @@ app.include_router(projects.router, tags=["projects"])
 app.include_router(sleep.router, tags=["sleep"])
 app.include_router(files_api.router, tags=["files"])
 app.include_router(llm_models.router, tags=["models"])
+app.include_router(dream_api.router, tags=["dream"])
 
 # V2.7: Write-blocking middleware during sleep
 from fastapi.responses import JSONResponse

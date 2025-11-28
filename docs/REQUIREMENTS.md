@@ -5,7 +5,8 @@ Morpheus is a modular system that provides a web-based chat interface backed by 
 
 **Version 1 Goal:** Establish a working chatbot with a GUI and stable backend interfaces that can be extended later with RAG, memory pruning, and multi-project support.  
 **Version 2 Goal:** Add persistent Project Management, File Upload + RAG initialization, and dynamic Model Selection.
-**Version 2 Goal:** Implement autonomous long-term memory consolidation through a nightly Sleep Cycle that prunes, summarizes, and rebuilds each project’s RAG automatically. This release transforms Morpheus from a reactive chat system into one that learns and maintains knowledge over time, preparing the foundation for Dreaming (creative synthesis) in version 4.
+**Version 3 Goal:** Implement autonomous long-term memory consolidation through a nightly Sleep Cycle that prunes, summarizes, and rebuilds each project’s RAG automatically. This release transforms Morpheus from a reactive chat system into one that learns and maintains knowledge over time, preparing the foundation for Dreaming (creative synthesis) in version 4.
+**Version 4 Goal:** Introduce the Dream Cycle as a post Sleep reasoning phase capable of autonomously analyzing the nightly memory summary and generating structured insight outputs. Version 4 establishes the Dream Orchestrator, the Dream Agent framework, and the first Dream function: extracting all open questions into a unified artifact. This transforms Morpheus from a system that only consolidates memory into one that begins to interpret, organize, and act on unresolved knowledge gaps during nightly maintenance.
 
 ---
 
@@ -1614,3 +1615,65 @@ Improve responsiveness and perceived latency during the “Awake Phase” by str
 - Lock behavior: streams can continue across lock; new POSTs during lock get 423.
 - Logs show `[STREAM]` entries for start, chunk counts, and completion or error.
 - If streaming is disabled by env, the endpoint returns a clear 503 error.
+
+
+# Version 4.0 Overview
+
+## Dream Cycle High Level Description
+
+Version 4.0 introduces the Dream Cycle as a new phase executed after the Sleep Cycle. Dreaming is responsible for analyzing the consolidated memory artifact sleep_summary.txt and producing structured insight outputs. Version 4.0 does not implement research or multi agent reasoning. It establishes the conceptual boundaries for Dream, introduces the Dream Orchestrator, and prepares the system for extension in Version 4.1 and beyond.
+
+Goals of Version 4.0:
+
+* Define Dream as a post Sleep maintenance phase.
+* Introduce the Dream Orchestrator as the execution space for nightly agents.
+* Ensure Dream runs under controlled conditions without modifying sleep_summary.txt.
+* Establish dream.txt as the unified nightly output file.
+* Provide the user GUI element Analyze Dreams when dream.txt has content.
+
+---
+
+# Version 4.1 Requirements
+
+## 4.1.1 JSON Extraction of Open Questions
+
+* Sleep must generate a fully formatted sleep_summary.txt file that contains a final `[Open Questions]` appendix with a JSON object.
+* The JSON object must include a field "questions" which is a list of objects, each containing:
+
+  * question
+  * topic
+  * resolution
+* The formatting prompt must filter out all questions with resolution set to "ignore" before returning the JSON.
+* Dream Orchestrator Integration (4.1.1 scope):
+  * Executor lifecycle:
+    * Create a single ThreadPoolExecutor at backend startup only when `ENABLE_DREAM=true`.
+    * Size is `MAX_WORKERS` (env), default 1. Reuse for all Dream tasks.
+    * On FastAPI shutdown, drain and `shutdown(wait=True, cancel_futures=True)`.
+  * Submission timing:
+    * For each project, after Sleep finishes formatting and the RAG merge/cleanup sequence (3.3) completes for that project, submit the Dream task for that project and block on `future.result()` before proceeding. Sleep must hold the maintenance lock until all submitted Dream tasks for that project complete.
+  * Inputs:
+    * Pass `(project_id, sleep_summary_text)` to Dream. Sleep must write `sleep_summary.txt` to disk first, then submit the in‑memory string (no read‑back).
+    * If the disk write fails, skip Dream for that project and log a warning.
+  * Behavior in 4.1.1 (no persistence yet):
+    * Run the Open Questions Agent against `sleep_summary_text`.
+    * Do not write any Dream output files in 4.1.1 (no `dream_work/open_questions.json`, no `dream.txt`).
+    * Log only a summary of the agent output: first 250 characters of the returned JSON string.
+    * If the agent returns invalid JSON or an empty payload, treat as zero questions and log at WARNING level (no retries).
+    * Implement `GET /dream/status` now, returning HTTP 200 with `{ "has_dreams": false, "count": 0 }` regardless of state in 4.1.1 (stub for UI integration). When `ENABLE_DREAM=false`, return the same stubbed payload.
+    * Do not implement `GET /dream` in 4.1.1 (deferred).
+  * Lock/idempotency:
+    * Keep existing Sleep idempotency: if Sleep is already running, further triggers are skipped; Dream is never double‑enqueued.
+  * No RAG retrieval in 4.1.1:
+    * Dream must not perform RAG lookups in this version (added in later 4.x).
+  * Logging:
+    * `[DREAM] Start project=...`
+    * `[DREAM] Completed project=... duration=...s`
+    * `[DREAM] All agents complete for project=...`
+    * `[DREAM][WARN] ...` for invalid/empty output; `[DREAM][ERROR] ...` for execution errors
+    * Log only a 250‑char preview for large payloads.
+* Feature flags and model:
+  * `ENABLE_DREAM` (default: true). When false, do not create the executor and skip Dream entirely.
+  * `MAX_WORKERS` (default: 1) controls executor size.
+  * Agent LLM binding uses the OpenAI Responses API with `gpt-5.1` at `temperature=1.0`.
+* Dream must not modify the RAG or sleep_summary.txt in Version 4.1.1.
+* sleep_summary.txt must not be deleted until Dream has finished the extraction/logging step for that project.

@@ -144,6 +144,13 @@ class Settings(BaseSettings):
     # V4.1: Dream orchestrator
     enable_dream: bool = Field(default=True, description="Enable Dream orchestrator")
     max_workers: int = Field(default=1, description="Dream executor worker count (MAX_WORKERS)")
+    # V4.1.2: Dream agent configuration
+    dream_model: str = Field(default="gpt-5.1", description="Dream LLM model")
+    dream_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Dream LLM temperature")
+    dream_max_tokens: int = Field(default=32000, gt=0, description="Max tokens for Dream LLM completion")
+    dream_enable_remote_research: bool = Field(default=True, description="Enable OpenAI web_search for Dream")
+    dream_remote_context_max_tokens: int = Field(default=32000, gt=0, description="Max tokens for remote context inclusion")
+    dream_topic_boost: float = Field(default=1.5, gt=0.0, description="Namespace boost used for topic hinting in RAG")
 
 # Global settings instance
 settings = Settings()

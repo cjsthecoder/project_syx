@@ -90,7 +90,7 @@ Return a single JSON object with this structure:
 {{
   "questions": [
     {{
-      "question": "<exact question text>",
+      "question": "<exact question text or inferred question>",
       "topic": "<topic title where the question originated>",
       "resolution": "<ignore | remind_user | answer_local | answer_remote>"
     }}
@@ -98,17 +98,30 @@ Return a single JSON object with this structure:
 }}
 
 Rules for JSON:
-- Deduplicate items.
+- Deduplicate questions.
 - Group questions by their originating Topic block.
-- Extract the exact question text without rewriting.
-- The topic field must contain the normalized Topic title (from the === TOPIC: ... === header).
-- The resolution field must classify the preferred method for resolving the question based on the entire daily memory:
-  - "ignore" for questions that should not be included in the final output because they are rhetorical, obsolete, duplicates, or already answered in the daily memory. These questions must be classified internally but omitted from the returned JSON.
-  - "remind_user" for questions requiring a user choice or creative decision.
-  - "answer_local" for questions that can likely be answered using the daily summary or existing project memory.
-  - "answer_remote" for questions requiring external factual or technical research.
+- Extract explicit user questions (those ending in '?').
+- ALSO extract implicit open questions using these patterns:
+  • Statements of uncertainty ("I'm not sure...", "We haven't decided...", "Needs more thought", "Not clear how...")
+  • Unresolved design choices ("We could do X or Y", "Two options exist...", "We need to pick between...")
+  • Pending tasks framed as decisions ("We still need a name for...", "We haven't solved...", "Next we must decide...")
+  • Assistant-raised forks ("This depends on whether...", "We need to determine...", "A key open decision is...")
+
+- For implicit questions, convert the statement into a natural question without changing meaning.
+  Example:
+    Input: "We haven't decided on the API shape yet."
+    Question: "What should the API shape be?"
+
+- Classify each question with a resolution type based on the entire daily memory:
+  • "ignore" for questions that are rhetorical, obsolete, duplicates, or already fully answered.
+    Questions classified as "ignore" MUST NOT be included in the returned JSON.
+  • "remind_user" for questions requiring user preference or subjective decision.
+  • "answer_local" for questions likely answerable using today's memory or existing project RAG.
+  • "answer_remote" for factual, technical, or research-driven questions requiring external sources.
+
 - If no open questions exist, return {{ "questions": [] }}.
-- Return the JSON object EXACTLY as shown with no surrounding explanation.
+
+- Return ONLY the JSON object exactly as shown with no additional explanations.
 
 7) Return ONLY the formatted output. No explanations.
 

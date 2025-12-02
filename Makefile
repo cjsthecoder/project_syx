@@ -296,7 +296,7 @@ setup-env:
 		echo "RAG_SCORE_THRESHOLD=0.5"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
-		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
+		echo "CHAT_HISTORY_LIMIT_PAIRS=1"; \
 		echo "# V2.3: Number of prompt/response pairs kept in working memory:: 10 is working well"; \
 		echo ""; \
 		echo "DAILY_RAG_ENABLED=true"; \
@@ -376,6 +376,20 @@ setup-env:
 		echo ""; \
 		echo "STREAM_TIMEOUT_MS=60000"; \
 		echo "# V3.5: Overall stream timeout (ms)"; \
+		echo ""; \
+		echo "ENABLE_DREAM=true"; \
+		echo "# V4.1: Enable Dream orchestrator"; \
+		echo ""; \
+		echo "MAX_WORKERS=1"; \
+		echo "# V4.1: Dream executor workers"; \
+		echo ""; \
+		echo "DREAM_MODEL=gpt-5.1"; \
+		echo "DREAM_TEMPERATURE=1.0"; \
+		echo "DREAM_MAX_TOKENS=32000"; \
+		echo "DREAM_ENABLE_REMOTE_RESEARCH=true"; \
+		echo "DREAM_REMOTE_CONTEXT_MAX_TOKENS=32000"; \
+		echo "DREAM_TOPIC_BOOST=1.5"; \
+		echo "# V4.1.2: Dream agent configuration"; \
 		echo ""; \
 	} > .env
 	@echo "✅ Created .env with defaults (update OPENAI_API_KEY)"

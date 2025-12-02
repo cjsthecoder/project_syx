@@ -1,11 +1,14 @@
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, Future
-from typing import Optional
+from typing import Optional, List, Dict
 import json
 import re
+import os
+from filelock import FileLock
 
 from .config import get_settings
+from .dream_research import run_open_question_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +71,7 @@ def _extract_json_from_open_questions(summary_text: str) -> Optional[str]:
 
 def _open_questions_agent(project_id: str, summary_text: str) -> dict:
     """
-    4.1.1 scope: Parse the JSON block from the [Open Questions] section.
-    No file writes; return dict with count and preview for logging.
+    Parse JSON block from [Open Questions] section.
     """
     json_text = _extract_json_from_open_questions(summary_text or "")
     if not json_text:
@@ -91,8 +93,10 @@ def _open_questions_agent(project_id: str, summary_text: str) -> dict:
 
 def submit_open_questions(project_id: str, summary_text: str) -> Future:
     """
-    Submit the Open Questions extraction task to the executor and return a Future.
-    Logs first 250 chars of payload on success.
+    4.1.2: Submit the Open Questions processing task.
+    - Extract questions array
+    - Process each question sequentially
+    - Write dream.txt with minimal keys {question, topic, answer}
     """
     settings = get_settings()
     if not settings.enable_dream:
@@ -109,13 +113,53 @@ def submit_open_questions(project_id: str, summary_text: str) -> Future:
         t0 = time.monotonic()
         logger.info("[DREAM] Start project=%s", project_id)
         try:
-            result = _open_questions_agent(project_id, summary_text)
-            preview = json.dumps(result, ensure_ascii=False)[:250]
-            count = len(result.get("questions", [])) if isinstance(result.get("questions"), list) else 0
+            parsed = _open_questions_agent(project_id, summary_text)
+            questions = parsed.get("questions") if isinstance(parsed, dict) else []
+            if not isinstance(questions, list):
+                questions = []
+            # Process sequentially
+            outputs: List[Dict[str, str]] = []
+            for item in questions:
+                try:
+                    q = (item or {}).get("question") or ""
+                    topic = (item or {}).get("topic") or ""
+                    resolution = (item or {}).get("resolution") or ""
+                    if not q:
+                        continue
+                    out = run_open_question_pipeline(project_id, q, topic, resolution)
+                    outputs.append(
+                        {
+                            "question": out.get("question") or q,
+                            "topic": out.get("topic") or topic,
+                            "answer": out.get("answer") or "Dream agent failed to generate a valid answer.",
+                        }
+                    )
+                except Exception as qe:
+                    logger.warning("[DREAM][WARN] project=%s per-question pipeline error: %s", project_id, qe)
+            # Write dream.txt with lock
+            try:
+                base_dir = os.path.join("memory", project_id)
+                os.makedirs(base_dir, exist_ok=True)
+                lock_path = os.path.join(base_dir, "dream.lock")
+                dream_path = os.path.join(base_dir, "dream.txt")
+                with FileLock(lock_path):
+                    with open(dream_path, "w", encoding="utf-8", newline="\n") as df:
+                        df.write("[Open Questions]\n")
+                        df.write("{\n  \"questions\": [\n")
+                        for i, ent in enumerate(outputs):
+                            line = f'    {{ "question": {json.dumps(ent["question"])}, "topic": {json.dumps(ent["topic"])}, "answer": {json.dumps(ent["answer"])} }}'
+                            if i < len(outputs) - 1:
+                                line += ","
+                            df.write(line + "\n")
+                        df.write("  ]\n}\n")
+            except Exception as we:
+                logger.warning("[DREAM][WARN] project=%s failed writing dream.txt: %s", project_id, we)
+            count = len(outputs)
+            preview = json.dumps({"questions": outputs}, ensure_ascii=False)[:250]
             elapsed = time.monotonic() - t0
             logger.info("[DREAM] Completed project=%s duration=%.2fs count=%s preview=%s", project_id, elapsed, count, preview)
             logger.info("[DREAM] All agents complete for project=%s", project_id)
-            return result
+            return {"questions": outputs}
         except Exception as e:
             logger.error("[DREAM][ERROR] project=%s %s", project_id, e, exc_info=True)
             return {"questions": []}

@@ -33,6 +33,31 @@ def _cache_key(project_id: str, history_summary: str, user_text: str) -> str:
     return h.hexdigest()
 
 
+def _slice_first_json(text: str) -> str:
+    """
+    Extract the first balanced JSON object from text by matching braces.
+    If no complete object is found, return the original text unchanged.
+    """
+    if not text:
+        return text
+    start = text.find("{")
+    if start == -1:
+        return text
+    depth = 0
+    end = None
+    for i, ch in enumerate(text[start:], start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    if end:
+        return text[start:end]
+    return text
+
+
 def build_query(project_id: str, history_summary: str, user_text: str) -> Optional[Dict[str, Any]]:
     """Invoke builder LLM and return parsed JSON or None on failure."""
     settings = get_settings()
@@ -87,6 +112,8 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
         if clean.startswith("```"):
             lines = [ln for ln in clean.splitlines() if not ln.strip().startswith("```")]
             clean = "\n".join(lines).strip()
+        # Slice out the first balanced JSON object to avoid trailing prose
+        clean = _slice_first_json(clean)
         try:
             data = json.loads(clean)
         except json.JSONDecodeError:

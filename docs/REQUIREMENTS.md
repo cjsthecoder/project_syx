@@ -1677,3 +1677,167 @@ Goals of Version 4.0:
   * Agent LLM binding uses the OpenAI Responses API with `gpt-5.1` at `temperature=1.0`.
 * Dream must not modify the RAG or sleep_summary.txt in Version 4.1.1.
 * sleep_summary.txt must not be deleted until Dream has finished the extraction/logging step for that project.
+
+# Version 4.1.2 Requirements
+
+## Open Questions Dream Agent (RAG Answer Generation)
+
+Version 4.1.2 introduces the first functional Dream Agent. This agent processes the structured open questions extracted in Version 4.1.1 and generates answers by combining project RAG context with a single LLM prompt per question.
+
+---
+
+## Scope and Preconditions
+
+* Version 4.1.1 is complete and Dream already receives `(project_id, sleep_summary_text)` from Sleep.
+* `sleep_summary.txt` contains a valid `[Open Questions]` JSON block with a `questions` list of `{ question, topic, resolution }` objects.
+* Questions with `resolution="ignore"` have already been filtered out by Sleep formatting.
+* No GUI changes are implemented in 4.1.2.
+
+---
+
+## Dream LLM and Research Abstraction
+
+* Dream must not use the existing LangChain based `llm.py`.
+* Create `backend/app/core/dream_llm.py`:
+
+  * Thin wrapper over the OpenAI Responses API.
+  * Must expose a function such as `dream_llm_call(prompt: str, max_output_tokens: int) -> str`.
+  * Uses environment variables:
+    * `DREAM_MODEL` (default: `gpt-5.1`)
+    * `DREAM_TEMPERATURE` (default: `1.0`)
+    * `DREAM_MAX_TOKENS` (default: `32000`)
+    * `DREAM_ENABLE_REMOTE_RESEARCH` (default: `true`)
+    * `DREAM_REMOTE_CONTEXT_MAX_TOKENS` (default: `32000`, tokens; use tiktoken to count/trim)
+    * `DREAM_TOPIC_BOOST` (default: `1.5`)
+* Create `backend/app/core/dream_prompts.py`:
+
+  * Contains pure functions for building Dream prompts.
+  * Must expose:
+    * `build_answer_question_prompt_local(question: str, topic: str, local_context: str) -> str`
+    * `build_answer_question_prompt_remote(question: str, topic: str, local_context: str, remote_context: str) -> str`
+  * Prompt must:
+    * Use the literal headers:
+      * `Question:`, `Topic:`, `Local Project Memory:`, and (when remote is used) `Remote Research:`
+      * Include an “Answer requirements” section that instructs strict JSON output.
+    * Require the model to return a single JSON object containing exactly one required field:
+      * `"answer": "<string>"`
+    * Allow optional fields (e.g., `citations`, `notes`, `confidence`) but Dream will only rely on `"answer"`.
+* Create `backend/app/core/dream_research.py`:
+
+  * Contains higher level helpers using `dream_llm.py`, `dream_prompts.py`, and `rag_manager`.
+  * Must expose: `run_open_question_pipeline(project_id: str, question: str, topic: str, resolution: str) -> Dict[str, Any]`.
+  * If `resolution="remind_user"`, no LLM call is needed.
+  * If `resolution="answer_local"`, fetch RAG context and run a single LLM answer prompt.
+  * If `resolution="answer_remote"`, fetch RAG context and include optional remote research via the OpenAI web_search tool (enabled only when `DREAM_ENABLE_REMOTE_RESEARCH=true`).
+
+---
+
+## RAG Usage
+
+* Dream must use `rag_manager.retrieve_context(...)` for all local memory retrieval.
+* `retrieve_context` must be called with:
+
+  * `project_id` set to the active project.
+  * `query` set to the question text.
+  * Other parameters set via existing RAG settings (reuse `rag_top_k`, `rag_snippet_max_tokens`, `rag_score_threshold`, `rag_context_max_tokens`).
+  * Provide topic‑aware hints:
+    * `route_namespaces=[topic]`
+    * `namespace_boost=DREAM_TOPIC_BOOST` (default: 1.5)
+* RAG is read only during Dream.
+* Dream must not rebuild or write any RAG data.
+
+---
+
+## Per Question Processing Pipeline
+
+* For each `{ question, topic, resolution }` in the Open Questions JSON:
+
+  * If `resolution="remind_user"`:
+
+    * Produce `{ "question": ..., "topic": ..., "answer": "User input required" }`.
+  * If `resolution="answer_local"`:
+
+    * Retrieve local RAG context.
+    * Build a prompt via `build_answer_question_prompt(question, topic, local_context, remote_context="")`.
+    * Call `dream_llm_call` once.
+    * Parse strict JSON.
+  * If `resolution="answer_remote"`:
+
+    * Retrieve local RAG context.
+    * Perform remote research using OpenAI web_search (only if `DREAM_ENABLE_REMOTE_RESEARCH=true`).
+    * Build answer prompt including both contexts (local first, then remote).
+    * Cap `remote_context` to `DREAM_REMOTE_CONTEXT_MAX_TOKENS` tokens (tiktoken). If web_search fails/empty, proceed with `remote_context=""` and log a warning (no retries in 4.1.2).
+    * Call `dream_llm_call`.
+    * Parse strict JSON.
+  * If invalid JSON is returned:
+
+    * Fallback to `{ "answer": "Dream agent failed to generate a valid answer." }`.
+    * Log a warning and continue.
+  * When trimming combined context to meet budgets, prefer local context; include remote context only with remaining budget. Log a warning showing token trims, e.g., `trimmed local=5000→4500 remote=5000→3500`.
+
+---
+
+## Output Format (dream.txt)
+
+Dream must write `memory/{project}/dream.txt` containing:
+
+```
+[Open Questions]
+{
+  "questions": [
+    { "question": "...", "topic": "...", "answer": "..." },
+    ...
+  ]
+}
+```
+
+* The `questions` list must contain one entry per processed open question.
+* Preserve original `question` and `topic` strings exactly.
+* Include an `answer` field with the generated answer text.
+* Keys must be lowercase (`question`, `topic`, `answer`). Do not include extra fields in `dream.txt` (citations, confidence, etc., are not written to this file in 4.1.2).
+* If no valid entries exist, write an empty list:
+
+```
+[Open Questions]
+{ "questions": [] }
+```
+* Overwrite `dream.txt` each run. Encoding: UTF‑8 with LF; newline‑terminated. Guard writes with a per‑project file lock (`memory/{project}/dream.lock`).
+
+---
+
+## Threading and Executor Behavior
+
+* `MAX_WORKERS` controls the number of concurrent Dream tasks across projects.
+* Sleep must submit at most one Dream task per project and block until completion.
+* Inside a single Dream task, all questions are processed sequentially in 4.1.2.
+* Dream tasks must treat RAG as read only.
+* Dream tasks must not read or write data belonging to other projects.
+
+---
+
+## Logging and Error Handling
+
+* Log per project:
+
+  * `[DREAM] Start project=...`
+  * `[DREAM] Completed project=... duration=...s count=...`
+  * `[DREAM] All agents complete for project=...`
+* Log per question (success):
+  * `[DREAM] Q answered question="<trimmed 120>" preview="<answer[:250]>" used_remote_research=<true|false> tokens(local=X, remote=Y, combined=Z)`
+* On invalid JSON:
+
+  * `[DREAM][WARN] project=... question=... invalid answer JSON`
+* On RAG retrieval failure:
+
+  * `[DREAM][WARN] project=... question=... RAG retrieval failed; continuing with empty local context`
+* Failures in one question must not stop processing of others.
+
+---
+
+## Memory Integration Constraints (4.1.2)
+
+* Dream must not modify `sleep_summary.txt`.
+* Dream must not modify or rebuild RAG.
+* Dream must not write `dream_accepted.txt` or `dream_all.txt` in this version.
+* User review and long term memory integration begin in 4.2.
+* `/dream/status` remains a stub returning `{ "has_dreams": false, "count": 0 }` in 4.1.2 (GUI integration in 4.2).

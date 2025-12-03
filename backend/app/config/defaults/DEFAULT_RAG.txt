@@ -234,7 +234,7 @@ NASA Group Achievement Award (2008) – Launch Control System Proof of Concept.
 
 Author on peer-reviewed paper: Collaborative Problem Solving Agent for Onboard Real-Time Systems (2002).
 
-=== TOPIC: AI Pivot & Personal Projects ===
+=== TOPIC: Personal Projects ===
 
 #topics: AI projects, generative AI, agentic AI, OpenAI, LangChain
 

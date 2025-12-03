@@ -1628,8 +1628,8 @@ Goals of Version 4.0:
 * Define Dream as a post Sleep maintenance phase.
 * Introduce the Dream Orchestrator as the execution space for nightly agents.
 * Ensure Dream runs under controlled conditions without modifying sleep_summary.txt.
-* Establish dream.txt as the unified nightly output file.
-* Provide the user GUI element Analyze Dreams when dream.txt has content.
+* Establish questions.json as the unified nightly output file.
+* Provide the user GUI element Analyze Dreams when questions.json has content.
 
 ---
 
@@ -1656,7 +1656,7 @@ Goals of Version 4.0:
     * If the disk write fails, skip Dream for that project and log a warning.
   * Behavior in 4.1.1 (no persistence yet):
     * Run the Open Questions Agent against `sleep_summary_text`.
-    * Do not write any Dream output files in 4.1.1 (no `dream_work/open_questions.json`, no `dream.txt`).
+* Do not write any Dream output files in 4.1.1 (no `dream_work/open_questions.json`, no `questions.json`).
     * Log only a summary of the agent output: first 250 characters of the returned JSON string.
     * If the agent returns invalid JSON or an empty payload, treat as zero questions and log at WARNING level (no retries).
     * Implement `GET /dream/status` now, returning HTTP 200 with `{ "has_dreams": false, "count": 0 }` regardless of state in 4.1.1 (stub for UI integration). When `ENABLE_DREAM=false`, return the same stubbed payload.
@@ -1777,12 +1777,11 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
 
 ---
 
-## Output Format (dream.txt)
+## Output Format (questions.json)
 
-Dream must write `memory/{project}/dream.txt` containing:
+Dream must write `memory/{project}/questions.json` containing:
 
 ```
-[Open Questions]
 {
   "questions": [
     { "question": "...", "topic": "...", "answer": "..." },
@@ -1794,14 +1793,13 @@ Dream must write `memory/{project}/dream.txt` containing:
 * The `questions` list must contain one entry per processed open question.
 * Preserve original `question` and `topic` strings exactly.
 * Include an `answer` field with the generated answer text.
-* Keys must be lowercase (`question`, `topic`, `answer`). Do not include extra fields in `dream.txt` (citations, confidence, etc., are not written to this file in 4.1.2).
+* Keys must be lowercase (`question`, `topic`, `answer`). Do not include extra fields in `questions.json` (citations, confidence, etc., are not written to this file in 4.1.2).
 * If no valid entries exist, write an empty list:
 
 ```
-[Open Questions]
 { "questions": [] }
 ```
-* Overwrite `dream.txt` each run. Encoding: UTF‑8 with LF; newline‑terminated. Guard writes with a per‑project file lock (`memory/{project}/dream.lock`).
+* Overwrite `questions.json` each run. Encoding: UTF‑8 with LF; newline‑terminated. Guard writes with a per‑project file lock (`memory/{project}/questions.lock`).
 
 ---
 
@@ -1841,3 +1839,190 @@ Dream must write `memory/{project}/dream.txt` containing:
 * Dream must not write `dream_accepted.txt` or `dream_all.txt` in this version.
 * User review and long term memory integration begin in 4.2.
 * `/dream/status` remains a stub returning `{ "has_dreams": false, "count": 0 }` in 4.1.2 (GUI integration in 4.2).
+
+
+# Version 4.1.3 Overview
+
+## Idea Layer Preparation
+
+Version 4.1.3 begins the next phase of Dream development by introducing the infrastructure needed for autonomous idea generation. This release does not create new agents yet. Instead, it prepares a unified context block that all future Dream Agents will consume.
+
+Goals of Version 4.1.3:
+
+* Establish the Dream Context Block as a standard prelude for all Dream Agents.
+* Retrieve user identity and project rules through RAG rather than static files.
+* Generate a concise Project Context Summary from RAG using a lightweight summarizer prompt.
+* Combine identity, system rules, project summary, Question Answering results, and daily memory into a single ordered input block.
+* Keep all memory access read only and consistent.
+
+---
+
+# Version 4.1.3.1 Requirements
+
+## Dream Context Block Injection
+
+Version 4.1.3.1 introduces the Dream Context Builder. This component runs inside each Dream task before any agents execute. It does not modify RAG or generate ideas. Its job is to assemble a unified structured context string that subsequent Dream Agents will use as input.
+
+---
+
+## Scope and Preconditions
+
+* Version 4.1.2 is complete and questions.json contains Question Answering results.
+* RAG is already populated with:
+
+  * default user profile codex
+  * default project system rules
+  * accumulated project memory
+* sleep_summary.txt is fully formatted and present.
+* No new agents are introduced in this version.
+
+---
+
+## Required Context Components
+
+The Dream Context Builder must assemble the following five components for each project:
+
+### 1. User Profile
+
+Retrieved from RAG using a query such as:
+
+User profile
+
+If retrieval yields no usable content, Dream must fall back to loading the default user profile text file inside the project and log a warning.
+
+### 2. Project System Prompt
+
+Retrieved from RAG using a query such as:
+
+Project system rules
+
+This component contains the project specific system prompt or design rules. If RAG retrieval yields no usable content, Dream must fall back to loading `memory/{project}/system_prompt.txt`. If that file is missing or unreadable, substitute `(empty)`. In both fallback cases, log a warning and continue.
+
+### 3. Project Context Summary
+
+Dream generates a concise summary of the project using a lightweight RAG summarization prompt. Requirements:
+
+* Retrieve relevant snippets using retrieve_context.
+* Summarize with a Responses API call using a small summarizer prompt.
+* Limit the text to a safe token budget suitable for Dream Agents.
+* If empty, log a warning and continue.
+
+### 4. Question Answering Results
+
+Loaded from the existing questions.json produced in Version 4.1.2. Must be included exactly as written.
+
+### 5. Daily Memory
+
+Loaded from sleep_summary.txt. Must be included exactly as generated by the Sleep Cycle.
+
+---
+
+## Ordering Requirement
+
+The Dream Context Block must be constructed in this exact order:
+
+1. User Profile
+2. Project System Prompt
+3. Project Context Summary
+4. Question Answering Results
+5. Daily Memory
+
+The final block is a single concatenated string.
+
+---
+
+## Implementation Requirements
+
+* All RAG retrieval must use rag_manager.retrieve_context with queries such as "User profile" and "Project system rules".
+* If RAG retrieval returns empty or low relevance content, Dream must fall back to reading memory/{project_id}/default_profile.txt and log a warning.
+* The default_profile.txt file must be created at project creation and must match the default user codex format.
+* Summaries must be generated using the OpenAI Responses API with the summarizer prompt defined in dream_prompts.build_project_summary_prompt.
+* The summarizer must limit output via prompt instruction (for example, 400 words). No programmatic trimming is required in 4.1.3.1.
+* The Dream Context Builder must construct and return a single concatenated text block in this exact order with section headers:
+
+=== USER PROFILE ===
+{text}
+
+=== PROJECT SYSTEM PROMPT ===
+{text}
+
+=== PROJECT CONTEXT SUMMARY ===
+{text}
+
+=== QUESTION ANSWERS ===
+{text}
+
+=== DAILY MEMORY ===
+{text}
+
+* Dream Context Builder must read questions.json and sleep_summary.txt directly from disk and include placeholder blocks if missing.
+
+* build_dream_context(project_id: str) -> str must be created in backend/app/core/dream_context.py.
+
+* The context block is stored in a simple process‑local variable for the duration of the Dream task (no TTL, no cross‑run cache) and reused by later agents within the same task.
+
+* No new files are created and questions.json must not be modified in this version.
+
+* All errors inside the context builder must be caught. On failure, log an error and return a minimal context containing only sleep_summary.txt.
+
+* All RAG retrieval must use rag_manager.retrieve_context.
+
+* All RAG calls are read only.
+
+* Summaries use the OpenAI Responses API, not LangChain.
+
+* Missing components are allowed but must produce warnings.
+
+* The context block is stored in memory and passed to future agents when implemented.
+
+* questions.json is not modified in this version.
+
+* No GUI changes are part of 4.1.3.1.
+
+---
+
+## Threading and Execution
+
+* Constructed inside the Dream task.
+* No new threads are created.
+* MAX_WORKERS still controls cross project concurrency.
+* Per project Dream remains serial.
+
+---
+
+## Logging Requirements
+
+Dream must log the following:
+
+* [DREAM][CTX] Building context for project=<id>
+* [DREAM][CTX] Retrieved user profile
+* [DREAM][CTX] Retrieved system prompt
+* [DREAM][CTX] Generated project summary
+* [DREAM][CTX] Loaded Q and A results
+* [DREAM][CTX] Loaded daily memory
+* [DREAM][CTX] Combined context ready
+
+Warnings:
+
+* [DREAM][CTX][WARN] User profile missing from RAG. Using fallback file.
+* [DREAM][CTX][WARN] Project system rules missing.
+* [DREAM][CTX][WARN] Project summary empty.
+* [DREAM][CTX][WARN] questions.json missing or empty.
+* [DREAM][CTX][WARN] sleep_summary.txt missing or empty.
+
+No errors are fatal in this version.
+
+---
+
+## Output of This Version
+
+Version 4.1.3.1 does not create new files. Its output is an internal in memory string that becomes the input to future Dream Agents starting in 4.1.3.2.
+
+Additionally, log per‑section token counts using tiktoken on the final inserted text:
+
+* `[DREAM][CTX] Retrieved user profile tokens=X`
+* `[DREAM][CTX] Retrieved system prompt tokens=Y`
+* `[DREAM][CTX] Generated project summary tokens=Z`
+* `[DREAM][CTX] Loaded Q and A results tokens=A`
+* `[DREAM][CTX] Loaded daily memory tokens=B`
+

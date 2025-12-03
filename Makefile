@@ -3,6 +3,9 @@
 
 .PHONY: help install build run clean test lint format generate-docs
 
+# Resolve Python interpreter once (prefer local venv, then system python/python3)
+PYTHON := $(shell if [ -x venv/bin/python ]; then printf "%s" "$(CURDIR)/venv/bin/python"; else command -v python || command -v python3; fi)
+
 # Default target
 help:
 	@echo "Morpheus AGI Chatbot Framework - Available Commands:"
@@ -51,7 +54,20 @@ install: install-backend install-frontend
 
 install-backend:
 	@echo "📦 Installing Python dependencies..."
-	cd backend && pip install -r requirements.txt
+	@if [ ! -x venv/bin/python ]; then \
+		echo "🐍 Creating Python virtual environment at ./venv"; \
+		python3 -m venv venv; \
+	fi
+	@echo "⬆️  Upgrading pip/setuptools/wheel in venv..."
+	@venv/bin/python -m pip install --upgrade pip setuptools wheel
+	@echo "🦀 Checking Rust toolchain for building tiktoken..."
+	@sh -c 'if ! command -v rustc >/dev/null 2>&1; then \
+		echo "🦀 Installing Rust toolchain (non-interactive)"; \
+		curl https://sh.rustup.rs -sSf | sh -s -- -y >/dev/null 2>&1 || true; \
+	fi'
+	@# Ensure current shell picks up cargo/rustc for the install step
+	@sh -c 'if [ -f "$$HOME/.cargo/env" ]; then . "$$HOME/.cargo/env"; fi; \
+		PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 venv/bin/python -m pip install -r backend/requirements.txt'
 	@echo "✅ Backend dependencies installed"
 
 install-frontend:
@@ -88,8 +104,10 @@ run: build
 			echo "ℹ️  Using existing ./venv"; \
 		fi; \
 		echo "✅ Virtual environment ready"; \
-		. venv/bin/activate && cd backend && python -m app.main; \
+		venv/bin/python -c "import fastapi" 2>/dev/null || (echo "📦 Installing backend requirements into ./venv" && venv/bin/python -m pip install -r backend/requirements.txt); \
+		cd backend && ../venv/bin/python -m app.main; \
 	else \
+		python -c "import fastapi" 2>/dev/null || (echo "📦 Installing backend requirements into active venv" && python -m pip install -r backend/requirements.txt); \
 		cd backend && python -m app.main; \
 	fi
 
@@ -152,7 +170,7 @@ test: test-backend test-frontend
 
 test-backend:
 	@echo "🧪 Running backend tests..."
-	cd backend && python -m pytest tests/ -v
+	cd backend && $(PYTHON) -m pytest tests/ -v
 	@echo "✅ Backend tests completed"
 
 test-frontend:
@@ -166,7 +184,7 @@ lint: lint-backend lint-frontend
 
 lint-backend:
 	@echo "🔍 Linting Python code..."
-	cd backend && python -m flake8 app/ tests/
+	cd backend && $(PYTHON) -m flake8 app/ tests/
 	@echo "✅ Backend linting completed"
 
 lint-frontend:
@@ -180,7 +198,7 @@ format: format-backend format-frontend
 
 format-backend:
 	@echo "🎨 Formatting Python code..."
-	cd backend && python -m black app/ tests/
+	cd backend && $(PYTHON) -m black app/ tests/
 	@echo "✅ Backend formatting completed"
 
 format-frontend:
@@ -191,7 +209,7 @@ format-frontend:
 # Development helpers
 dev-backend:
 	@echo "🔧 Starting backend in development mode..."
-	cd backend && python -m app.main
+	cd backend && $(PYTHON) -m app.main
 
 dev-frontend:
 	@echo "🔧 Starting frontend in development mode..."
@@ -296,7 +314,7 @@ setup-env:
 		echo "RAG_SCORE_THRESHOLD=0.5"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
-		echo "CHAT_HISTORY_LIMIT_PAIRS=1"; \
+		echo "CHAT_HISTORY_LIMIT_PAIRS=10"; \
 		echo "# V2.3: Number of prompt/response pairs kept in working memory:: 10 is working well"; \
 		echo ""; \
 		echo "DAILY_RAG_ENABLED=true"; \

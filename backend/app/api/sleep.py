@@ -16,9 +16,9 @@ from ..core.models import SleepCycleRequest, SleepCycleResponse, ErrorResponse
 from ..core.memory import get_memory_manager
 from ..core.state import engage_lock, release_lock, is_sleeping, since, lock_path
 from ..core.database import get_session
-from ..core.db_models import Project
+from ..core.db_models import Project, ChatMessage
 from sqlmodel import select
-from ..core.daily_rag import backfill_daily_txt_from_meta
+from ..core.daily_rag import backfill_daily_txt_from_meta, append_pair_text_only
 import time
 from ..utils.logging import RequestLogger
 from ..utils.errors import handle_memory_error, log_error_context
@@ -53,6 +53,78 @@ def _sleep_cycle_worker():
         engage_lock()
         logger.info("[SLEEP] Lock engaged")
         logger.info("[SLEEP] Thread started t=%s", start_iso)
+        # Flush active pairs from DB into daily.txt (text-only) for each project
+        try:
+            from collections import deque  # for clearing in-memory cache
+            from ..core.memory import get_memory_manager
+            mem = get_memory_manager()
+            with get_session() as session:
+                projects = session.exec(select(Project)).all()
+            for p in projects or []:
+                pid = p.id
+                if not bool(getattr(p, "daily_rag_enabled", True)):
+                    continue
+                try:
+                    with get_session() as session:
+                        msgs = session.exec(
+                            select(ChatMessage)
+                            .where(ChatMessage.project_id == pid)
+                            .order_by(ChatMessage.created_at.asc())
+                        ).all()
+                    i = 0
+                    flushed = 0
+                    n = len(msgs or [])
+                    while i + 1 < n:
+                        u = msgs[i]
+                        a = msgs[i + 1]
+                        if (getattr(u, "role", "") == "user") and (getattr(a, "role", "") == "assistant"):
+                            # Respect forget flag on assistant
+                            if not bool(getattr(a, "forget", False)):
+                                append_pair_text_only(
+                                    project_id=pid,
+                                    user_text=getattr(u, "content", "") or "",
+                                    assistant_text=getattr(a, "content", "") or "",
+                                    created_at_iso_utc=(getattr(a, "created_at", None).strftime("%Y-%m-%dT%H:%M:%S") if getattr(a, "created_at", None) else None),
+                                    namespace=getattr(a, "namespace", None),
+                                    keep=bool(getattr(a, "keep", False)),
+                                )
+                                flushed += 1
+                            # Delete both rows
+                            try:
+                                with get_session() as session:
+                                    urow = session.get(ChatMessage, getattr(u, "id", None))
+                                    arow = session.get(ChatMessage, getattr(a, "id", None))
+                                    if urow:
+                                        session.delete(urow)
+                                    if arow:
+                                        session.delete(arow)
+                                    session.commit()
+                            except Exception as de:
+                                logger.warning("[SLEEP][FLUSH] DB delete failed project=%s: %s", pid, de)
+                            i += 2
+                        else:
+                            # Orphan/misaligned – delete the single row and continue
+                            try:
+                                with get_session() as session:
+                                    row = session.get(ChatMessage, getattr(msgs[i], "id", None))
+                                    if row:
+                                        session.delete(row)
+                                        session.commit()
+                            except Exception:
+                                pass
+                            i += 1
+                    # Clear in-memory deque cache for this project to force reload
+                    try:
+                        if pid in mem.project_deques:
+                            mem.project_deques.pop(pid, None)
+                    except Exception:
+                        pass
+                    if flushed:
+                        logger.info("[SLEEP][FLUSH] flushed_pairs=%s project=%s", flushed, pid)
+                except Exception as fe:
+                    logger.warning("[SLEEP][FLUSH][WARN] project=%s %s", pid, fe)
+        except Exception as e:
+            logger.warning("[SLEEP][FLUSH][WARN] global flush step failed: %s", e)
         # Backfill daily.txt if missing (current V2.x behavior)
         updated = 0
         try:

@@ -1300,6 +1300,11 @@ Provide a stable framework for triggering and managing the Sleep Cycle automatic
 #### FR-3.1.3 — Background Thread Execution
 - When triggered, spawn a background thread to simulate the sleep operation.
   - Log `[SLEEP] Thread started`.
+  - First, flush all active chat pairs from the database into `daily.txt` for each project with `daily_rag_enabled=true`:
+    - Pair consecutive `user` → `assistant` messages in chronological order; skip orphaned messages (delete them).
+    - Respect flags: if the assistant message has `forget=true`, skip writing that pair; otherwise append the pair to `daily.txt` (text-only format, including `[route: <namespace>]` and `[keep: true|false]` headers).
+    - After appending, delete both `ChatMessage` rows for that pair from the DB and clear the in-memory deque for the project to prevent duplication on later roll-off.
+    - Log `[SLEEP][FLUSH] Flushed {N} pairs to daily.txt for project={id}` and a summary of deleted message counts; log a `[FORGET]` line for skipped pairs.
   - Perform the existing V2.x daily backfill behavior (for each project: if `daily.txt` is missing and `daily.json` exists, write `daily.txt` from metadata). Log count in `[SLEEP] Completed (updated_projects=N)`.
   - Sleep for ~60 seconds to simulate the maintenance window (testing aid).
   - Log `[SLEEP] Completed`.
@@ -1307,7 +1312,7 @@ Provide a stable framework for triggering and managing the Sleep Cycle automatic
 
 #### FR-3.1.4 — Logging
 - Mandatory log sequence for every run:
-  `[SLEEP] Lock engaged → [SLEEP] Thread started → [SLEEP] Completed → [SLEEP] Lock released`.
+  `[SLEEP] Lock engaged → [SLEEP] Thread started → [SLEEP][FLUSH] … → [SLEEP] Completed → [SLEEP] Lock released`.
 
 ---
 

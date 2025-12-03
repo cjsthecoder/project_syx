@@ -1,17 +1,17 @@
 # Morpheus AGI Chatbot Framework - Backend Dependencies
 
 # FastAPI and ASGI server
-fastapi
+fastapi==0.123
 uvicorn[standard]==0.24.0
 
 # LangChain and OpenAI integration (latest versions)
 langchain==0.2.6
 langchain-openai==0.1.7
 langchain-community==0.2.6
-openai>=1.30.0,<2.0.0
+openai==1.67.0
 
 # Data validation and serialization
-pydantic==2.5.0
+pydantic==2.9.2
 pydantic-settings==2.1.0
 
 # HTTP client for external API calls
@@ -21,7 +21,7 @@ httpx==0.25.2
 python-dotenv==1.0.0
 
 # CORS middleware
-python-multipart==0.0.6
+python-multipart==0.0.9
 
 # Logging and monitoring
 structlog==23.2.0
@@ -36,7 +36,8 @@ flake8==6.1.0
 isort==5.12.0
 
 # Future dependencies (for V2-V4)
-faiss-cpu==1.8.0
+# faiss-cpu: pin to a version available for Python 3.13 on macOS
+faiss-cpu==1.13.0
 tiktoken==0.7.0
 filelock==3.16.0
 

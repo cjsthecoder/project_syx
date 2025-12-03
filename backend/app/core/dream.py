@@ -8,11 +8,32 @@ import os
 from filelock import FileLock
 
 from .config import get_settings
+from .dream_context import build_dream_context
 from .dream_research import run_open_question_pipeline
 
 logger = logging.getLogger(__name__)
 
 _executor: Optional[ThreadPoolExecutor] = None
+_context_cache: Dict[str, str] = {}
+
+def _wait_for_dream_file(project_id: str, timeout: float = 5.0) -> bool:
+    """Wait until questions.json exists, is unlocked, and size stabilizes or timeout expires."""
+    base_dir = os.path.join("memory", project_id)
+    questions_path = os.path.join(base_dir, "questions.json")
+    lock_path = os.path.join(base_dir, "questions.lock")
+    t0 = time.monotonic()
+    last_size = -1
+    while time.monotonic() - t0 < timeout:
+        if (not os.path.exists(lock_path)) and os.path.isfile(questions_path):
+            try:
+                size = os.path.getsize(questions_path)
+            except Exception:
+                size = -1
+            if size > 0 and size == last_size:
+                return True  # unlocked and stable
+            last_size = size
+        time.sleep(0.05)
+    return False
 
 
 def init_dream_executor(max_workers: int) -> None:
@@ -96,7 +117,7 @@ def submit_open_questions(project_id: str, summary_text: str) -> Future:
     4.1.2: Submit the Open Questions processing task.
     - Extract questions array
     - Process each question sequentially
-    - Write dream.txt with minimal keys {question, topic, answer}
+    - Write questions.json with minimal keys {question, topic, answer}
     """
     settings = get_settings()
     if not settings.enable_dream:
@@ -136,15 +157,14 @@ def submit_open_questions(project_id: str, summary_text: str) -> Future:
                     )
                 except Exception as qe:
                     logger.warning("[DREAM][WARN] project=%s per-question pipeline error: %s", project_id, qe)
-            # Write dream.txt with lock
+            # Write questions.json with lock
             try:
                 base_dir = os.path.join("memory", project_id)
                 os.makedirs(base_dir, exist_ok=True)
-                lock_path = os.path.join(base_dir, "dream.lock")
-                dream_path = os.path.join(base_dir, "dream.txt")
+                lock_path = os.path.join(base_dir, "questions.lock")
+                questions_path = os.path.join(base_dir, "questions.json")
                 with FileLock(lock_path):
-                    with open(dream_path, "w", encoding="utf-8", newline="\n") as df:
-                        df.write("[Open Questions]\n")
+                    with open(questions_path, "w", encoding="utf-8", newline="\n") as df:
                         df.write("{\n  \"questions\": [\n")
                         for i, ent in enumerate(outputs):
                             line = f'    {{ "question": {json.dumps(ent["question"])}, "topic": {json.dumps(ent["topic"])}, "answer": {json.dumps(ent["answer"])} }}'
@@ -153,12 +173,35 @@ def submit_open_questions(project_id: str, summary_text: str) -> Future:
                             df.write(line + "\n")
                         df.write("  ]\n}\n")
             except Exception as we:
-                logger.warning("[DREAM][WARN] project=%s failed writing dream.txt: %s", project_id, we)
+                logger.warning("[DREAM][WARN] project=%s failed writing questions.json: %s", project_id, we)
+            # Build Dream Context Block (4.1.3.1) AFTER questions.json is written and unlocked
+            try:
+                _wait_for_dream_file(project_id, timeout=5.0)
+                ctx = build_dream_context(project_id)
+                _context_cache[project_id] = ctx
+                # Write debug context file for inspection REMOVE in 4.1.3.2
+                try:
+                    base_dir = os.path.join("memory", project_id)
+                    os.makedirs(base_dir, exist_ok=True)
+                    debug_path = os.path.join(base_dir, "debug_context.txt")
+                    with open(debug_path, "w", encoding="utf-8", newline="\n") as dbg:
+                        dbg.write(ctx)
+                    logger.info("[DREAM][CTX] Wrote debug context to %s", debug_path)
+                except Exception as de:
+                    logger.warning("[DREAM][CTX][WARN] Failed writing debug context: %s", de)
+            except Exception as ce:
+                logger.error("[DREAM][CTX][ERROR] project=%s %s", project_id, ce, exc_info=True)
             count = len(outputs)
             preview = json.dumps({"questions": outputs}, ensure_ascii=False)[:250]
             elapsed = time.monotonic() - t0
             logger.info("[DREAM] Completed project=%s duration=%.2fs count=%s preview=%s", project_id, elapsed, count, preview)
             logger.info("[DREAM] All agents complete for project=%s", project_id)
+            # Best-effort cleanup
+            try:
+                if project_id in _context_cache:
+                    del _context_cache[project_id]
+            except Exception:
+                pass
             return {"questions": outputs}
         except Exception as e:
             logger.error("[DREAM][ERROR] project=%s %s", project_id, e, exc_info=True)

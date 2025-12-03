@@ -65,6 +65,9 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+# Database
+backend/app/data/*.db
+
 # Logs
 logs
 *.log

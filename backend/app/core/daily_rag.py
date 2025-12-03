@@ -181,6 +181,58 @@ def append_pair(
         return True
 
 
+def append_pair_text_only(
+    project_id: str,
+    user_text: str,
+    assistant_text: str,
+    created_at_iso_utc: Optional[str],
+    namespace: Optional[str],
+    keep: bool,
+) -> bool:
+    """
+    Append a single pair to daily.txt only (no FAISS, no daily.json).
+    Used by Sleep flush to move active DB pairs into daily text at start of cycle.
+    """
+    _, _, lock_path, txt_path = _project_daily_paths(project_id)
+    ns = (namespace or "general").lower()
+    with FileLock(lock_path):
+        try:
+            # Ensure BEGIN header exists
+            try:
+                if (not os.path.isfile(txt_path)) or os.path.getsize(txt_path) == 0:
+                    begin_date = time.strftime("%m/%d/%Y", time.localtime())
+                    with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                        tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
+            except Exception:
+                pass
+            ts = created_at_iso_utc or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            # Localize timestamp to MM-DD-YYYY_HH:MM:SS
+            try:
+                tstruct = time.strptime(ts.replace("Z", ""), "%Y-%m-%dT%H:%M:%S")
+                ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime(time.mktime(tstruct)))
+            except Exception:
+                ts_local = ts
+            block = (
+                f"#timestamp: {ts_local}\n"
+                f"#route: {ns}\n"
+                f"#keep: {str(bool(keep)).lower()}\n"
+                f"\n"
+                f"--- USER (data-message-author-role: user) ---\n"
+                f"{user_text or ''}\n"
+                f"\n"
+                f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
+                f"{assistant_text or ''}\n"
+                f"\n"
+            )
+            with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                tf.write(_nl(block))
+            logger.info("[DAILYTXT] Text-only append project=%s bytes=%s", project_id, len(block.encode("utf-8")))
+            return True
+        except Exception as e:
+            logger.error("[DAILYTXT][ERROR] Text-only append failed project=%s: %s", project_id, e)
+            return False
+
+
 def _cosine_from_l2_dist_sq(d2: float) -> float:
     # For unit vectors: d^2 = 2(1 - cos)
     return max(0.0, min(1.0, 1.0 - (d2 / 2.0)))

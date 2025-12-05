@@ -117,23 +117,10 @@ async def lifespan(app: FastAPI):
             logger.info("[SCHED] Sleep scheduler started (hour=%s, minute=%s)", hour, minute)
     except Exception as e:
         logger.warning("[SCHED] Failed to start scheduler: %s", e, exc_info=True)
-    # V4.1: Initialize Dream executor if enabled
-    try:
-        if get_settings().enable_dream:
-            from .core.dream import init_dream_executor
-            init_dream_executor(max_workers=int(get_settings().max_workers))
-    except Exception as e:
-        logger.warning("[DREAM] Executor init failed: %s", e, exc_info=True)
     try:
         yield
     finally:
         logger.info("FastAPI shutdown: cleaning up resources...")
-        # V4.1: Dream executor shutdown
-        try:
-            from .core.dream import shutdown_dream_executor
-            shutdown_dream_executor()
-        except Exception as e:
-            logger.warning("[DREAM] Shutdown hook failed: %s", e)
 
 # Initialize FastAPI app with lifespan
 app = FastAPI(

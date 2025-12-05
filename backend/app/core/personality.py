@@ -7,6 +7,7 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
+from __future__ import annotations
 """
 Project system prompt and personality management (V2.6).
 
@@ -15,8 +16,6 @@ Responsibilities:
 - Save updates and invalidate cache
 - Seed defaults for new projects and backfill missing files for existing ones
 """
-
-from __future__ import annotations
 
 import json
 import logging

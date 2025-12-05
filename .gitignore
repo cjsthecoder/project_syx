@@ -21,9 +21,10 @@ wheels/
 *.egg
 MANIFEST
 questions.txt
-idea.txt
+idea_prompt.txt
 output.txt
-research*.txt
+research _output.txt
+research.txt
 
 # Langfuse local data and secrets
 langfuse-server/data/

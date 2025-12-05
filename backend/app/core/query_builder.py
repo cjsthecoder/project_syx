@@ -7,13 +7,12 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
+from __future__ import annotations
 """
 Query Builder / Router for V2.3.1.
 
 Calls a lightweight LLM to produce routing + rewritten queries and caches results briefly.
 """
-
-from __future__ import annotations
 
 import time
 import json

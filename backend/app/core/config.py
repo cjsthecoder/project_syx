@@ -160,6 +160,8 @@ class Settings(BaseSettings):
     dream_enable_remote_research: bool = Field(default=True, description="Enable OpenAI web_search for Dream")
     dream_remote_context_max_tokens: int = Field(default=32000, gt=0, description="Max tokens for remote context inclusion")
     dream_topic_boost: float = Field(default=1.5, gt=0.0, description="Namespace boost used for topic hinting in RAG")
+    # V4.1.3.1: Dream context debugging
+    debug_context: bool = Field(default=False, description="V4.1.3.1: Enable writing debug_context.txt file")
 
 # Global settings instance
 settings = Settings()

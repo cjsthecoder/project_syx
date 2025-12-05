@@ -409,6 +409,9 @@ setup-env:
 		echo "DREAM_TOPIC_BOOST=1.5"; \
 		echo "# V4.1.2: Dream agent configuration"; \
 		echo ""; \
+		echo "DEBUG_CONTEXT=true"; \
+		echo "# V4.1.3.1: Enable debug context file writing"; \
+		echo ""; \
 	} > .env
 	@echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
 

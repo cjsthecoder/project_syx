@@ -7,6 +7,7 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
+from __future__ import annotations
 """
 RAG manager for building FAISS indices per project (V2).
 
@@ -16,7 +17,6 @@ Policy:
 - Metadata per chunk: project_id, filename, page_number (if pdf), chunk_id, timestamp
 - Recreate FAISS index per upload (fresh build from uploads dir)
 """
-from __future__ import annotations
 
 import os
 import time

@@ -1,7 +1,4 @@
 """
-
-
-
 Copyright (c) 2025 Christopher Shuler. All rights reserved.
 
 This source code is part of the Morpheus project and is proprietary.
@@ -9,9 +6,7 @@ This source code is part of the Morpheus project and is proprietary.
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 Use of this software requires explicit written permission from the copyright holder.
-
 """
-
 """v2.1 add system flag and file metadata; seed Continuum
 
 Revision ID: 0002

@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Copyright (c) 2025 Christopher Shuler. All rights reserved.
+
+This source code is part of the Morpheus project and is proprietary.
+
+Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
+
+Use of this software requires explicit written permission from the copyright holder.
+"""
+"""
 
 
 
@@ -36,9 +45,6 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 HEADER_TEXT_LINES = [
     '"""',
-    "",
-    "",
-    "",
     "Copyright (c) 2025 Christopher Shuler. All rights reserved.",
     "",
     "This source code is part of the Morpheus project and is proprietary.",
@@ -46,9 +52,7 @@ HEADER_TEXT_LINES = [
     "Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.",
     "",
     "Use of this software requires explicit written permission from the copyright holder.",
-    "",
     '"""',
-    "",
     "",
 ]
 HEADER_TEXT = "\n".join(HEADER_TEXT_LINES)
@@ -138,6 +142,29 @@ def normalize_existing_tsjs_header(content: str) -> str:
     return leading_ws + HEADER_TSJS + remainder
 
 
+def normalize_existing_py_header(content: str) -> str:
+    """
+    If the file already has our Python header at the very top but with extra
+    blank lines before the copyright, replace the first triple-quoted block
+    with the normalized HEADER_TEXT (no leading blank lines).
+    """
+    stripped_leading = content.lstrip()
+    leading_ws_len = len(content) - len(stripped_leading)
+    leading_ws = content[:leading_ws_len]
+    if not stripped_leading.startswith('"""'):
+        return content
+    # find closing triple quotes
+    end = stripped_leading.find('"""', 3)
+    if end == -1:
+        return content
+    block = stripped_leading[: end + 3]
+    if "Christopher Shuler" not in block:
+        return content
+    remainder = stripped_leading[end + 3 :]
+    remainder = remainder.lstrip("\n")
+    return leading_ws + HEADER_TEXT + remainder
+
+
 def process_file(path: str) -> bool:
     _, ext = os.path.splitext(path)
     is_py = ext in PY_EXTS
@@ -153,8 +180,11 @@ def process_file(path: str) -> bool:
         return False
     if is_py:
         if file_has_header_py(content):
-            return False
-        new_content = insert_header_python(content)
+            new_content = normalize_existing_py_header(content)
+            if new_content == content:
+                return False
+        else:
+            new_content = insert_header_python(content)
     else:
         if file_has_header_tsjs(content):
             # Normalize existing header to remove extra blank '*' lines

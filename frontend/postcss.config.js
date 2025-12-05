@@ -1,7 +1,4 @@
 /**
- *
- *
- *
  * Copyright (c) 2025 Christopher Shuler. All rights reserved.
  *
  * This source code is part of the Morpheus project and is proprietary.
@@ -10,7 +7,6 @@
  *
  * Use of this software requires explicit written permission from the copyright holder.
  */
-
 export default {
   plugins: {
     tailwindcss: {},

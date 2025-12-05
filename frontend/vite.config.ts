@@ -1,7 +1,4 @@
 /**
- *
- *
- *
  * Copyright (c) 2025 Syx Project Contributors. All rights reserved.
  *
  * This source code is part of the Morpheus project and is proprietary.
@@ -10,7 +7,6 @@
  *
  * Use of this software requires explicit written permission from the copyright holder.
  */
-
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'

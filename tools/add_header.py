@@ -14,6 +14,20 @@ Use of this software requires explicit written permission from the copyright hol
 
 """
 
+"""
+
+
+
+Copyright (c) 2025 Syx Project Contributors. All rights reserved.
+
+This source code is part of the Morpheus project and is proprietary.
+
+Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
+
+Use of this software requires explicit written permission from the copyright holder.
+
+"""
+
 
 import os
 import sys
@@ -41,9 +55,6 @@ HEADER_TEXT = "\n".join(HEADER_TEXT_LINES)
 
 HEADER_TSJS_LINES = [
     "/**",
-    " *",
-    " *",
-    " *",
     " * Copyright (c) 2025 Syx Project Contributors. All rights reserved.",
     " *",
     " * This source code is part of the Morpheus project and is proprietary.",
@@ -52,7 +63,6 @@ HEADER_TSJS_LINES = [
     " *",
     " * Use of this software requires explicit written permission from the copyright holder.",
     " */",
-    "",
     "",
 ]
 HEADER_TSJS = "\n".join(HEADER_TSJS_LINES)
@@ -104,6 +114,30 @@ def insert_header_tsjs(content: str) -> str:
     return HEADER_TSJS + content
 
 
+def normalize_existing_tsjs_header(content: str) -> str:
+    """
+    If the file already has our header at the very top but with extra blank '*'
+    lines, replace the first comment block with the normalized HEADER_TSJS.
+    """
+    stripped_leading = content.lstrip()
+    leading_ws_len = len(content) - len(stripped_leading)
+    leading_ws = content[:leading_ws_len]
+    # Work only if the very first non-whitespace starts a block comment
+    if not stripped_leading.startswith("/**"):
+        return content
+    end = stripped_leading.find("*/")
+    if end == -1:
+        return content
+    block = stripped_leading[: end + 2]
+    if "Syx Project Contributors" not in block:
+        return content
+    # Replace the entire leading block with normalized header
+    remainder = stripped_leading[end + 2 :]
+    # Ensure remainder starts with at most one newline
+    remainder = remainder.lstrip("\n")
+    return leading_ws + HEADER_TSJS + remainder
+
+
 def process_file(path: str) -> bool:
     _, ext = os.path.splitext(path)
     is_py = ext in PY_EXTS
@@ -123,8 +157,12 @@ def process_file(path: str) -> bool:
         new_content = insert_header_python(content)
     else:
         if file_has_header_tsjs(content):
-            return False
-        new_content = insert_header_tsjs(content)
+            # Normalize existing header to remove extra blank '*' lines
+            new_content = normalize_existing_tsjs_header(content)
+            if new_content == content:
+                return False
+        else:
+            new_content = insert_header_tsjs(content)
     if new_content != content:
         with open(path, "w", encoding="utf-8", newline="\n") as f:
             f.write(new_content)

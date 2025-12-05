@@ -1,4 +1,18 @@
 """
+
+
+
+Copyright (c) 2025 Christopher Shuler. All rights reserved.
+
+This source code is part of the Morpheus project and is proprietary.
+
+Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
+
+Use of this software requires explicit written permission from the copyright holder.
+
+"""
+
+"""
 Query Builder / Router for V2.3.1.
 
 Calls a lightweight LLM to produce routing + rewritten queries and caches results briefly.
@@ -35,25 +49,46 @@ def _cache_key(project_id: str, history_summary: str, user_text: str) -> str:
 
 def _slice_first_json(text: str) -> str:
     """
-    Extract the first balanced JSON object from text by matching braces.
+    Extract the first balanced JSON object from text, respecting quoted strings.
     If no complete object is found, return the original text unchanged.
     """
     if not text:
         return text
-    start = text.find("{")
-    if start == -1:
-        return text
+    in_string = False
+    string_quote = ""
+    escape_next = False
     depth = 0
-    end = None
-    for i, ch in enumerate(text[start:], start):
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                end = i + 1
-                break
-    if end:
+    start = -1
+    end = -1
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == "\\":
+                escape_next = True
+                continue
+            if ch == string_quote:
+                in_string = False
+            continue
+        else:
+            if ch == '"' or ch == "'":
+                in_string = True
+                string_quote = ch
+                continue
+            if ch == "{":
+                if depth == 0:
+                    start = i
+                depth += 1
+                continue
+            if ch == "}":
+                if depth > 0:
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+                continue
+    if start != -1 and end != -1:
         return text[start:end]
     return text
 
@@ -116,7 +151,14 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
         clean = _slice_first_json(clean)
         try:
             data = json.loads(clean)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as je:
+            # Provide a concise diagnostic snippet near the error position
+            try:
+                pos = getattr(je, "pos", 0)
+                snippet = clean[max(0, pos - 80) : pos + 80]
+                logger.debug("builder json decode failed near pos=%s snippet=%r", pos, snippet)
+            except Exception:
+                pass
             import re
             m = re.search(r"\{[\s\S]*\}", clean)
             if not m:

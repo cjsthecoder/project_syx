@@ -28,6 +28,7 @@ from ..core.database import get_session
 from ..core.db_models import Project, ChatMessage
 from sqlmodel import select
 from ..core.daily_rag import backfill_daily_txt_from_meta, append_pair_text_only
+from ..core.dream import dream
 import time
 from ..utils.logging import RequestLogger
 from ..utils.errors import handle_memory_error, log_error_context
@@ -51,6 +52,7 @@ from ..core.rag_manager import rebuild_faiss_index, load_faiss_index
 from filelock import FileLock
 from ..core.config import get_settings
 from ..core.daily_rag import _project_daily_paths
+from ..core.dream import dream
 def _nl(s: str) -> str:
     """Normalize line endings to LF to avoid mixed terminators."""
     return s.replace("\r\n", "\n").replace("\r", "\n")
@@ -357,18 +359,7 @@ def _sleep_cycle_worker():
                 except Exception as me:
                     logger.error("[SLEEP][MERGE][ERROR] project=%s: %s", pid, me, exc_info=True)
                 # 4.1.1 Dream submission (no persistence, log only)
-                try:
-                    if get_settings().enable_dream:
-                        try:
-                            from ..core.dream import submit_open_questions
-                            fut = submit_open_questions(pid, final)
-                            # Block until completion for this project
-                            _ = fut.result()
-                        except Exception as de:
-                            logger.error("[DREAM][ERROR] project=%s %s", pid, de, exc_info=True)
-                except Exception:
-                    # Non-fatal; continue loop
-                    pass
+                dream(pid, final)
             except Exception as e:
                 logger.error("[SLEEP][ERROR] Formatting failed project=%s: %s", pid, e, exc_info=True)
                 continue

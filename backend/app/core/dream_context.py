@@ -192,14 +192,14 @@ def _get_daily_memory(project_id: str) -> str:
 
 def _write_debug_context_file(project_id: str, context_block: str) -> None:
     """
-    Write debug context file if DEBUG_CONTEXT is enabled.
+    Write debug context file if GENERATE_DEBUG_FILES is enabled.
     
     Args:
         project_id: Project identifier
         context_block: The complete context block string to write
     """
     settings = get_settings()
-    if not settings.debug_context:
+    if not settings.generate_debug_files:
         return
     
     try:

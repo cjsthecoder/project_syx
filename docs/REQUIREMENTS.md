@@ -1631,10 +1631,12 @@ Version 4.0 introduces the Dream Cycle as a new phase executed after the Sleep C
 Goals of Version 4.0:
 
 * Define Dream as a post Sleep maintenance phase.
-* Introduce the Dream Orchestrator as the execution space for nightly agents.
+* Introduce the Dream Orchestrator as the execution space for nightly agents (synchronous execution model).
 * Ensure Dream runs under controlled conditions without modifying sleep_summary.txt.
 * Establish questions.json as the unified nightly output file.
 * Provide the user GUI element Analyze Dreams when questions.json has content.
+
+**Note on Refactoring:** The Dream Orchestrator was simplified to use synchronous execution within the Sleep cycle thread, removing the ThreadPoolExecutor. Dream agents are organized under `backend/app/core/agents/` with prompts in `backend/app/core/agents/prompts/`.
 
 ---
 
@@ -1650,12 +1652,12 @@ Goals of Version 4.0:
   * resolution
 * The formatting prompt must filter out all questions with resolution set to "ignore" before returning the JSON.
 * Dream Orchestrator Integration (4.1.1 scope):
-  * Executor lifecycle:
-    * Create a single ThreadPoolExecutor at backend startup only when `ENABLE_DREAM=true`.
-    * Size is `MAX_WORKERS` (env), default 1. Reuse for all Dream tasks.
-    * On FastAPI shutdown, drain and `shutdown(wait=True, cancel_futures=True)`.
+  * Execution model:
+    * Dream executes synchronously within the Sleep cycle thread (no ThreadPoolExecutor).
+    * When `ENABLE_DREAM=false`, Dream is skipped entirely.
+    * `MAX_WORKERS` environment variable is no longer used (removed in refactoring).
   * Submission timing:
-    * For each project, after Sleep finishes formatting and the RAG merge/cleanup sequence (3.3) completes for that project, submit the Dream task for that project and block on `future.result()` before proceeding. Sleep must hold the maintenance lock until all submitted Dream tasks for that project complete.
+    * For each project, after Sleep finishes formatting and the RAG merge/cleanup sequence (3.3) completes for that project, call `dream(project_id, sleep_summary_text)` synchronously and wait for completion before proceeding. Sleep must hold the maintenance lock until Dream completes for that project.
   * Inputs:
     * Pass `(project_id, sleep_summary_text)` to Dream. Sleep must write `sleep_summary.txt` to disk first, then submit the in‑memory string (no read‑back).
     * If the disk write fails, skip Dream for that project and log a warning.
@@ -1671,14 +1673,13 @@ Goals of Version 4.0:
   * No RAG retrieval in 4.1.1:
     * Dream must not perform RAG lookups in this version (added in later 4.x).
   * Logging:
-    * `[DREAM] Start project=...`
-    * `[DREAM] Completed project=... duration=...s`
-    * `[DREAM] All agents complete for project=...`
+    * `[DREAM] Starting dreaming for project=...`
+    * `[DREAM] Project ... complete in duration=...s`
     * `[DREAM][WARN] ...` for invalid/empty output; `[DREAM][ERROR] ...` for execution errors
     * Log only a 250‑char preview for large payloads.
 * Feature flags and model:
-  * `ENABLE_DREAM` (default: true). When false, do not create the executor and skip Dream entirely.
-  * `MAX_WORKERS` (default: 1) controls executor size.
+  * `ENABLE_DREAM` (default: true). When false, skip Dream entirely.
+  * `MAX_WORKERS` environment variable is deprecated (no longer used after refactoring to synchronous execution).
   * Agent LLM binding uses the OpenAI Responses API with `gpt-5.1` at `temperature=1.0`.
 * Dream must not modify the RAG or sleep_summary.txt in Version 4.1.1.
 * sleep_summary.txt must not be deleted until Dream has finished the extraction/logging step for that project.
@@ -1714,9 +1715,9 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
     * `DREAM_ENABLE_REMOTE_RESEARCH` (default: `true`)
     * `DREAM_REMOTE_CONTEXT_MAX_TOKENS` (default: `32000`, tokens; use tiktoken to count/trim)
     * `DREAM_TOPIC_BOOST` (default: `1.5`)
-* Create `backend/app/core/dream_prompts.py`:
+* Create `backend/app/core/agents/prompts/questions_prompts.py`:
 
-  * Contains pure functions for building Dream prompts.
+  * Contains pure functions for building Dream question-answering prompts.
   * Must expose:
     * `build_answer_question_prompt_local(question: str, topic: str, local_context: str) -> str`
     * `build_answer_question_prompt_remote(question: str, topic: str, local_context: str, remote_context: str) -> str`
@@ -1729,8 +1730,9 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
     * Allow optional fields (e.g., `citations`, `notes`, `confidence`) but Dream will only rely on `"answer"`.
 * Create `backend/app/core/dream_research.py`:
 
-  * Contains higher level helpers using `dream_llm.py`, `dream_prompts.py`, and `rag_manager`.
-  * Must expose: `run_open_question_pipeline(project_id: str, question: str, topic: str, resolution: str) -> Dict[str, Any]`.
+  * Contains utility functions for token counting, trimming, and remote research.
+  * Must expose: `count_tokens(text: str) -> int`, `trim_to_tokens(text: str, max_tokens: int) -> str`, `fetch_remote_research(question: str) -> str`.
+  * Note: `run_open_question_pipeline` was moved to `backend/app/core/agents/questions_agent.py` as a private function `_run_open_question_pipeline`.
   * If `resolution="remind_user"`, no LLM call is needed.
   * If `resolution="answer_local"`, fetch RAG context and run a single LLM answer prompt.
   * If `resolution="answer_remote"`, fetch RAG context and include optional remote research via the OpenAI web_search tool (enabled only when `DREAM_ENABLE_REMOTE_RESEARCH=true`).
@@ -1808,13 +1810,14 @@ Dream must write `memory/{project}/questions.json` containing:
 
 ---
 
-## Threading and Executor Behavior
+## Execution Behavior
 
-* `MAX_WORKERS` controls the number of concurrent Dream tasks across projects.
-* Sleep must submit at most one Dream task per project and block until completion.
-* Inside a single Dream task, all questions are processed sequentially in 4.1.2.
-* Dream tasks must treat RAG as read only.
-* Dream tasks must not read or write data belonging to other projects.
+* Dream executes synchronously within the Sleep cycle thread (no ThreadPoolExecutor or threading).
+* Sleep calls `dream(project_id, sleep_summary_text)` directly for each project and waits for completion.
+* Inside `dream()`, the questions agent processes all questions sequentially.
+* Dream must treat RAG as read only.
+* Dream must not read or write data belonging to other projects.
+* The questions agent is implemented in `backend/app/core/agents/questions_agent.py` with the main entry point `run_questions_agent(project_id: str, summary_text: str) -> Dict[str, Any]`.
 
 ---
 
@@ -1822,11 +1825,12 @@ Dream must write `memory/{project}/questions.json` containing:
 
 * Log per project:
 
-  * `[DREAM] Start project=...`
-  * `[DREAM] Completed project=... duration=...s count=...`
-  * `[DREAM] All agents complete for project=...`
+  * `[DREAM] Starting dreaming for project=...`
+  * `[DREAM][QUESTIONS] Start project=...`
+  * `[DREAM][QUESTIONS] Completed project=... count=... preview=...`
+  * `[DREAM] Project ... complete in duration=...s`
 * Log per question (success):
-  * `[DREAM] Q answered question="<trimmed 120>" preview="<answer[:250]>" used_remote_research=<true|false> tokens(local=X, remote=Y, combined=Z)`
+  * `[DREAM][QUESTIONS] Q answered question="<trimmed 120>" preview="<answer[:250]>" used_remote_research=<true|false> tokens(local=X, remote=Y, combined=Z)`
 * On invalid JSON:
 
   * `[DREAM][WARN] project=... question=... invalid answer JSON`
@@ -1964,7 +1968,7 @@ The final block is a single concatenated string.
 
 * build_dream_context(project_id: str) -> str must be created in backend/app/core/dream_context.py.
 
-* The context block is stored in a simple process‑local variable for the duration of the Dream task (no TTL, no cross‑run cache) and reused by later agents within the same task.
+* The context block is built by calling `build_dream_context(project_id)` from `dream.py` after the questions agent completes. The context is stored in a simple process‑local variable for the duration of the Dream task (no TTL, no cross‑run cache) and can be reused by later agents within the same task.
 
 * No new files are created and questions.json must not be modified in this version.
 
@@ -1986,12 +1990,12 @@ The final block is a single concatenated string.
 
 ---
 
-## Threading and Execution
+## Execution
 
-* Constructed inside the Dream task.
+* Constructed inside the Dream task (synchronous execution).
 * No new threads are created.
-* MAX_WORKERS still controls cross project concurrency.
-* Per project Dream remains serial.
+* Dream executes synchronously per project within the Sleep cycle thread.
+* Per project Dream remains serial (one project at a time).
 
 ---
 
@@ -1999,21 +2003,21 @@ The final block is a single concatenated string.
 
 Dream must log the following:
 
-* [DREAM][CTX] Building context for project=<id>
-* [DREAM][CTX] Retrieved user profile
-* [DREAM][CTX] Retrieved system prompt
-* [DREAM][CTX] Generated project summary
-* [DREAM][CTX] Loaded Q and A results
-* [DREAM][CTX] Loaded daily memory
-* [DREAM][CTX] Combined context ready
+* [DREAM][CONTEXT] Building context for project=<id>
+* [DREAM][CONTEXT] Retrieved user profile
+* [DREAM][CONTEXT] Retrieved system prompt
+* [DREAM][CONTEXT] Generated project summary
+* [DREAM][CONTEXT] Loaded Q and A results
+* [DREAM][CONTEXT] Loaded daily memory
+* [DREAM][CONTEXT] Combined context ready
 
 Warnings:
 
-* [DREAM][CTX][WARN] User profile missing from RAG. Using fallback file.
-* [DREAM][CTX][WARN] Project system rules missing.
-* [DREAM][CTX][WARN] Project summary empty.
-* [DREAM][CTX][WARN] questions.json missing or empty.
-* [DREAM][CTX][WARN] sleep_summary.txt missing or empty.
+* User profile missing from RAG. Using fallback file.
+* Project system rules missing.
+* Project summary empty.
+* questions.json missing or empty.
+* sleep_summary.txt missing or empty.
 
 No errors are fatal in this version.
 
@@ -2025,9 +2029,9 @@ Version 4.1.3.1 does not create new files. Its output is an internal in memory s
 
 Additionally, log per‑section token counts using tiktoken on the final inserted text:
 
-* `[DREAM][CTX] Retrieved user profile tokens=X`
-* `[DREAM][CTX] Retrieved system prompt tokens=Y`
-* `[DREAM][CTX] Generated project summary tokens=Z`
-* `[DREAM][CTX] Loaded Q and A results tokens=A`
-* `[DREAM][CTX] Loaded daily memory tokens=B`
+* `[DREAM][CONTEXT] Retrieved user profile tokens=X`
+* `[DREAM][CONTEXT] Retrieved system prompt tokens=Y`
+* `[DREAM][CONTEXT] Generated project summary tokens=Z`
+* `[DREAM][CONTEXT] Loaded Q and A results tokens=A`
+* `[DREAM][CONTEXT] Loaded daily memory tokens=B`
 

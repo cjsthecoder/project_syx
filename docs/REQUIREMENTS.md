@@ -2035,3 +2035,140 @@ Additionally, log per‑section token counts using tiktoken on the final inserte
 * `[DREAM][CONTEXT] Loaded Q and A results tokens=A`
 * `[DREAM][CONTEXT] Loaded daily memory tokens=B`
 
+
+# 4.2.1 Idea Agent Requirements
+
+## FR-4.2.1.1 Purpose
+The Idea Agent SHALL analyze the daily `dream_context` and use an LLM prompt to generate structured Dream Entries. These entries represent open questions, insights, contradictions, and new topics derived from user interactions and the sleep summary.
+
+## FR-4.2.1.2 Trigger
+The Dream pipeline SHALL invoke the Idea Agent immediately after `dream_context` is successfully produced.
+
+- Implementation: the Idea Agent entrypoint is `run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any>`, called from `dream()` after `build_dream_context(project_id)` returns a non‑`None` string.
+- If `dream_context` is `None`, the Idea Agent SHALL NOT be invoked (effectively returning zero items for that project in this phase).
+
+## FR-4.2.1.3 Inputs
+The Idea Agent SHALL accept the following inputs:
+- `project_id` (string)
+- `dream_context` (string)
+
+## FR-4.2.1.4 Prompt Construction
+The Idea Agent SHALL construct its LLM prompt by calling:
+`build_idea_prompt(dream_context: str)`
+located in:
+`backend/app/core/agents/prompts/idea_prompts.py`
+The returned string SHALL constitute the full and final prompt passed to the LLM.
+
+## FR-4.2.1.5 LLM Invocation
+The Idea Agent SHALL invoke the LLM using:
+`dream_llm_call(prompt: str, max_output_tokens: Optional[int])`
+The Idea Agent SHALL:
+- use only `dream_llm_call`
+- pass `max_output_tokens=settings.dream_max_tokens` (backed by `DREAM_MAX_TOKENS`, default 32000) for all Idea Agent calls
+- treat the returned value as raw JSON text produced by the model
+
+## FR-4.2.1.6 Output Schema (LLM Generated)
+The LLM SHALL return a single JSON object containing:
+
+### Top level fields
+- `date` (MM/DD/YYYY)
+- `items` (list)
+
+### Each item SHALL contain
+- `id` (string)
+- `agent` = "idea_agent"
+- `timestamp` (ISO8601)
+- `origin_text` (string)
+- `origin_type` (open_question | insight | contradiction | new_topic)
+- `assistant_response` (string)
+- `context_link` (string)
+
+### Each item SHALL include a metadata block
+- `priority` (integer)
+- `confidence` (float, conceptually 0.0–1.0 as defined in the prompt)
+- `theme` (string)
+- `recommended_research` (list of strings)
+
+It SHALL only validate that the LLM-produced JSON conforms to this schema.
+`recommended_research` entries are text-only and SHALL NOT trigger external research in this step.
+
+## FR-4.2.1.7 JSON Parsing
+The Idea Agent SHALL:
+
+1. Parse the raw LLM output as JSON.
+2. Validate presence of required top-level fields (`date`, `items`).
+3. Validate that `items` is structurally usable:
+   - If `items` is a list, use it as‑is.
+   - If `items` is a dict, wrap it as `[items]`.
+   - If `items` is missing or is not a list/dict (e.g., string/number), treat this as a validation failure and return `{ "date": <today>, "items": [] }`.
+4. For the top‑level `date` field:
+   - If present, pass it through as returned by the LLM (no strict format enforcement).
+   - If missing or invalid, fall back to `date = <today>` in the final returned dictionary.
+5. For each candidate item in `items`, validate that all required fields exist:
+   - `id`, `agent`, `timestamp`, `origin_text`, `origin_type`, `assistant_response`, `context_link`.
+   - `metadata` object containing `priority`, `confidence`, `theme`, and `recommended_research`.
+6. Apply the following per‑field behaviors:
+   - **Agent**: If `agent` is present but not equal to `"idea_agent"`, auto‑correct it to `"idea_agent"`.
+   - **Origin type**: Validate that `origin_type` is one of: `open_question`, `insight`, `contradiction`, `new_topic`. Items with any other value SHALL be skipped.
+   - **Priority**: Validate that `priority` exists and represents a positive integer (`>= 1`). If not, the item SHALL be skipped.
+   - **Confidence**: Validate that `confidence` exists (the validator SHALL NOT reject items solely for being outside [0.0, 1.0], but the prompt defines 0.0–1.0 as the intended range).
+   - **Metadata block**: If `metadata` is missing or is not a dict, the item SHALL be skipped.
+   - **recommended_research**:
+     - If the field is missing, the item SHALL be skipped.
+     - If the field exists and is already a list, use it as‑is.
+     - If the field exists but is not a list (e.g., string, dict, number), wrap/convert it into a one‑element list.
+     - If the field exists but is effectively “empty” (e.g., empty string, empty dict), normalize it to an empty list `[]`.
+   - **String fields** (`origin_text`, `assistant_response`, `context_link`, `theme`): The validator SHALL require that these keys exist; empty strings are allowed and SHALL be passed through.
+7. Items that fail any of the above structural checks (missing required fields, invalid `origin_type`, unusable `metadata`, or missing `recommended_research`) SHALL be skipped; remaining items SHALL be preserved as returned by the LLM (subject to the auto‑corrections above).
+8. If JSON parsing fails entirely, or if all items fail validation, the Idea Agent SHALL log an error or warning (per FR‑4.2.1.10) and return `{ "date": <today>, "items": [] }`.
+
+All exceptions SHALL be logged but SHALL NOT escape the Dream pipeline.
+
+## NFR-4.2.1.9 Debug File Generation
+When `GENERATE_DEBUG_FILES=true`, the Idea Agent SHALL use the shared debug helper (the same pattern used by the Dream Context Builder) to write:
+- `debug_idea_prompt.txt`
+- `debug_idea_raw_response.txt`
+into the project’s debug directory under `memory/{project_id}/`.
+
+Debug writes SHALL NOT occur inline inside `idea_agent.py`.
+When `GENERATE_DEBUG_FILES` is false or unset, no debug files SHALL be created.
+
+## FR-4.2.1.10 Logging Requirements
+
+### Info logs (with prefix `[DREAM][IDEA]`)
+- Start of Idea Agent execution
+- Number of Dream Entries returned
+
+### Warning logs (no DREAM tags)
+- Missing or empty `dream_context`
+- Missing required fields in LLM output
+
+### Error logs (no DREAM tags)
+- JSON parsing failures
+- Exceptions during LLM invocation or parsing
+
+Warning and error logs SHALL NOT include DREAM tags.
+
+## NFR-4.2.1.11 Architectural Note
+The Idea Agent SHALL NOT perform external research.
+It SHALL generate only `recommended_research` topics for downstream use by the Research Agent.
+
+
+## FR-4.2.1.12 Output of This Version
+The Idea Agent SHALL return a single Python dictionary produced by:
+1. Parsing the raw JSON returned from `dream_llm_call`.
+2. Validating and filtering entries through the manual field-by-field validation rules defined in FR-4.2.1.7.
+
+The returned dictionary SHALL contain exactly the following fields:
+- `date` (string in MM/DD/YYYY format)
+- `items` (a Python list of validated Dream Entry dictionaries)
+
+Invalid items SHALL be skipped. The final `items` list SHALL contain only entries that pass validation.
+
+If all items fail validation, the Idea Agent SHALL return:
+`{ "date": <today>, "items": [] }`
+
+This output dictionary SHALL be passed directly to downstream components, including the Research Agent, without modification.
+The Idea Agent SHALL return the parsed JSON object (Python dict) to the caller.
+The Idea Agent SHALL NOT write persistent output files except via debug mechanisms.
+

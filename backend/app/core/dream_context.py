@@ -21,6 +21,7 @@ from .config import get_settings
 from .rag_manager import retrieve_context
 from .dream_llm import dream_llm_call
 from .dream_prompts import build_project_summary_prompt
+from .debug_utils import write_debug_file
 
 logger = logging.getLogger(__name__)
 
@@ -190,29 +191,6 @@ def _get_daily_memory(project_id: str) -> str:
     return daily_text
 
 
-def _write_debug_context_file(project_id: str, context_block: str) -> None:
-    """
-    Write debug context file if GENERATE_DEBUG_FILES is enabled.
-    
-    Args:
-        project_id: Project identifier
-        context_block: The complete context block string to write
-    """
-    settings = get_settings()
-    if not settings.generate_debug_files:
-        return
-    
-    try:
-        base_dir = os.path.join("memory", project_id)
-        os.makedirs(base_dir, exist_ok=True)
-        debug_path = os.path.join(base_dir, "debug_context.txt")
-        with open(debug_path, "w", encoding="utf-8", newline="\n") as dbg:
-            dbg.write(context_block)
-        logger.info("[DREAM][CONTEXT] Wrote debug context to %s", debug_path)
-    except Exception as de:
-        logger.warning("Failed writing debug context: %s", de)
-
-
 def build_dream_context(project_id: str) -> str:
     """
     Build the Dream Context Block in this exact order with headers:
@@ -244,8 +222,8 @@ def build_dream_context(project_id: str) -> str:
     context_block = "".join(parts)
     _CONTEXT_CACHE[project_id] = context_block
     logger.info("[DREAM][CONTEXT] Combined context ready")
-    # Write debug context file if enabled
-    _write_debug_context_file(project_id, context_block)
+    # Write debug context file if enabled via shared debug helper
+    write_debug_file(project_id, "debug_context.txt", context_block)
     return context_block
 
 

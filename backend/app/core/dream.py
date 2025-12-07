@@ -13,6 +13,7 @@ from typing import Optional
 
 from .config import get_settings
 from .agents.questions_agent import run_questions_agent
+from .agents.idea_agent import run_idea_agent
 from .dream_context import build_dream_context
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,12 @@ def dream(project_id: str, summary_text: str) -> None:
             dream_context = _build_dream_context_safe(project_id)
             if dream_context is None:
                 logger.warning("project=%s dream context build failed", project_id)
+                ideas = {"date": None, "items": []}
+            else:
+                # Run Idea Agent on the constructed dream context
+                ideas = run_idea_agent(project_id, dream_context)
+            # Currently, ideas are kept in-memory for downstream use in later versions
+            _ = ideas  # placeholder to avoid lints until consumed
             elapsed = time.monotonic() - t0
             logger.info("[DREAM] Project %s complete in duration=%.2fs", project_id, elapsed)
         except Exception as de:

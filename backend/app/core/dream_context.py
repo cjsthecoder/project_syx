@@ -84,13 +84,24 @@ def _strip_open_questions_section(text: str) -> str:
 
 def _get_user_profile(project_id: str) -> str:
     """
-    Retrieve user profile from RAG or fallback file.
+    Retrieve user profile from summary file (if present) or RAG/fallback file.
     Returns text or '(empty)' if not found.
     """
+    # 1) Prefer a precomputed user_profile_summary.txt if it exists
+    summary_path = os.path.join("memory", project_id, "user_profile_summary.txt")
+    summary_text = _read_file_safe(summary_path)
+    if summary_text.strip():
+        logger.info(
+            "[DREAM][CONTEXT] Loaded user_profile_summary.txt tokens=%s",
+            _count_tokens(summary_text),
+        )
+        return summary_text
+
+    # 2) Fall back to RAG lookup (e.g., DEFAULT_RAG.txt via User Profile Codex)
     settings = get_settings()
     up = retrieve_context(
         project_id=project_id,
-        query="User profile",
+        query="User Profile Codex",
         top_k=settings.rag_top_k,
         snippet_max_tokens=settings.rag_snippet_max_tokens,
         score_threshold=settings.rag_score_threshold,

@@ -269,7 +269,14 @@ def _sleep_cycle_worker():
                     sf.write(_nl(final))
                 formatted_count += 1
                 logger.info("[SLEEP][FORMAT] Completed project=%s", pid)
-                # 3.3 Merge and RAG rebuild
+
+                # Run Dream cycle (questions, context, idea agent) BEFORE merge/RAG rebuild
+                try:
+                    dream(pid, final)
+                except Exception as de:
+                    logger.error("[SLEEP][DREAM][ERROR] project=%s: %s", pid, de, exc_info=True)
+
+                # 3.3 Merge and RAG rebuild (uses the possibly cleaned sleep_summary.txt)
                 try:
                     # Validate summary presence and non-empty (beyond just boundary tags)
                     if not os.path.isfile(summary_path) or os.path.getsize(summary_path) == 0:
@@ -358,8 +365,6 @@ def _sleep_cycle_worker():
                                 logger.warning("[SLEEP][MERGE] Post-merge daily cleanup error for %s: %s", pid, de)
                 except Exception as me:
                     logger.error("[SLEEP][MERGE][ERROR] project=%s: %s", pid, me, exc_info=True)
-                # 4.1.1 Dream submission (no persistence, log only)
-                dream(pid, final)
             except Exception as e:
                 logger.error("[SLEEP][ERROR] Formatting failed project=%s: %s", pid, e, exc_info=True)
                 continue

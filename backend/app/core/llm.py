@@ -51,7 +51,7 @@ class LLMProvider:
                 streaming=False,
             )
             
-            logger.info(f"LLM provider initialized with model: {model_config['model_name']}")
+            logger.debug(f"LLM provider initialized with model: {model_config['model_name']}")
             
         except Exception as e:
             logger.error(f"Failed to initialize LLM provider: {str(e)}")

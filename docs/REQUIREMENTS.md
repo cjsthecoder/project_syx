@@ -1632,7 +1632,7 @@ Goals of Version 4.0:
 
 * Define Dream as a post Sleep maintenance phase.
 * Introduce the Dream Orchestrator as the execution space for nightly agents (synchronous execution model).
-* Ensure Dream runs under controlled conditions without modifying sleep_summary.txt.
+* Ensure Dream runs under controlled conditions. (Starting in 4.2.1, Dream may rewrite `sleep_summary.txt` to remove the `[Open Questions]` appendix before RAG merge; see FR‑4.2.1.)
 * Establish questions.json as the unified nightly output file.
 * Provide the user GUI element Analyze Dreams when questions.json has content.
 
@@ -1657,7 +1657,7 @@ Goals of Version 4.0:
     * When `ENABLE_DREAM=false`, Dream is skipped entirely.
     * `MAX_WORKERS` environment variable is no longer used (removed in refactoring).
   * Submission timing:
-    * For each project, after Sleep finishes formatting and the RAG merge/cleanup sequence (3.3) completes for that project, call `dream(project_id, sleep_summary_text)` synchronously and wait for completion before proceeding. Sleep must hold the maintenance lock until Dream completes for that project.
+    * For each project, after Sleep finishes formatting `sleep_summary.txt` but **before** the RAG merge/cleanup sequence (3.3) runs for that project, call `dream(project_id, sleep_summary_text)` synchronously and wait for completion before proceeding. Sleep must hold the maintenance lock until Dream (including all Dream Agents) completes for that project.
   * Inputs:
     * Pass `(project_id, sleep_summary_text)` to Dream. Sleep must write `sleep_summary.txt` to disk first, then submit the in‑memory string (no read‑back).
     * If the disk write fails, skip Dream for that project and log a warning.
@@ -1681,7 +1681,7 @@ Goals of Version 4.0:
   * `ENABLE_DREAM` (default: true). When false, skip Dream entirely.
   * `MAX_WORKERS` environment variable is deprecated (no longer used after refactoring to synchronous execution).
   * Agent LLM binding uses the OpenAI Responses API with `gpt-5.1` at `temperature=1.0`.
-* Dream must not modify the RAG or sleep_summary.txt in Version 4.1.1.
+* Dream must not modify the RAG in Version 4.1.1. (Rewriting of `sleep_summary.txt` to remove the `[Open Questions]` appendix is introduced later in 4.2.1 as part of the Idea Agent pipeline; see FR‑4.2.1.)
 * sleep_summary.txt must not be deleted until Dream has finished the extraction/logging step for that project.
 
 # Version 4.1.2 Requirements

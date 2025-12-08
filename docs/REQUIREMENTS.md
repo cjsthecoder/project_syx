@@ -1845,7 +1845,6 @@ Dream must write `memory/{project}/questions.json` containing:
 
 * Dream must not modify `sleep_summary.txt`.
 * Dream must not modify or rebuild RAG.
-* Dream must not write `dream_accepted.txt` or `dream_all.txt` in this version.
 * User review and long term memory integration begin in 4.2.
 * `/dream/status` remains a stub returning `{ "has_dreams": false, "count": 0 }` in 4.1.2 (GUI integration in 4.2).
 
@@ -1893,11 +1892,15 @@ The Dream Context Builder must assemble the following five components for each p
 
 ### 1. User Profile
 
-Retrieved from RAG using a query such as:
+The Dream Context Builder MUST assemble the User Profile component using the following precedence:
 
-User profile
+1. If `memory/{project_id}/user_profile_summary.txt` exists and is non‑empty, load that file and use its contents verbatim.
+2. Otherwise, retrieve from RAG using `rag_manager.retrieve_context(...)` with a query such as:
 
-If retrieval yields no usable content, Dream must fall back to loading the default user profile text file inside the project and log a warning.
+   User Profile Codex
+
+3. If RAG retrieval yields no usable content, fall back to loading the default user profile text file inside the project (`memory/{project_id}/default_profile.txt`) and log a warning.
+4. If the fallback file is also missing or empty, substitute `(empty)` and log a warning.
 
 ### 2. Project System Prompt
 
@@ -1942,9 +1945,9 @@ The final block is a single concatenated string.
 
 ## Implementation Requirements
 
-* All RAG retrieval must use rag_manager.retrieve_context with queries such as "User profile" and "Project system rules".
-* If RAG retrieval returns empty or low relevance content, Dream must fall back to reading memory/{project_id}/default_profile.txt and log a warning.
-* The default_profile.txt file must be created at project creation and must match the default user codex format.
+* All RAG retrieval must use `rag_manager.retrieve_context` with queries such as `"User Profile Codex"` (for user profile) and `"Project system rules"` (for system prompt).
+* For the User Profile component, Dream MUST first prefer `memory/{project_id}/user_profile_summary.txt` when present; if that file is missing or empty, it MUST fall back to RAG (`"User Profile Codex"`) and, if that yields no usable content, to `memory/{project_id}/default_profile.txt`, logging a warning in both fallback cases.
+* The `default_profile.txt` file must be created at project creation and must match the default user codex format.
 * Summaries must be generated using the OpenAI Responses API with the summarizer prompt defined in dream_prompts.build_project_summary_prompt.
 * The summarizer must limit output via prompt instruction (for example, 400 words). No programmatic trimming is required in 4.1.3.1.
 * The Dream Context Builder must construct and return a single concatenated text block in this exact order with section headers:
@@ -2034,6 +2037,183 @@ Additionally, log per‑section token counts using tiktoken on the final inserte
 * `[DREAM][CONTEXT] Generated project summary tokens=Z`
 * `[DREAM][CONTEXT] Loaded Q and A results tokens=A`
 * `[DREAM][CONTEXT] Loaded daily memory tokens=B`
+
+
+## 4.1.3.2 Project RAG Enrichment
+
+### Overview
+
+The Dream Context Builder SHALL enrich the `dream_context` with relevant long-term project memory retrieved from the Project RAG Index. This step MUST occur before any Idea Agent or downstream agent is executed.
+
+---
+
+### 4.1.3.2.1 Topic Extraction from Sleep Summary
+
+The system SHALL extract retrieval topics exclusively from `sleep_summary.txt`.
+
+#### Required Extraction Elements
+
+For each topic block of the form:
+
+```
+=== TOPIC: <Section Title> ===
+#topics: topic1, topic2, topic3
+```
+
+the builder SHALL extract:
+
+1. **Section Title**.
+2. **Each individual topic** listed in the `#topics:` line (split by commas and trimmed).
+
+#### Output of Extraction
+
+A deduplicated list of topic queries including:
+
+* Section titles
+* Individual topic terms
+
+#### Constraints
+
+* Extraction MUST ignore malformed topic blocks.
+* Empty `#topics` lines SHALL be skipped.
+
+---
+
+### 4.1.3.2.2 Topic-Based RAG Retrieval
+
+The builder SHALL perform a RAG retrieval pass for each extracted topic.
+
+#### Retrieval Rules
+
+* Each topic SHALL be queried independently.
+* Retrieval MUST use the same Project RAG Index and settings as existing Dream RAG calls:
+  * `rag_manager.retrieve_context(...)` over the main uploads index (which already includes `sleep_summary_all.txt`).
+  * No daily RAG (`daily_faiss`) participation in this enrichment step—daily content is already present via `sleep_summary.txt`.
+* Top-K retrieval SHALL be used per topic:
+  * Use existing `rag_top_k` and `rag_snippet_max_tokens` / `rag_context_max_tokens` settings (no new caps for now).
+* No namespace/route biasing:
+  * Do NOT pass `route_namespaces` or namespace boosts for these lookups.
+* A similarity threshold MUST be applied using the existing `rag_score_threshold`.
+
+#### Returned Document Format
+
+Each retrieved entry SHALL include:
+
+* A content snippet (trimmed to `snippet_max_tokens` as per `retrieve_context`).
+* Source metadata (filename/page where available).
+* Similarity score (float).
+
+#### Read-Only Requirement
+
+The retrieval process MUST NOT modify long-term memory.
+
+---
+
+### 4.1.3.2.3 Construction of PROJECT RAG CONTEXT Section
+
+The Dream Context Builder SHALL inject the RAG results into the `dream_context` under a new section header.
+
+#### Section Header
+
+```
+=== PROJECT RAG CONTEXT ===
+```
+
+#### Entry Format
+
+For each RAG hit:
+
+```
+Topic Query: <topic>
+- Snippet: "<retrieved text>"
+- Metadata: {source: "LTM", file: "<filename>", score: <float>}
+```
+
+#### Ordering Rules
+
+* Entries MUST appear in the same order as topic queries were processed.
+* Within a topic, entries with higher similarity SHOULD appear earlier.
+
+#### Validation Rules
+
+* If no RAG results are returned for any topic, the section SHALL contain:
+
+  ```
+  === PROJECT RAG CONTEXT ===
+  (No relevant long-term memory found for today’s topics.)
+  ```
+
+---
+
+### 4.1.3.2.4 Placement in Dream Context
+
+The `=== PROJECT RAG CONTEXT ===` section SHALL be inserted **after** the existing five sections assembled by the Dream Context Builder:
+
+1. USER PROFILE
+2. PROJECT SYSTEM PROMPT
+3. PROJECT CONTEXT SUMMARY
+4. QUESTION ANSWERS
+5. DAILY MEMORY
+6. PROJECT RAG CONTEXT   ← new section
+
+This ordering ensures:
+
+1. The Idea Agent receives enriched context.
+2. Any future Research Agent receives the same enriched context.
+3. Future agents benefit automatically without additional wiring.
+
+---
+
+### 4.1.3.2.5 Debug File Support
+
+If `GENERATE_DEBUG_FILES` is enabled:
+
+* The extracted topic list SHALL be written to:
+  * `memory/{project_id}/debug_rag_topics.txt`
+* The raw RAG retrieval results SHALL be written to:
+  * `memory/{project_id}/debug_rag_results.txt`
+
+`debug_rag_topics.txt` and `debug_rag_results.txt` SHOULD use a human-readable text format, e.g., per-topic blocks with topic, snippet, score, and file.
+
+---
+
+### 4.1.3.2.6 Logging Requirements
+
+The Dream Context Builder SHALL log the following INFO-level entries using the `[DREAM][CONTEXT]` tag:
+
+* `[DREAM][CONTEXT] RAG enrichment extracted_topics=N`
+* `[DREAM][CONTEXT] RAG enrichment retrieved_docs=M`
+
+“No topics” or “no documents above threshold” are not considered warnings or errors.
+
+---
+
+### 4.1.3.2.7 Error Handling
+
+The builder MUST catch and log all exceptions during retrieval.
+
+If retrieval fails:
+
+* The system SHALL continue dream processing with an empty PROJECT RAG CONTEXT section, logging a debug-level message such as:
+  * `No relevant long-term memory found for today’s topics.`
+* Downstream agents SHALL NOT fail due to missing RAG data.
+
+If no topics are extracted from `sleep_summary.txt`:
+
+* The builder SHALL still insert the `=== PROJECT RAG CONTEXT ===` header but MAY omit additional content beyond a brief notice.
+
+---
+
+### Output of This Step
+
+The final `dream_context` string SHALL include a fully constructed:
+
+```
+=== PROJECT RAG CONTEXT ===
+...
+```
+
+block, containing all retrieved items or an empty notice. This enriched context is passed directly to the Idea Agent and any future Dream Agents.
 
 
 # 4.2.1 Idea Agent Requirements

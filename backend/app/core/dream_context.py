@@ -10,7 +10,7 @@ Use of this software requires explicit written permission from the copyright hol
 import logging
 import os
 import re
-from typing import Dict
+from typing import Any, Dict, List
 
 try:
     import tiktoken  # type: ignore
@@ -202,11 +202,148 @@ def _get_daily_memory(project_id: str) -> str:
     return daily_text
 
 
+def _extract_rag_topics(project_id: str) -> List[str]:
+    """
+    Extract topic queries from sleep_summary.txt per 4.1.3.2.
+
+    Returns:
+        Ordered, deduplicated list of topic queries (section titles + individual topics).
+    """
+    summary_path = os.path.join("memory", project_id, "sleep_summary.txt")
+    text = _read_file_safe(summary_path)
+    if not text.strip():
+        logger.debug("[DREAM][CONTEXT] RAG enrichment: sleep_summary.txt missing or empty for project=%s", project_id)
+        return []
+
+    lines = text.splitlines()
+    topics: List[str] = []
+    seen: Dict[str, bool] = {}
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if line.startswith("=== TOPIC:") and line.endswith("==="):
+            # Extract section title between "=== TOPIC:" and "==="
+            try:
+                title = line[len("=== TOPIC:") : -3].strip()
+            except Exception:
+                title = ""
+            # Look for immediate #topics line (next non-empty line)
+            j = i + 1
+            topics_line = ""
+            while j < len(lines):
+                candidate = lines[j].strip()
+                if not candidate:
+                    j += 1
+                    continue
+                if candidate.lower().startswith("#topics:"):
+                    topics_line = candidate
+                break
+            # Add section title
+            if title and title not in seen:
+                seen[title] = True
+                topics.append(title)
+            # Add individual topics from #topics:
+            if topics_line:
+                raw = topics_line.split(":", 1)[1] if ":" in topics_line else ""
+                for part in raw.split(","):
+                    t = part.strip()
+                    if t and t not in seen:
+                        seen[t] = True
+                        topics.append(t)
+            i = j
+        else:
+            i += 1
+
+    logger.info("[DREAM][CONTEXT] RAG enrichment extracted_topics=%s", len(topics))
+    return topics
+
+
+def _build_project_rag_context(project_id: str) -> str:
+    """
+    Build the PROJECT RAG CONTEXT section by querying RAG per extracted topic.
+
+    Returns:
+        Section string starting with '=== PROJECT RAG CONTEXT ===' (may be minimal/empty).
+    """
+    settings = get_settings()
+    topic_list = _extract_rag_topics(project_id)
+
+    # Debug: write topics file if enabled
+    if topic_list:
+        write_debug_file(project_id, "debug_rag_topics.txt", "\n".join(topic_list))
+
+    total_docs = 0
+    lines: List[str] = ["=== PROJECT RAG CONTEXT ==="]
+
+    if not topic_list:
+        logger.debug("[DREAM][CONTEXT] RAG enrichment: No topics extracted for project=%s", project_id)
+        # Header only; downstream agents see the presence of the section but no entries
+        return "\n".join(lines) + "\n"
+
+    # Accumulate human-readable debug output for hits
+    debug_hits: List[str] = []
+
+    for topic in topic_list:
+        try:
+            res = retrieve_context(
+                project_id=project_id,
+                query=topic,
+                top_k=settings.rag_top_k,
+                snippet_max_tokens=settings.rag_snippet_max_tokens,
+                score_threshold=settings.rag_score_threshold,
+                context_max_tokens=settings.rag_context_max_tokens,
+            )
+        except Exception as re_err:
+            logger.debug(
+                "[DREAM][CONTEXT] RAG enrichment retrieval failed for topic='%s' project=%s: %s",
+                topic,
+                project_id,
+                re_err,
+            )
+            continue
+
+        hits: List[Dict[str, Any]] = res.get("hits") or []
+        if not hits:
+            continue
+
+        lines.append(f"Topic Query: {topic}")
+        for h in hits:
+            snippet = (h.get("snippet") or "").strip()
+            filename = h.get("filename")
+            score = h.get("score")
+            lines.append(f"- Snippet: \"{snippet}\"")
+            lines.append(f"- Metadata: {{source: \"LTM\", file: \"{filename}\", score: {score}}}")
+            lines.append("")  # blank line between hits
+            total_docs += 1
+            debug_hits.append(
+                f"Topic: {topic}\n"
+                f"File: {filename}\n"
+                f"Score: {score}\n"
+                f"Snippet:\n{snippet}\n\n"
+            )
+
+    if total_docs == 0:
+        lines.append("(No relevant long-term memory found for today’s topics.)")
+
+    logger.info(
+        "[DREAM][CONTEXT] RAG enrichment retrieved_docs=%s for project=%s",
+        total_docs,
+        project_id,
+    )
+
+    # Debug: write raw results file if enabled
+    if debug_hits:
+        write_debug_file(project_id, "debug_rag_results.txt", "".join(debug_hits))
+
+    return "\n".join(lines) + "\n"
+
+
 def build_dream_context(project_id: str) -> str:
     """
     Build the Dream Context Block in this exact order with headers:
-    USER PROFILE → PROJECT SYSTEM PROMPT → PROJECT CONTEXT SUMMARY → QUESTION ANSWERS → DAILY MEMORY
-    Falls back per 4.1.3.1 and logs per-section token counts.
+    USER PROFILE → PROJECT SYSTEM PROMPT → PROJECT CONTEXT SUMMARY → QUESTION ANSWERS → DAILY MEMORY → PROJECT RAG CONTEXT
+    Falls back per 4.1.3.1/4.1.3.2 and logs per-section token counts.
     """
     logger.info("[DREAM][CONTEXT] Building context for project=%s", project_id)
 
@@ -216,6 +353,7 @@ def build_dream_context(project_id: str) -> str:
     project_summary_text = _get_project_context_summary(project_id)
     qa_text = _get_question_answers(project_id)
     daily_text = _get_daily_memory(project_id)
+    rag_context_text = _build_project_rag_context(project_id)
 
     # Assemble in exact order with headers
     parts = [
@@ -228,7 +366,8 @@ def build_dream_context(project_id: str) -> str:
         "=== QUESTION ANSWERS ===\n",
         qa_text.rstrip() + "\n\n",
         "=== DAILY MEMORY ===\n",
-        daily_text.rstrip() + "\n",
+        daily_text.rstrip() + "\n\n",
+        rag_context_text.rstrip() + "\n",
     ]
     context_block = "".join(parts)
     _CONTEXT_CACHE[project_id] = context_block

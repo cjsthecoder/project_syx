@@ -274,7 +274,14 @@ def retrieve_context(
 ) -> Dict[str, Any]:
     """Retrieve top-k snippets and assemble a single Context: block string.
 
-    Returns dict with keys: context_text, snippets, tokens_used.
+    Returns dict with keys:
+      - context_text: combined context block prefixed with "Context:"
+      - snippets: list of snippet strings (with headers)
+      - tokens_used: approximate token count
+      - hit_count: number of hits at/above threshold
+      - hit_avg: average similarity of hits
+      - hits: list of per-snippet metadata dicts
+        (each with snippet, filename, page_number, score)
     """
     vs = load_faiss_index(project_id)
     if not vs:
@@ -344,13 +351,55 @@ def retrieve_context(
             header = f"Snippet 1 (fallback, score={cos:.2f}, file={meta.get('filename')}, page={meta.get('page_number')})\n"
             context_text = "Context:\n---\n" + header + trimmed
             logger.debug("RAG: fallback applied - included top-scoring snippet despite threshold")
-            return {"context_text": context_text, "snippets": [trimmed], "tokens_used": tokens_used, "hit_count": len(passed_cosines), "hit_avg": (sum(passed_cosines)/len(passed_cosines) if passed_cosines else 0.0)}
+            hits = [
+                {
+                    "snippet": trimmed,
+                    "filename": meta.get("filename"),
+                    "page_number": meta.get("page_number"),
+                    "score": float(cos),
+                }
+            ]
+            return {
+                "context_text": context_text,
+                "snippets": [header + trimmed],
+                "tokens_used": tokens_used,
+                "hit_count": len(passed_cosines),
+                "hit_avg": (sum(passed_cosines) / len(passed_cosines) if passed_cosines else 0.0),
+                "hits": hits,
+            }
         logger.debug("RAG: no snippets selected after token capping and no fallback available")
-        return {"context_text": "", "snippets": [], "tokens_used": 0, "hit_count": len(passed_cosines), "hit_avg": (sum(passed_cosines)/len(passed_cosines) if passed_cosines else 0.0)}
+        return {
+            "context_text": "",
+            "snippets": [],
+            "tokens_used": 0,
+            "hit_count": len(passed_cosines),
+            "hit_avg": (sum(passed_cosines) / len(passed_cosines) if passed_cosines else 0.0),
+            "hits": [],
+        }
+
+    # Build hits metadata aligned with pieces
+    hits = []
+    for (content, meta, score) in filtered[: len(pieces)]:
+        trimmed = _trim_to_tokens(content, snippet_max_tokens)
+        hits.append(
+            {
+                "snippet": trimmed,
+                "filename": meta.get("filename"),
+                "page_number": meta.get("page_number"),
+                "score": float(score),
+            }
+        )
 
     context_text = "Context:\n---\n" + "\n\n---\n".join(pieces)
     logger.debug(f"RAG: built context block tokens_used={tokens_used} snippets={len(pieces)}")
-    return {"context_text": context_text, "snippets": pieces, "tokens_used": tokens_used, "hit_count": len(passed_cosines), "hit_avg": (sum(passed_cosines)/len(passed_cosines) if passed_cosines else 0.0)}
+    return {
+        "context_text": context_text,
+        "snippets": pieces,
+        "tokens_used": tokens_used,
+        "hit_count": len(passed_cosines),
+        "hit_avg": (sum(passed_cosines) / len(passed_cosines) if passed_cosines else 0.0),
+        "hits": hits,
+    }
 
 
 def merge_daily_and_main(

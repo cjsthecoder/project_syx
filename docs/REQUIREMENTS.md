@@ -1633,8 +1633,8 @@ Goals of Version 4.0:
 * Define Dream as a post Sleep maintenance phase.
 * Introduce the Dream Orchestrator as the execution space for nightly agents (synchronous execution model).
 * Ensure Dream runs under controlled conditions. (Starting in 4.2.1, Dream may rewrite `sleep_summary.txt` to remove the `[Open Questions]` appendix before RAG merge; see FR‑4.2.1.)
-* Establish questions.json as the unified nightly output file.
-* Provide the user GUI element Analyze Dreams when questions.json has content.
+* Establish `dream.json` as the unified nightly Dream output file produced by the Dream Writer.
+* Provide the user GUI element Analyze Dreams when `dream.json` has content.
 
 **Note on Refactoring:** The Dream Orchestrator was simplified to use synchronous execution within the Sleep cycle thread, removing the ThreadPoolExecutor. Dream agents are organized under `backend/app/core/agents/` with prompts in `backend/app/core/agents/prompts/`.
 
@@ -1784,9 +1784,9 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
 
 ---
 
-## Output Format (questions.json)
+## Output Format (Questions Data)
 
-Dream must write `memory/{project}/questions.json` containing:
+The Questions Agent MUST return an in-memory Python dictionary of the form:
 
 ```
 {
@@ -1797,16 +1797,18 @@ Dream must write `memory/{project}/questions.json` containing:
 }
 ```
 
-* The `questions` list must contain one entry per processed open question.
-* Preserve original `question` and `topic` strings exactly.
-* Include an `answer` field with the generated answer text.
-* Keys must be lowercase (`question`, `topic`, `answer`). Do not include extra fields in `questions.json` (citations, confidence, etc., are not written to this file in 4.1.2).
-* If no valid entries exist, write an empty list:
+* The `questions` list MUST contain one entry per processed open question.
+* The returned structure SHALL NOT be mutated by Dream downstream; it is treated as read-only input.
+* Keys MUST be lowercase (`question`, `topic`, `answer`). No additional per-question fields (citations, confidence, etc.) are required in 4.1.2.
+* If no valid entries exist, the Questions Agent SHALL return `{ "questions": [] }`.
+* No persistent `questions.json` file is written in 4.1.2; all question results are kept in memory.
+* When `GENERATE_DEBUG_FILES=true`, the system SHALL write:
 
-```
-{ "questions": [] }
-```
-* Overwrite `questions.json` each run. Encoding: UTF‑8 with LF; newline‑terminated. Guard writes with a per‑project file lock (`memory/{project}/questions.lock`).
+  ```
+  memory/{project_id}/debug_questions.txt
+  ```
+
+  containing a pretty-printed JSON dump of the returned questions dictionary.
 
 ---
 
@@ -1814,7 +1816,7 @@ Dream must write `memory/{project}/questions.json` containing:
 
 * Dream executes synchronously within the Sleep cycle thread (no ThreadPoolExecutor or threading).
 * Sleep calls `dream(project_id, sleep_summary_text)` directly for each project and waits for completion.
-* Inside `dream()`, the questions agent processes all questions sequentially.
+* Inside `dream()`, the questions agent processes all questions sequentially and returns an in-memory `questions_data` dictionary.
 * Dream must treat RAG as read only.
 * Dream must not read or write data belonging to other projects.
 * The questions agent is implemented in `backend/app/core/agents/questions_agent.py` with the main entry point `run_questions_agent(project_id: str, summary_text: str) -> Dict[str, Any]`.
@@ -1827,7 +1829,7 @@ Dream must write `memory/{project}/questions.json` containing:
 
   * `[DREAM] Starting dreaming for project=...`
   * `[DREAM][QUESTIONS] Start project=...`
-  * `[DREAM][QUESTIONS] Completed project=... count=... preview=...`
+  * `[DREAM][QUESTIONS] Completed project=... count=...`
   * `[DREAM] Project ... complete in duration=...s`
 * Log per question (success):
   * `[DREAM][QUESTIONS] Q answered question="<trimmed 120>" preview="<answer[:250]>" used_remote_research=<true|false> tokens(local=X, remote=Y, combined=Z)`
@@ -1875,7 +1877,7 @@ Version 4.1.3.1 introduces the Dream Context Builder. This component runs inside
 
 ## Scope and Preconditions
 
-* Version 4.1.2 is complete and questions.json contains Question Answering results.
+* Version 4.1.2 is complete and the Questions Agent returns an in-memory `questions_data` dictionary containing Question Answering results.
 * RAG is already populated with:
 
   * default user profile codex
@@ -1967,15 +1969,15 @@ The final block is a single concatenated string.
 === DAILY MEMORY ===
 {text}
 
-* Dream Context Builder must read questions.json and sleep_summary.txt directly from disk and include placeholder blocks if missing.
+* Dream Context Builder must consume the in-memory `questions_data` dictionary passed from `dream()` (output of `run_questions_agent`) and read `sleep_summary.txt` directly from disk, including placeholder blocks such as `(empty)` when data is missing.
 
-* build_dream_context(project_id: str) -> str must be created in backend/app/core/dream_context.py.
+* `build_dream_context(project_id: str, questions_data: dict) -> (str, str)` must be created in `backend/app/core/dream_context.py`, returning `(context_block, project_summary_text)`.
 
-* The context block is built by calling `build_dream_context(project_id)` from `dream.py` after the questions agent completes. The context is stored in a simple process‑local variable for the duration of the Dream task (no TTL, no cross‑run cache) and can be reused by later agents within the same task.
+* The context block is built by calling `build_dream_context(project_id, questions_data)` from `dream.py` after the questions agent completes. The context is stored in a simple process‑local variable for the duration of the Dream task (no TTL, no cross‑run cache) and can be reused by later agents within the same task.
 
-* No new files are created and questions.json must not be modified in this version.
+* No new persistent files are created by the Dream Context Builder in this version (debug files such as `debug_context.txt` are allowed).
 
-* All errors inside the context builder must be caught. On failure, log an error and return a minimal context containing only sleep_summary.txt.
+* All errors inside the context builder must be caught. On failure, log an error and return a minimal context containing only the DAILY MEMORY section (derived from `sleep_summary.txt`).
 
 * All RAG retrieval must use rag_manager.retrieve_context.
 
@@ -1987,7 +1989,7 @@ The final block is a single concatenated string.
 
 * The context block is stored in memory and passed to future agents when implemented.
 
-* questions.json is not modified in this version.
+* No `questions.json` file is written or modified in this version; questions are passed only in memory.
 
 * No GUI changes are part of 4.1.3.1.
 
@@ -2216,30 +2218,30 @@ The final `dream_context` string SHALL include a fully constructed:
 block, containing all retrieved items or an empty notice. This enriched context is passed directly to the Idea Agent and any future Dream Agents.
 
 
-# 4.2.1 Idea Agent Requirements
+# 4.2 Idea Agent Requirements
 
-## FR-4.2.1.1 Purpose
+## FR-4.2.1 Purpose
 The Idea Agent SHALL analyze the daily `dream_context` and use an LLM prompt to generate structured Dream Entries. These entries represent open questions, insights, contradictions, and new topics derived from user interactions and the sleep summary.
 
-## FR-4.2.1.2 Trigger
+## FR-4.2.2 Trigger
 The Dream pipeline SHALL invoke the Idea Agent immediately after `dream_context` is successfully produced.
 
 - Implementation: the Idea Agent entrypoint is `run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any>`, called from `dream()` after `build_dream_context(project_id)` returns a non‑`None` string.
 - If `dream_context` is `None`, the Idea Agent SHALL NOT be invoked (effectively returning zero items for that project in this phase).
 
-## FR-4.2.1.3 Inputs
+## FR-4.2.3 Inputs
 The Idea Agent SHALL accept the following inputs:
 - `project_id` (string)
 - `dream_context` (string)
 
-## FR-4.2.1.4 Prompt Construction
+## FR-4.2.4 Prompt Construction
 The Idea Agent SHALL construct its LLM prompt by calling:
 `build_idea_prompt(dream_context: str)`
 located in:
 `backend/app/core/agents/prompts/idea_prompts.py`
 The returned string SHALL constitute the full and final prompt passed to the LLM.
 
-## FR-4.2.1.5 LLM Invocation
+## FR-4.2.5 LLM Invocation
 The Idea Agent SHALL invoke the LLM using:
 `dream_llm_call(prompt: str, max_output_tokens: Optional[int])`
 The Idea Agent SHALL:
@@ -2247,7 +2249,7 @@ The Idea Agent SHALL:
 - pass `max_output_tokens=settings.dream_max_tokens` (backed by `DREAM_MAX_TOKENS`, default 32000) for all Idea Agent calls
 - treat the returned value as raw JSON text produced by the model
 
-## FR-4.2.1.6 Output Schema (LLM Generated)
+## FR-4.2.6 Output Schema (LLM Generated)
 The LLM SHALL return a single JSON object containing:
 
 ### Top level fields
@@ -2272,7 +2274,7 @@ The LLM SHALL return a single JSON object containing:
 It SHALL only validate that the LLM-produced JSON conforms to this schema.
 `recommended_research` entries are text-only and SHALL NOT trigger external research in this step.
 
-## FR-4.2.1.7 JSON Parsing
+## FR-4.2.7 JSON Parsing
 The Idea Agent SHALL:
 
 1. Parse the raw LLM output as JSON.
@@ -2313,7 +2315,7 @@ into the project’s debug directory under `memory/{project_id}/`.
 Debug writes SHALL NOT occur inline inside `idea_agent.py`.
 When `GENERATE_DEBUG_FILES` is false or unset, no debug files SHALL be created.
 
-## FR-4.2.1.10 Logging Requirements
+## FR-4.2.10 Logging Requirements
 
 ### Info logs (with prefix `[DREAM][IDEA]`)
 - Start of Idea Agent execution
@@ -2329,15 +2331,15 @@ When `GENERATE_DEBUG_FILES` is false or unset, no debug files SHALL be created.
 
 Warning and error logs SHALL NOT include DREAM tags.
 
-## NFR-4.2.1.11 Architectural Note
+## NFR-4.2.11 Architectural Note
 The Idea Agent SHALL NOT perform external research.
 It SHALL generate only `recommended_research` topics for downstream use by the Research Agent.
 
 
-## FR-4.2.1.12 Output of This Version
+## FR-4.2.12 Output of This Version
 The Idea Agent SHALL return a single Python dictionary produced by:
 1. Parsing the raw JSON returned from `dream_llm_call`.
-2. Validating and filtering entries through the manual field-by-field validation rules defined in FR-4.2.1.7.
+2. Validating and filtering entries through the manual field-by-field validation rules defined in FR-4.2.7.
 
 The returned dictionary SHALL contain exactly the following fields:
 - `date` (string in MM/DD/YYYY format)
@@ -2351,4 +2353,430 @@ If all items fail validation, the Idea Agent SHALL return:
 This output dictionary SHALL be passed directly to downstream components, including the Research Agent, without modification.
 The Idea Agent SHALL return the parsed JSON object (Python dict) to the caller.
 The Idea Agent SHALL NOT write persistent output files except via debug mechanisms.
+
+# 4.3 Research Agent Requirements
+
+The Research Agent performs factual enrichment for Dream Entries created by the Idea Agent.
+
+It consumes the Idea Agent output as structured JSON, executes one research task per recommended topic, and returns a new JSON object containing all idea entries with appended research results.
+
+The Research Agent SHALL NOT modify the idea entries themselves.
+It only appends `"research": [...]` lists to each item.
+
+Research output SHALL be plain text summaries, never JSON from the model.
+
+All JSON structuring is done in Python inside `run_research_agent`.
+
+## 4.3.1 Research Agent Overview
+
+The Research Agent:
+
+1. Receives:
+
+   * `project_id`
+   * the parsed idea agent JSON (`idea_data`)
+   * `project_summary_text` from the Dream Context Builder
+
+2. Iterates over all Dream Entries produced by the Idea Agent
+
+3. For every recommended research topic:
+
+   * Builds a research prompt using `build_research_prompt`
+   * Executes the LLM call using the same OpenAI Responses configuration already used by `fetch_remote_research` in `dream_research.py` (no separate model/temperature/max‑tokens env block)
+   * Parses the plain text result into a structured Research Entry
+
+4. Appends all Research Entries to the idea entry under the `"research"` key
+
+5. Returns the augmented JSON object
+
+## 4.3.2 Function Signature (Implementation Requirement)
+
+The Research Agent SHALL be implemented in:
+
+backend/app/core/agents/research_agent.py
+
+with the following function signature:
+
+```
+def run_research_agent(
+    project_id: str,
+    idea_data: dict,
+    project_summary_text: str
+) -> dict:
+```
+
+This function:
+
+* SHALL perform zero file writes except for optional debug output.
+* SHALL return the augmented Dream JSON structure to the caller (dream.py).
+
+## 4.3.3 Input Contract
+
+`run_research_agent` SHALL accept:
+
+### A. project_id (string)
+
+Used for logging and optional debug file output.
+
+### B. idea_data (dict)
+
+This is the parsed JSON from Idea Agent output:
+
+```
+{
+  "date": "MM/DD/YYYY",
+  "items": [ ... ]
+}
+```
+
+Each Idea Entry contains:
+
+* `id`
+* `origin_text`
+* `origin_type`
+* `assistant_response`
+* `context_link`
+* `metadata` with:
+
+  * `priority`
+  * `theme`
+  * `recommended_research` (a list)
+
+### C. project_summary_text (string)
+
+A short textual description of the project, included in research prompts to improve grounding.
+
+## 4.3.4 Iteration Rules
+
+For each entry in `idea_data["items"]`:
+
+1. Extract fields:
+
+   * `entry_id`
+   * `origin_text`
+   * `origin_type`
+   * `assistant_response`
+   * `theme`
+   * `recommended_research`
+
+2. If `recommended_research` is empty:
+
+   * Set `entry["research"] = []`
+   * Continue to the next entry
+
+3. Otherwise:
+
+   * For each research topic:
+
+     * Build a prompt using:
+
+       ```
+       build_research_prompt(
+           project_summary_text,
+           origin_text,
+           origin_type,
+           assistant_response,
+           research_topic,
+           theme
+       )
+       ```
+
+     * Execute the LLM call using the same underlying configuration as `fetch_remote_research` (Responses API, same model/temperature/token limits); no new `research_llm_call` wrapper is required.
+
+     * Parse the LLM response (plain text only)
+
+     * Convert the response into a Research Entry JSON dict
+
+## 4.3.5 Research Agent Output Schema
+
+Each research result SHALL be converted into:
+
+```
+{
+  "entry_id": "<same as idea entry>",
+  "agent": "researcher_agent",
+  "timestamp": "<ISO-8601 now>",
+  "research_topic": "<topic>",
+  "research_summary": "<summary>",
+  "metadata": {
+      "related_theme": "<theme>"
+  }
+}
+```
+
+Rules:
+
+* No confidence fields.
+* Do not modify the Idea Agent fields.
+* `metadata` contains only `related_theme`.
+
+All research entries for an item SHALL be stored in:
+
+```
+item["research"] = [ ... ]
+```
+
+## 4.3.6 LLM Output Parsing Rules
+
+LLM output MUST be plain text only.
+
+Format:
+
+```
+<optional header line (ignored)>
+<research summary>
+```
+
+Parsing procedure:
+
+1. The first non-empty line MAY be a header, but the authoritative `research_topic` for the Research Entry SHALL always be the original string from `recommended_research` (per Idea Agent metadata), not the model’s header.
+2. All remaining non-empty lines SHALL be joined to form `research_summary`.
+3. If parsing fails:
+
+   * log a warning
+   * skip the research topic
+
+## 4.3.7 Debug File Generation
+
+If `GENERATE_DEBUG_FILES` is true:
+
+* The system SHALL write:
+
+```
+memory/{project_id}/debug_research.txt
+```
+
+Contents:
+
+```
+{
+  "date": "MM/DD/YYYY",
+  "items": [
+    ... all items with appended "research": [ ... ]
+  ]
+}
+```
+
+where the structure mirrors exactly the dictionary returned by `run_research_agent` for that project (pretty-printed JSON as plain text).
+
+File semantics:
+
+* `debug_research.txt` SHALL be overwritten on each Dream run (no append across nights).
+* Multiple research entries for the same topic MAY appear in the items list; no deduplication is required.
+
+## 4.3.8 Error Handling
+
+* All exceptions SHALL be caught and logged.
+* A failure on one research topic SHALL NOT block the rest.
+* A failure on one entry SHALL NOT halt the dream cycle.
+* If all topics for a given entry fail to parse or execute, that entry SHALL still receive `entry["research"] = []` and a lightweight failure marker such as `entry["research_failed"] = true` for observability.
+
+## 4.3.9 Sequential Execution Requirement
+
+Research SHALL run sequentially.
+
+Parallelization MAY be added in a future higher-level orchestrator but MUST NOT appear here. Within a single `run_research_agent` invocation, all topics for a given project and night MUST execute one after another (no intra-project concurrency), though future orchestration MAY run different projects in parallel.
+
+## 4.3.10 Output Contract
+
+`run_research_agent` SHALL return:
+
+```
+{
+  "date": "<same value from idea_data>",
+  "items": [
+      ... all items with appended "research": [ ... ]
+  ]
+}
+```
+
+Logging requirements:
+
+* INFO‑level logs SHALL use the `[DREAM][RESEARCH]` prefix for high‑level lifecycle events (e.g., start/end, topic counts per project).
+* For each built prompt, the agent SHALL emit a DEBUG‑level log containing the first ~250 characters of the prompt text (no additional DREAM tags required on this line).
+
+
+# 4.4 Dream Writer Requirements
+
+The Dream Writer is responsible for producing the final `dream.json` file that the GUI will read after the Dream Cycle completes.
+It runs after the Research Agent and performs no reasoning, only merging and serialization.
+
+---
+
+## 4.4.1 Inputs
+
+### FR-4.4.1.1 Input Parameters
+
+The Dream Writer SHALL be invoked with the following parameters:
+
+* `project_id: str`
+* `project_summary_text: str`
+* `dream_data: dict` (the full data structure returned by `run_research_agent`)
+
+### FR-4.4.1.2 dream_data Contract
+
+`dream_data` SHALL already contain:
+
+* A top-level `date` field in `MM/DD/YYYY` format
+* A top-level `items` array
+* Each `items` entry MAY include a `research` sub-array if research was performed
+
+The Dream Writer SHALL NOT modify, reorder, filter, or reinterpret any of the contents of `dream_data["items"]`.
+
+### FR-4.4.1.3 project_summary_text
+
+The Dream Writer SHALL insert the project summary at the top level of the final JSON output under the field:
+
+```json
+"project_summary": "..."
+```
+
+The value MUST be exactly the `project_summary_text` string passed into the function.
+
+---
+
+## 4.4.2 Output Specification
+
+### FR-4.4.2.1 Output File Location
+
+The Dream Writer SHALL create (or overwrite) a file:
+
+```text
+memory/{project_id}/dream.json
+```
+
+### FR-4.4.2.2 Output JSON Shape
+
+The file SHALL contain a single JSON object with at least the following fields:
+
+```json
+{
+  "date": "MM/DD/YYYY",
+  "project_summary": "string",
+  "items": [ ... ]
+}
+```
+
+Where:
+
+* `date` SHALL be copied from `dream_data["date"]` if present.
+
+  * If `date` is missing, the Dream Writer MAY compute today’s date in `MM/DD/YYYY` format.
+* `project_summary` SHALL contain `project_summary_text`.
+* `items` SHALL be copied directly from `dream_data["items"]` (or an empty list if missing).
+
+No additional top-level fields are required, but the Dream Writer SHALL preserve all other existing top-level keys in `dream_data` unchanged if they exist.
+
+### FR-4.4.2.3 Human Readability
+
+The Dream Writer SHALL write the JSON file in a human readable format:
+
+* The JSON MUST be pretty-printed with indentation (2 or 4 spaces).
+* The JSON MUST be encoded in UTF-8.
+* Keys MUST NOT be sorted automatically; the natural key order from the constructed dict MAY be preserved.
+
+### FR-4.4.2.4 No Additional Debug Files
+
+The Dream Writer SHALL NOT write any additional debug files.
+Only `dream.json` SHALL be produced at this stage.
+
+---
+
+## 4.4.3 Behavior and Logic
+
+### FR-4.4.3.1 No Business Logic
+
+The Dream Writer SHALL NOT:
+
+* Generate or modify insights
+* Generate or modify research
+* Alter `origin_text`, `assistant_response`, or any `research_summary`
+* Filter, reorder, or group items
+* Perform any RAG operations
+* Interact with STM or LTM
+
+It is a pure I/O serialization step.
+
+### FR-4.4.3.2 Error Handling
+
+If an exception occurs while preparing or writing the file:
+
+* The Dream Writer SHALL log the error using `logger.error`, including the exception text.
+* The exception SHALL NOT be propagated to the caller; the function SHALL return after logging.
+
+### FR-4.4.3.3 Logging
+
+The Dream Writer SHALL produce the following log entries:
+
+* After successful write (INFO level):
+
+  ```text
+  [DREAM] Dream output written successfully for project={project_id}
+  ```
+
+* On error: an `ERROR` level log including the exception message (no DREAM tag required).
+* Any additional diagnostic messages MAY be logged at DEBUG or WARNING level without DREAM tags.
+
+---
+
+## 4.4.4 Dream Writer Function Definition
+
+### FR-4.4.4.1 Prototype
+
+The Dream Writer SHALL be implemented in `dream.py` as:
+
+```python
+def write_dream_output(project_id: str, dream_data: dict, project_summary_text: str) -> None:
+```
+
+### FR-4.4.4.2 Core Steps
+
+The function SHALL:
+
+1. Insert the project summary:
+
+   ```python
+   dream_data["project_summary"] = project_summary_text
+   ```
+
+2. Ensure `date` exists in `dream_data`.
+
+   * If `"date"` is missing, compute today’s date in `MM/DD/YYYY` format using UTC time (`datetime.now(timezone.utc)`) and assign it.
+
+3. Ensure `items` exists in `dream_data`.
+
+   * If `"items"` is missing, assign an empty list: `dream_data["items"] = []`.
+
+4. Serialize `dream_data` to JSON with indentation and write it to:
+
+   ```text
+   memory/{project_id}/dream.json
+   ```
+
+5. Log success or failure per FR-4.4.3.3 and FR-4.4.3.2.
+
+---
+
+## 4.4.5 Integration into dream.py
+
+### FR-4.4.5.1 Ordering in Dream Pipeline
+
+`write_dream_output` SHALL be called from `dream()` after:
+
+1. `run_questions_agent(...)`
+2. `run_idea_agent(...)`
+3. `run_research_agent(...)`
+
+And after `dream_data` and `project_summary_text` are both available.
+
+### FR-4.4.5.2 No GUI or Memory Side Effects
+
+The Dream Writer SHALL NOT:
+
+* Read or modify any GUI state
+* Apply Keep/Drop decisions
+* Update any RAG indices
+* Write long-term memory entries
+
+Those concerns belong to downstream components (e.g., the Dream Review GUI and LTM update pipeline).
 

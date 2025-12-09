@@ -8,6 +8,6 @@ Unauthorized copying, modification, distribution, or use of this software is str
 Use of this software requires explicit written permission from the copyright holder.
 """
 
-# Backwards-compatible shim: re-export Dream research helpers from the new package.
+# Dream Agents package
 
-from .dream.research import *  # noqa: F401,F403
+

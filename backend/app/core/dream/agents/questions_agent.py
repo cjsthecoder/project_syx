@@ -13,38 +13,18 @@ from typing import Optional, List, Dict, Any
 import json
 import re
 import os
-from filelock import FileLock
 
-from ..dream_research import count_tokens, trim_to_tokens, fetch_remote_research
-from ..config import get_settings
-from ..dream_llm import dream_llm_call
-from ..rag_manager import retrieve_context
+from ..research import count_tokens, trim_to_tokens, fetch_remote_research
+from ...config import get_settings
+from ..llm import dream_llm_call
+from ...rag_manager import retrieve_context
+from app.utils.debug_utils import write_debug_file
 from .prompts.questions_prompts import (
     build_answer_question_prompt_local,
     build_answer_question_prompt_remote,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _wait_for_question_file(project_id: str, timeout: float = 5.0) -> bool:
-    """Wait until questions.json exists, is unlocked, and size stabilizes or timeout expires."""
-    base_dir = os.path.join("memory", project_id)
-    questions_path = os.path.join(base_dir, "questions.json")
-    lock_path = os.path.join(base_dir, "questions.lock")
-    t0 = time.monotonic()
-    last_size = -1
-    while time.monotonic() - t0 < timeout:
-        if (not os.path.exists(lock_path)) and os.path.isfile(questions_path):
-            try:
-                size = os.path.getsize(questions_path)
-            except Exception:
-                size = -1
-            if size > 0 and size == last_size:
-                return True  # unlocked and stable
-            last_size = size
-        time.sleep(0.05)
-    return False
 
 
 def _extract_json_from_open_questions(summary_text: str) -> Optional[str]:
@@ -122,8 +102,6 @@ def _run_open_question_pipeline(project_id: str, question: str, topic: str, reso
             snippet_max_tokens=settings.rag_snippet_max_tokens,
             score_threshold=settings.rag_score_threshold,
             context_max_tokens=settings.rag_context_max_tokens,
-            route_namespaces=[topic] if topic else None,
-            namespace_boost=settings.dream_topic_boost if topic else None,
         )
         local_context = rc.get("context_text") or ""
     except Exception as e:
@@ -193,7 +171,7 @@ def run_questions_agent(
     Run the Open Questions agent for a project.
     
     This function extracts questions from sleep_summary.txt, processes each question
-    through the RAG pipeline, and writes questions.json.
+    through the RAG pipeline, and returns an in-memory data structure.
     
     Args:
         project_id: Project identifier
@@ -227,30 +205,21 @@ def run_questions_agent(
                 )
             except Exception as qe:
                 logger.warning("project=%s per-question pipeline error: %s", project_id, qe)
-        # Write questions.json with lock
+        result: Dict[str, Any] = {"questions": outputs}
+
+        # Optional debug file: debug_questions.txt
         try:
-            base_dir = os.path.join("memory", project_id)
-            os.makedirs(base_dir, exist_ok=True)
-            lock_path = os.path.join(base_dir, "questions.lock")
-            questions_path = os.path.join(base_dir, "questions.json")
-            with FileLock(lock_path):
-                with open(questions_path, "w", encoding="utf-8", newline="\n") as df:
-                    df.write("{\n  \"questions\": [\n")
-                    for i, ent in enumerate(outputs):
-                        line = f'    {{ "question": {json.dumps(ent["question"])}, "topic": {json.dumps(ent["topic"])}, "answer": {json.dumps(ent["answer"])} }}'
-                        if i < len(outputs) - 1:
-                            line += ","
-                        df.write(line + "\n")
-                    df.write("  ]\n}\n")
+            debug_payload = json.dumps(result, ensure_ascii=False, indent=2)
+            write_debug_file(project_id, "debug_questions.txt", debug_payload)
         except Exception as we:
-            logger.warning("project=%s failed writing questions.json: %s", project_id, we)
-        # Wait for questions.json to be unlocked before returning
-        _wait_for_question_file(project_id, timeout=5.0)
+            logger.warning("project=%s failed writing debug_questions.txt: %s", project_id, we)
+
         count = len(outputs)
-        preview = json.dumps({"questions": outputs}, ensure_ascii=False)[:250]
-        logger.info("[DREAM][QUESTIONS] Completed project=%s count=%s preview=%s", project_id, count, preview)
-        return {"questions": outputs}
+        logger.info("[DREAM][QUESTIONS] Completed project=%s count=%s", project_id, count)
+        return result
     except Exception as e:
         logger.error("project=%s %s", project_id, e, exc_info=True)
         return {"questions": []}
+
+
 

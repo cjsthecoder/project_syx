@@ -10,7 +10,7 @@ Use of this software requires explicit written permission from the copyright hol
 import logging
 import os
 
-from .config import get_settings
+from ..core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -37,5 +37,6 @@ def write_debug_file(project_id: str, filename: str, content: str) -> None:
         logger.info("Wrote debug file to %s", debug_path)
     except Exception as de:
         logger.warning("Failed writing debug file %s for project=%s: %s", filename, project_id, de)
+
 
 

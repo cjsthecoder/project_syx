@@ -8,7 +8,6 @@ Unauthorized copying, modification, distribution, or use of this software is str
 Use of this software requires explicit written permission from the copyright holder.
 """
 
-# Backwards-compatible shim: re-export Dream LLM helper from the new package.
+# Dream Agents package
 
-from .dream.llm import *  # noqa: F401,F403
 

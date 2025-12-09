@@ -12,9 +12,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from ..config import get_settings
-from ..debug_utils import write_debug_file
-from ..dream_llm import dream_llm_call
+from ...config import get_settings
+from app.utils.debug_utils import write_debug_file
+from ..llm import dream_llm_call
 from .prompts.idea_prompts import build_idea_prompt
 
 logger = logging.getLogger(__name__)
@@ -234,5 +234,6 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
 
     logger.info("[DREAM][IDEA] Completed project=%s count=%s", project_id, len(validated))
     return {"date": date_str, "items": validated}
+
 
 

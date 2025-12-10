@@ -30,6 +30,20 @@ def write_dream_output(project_id: str, dream_data: dict, project_summary_text: 
     returned by the Research Agent along with the project summary text.
     """
     try:
+        def _capitalize_first_letter(text: str) -> str:
+            """Capitalize the first non-whitespace character if it is a letter."""
+            if not isinstance(text, str):
+                return text
+            leading_len = len(text) - len(text.lstrip())
+            prefix = text[:leading_len]
+            rest = text[leading_len:]
+            if not rest:
+                return text
+            first = rest[0]
+            if first.isalpha():
+                rest = first.upper() + rest[1:]
+            return prefix + rest
+
         # Insert/overwrite project summary at top level.
         dream_data["project_summary"] = project_summary_text
 
@@ -42,7 +56,16 @@ def write_dream_output(project_id: str, dream_data: dict, project_summary_text: 
         # Ensure items exists and is a list.
         items = dream_data.get("items")
         if not isinstance(items, list):
-            dream_data["items"] = []
+            items = []
+        # Normalize origin_text capitalization for display.
+        normalized_items = []
+        for it in items:
+            if isinstance(it, dict):
+                # Only adjust origin_text; leave other fields untouched.
+                if "origin_text" in it:
+                    it = {**it, "origin_text": _capitalize_first_letter(it.get("origin_text"))}
+            normalized_items.append(it)
+        dream_data["items"] = normalized_items
 
         # Serialize to JSON and write to memory/{project_id}/dream.json.
         dream_path = os.path.join("memory", project_id, "dream.json")

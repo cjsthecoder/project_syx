@@ -10,12 +10,24 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 
-export function Dialog({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+export function Dialog({
+  open,
+  onClose,
+  children,
+  contentClassName,
+}: {
+  open: boolean
+  onClose: () => void
+  children: React.ReactNode
+  contentClassName?: string
+}) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className={cn('relative w-full max-w-lg rounded-lg border bg-white dark:bg-black shadow-lg p-4')}>{children}</div>
+      <div className={cn('relative w-full max-w-lg rounded-lg border bg-white dark:bg-black shadow-lg p-4', contentClassName)}>
+        {children}
+      </div>
     </div>
   )
 }

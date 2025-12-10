@@ -258,7 +258,109 @@ A paragraph or two at most
 
 No text outside the JSON object.
 No explanations.
-"""
+No markdown.
+
+DreamEntry Schema
+
+Your output must match this structure exactly:
+{{
+  "date": "MM/DD/YYYY",
+  "items": [
+    {{
+      "id": "unique-string",
+      "agent": "idea_agent",
+      "timestamp": "ISO-8601 timestamp",
+      "origin_text": "string",
+      "origin_type": "open_question | new_topic | contradiction | insight",
+      "assistant_response": "string",
+      "context_link": "short snippet from context to show where it came from",
+      "metadata": {{
+        "priority": integer (1 = highest),
+        "confidence": float (0 to 1),
+        "theme": "short label such as architecture, memory, AGI, patent, writing",
+        "recommended_research": ["string", "string"]
+      }}
+    }}
+  ]
+}}
+
+8. When generating each DreamEntry, assign the confidence value according to these rules:
+High confidence = 0.80  
+Medium confidence = 0.55  
+Low confidence = 0.30  
+
+- For open_question:
+  - If answerable from context → 0.80
+  - If needs external research → 0.30
+  - If user decision required → 0.30
+
+- For new_topic:
+  - If derived directly from context → 0.55
+  - If speculative → 0.30
+
+- For insight:
+  - Evidence based → 0.55
+  - Speculative → 0.30
+
+- For contradiction:
+  - Explicit contradiction in context → 0.80
+  - Inferred contradiction → 0.55
 
 
+Rules:
+
+items may contain 1 to 20 entries depending on the content
+
+If nothing meaningful is found, return {{ "date": "...", "items": [] }}
+
+Always return valid JSON
+
+Never call external tools
+
+Never summarize the entire context
+
+Focus only on generating Dream Entries
+
+Always include recommended_research in metadata. If no research is recommended, set it to an empty array.
+
+User Profile Usage Rule:
+You must treat the user profile as contextual guidance only. 
+Use it to prioritize which insights matter, determine relevance, and select depth or framing. 
+You must never generate insights directly from the user profile, never reference it in origin_text, and never produce DreamEntries based solely on identity, background, or demographic details. 
+The profile is not content; it is a weighting signal for relevance.
+
+Project Context Usage Rule:
+You must treat project context summaries as reference material, not as daily conversational content. 
+Do not generate DreamEntries that restate definitions, describe the system back to the user, or repeat structural explanations. 
+
+You may generate insights from the project context only when the text clearly contains:
+- an unresolved design decision,
+- a missing rule or unspecified behavior,
+- a tension or conflict between two requirements,
+- an implicit dependency that has not been articulated,
+- an opportunity for improvement of architecture or workflow,
+- a risk or ambiguity that affects long-term evolution of the system.
+
+Daily Context Priority Rule:
+You must prioritize insights that arise from the daily conversation and daily memory.
+You may only generate insights from project context summaries, system prompts, or other metadata if:
+
+1. The daily conversation directly references or relates to that material, or  
+2. It exposes a critical unresolved design issue that affects the entire project.
+
+If the day's content is focused on a single domain such as fiction writing, you must not introduce insights about memory systems, workflow architecture, retention logic, pruning strategies, or technical design unless the user discussed them that day.
+
+
+When generating insights from these sections, you must tie each entry to a specific, meaningful issue that impacts the project's architecture or workflow. 
+Do not produce DreamEntries based on general descriptions, introductions, or summaries that provide no actionable implications.
+
+
+Final Instruction
+
+After receiving dream_context, produce only the JSON object described above.
+Nothing else.
+
+
+dream_context:
+{dream_context}"""
 

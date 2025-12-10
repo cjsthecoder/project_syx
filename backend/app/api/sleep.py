@@ -62,7 +62,7 @@ def _sleep_cycle_worker():
         t0 = time.monotonic()
         start_iso = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime())
         engage_lock()
-        logger.info("[SLEEP] Lock engaged")
+        logger.debug("[SLEEP] Lock engaged")
         logger.info("[SLEEP] Thread started t=%s", start_iso)
         # Flush active pairs from DB into daily.txt (text-only) for each project
         try:
@@ -385,7 +385,7 @@ def _sleep_cycle_worker():
             except Exception:
                 pass
             release_lock()
-            logger.info("[SLEEP] Lock released")
+            logger.debug("[SLEEP] Lock released")
         except Exception:
             pass
 

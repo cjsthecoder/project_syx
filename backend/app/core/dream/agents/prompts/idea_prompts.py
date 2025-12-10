@@ -271,7 +271,7 @@ Your output must match this structure exactly:
       "agent": "idea_agent",
       "timestamp": "ISO-8601 timestamp",
       "origin_text": "string",
-      "origin_type": "open_question | new_topic | contradiction | insight",
+      "origin_type": "Open Question | New Topic | Contradiction | Insight",
       "assistant_response": "string",
       "context_link": "short snippet from context to show where it came from",
       "metadata": {{

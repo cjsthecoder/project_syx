@@ -17,6 +17,8 @@ import { Dialog, DialogHeader, DialogFooter } from '@/components/ui/dialog'
 type Message = { id?: number; role: 'user' | 'assistant'; content: string; forget?: boolean; keep?: boolean }
 type Project = { id: string; name?: string }
 type ModelItem = string
+type DreamResearch = { research_topic?: string; research_summary?: string }
+type DreamItem = { id?: string; origin_text?: string; assistant_response?: string; origin_type?: string; research?: DreamResearch[] }
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -53,6 +55,7 @@ export default function App() {
   const [dreamWarning, setDreamWarning] = useState<string | null>(null)
   const [hasDreamItems, setHasDreamItems] = useState(false)
   const [showDreamModal, setShowDreamModal] = useState(false)
+  const [dreamItems, setDreamItems] = useState<DreamItem[]>([])
 
   // V2.6 Personality UI state
   const [showPersonalityModal, setShowPersonalityModal] = useState(false)
@@ -129,7 +132,7 @@ export default function App() {
     }
   }, [])
 
-  // FR-4.5.1.2: Load dream summary card data
+  // FR-4.5.2: Load dream summary and items data
   const loadDreamSummary = useCallback(async (pid: string) => {
     try {
       const data = await api<{ project_id?: string; dream?: any; error?: any }>(`/projects/${pid}/dream`)
@@ -143,9 +146,25 @@ export default function App() {
         setProjectSummary(null)
         setHasDreamItems(false)
       }
+      const normalizedItems: DreamItem[] = items
+        .filter((it: any) => it && (it.origin_text || it.assistant_response))
+        .map((it: any) => ({
+          id: it.id,
+          origin_text: it.origin_text,
+          assistant_response: it.assistant_response,
+          origin_type: it.origin_type,
+          research: Array.isArray(it.research)
+            ? it.research.map((r: any) => ({
+                research_topic: r?.research_topic,
+                research_summary: r?.research_summary,
+              }))
+            : [],
+        }))
+      setDreamItems(normalizedItems)
     } catch (e: any) {
       setProjectSummary(null)
       setHasDreamItems(false)
+      setDreamItems([])
       console.warn('loadDreamSummary failed', e)
     }
   }, [])
@@ -616,12 +635,57 @@ export default function App() {
         contentClassName="max-w-8xl w-[1280px] max-h-[90vh] h-[85vh] overflow-hidden flex flex-col"
       >
         <DialogHeader>Analyze Dreams</DialogHeader>
-        <div className="px-4 pb-2 text-sm flex-1 overflow-auto">
-          {projectSummary ? (
-            <div className="whitespace-pre-wrap break-words">{projectSummary}</div>
-          ) : (
-            <div>No dream summary available.</div>
+        <div className="px-4 pb-2 text-sm flex-1 overflow-auto space-y-4">
+          {dreamItems.length === 0 && (
+            <div className="text-sm text-gray-600">No dream items available.</div>
           )}
+
+          {dreamItems.map((item, idx) => (
+            <div key={item.id || idx} className="space-y-2 border border-gray-200 rounded-lg p-3 bg-white">
+              <div className="text-xs font-semibold text-gray-600">
+                {item.origin_type && typeof item.origin_type === 'string'
+                  ? item.origin_type.charAt(0).toUpperCase() + item.origin_type.slice(1)
+                  : 'User/Agent'}
+              </div>
+              <div
+                className="rounded bg-gray-200 text-black px-3 py-2 whitespace-pre-wrap break-words"
+                style={{ width: 'calc(100% - 100px)' }}
+              >
+                {item.origin_text || '(no origin text)'}
+              </div>
+
+              <div className="text-xs font-semibold text-gray-600" style={{ paddingLeft: '100px' }}>
+                AI/Response
+              </div>
+              <div className="flex justify-end">
+                <div
+                  className="rounded px-3 py-2 whitespace-pre-wrap break-words text-left"
+                  style={{ backgroundColor: '#66b5ff', color: '#000', width: 'calc(100% - 100px)' }}
+                >
+                  {item.assistant_response || '(no response)'}
+                </div>
+              </div>
+
+              {Array.isArray(item.research) && item.research.length > 0 && (
+                <div className="space-y-2">
+                  {item.research.map((r, rIdx) => (
+                    <div key={rIdx} className="rounded border border-gray-200 px-3 py-2 bg-white">
+                      <div className="text-xs font-semibold text-gray-600 mb-1">[RESEARCH]</div>
+                      <div className="text-sm font-semibold">Topic: {r?.research_topic || '(unknown topic)'}</div>
+                      <div className="text-sm whitespace-pre-wrap break-words">
+                        {r?.research_summary || '(no summary)'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <input type="checkbox" disabled />
+                <span className="text-sm text-gray-700">Keep</span>
+              </div>
+            </div>
+          ))}
         </div>
         <DialogFooter>
           <Button onClick={() => setShowDreamModal(false)}>Close</Button>

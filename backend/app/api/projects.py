@@ -14,7 +14,8 @@ This module provides project management functionality (stubbed for Version 4).
 """
 
 import logging
-from typing import Optional, List
+import json
+from typing import Optional, List, Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -53,6 +54,22 @@ request_logger = RequestLogger("projects")
 _current_project = None
 
 
+def _validate_dream_payload(data: Any) -> Optional[dict]:
+    """Light validation of dream.json structure."""
+    if not isinstance(data, dict):
+        return None
+    summary = data.get("project_summary")
+    items = data.get("items")
+    if summary is not None and not isinstance(summary, str):
+        return None
+    if items is not None and not isinstance(items, list):
+        return None
+    return {
+        "project_summary": summary,
+        "items": items or [],
+    }
+
+
 @router.get("/projects")
 async def get_projects() -> JSONResponse:
     try:
@@ -89,6 +106,31 @@ async def get_projects() -> JSONResponse:
         request_logger.log_error(endpoint="/projects", error=e)
         log_error_context(error=e, context={"endpoint": "/projects", "method": "GET"})
         raise handle_project_error(e)
+
+
+@router.get("/projects/{project_id}/dream")
+async def get_project_dream(project_id: str) -> JSONResponse:
+    """Return dream.json content for a project, if present and well-formed."""
+    request_logger.log_request(endpoint="/projects/{project_id}/dream", method="GET", user_id=project_id)
+    dream_path = os.path.join("memory", project_id, "dream.json")
+    try:
+        if not os.path.isfile(dream_path):
+            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": None})
+        with open(dream_path, "r", encoding="utf-8") as f:
+            raw = f.read().strip()
+        if not raw:
+            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": None})
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": None})
+        validated = _validate_dream_payload(data)
+        if not validated:
+            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": None})
+        return JSONResponse(status_code=200, content={"project_id": project_id, "dream": validated})
+    except Exception as e:
+        logger.warning("[PROJECT][DREAM] Failed reading dream for %s: %s", project_id, e, exc_info=True)
+        return JSONResponse(status_code=500, content={"project_id": project_id, "error": "Failed to read dream.json"})
 
 
 @router.post("/projects")

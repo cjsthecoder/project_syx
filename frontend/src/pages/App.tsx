@@ -48,6 +48,11 @@ export default function App() {
   const [projectInfo, setProjectInfo] = useState<{ name?: string; description?: string; created_at?: string; system?: boolean; daily_rag_enabled?: boolean } | null>(null)
   const [showSleepModal, setShowSleepModal] = useState(false)
   const [sleepSince, setSleepSince] = useState<string | null>(null)
+  // FR-4.5.1 Dream UI
+  const [projectSummary, setProjectSummary] = useState<string | null>(null)
+  const [dreamWarning, setDreamWarning] = useState<string | null>(null)
+  const [hasDreamItems, setHasDreamItems] = useState(false)
+  const [showDreamModal, setShowDreamModal] = useState(false)
 
   // V2.6 Personality UI state
   const [showPersonalityModal, setShowPersonalityModal] = useState(false)
@@ -124,6 +129,44 @@ export default function App() {
     }
   }, [])
 
+  // FR-4.5.1.2: Load dream summary card data
+  const loadDreamSummary = useCallback(async (pid: string) => {
+    try {
+      const data = await api<{ project_id?: string; dream?: any; error?: any }>(`/projects/${pid}/dream`)
+      const dream = data?.dream
+      const summary = dream?.project_summary
+      const items = Array.isArray(dream?.items) ? dream.items : []
+      if (typeof summary === 'string' && summary.trim().length > 0) {
+        setProjectSummary(summary.trim())
+        setHasDreamItems(items.length > 0)
+      } else {
+        setProjectSummary(null)
+        setHasDreamItems(false)
+      }
+    } catch (e: any) {
+      setProjectSummary(null)
+      setHasDreamItems(false)
+      console.warn('loadDreamSummary failed', e)
+    }
+  }, [])
+
+  // FR-4.5.1.1: Refresh all project data
+  const refreshProjectData = useCallback(async (pid: string) => {
+    if (!pid) return
+    try {
+      await Promise.all([
+        loadChats(pid),
+        loadFiles(pid),
+        loadStats(pid),
+        loadProjectInfo(pid),
+        loadDreamSummary(pid),
+      ])
+    } catch (e) {
+      // Log but don't block - individual load functions handle their own errors
+      console.error('Failed to refresh project data:', e)
+    }
+  }, [loadChats, loadFiles, loadStats, loadProjectInfo, loadDreamSummary])
+
   async function checkSleeping(): Promise<boolean> {
     try {
       const r = await fetch('/sleep/status')
@@ -144,21 +187,60 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // FR-4.5.1.1: Refresh project data when project changes
   useEffect(() => {
     if (projectId) {
-      loadChats(projectId)
-      loadFiles(projectId)
-      loadStats(projectId)
-      loadProjectInfo(projectId)
+      refreshProjectData(projectId)
       // Preload personality when switching projects
       loadPersonality(projectId)
+    } else {
+      // Clear state when no project selected
+      setMessages([])
+      setFiles([])
+      setStats(null)
+      setProjectInfo(null)
     }
-  }, [projectId, loadChats, loadFiles, loadStats, loadProjectInfo])
+  }, [projectId, refreshProjectData])
+
+  // FR-4.5.1.1: Monitor sleep status and refresh when sleep ends
+  useEffect(() => {
+    if (!showSleepModal || !projectId) return
+
+    let cancelled = false
+    const interval = setInterval(async () => {
+      if (cancelled) return
+      try {
+        const r = await fetch('/sleep/status')
+        if (!r.ok) return
+        const j = await r.json()
+
+        // Transition detected: was sleeping, now awake
+        if (!j?.sleeping) {
+          cancelled = true
+          clearInterval(interval)
+          setShowSleepModal(false)
+          setSleepSince(null)
+          // Refresh all project data when sleep ends
+          await refreshProjectData(projectId)
+        }
+      } catch {
+        // Ignore polling errors, continue checking
+      }
+    }, 5000) // Poll every 5 seconds while sleep modal is visible
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [showSleepModal, projectId, refreshProjectData])
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading])
 
   async function send() {
     if (!canSend) return
+    // Clear dream UI so it rolls off when a new chat starts
+    setProjectSummary(null)
+    setDreamWarning(null)
     setError(null)
     setLoading(true)
     // If sleeping, show modal and bail early
@@ -404,6 +486,15 @@ export default function App() {
 
       <main className="flex-1 overflow-hidden">
         <div ref={listRef} className="h-full overflow-auto p-4 space-y-3">
+          {projectSummary && (
+            <div
+              className="ml-[20%] mr-[20%] mb-3 rounded px-3 py-3 text-sm"
+              style={{ backgroundColor: '#66b5ff', color: '#000' }}
+            >
+              <div className="font-semibold mb-1">Project Summary</div>
+              <div className="whitespace-pre-wrap break-words">{projectSummary}</div>
+            </div>
+          )}
           {messages.map((m, i) => (
             <div key={i} className={m.role === 'user' ? 'text-right' : 'text-left'}>
               <div
@@ -465,6 +556,18 @@ export default function App() {
         <Toast message={error} onRetry={send} onClose={() => setError(null)} />
       )}
 
+      {/* Centered Analyze Dreams button above the prompt box */}
+      {hasDreamItems && (
+        <div className="w-full flex justify-center pb-2">
+          <Button
+            className="bg-white !text-black hover:bg-gray-100 border border-gray-200"
+            onClick={() => setShowDreamModal(true)}
+          >
+            Analyze Dreams
+          </Button>
+        </div>
+      )}
+
       <footer className="border-t p-6">
         <div className="w-3/5 mx-auto">
           <form
@@ -503,6 +606,26 @@ export default function App() {
         </div>
         <DialogFooter>
           <Button onClick={() => setShowSleepModal(false)}>OK</Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Dream Analysis Modal (placeholder for FR-4.5.1.3) */}
+      <Dialog
+        open={showDreamModal}
+        onClose={() => setShowDreamModal(false)}
+        contentClassName="max-w-8xl w-[1280px] max-h-[90vh] h-[85vh] overflow-hidden flex flex-col"
+      >
+        <DialogHeader>Analyze Dreams</DialogHeader>
+        <div className="px-4 pb-2 text-sm flex-1 overflow-auto">
+          {projectSummary ? (
+            <div className="whitespace-pre-wrap break-words">{projectSummary}</div>
+          ) : (
+            <div>No dream summary available.</div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button onClick={() => setShowDreamModal(false)}>Close</Button>
+          <Button disabled>Submit (coming soon)</Button>
         </DialogFooter>
       </Dialog>
 

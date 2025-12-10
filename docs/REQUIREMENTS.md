@@ -2780,3 +2780,127 @@ The Dream Writer SHALL NOT:
 
 Those concerns belong to downstream components (e.g., the Dream Review GUI and LTM update pipeline).
 
+# 4.5 Analyze Dreams
+
+FR-4.5 introduces a user-facing workflow for reviewing and curating nightly Dream output.  
+It assumes that the Dream pipeline (FR-4.1.x–4.4) has produced a `memory/{project_id}/dream.json` file containing a top-level `"project_summary"` and `"items"` array.
+
+---
+
+## 4.5.1 GUI Reset and Project Summary Card After Sleep
+
+### Scope
+
+- Frontend-only behavior, triggered after the Sleep/Dream cycle completes.
+- No changes to the Dream pipeline or RAG behavior are introduced in this sub-requirement.
+
+### Functional Requirements
+
+#### FR-4.5.1.1 Automatic GUI Refresh After Sleep Unlock
+
+1. When the backend Sleep lock transitions from `sleeping=true` to `sleeping=false` as reported by `GET /sleep/status`, the GUI MUST:
+   - Automatically refresh the current project’s:
+     - Chat history (`GET /projects/{project_id}/chats`)
+     - Files list (`GET /projects/{project_id}/files`)
+     - Stats (`GET /projects/{project_id}/stats`)
+     - Project metadata (`GET /projects/{project_id}`)
+   - This refresh MUST occur without requiring the user to send a new prompt.
+   - After refresh, the chat window MUST no longer show any chat pairs that were flushed to daily memory by the Sleep cycle.
+2. Independently of Sleep timing, whenever the user selects a project in the main chat UI (initial load or project switch), the frontend MUST:
+   - Refresh the selected project’s chat history and project metadata.
+   - Attempt to load the project’s Dream output (see FR-4.5.1.2) so that a valid `dream.json` will surface the Project Summary card even if the user was not viewing that project when Sleep completed.
+
+#### FR-4.5.1.2 Project Summary Card in Chat Window
+
+1. After the post-Sleep refresh, the frontend MUST attempt to load the current project’s Dream output from `dream.json`.
+   - Implementation note: this MAY be exposed via a backend endpoint such as:
+     - `GET /projects/{project_id}/dream` → `{ "project_id": "...", "dream": { ... } }` or `{ "project_id": "...", "dream": null }`
+     - The endpoint SHOULD read `memory/{project_id}/dream.json` and parse it as JSON, performing basic schema validation (e.g., top-level object, optional `date`, `project_summary` string, `items` list of objects).
+2. If `dream.json` exists and contains a top-level `"project_summary"` string, the GUI MUST render a **Project Summary card** in the main chat window:
+   - It MUST be visually distinct and **NOT** part of the normal chat `messages` list (i.e., it is not a user/assistant bubble and will not be rolled off as a chat message).
+   - It MUST appear **above** the first chat pair in the scrollable chat area.
+   - Styling requirements:
+     - Background color: `#66b5ff`
+     - Text color: black
+     - The card MUST support multi-paragraph text (equivalent to CSS `white-space: pre-wrap`).
+     - The card MUST include a small label or heading such as `Project Summary`.
+   - Content:
+     - Primary: `dream.project_summary` (the `"project_summary"` field from `dream.json`).
+     - Fallback: if `"project_summary"` is missing or empty, the implementation MAY choose to omit the card or derive a fallback summary from the rest of `dream.json` (exact fallback behavior is implementation-defined and SHOULD be documented if used).
+3. If no usable `dream.json` is available for the project, or the backend detects invalid JSON/schema when reading it, the Project Summary card MUST NOT be shown.
+   - In this case, the frontend SHOULD display a small, non-blocking warning banner (e.g., “Dream summary unavailable for this project”) in the main chat view and MUST hide the Analyze Dreams button (see FR-4.5.1.3).
+
+#### FR-4.5.1.3 “Analyze Dreams” Button Above the Prompt Box
+
+1. When a valid `dream.json` is present for the current project (as determined in FR-4.5.1.2), the GUI MUST display an **Analyze Dreams** button in the main chat screen:
+   - Placement: in the main chat view, **above the user prompt textarea** (e.g., between the chat history area and the input box).
+   - Visibility:
+     - The button MUST be visible only when `dream.json` exists and is readable for the current project.
+     - If `dream.json` is missing, unreadable, or invalid, the button MUST be hidden.
+2. Clicking the **Analyze Dreams** button MUST open a new dedicated Dream analysis UI:
+   - For FR-4.5.1, this UI MUST be implemented as a modal dialog overlay that covers most of the main page (approximately 80–90% of the viewport in width and height) to provide enough space for reading Dream content.
+   - The detailed layout and content of this modal are deferred to FR-4.5.2.
+   - FR-4.5.1 only requires that:
+     - The button reliably opens a container suitable for showing Dream content.
+     - No Dream items are mutated, kept, or persisted as a result of simply opening this UI (no selection/submit behavior yet).
+3. The Dream analysis UI introduced here MUST be considered read-only for FR-4.5.1; selection and “Keep”/submit workflows are defined in FR-4.5.2.
+
+### Non-Goals (FR-4.5.1)
+
+- FR-4.5.1 does **not** define:
+  - How Dream items are curated or “Kept” for long-term memory.
+  - How Dream outputs are written into daily FAISS or merged into `sleep_summary_all.txt` / `dream_summary_all.txt`.
+  - Any changes to `dream.json` structure beyond the existing `"project_summary"` field.
+
+## 4.5.2 Dream Items Layout
+
+### Scope
+Populate the Dream analysis modal with dream entries from `dream.json`, rendered as chat-style pairs plus optional research blocks. This version is read-only; no persistence or submit flows (see 4.5.3+).
+
+### Data Source
+- Use the already-loaded `dream.json` (via `/projects/{project_id}/dream`).
+- Required fields per item:
+  - `origin_text` (string) — displayed as “User/Agent”.
+  - `assistant_response` (string) — displayed as “AI/Response”.
+  - `research` (optional array of objects), each with:
+    - `research_topic` (string)
+    - `research_summary` (string)
+- Items missing both `origin_text` and `assistant_response` SHOULD be skipped.
+
+### Layout & Rendering
+- Render each dream item as a vertical block with spacing between items (e.g., `space-y-4`).
+- Within each item:
+  1. **User/Agent block**: show `origin_text`.
+     - Style: match main chat user bubble (light gray background, black text, rounded, padded). Optional small label “User/Agent”.
+  2. **AI/Response block**: show `assistant_response`.
+     - Style: same blue as Project Summary (`#66b5ff`), black text, rounded, padded. Optional small label “AI/Response”.
+  3. **Research section** (only if `research` array non-empty):
+     - For each research entry, render:
+       ```
+       [RESEARCH]
+       Topic: {research_topic}
+       {research_summary}
+       ```
+     - Styling: subtle border or light background; stacked with small vertical spacing.
+  4. **Keep checkbox (UI-only placeholder)**:
+     - Render an unchecked “Keep” checkbox at the bottom of each item (left-aligned).
+     - No behavior or persistence in this version (no-op).
+- The modal body remains scrollable (`flex-1 overflow-auto`); modal sizing from 4.5.1.3 is unchanged.
+
+### Behavior
+- Read-only: no edits, saves, or submits.
+- If `items` is empty or missing, show a brief notice such as “No dream items available.”
+- Do not alter chat streaming or the main chat UI.
+- Analyze Dreams button visibility remains driven by the presence of `dream.json` (per 4.5.1.3).
+
+### Non-Goals (Deferred)
+- No “Keep/Submit” workflow (handled in 4.5.3+).
+- No mutations to `dream.json`.
+- No pagination, filters, or search in this iteration.
+
+## 4.5.3 Dream Modal Controls (Close vs. Submit)
+**Scope:** Modal control behavior for this iteration.
+
+- The **Close** button MUST dismiss the Dream modal with no side effects or data mutations.
+- The **Submit** button MUST be present but perform no action in this version (disabled or treated as a no-op). Submit/review workflows are deferred to the next version.
+- No persistence, keep/forget decisions, or backend calls are triggered by either control in this version.

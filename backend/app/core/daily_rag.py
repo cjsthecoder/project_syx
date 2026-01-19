@@ -90,6 +90,7 @@ def append_pair(
     keep: bool = False,
     embed_override: Optional[str] = None,
     tags_meta: Optional[Dict[str, str]] = None,
+    write_daily_txt: bool = True,
 ) -> bool:
     """Append a single embedded pair to the daily index and metadata.
     Note: We don't persist raw FAISS via langchain here; for V2.3 we only track metadata and rely on embeddings at retrieval-time for simplicity.
@@ -120,48 +121,49 @@ def append_pair(
             entry["tags_meta"] = tags_meta
         entries.append(entry)
         _save_metadata(meta_path, entries)
-        # Append to daily.txt (human-readable)
-        try:
-            # If first write, add BEGIN header with local date (MM/DD/YYYY)
+        # Append to daily.txt (human-readable) unless explicitly skipped
+        if write_daily_txt:
             try:
-                if (not os.path.isfile(txt_path)) or os.path.getsize(txt_path) == 0:
-                    begin_date = time.strftime("%m/%d/%Y", time.localtime())
-                    with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
-                        tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
-            except Exception:
-                pass
-            ts = entry["created_at"]
-            # Split pair_text into user and assistant parts safely
-            if "\nAssistant:" in pair_text:
-                _user_part, _assistant_part = pair_text.split("\nAssistant:", 1)
-                user_text = _user_part.replace("User:", "", 1).strip()
-                assistant_text = _assistant_part.strip()
-            else:
-                user_text = ""
-                assistant_text = pair_text.strip()
-            # New V3.2 header + block format (local time MM-DD-YYYY_HH:MM:SS)
-            try:
-                tstruct = time.strptime(ts.replace("Z", ""), "%Y-%m-%dT%H:%M:%S")
-                ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime(time.mktime(tstruct)))
-            except Exception:
-                ts_local = ts
-            block = (
-                f"#timestamp: {ts_local}\n"
-                f"#route: {ns}\n"
-                f"#keep: {str(bool(keep)).lower()}\n"
-                f"\n"
-                f"--- USER (data-message-author-role: user) ---\n"
-                f"{user_text}\n"
-                f"\n"
-                f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
-                f"{assistant_text}\n"
-                f"\n"
-            )
-            with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
-                tf.write(_nl(block))
-            logger.debug("[DAILYTXT] project=%s wrote %s bytes", project_id, len(block.encode('utf-8')))
-        except Exception as te:
-            logger.error("DailyRAG: failed writing daily.txt: %s", te)
+                # If first write, add BEGIN header with local date (MM/DD/YYYY)
+                try:
+                    if (not os.path.isfile(txt_path)) or os.path.getsize(txt_path) == 0:
+                        begin_date = time.strftime("%m/%d/%Y", time.localtime())
+                        with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                            tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
+                except Exception:
+                    pass
+                ts = entry["created_at"]
+                # Split pair_text into user and assistant parts safely
+                if "\nAssistant:" in pair_text:
+                    _user_part, _assistant_part = pair_text.split("\nAssistant:", 1)
+                    user_text = _user_part.replace("User:", "", 1).strip()
+                    assistant_text = _assistant_part.strip()
+                else:
+                    user_text = ""
+                    assistant_text = pair_text.strip()
+                # New V3.2 header + block format (local time MM-DD-YYYY_HH:MM:SS)
+                try:
+                    tstruct = time.strptime(ts.replace("Z", ""), "%Y-%m-%dT%H:%M:%S")
+                    ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime(time.mktime(tstruct)))
+                except Exception:
+                    ts_local = ts
+                block = (
+                    f"#timestamp: {ts_local}\n"
+                    f"#route: {ns}\n"
+                    f"#keep: {str(bool(keep)).lower()}\n"
+                    f"\n"
+                    f"--- USER (data-message-author-role: user) ---\n"
+                    f"{user_text}\n"
+                    f"\n"
+                    f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
+                    f"{assistant_text}\n"
+                    f"\n"
+                )
+                with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                    tf.write(_nl(block))
+                logger.debug("[DAILYTXT] project=%s wrote %s bytes", project_id, len(block.encode('utf-8')))
+            except Exception as te:
+                logger.error("DailyRAG: failed writing daily.txt: %s", te)
         # Append to FAISS index (directory-based)
         try:
             embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)

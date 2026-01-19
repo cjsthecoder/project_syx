@@ -15,7 +15,9 @@ This module provides project management functionality (stubbed for Version 4).
 
 import logging
 import json
-from typing import Optional, List, Any
+import os
+import time
+from typing import Optional, List, Any, Dict
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -31,6 +33,9 @@ from ..utils.errors import handle_project_error, log_error_context
 import uuid
 import os
 from ..core.memory import get_memory_manager, get_last_context_tokens
+from ..core.tagger import tag_pair
+from ..core.daily_rag import append_pair
+from filelock import FileLock
 from ..core.personality import (
     load_project_system_prompt,
     load_project_personality,
@@ -131,6 +136,155 @@ async def get_project_dream(project_id: str) -> JSONResponse:
     except Exception as e:
         logger.warning("[PROJECT][DREAM] Failed reading dream for %s: %s", project_id, e, exc_info=True)
         return JSONResponse(status_code=500, content={"project_id": project_id, "error": "Failed to read dream.json"})
+
+
+@router.post("/projects/{project_id}/dream/keep")
+async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResponse:
+    """
+    Persist kept dream items by tagging and appending to daily RAG, appending to dream_summary.txt,
+    and deleting dream.json on full success.
+    """
+    try:
+        items = payload.get("items", [])
+        if not isinstance(items, list):
+            return JSONResponse(status_code=400, content={"error": "items must be a list"})
+
+        entries: List[Dict[str, Any]] = [it for it in items if isinstance(it, dict)]
+        if not entries:
+            return JSONResponse(status_code=200, content={"project_id": project_id, "processed": 0, "kept": 0, "deleted_dream": False})
+
+        successes = 0
+        failures = []
+
+        # Prepare dream_summary.txt append
+        base_dir = os.path.join("memory", project_id)
+        os.makedirs(base_dir, exist_ok=True)
+        summary_path = os.path.join(base_dir, "dream_summary.txt")
+        summary_lock_path = os.path.join(base_dir, "dream_summary.lock")
+
+        for it in entries:
+            origin_text = (it.get("origin_text") or "").strip()
+            assistant_resp = (it.get("assistant_response") or "").strip()
+
+            # Fold research into assistant response, if present
+            research_entries = []
+            research_list = it.get("research") if isinstance(it.get("research"), list) else []
+            for r in research_list:
+                if not isinstance(r, dict):
+                    continue
+                topic = r.get("research_topic") or ""
+                summary = r.get("research_summary") or ""
+                research_entries.append(f"[RESEARCH]\nTopic: {topic}\n{summary}".strip())
+            if research_entries:
+                assistant_resp_full = (assistant_resp + "\n\n" + "\n\n".join(research_entries)).strip()
+            else:
+                assistant_resp_full = assistant_resp
+
+            pair_text = f"User: {origin_text}\nAssistant: {assistant_resp_full}"
+
+            # Token approx
+            try:
+                import tiktoken  # type: ignore
+                enc = tiktoken.get_encoding("cl100k_base")
+                tokens = len(enc.encode(pair_text))
+            except Exception:
+                tokens = len((pair_text or "").split())
+
+            # Tagging
+            tags_lines = None
+            try:
+                tags_lines = tag_pair(origin_text, assistant_resp_full, previous_pair_text=None)
+            except Exception:
+                tags_lines = None
+
+            embed_text = (("\n".join(tags_lines) + "\n" + pair_text) if tags_lines else pair_text)
+            tags_meta = None
+            if tags_lines:
+                try:
+                    topics = tags_lines[0][8:].strip()
+                    intent = tags_lines[1][8:].strip()
+                    tag_type = tags_lines[2][6:].strip()
+                    tags_meta = {"topics": topics, "intent": intent, "type": tag_type}
+                except Exception:
+                    tags_meta = None
+
+            try:
+                # Append to daily RAG (FAISS + daily.txt + daily.json metadata)
+                append_pair(
+                    project_id,
+                    pair_text,
+                    -1,
+                    -2,
+                    int(tokens),
+                    namespace="general",
+                    keep=True,
+                    embed_override=embed_text,
+                    tags_meta=tags_meta,
+                    write_daily_txt=False,
+                )
+
+                # Append to dream_summary.txt using daily.txt-like format
+                ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())
+                keep_flag = bool(it.get("keep"))
+                block = (
+                    f"#timestamp: {ts_local}\n"
+                    f"#route: general\n"
+                    f"#keep: {str(keep_flag).lower()}\n"
+                    f"\n"
+                    f"--- USER (data-message-author-role: user) ---\n"
+                    f"{origin_text}\n"
+                    f"\n"
+                    f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
+                    f"{assistant_resp_full}\n"
+                    f"\n"
+                )
+                with FileLock(summary_lock_path):
+                    with open(summary_path, "a", encoding="utf-8", newline="\n") as sf:
+                        # Write BEGIN header if file is empty/nonexistent
+                        need_begin = (not os.path.isfile(summary_path)) or os.path.getsize(summary_path) == 0
+                        if need_begin:
+                            begin_date = time.strftime("%m/%d/%Y", time.localtime())
+                            sf.write(f"=== BEGIN DREAM MEMORY: {begin_date} ===\n\n")
+                        sf.write(block)
+
+                successes += 1
+            except Exception as e:
+                failures.append(str(e))
+
+        deleted = False
+        dream_path = os.path.join("memory", project_id, "dream.json")
+        if successes == len(entries) and not failures:
+            try:
+                # Append END footer on successful completion before deleting dream.json
+                with FileLock(summary_lock_path):
+                    try:
+                        if os.path.isfile(summary_path):
+                            end_date = time.strftime("%m/%d/%Y", time.localtime())
+                            with open(summary_path, "a", encoding="utf-8", newline="\n") as sf:
+                                sf.write(f"=== END DREAM MEMORY: {end_date} ===\n")
+                    except Exception as fe:
+                        failures.append(f"write_end_footer: {fe}")
+                if os.path.isfile(dream_path):
+                    os.remove(dream_path)
+                deleted = True
+            except Exception as e:
+                failures.append(f"delete_dream_json: {e}")
+
+        status = 200 if not failures else 500
+        return JSONResponse(
+            status_code=status,
+            content={
+                "project_id": project_id,
+                "processed": len(entries),
+                "kept": successes,
+                "failed": len(failures),
+                "deleted_dream": deleted,
+                "errors": failures if failures else None,
+            },
+        )
+    except Exception as e:
+        logger.error("[PROJECT][DREAM][KEEP] Failed for %s: %s", project_id, e, exc_info=True)
+        return JSONResponse(status_code=500, content={"project_id": project_id, "error": "Failed to persist kept dream items"})
 
 
 @router.post("/projects")

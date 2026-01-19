@@ -156,15 +156,11 @@ def _get_project_context_summary(project_id: str) -> str:
     Returns text or '(empty)' if generation fails.
     """
     settings = get_settings()
-    summ_src = retrieve_context(
-        project_id=project_id,
-        query="Project overview and key context",
-        top_k=settings.rag_top_k,
-        snippet_max_tokens=settings.rag_snippet_max_tokens,
-        score_threshold=settings.rag_score_threshold,
-        context_max_tokens=settings.rag_context_max_tokens,
-    ).get("context_text") or ""
+    # Always use the latest sleep summary as source; skip RAG retrieval
+    summary_path = os.path.join("memory", project_id, "sleep_summary.txt")
+    summ_src = _read_file_safe(summary_path)
     summary_prompt = build_project_summary_prompt(summ_src)
+    write_debug_file(project_id, "debug_context_summary.txt", summary_prompt)
     project_summary_text = dream_llm_call(summary_prompt)
     if not (project_summary_text or "").strip():
         logger.warning("Project summary empty.")

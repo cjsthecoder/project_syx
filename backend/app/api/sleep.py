@@ -46,13 +46,18 @@ request_logger = RequestLogger("sleep")
 # V3.1: unified sleep runner (background thread)
 _runner_lock = threading.Lock()
 _runner_thread: Optional[threading.Thread] = None
-from ..core.sleep_prompts import generate_pruning_prompt, generate_formatting_prompt
+from ..core.sleep_prompts import (
+    generate_pruning_prompt,
+    generate_formatting_prompt,
+    generate_dream_formatting_prompt,
+)
 from ..core.summarization import execute_prompt, execute_prompt_chunked, _count_tokens
 from ..core.rag_manager import rebuild_faiss_index, load_faiss_index
 from filelock import FileLock
 from ..core.config import get_settings
 from ..core.daily_rag import _project_daily_paths
 from ..core.dream import dream
+from ..utils.debug_utils import write_debug_file
 def _nl(s: str) -> str:
     """Normalize line endings to LF to avoid mixed terminators."""
     return s.replace("\r\n", "\n").replace("\r", "\n")
@@ -365,6 +370,64 @@ def _sleep_cycle_worker():
                                 logger.warning("[SLEEP][MERGE] Post-merge daily cleanup error for %s: %s", pid, de)
                 except Exception as me:
                     logger.error("[SLEEP][MERGE][ERROR] project=%s: %s", pid, me, exc_info=True)
+
+                # 4.5.4 Dream summary post-sleep consolidation (prune + dream-format + append)
+                try:
+                    dream_summary_path = os.path.join(base_dir, "dream_summary.txt")
+                    if os.path.isfile(dream_summary_path) and os.path.getsize(dream_summary_path) > 0:
+                        with open(dream_summary_path, "r", encoding="utf-8") as ds:
+                            dream_raw = ds.read()
+                        max_tokens = 96000  # align with daily handling
+                        if _count_tokens(dream_raw) > max_tokens:
+                            pruned_dream = execute_prompt(generate_pruning_prompt(dream_raw))
+                            from ..core.summarization import chunk_by_tokens
+                            chunks = chunk_by_tokens(pruned_dream, max_tokens=max_tokens, overlap=200)
+                            formatted_chunks = [
+                                execute_prompt(generate_dream_formatting_prompt(ch)) for ch in chunks
+                            ]
+                            formatted_dream = "\n\n".join(fc.strip() for fc in formatted_chunks if fc)
+                        else:
+                            pruned_dream = execute_prompt(generate_pruning_prompt(dream_raw))
+                            formatted_dream = execute_prompt(generate_dream_formatting_prompt(pruned_dream))
+                        if get_settings().generate_debug_files:
+                            try:
+                                write_debug_file(pid, "debug_dream_summary.txt", formatted_dream)
+                            except Exception:
+                                logger.warning("[SLEEP][DREAM_SUMMARY] Failed writing debug file for %s", pid)
+                        uploads_dir = os.path.join(base_dir, "uploads")
+                        os.makedirs(uploads_dir, exist_ok=True)
+                        cumulative_path = os.path.join(uploads_dir, "sleep_summary_all.txt")
+                        merge_lock = os.path.join("memory", pid, "merge.lock")
+                        with FileLock(merge_lock):
+                            created = False
+                            if not os.path.exists(cumulative_path):
+                                with open(cumulative_path, "w", encoding="utf-8", newline="\n") as cf:
+                                    cf.write(_nl("#source: sleep_summary\n\n"))
+                                created = True
+                            with open(cumulative_path, "a", encoding="utf-8", newline="\n") as cf:
+                                cf.write("\n\n")  # one blank line before appended block
+                                cf.write(_nl(formatted_dream))
+                            logger.info(
+                                "[SLEEP][DREAM_SUMMARY] Appended dream summary to uploads/sleep_summary_all.txt (created=%s)",
+                                created,
+                            )
+                            try:
+                                rebuild_faiss_index(pid)
+                                logger.info("[MERGE] RAG rebuild complete (dream summary) for %s", pid)
+                                if get_settings().verify_rag:
+                                    ok2 = load_faiss_index(pid) is not None
+                                    if ok2:
+                                        logger.info("[VERIFY] OK %s", pid)
+                                    else:
+                                        logger.error("[VERIFY][ERROR] %s", pid)
+                            except Exception as re:
+                                logger.error("[SLEEP][DREAM_SUMMARY][MERGE] RAG rebuild failed for %s: %s", pid, re, exc_info=True)
+                        try:
+                            os.remove(dream_summary_path)
+                        except Exception as de:
+                            logger.warning("[SLEEP][DREAM_SUMMARY] Failed removing dream_summary.txt for %s: %s", pid, de)
+                except Exception as de:
+                    logger.warning("[SLEEP][DREAM_SUMMARY][WARN] project=%s: %s", pid, de)
             except Exception as e:
                 logger.error("[SLEEP][ERROR] Formatting failed project=%s: %s", pid, e, exc_info=True)
                 continue

@@ -131,7 +131,7 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
 
         # origin_type enum validation
         origin_type = item.get("origin_type")
-        if origin_type not in ("open_question", "insight", "contradiction", "new_topic"):
+        if origin_type not in ("Open Question", "Insight", "Contradiction", "New Topic"):
             logger.warning(
                 "Idea Agent skipping item with invalid origin_type=%s index=%s project=%s",
                 origin_type,

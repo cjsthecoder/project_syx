@@ -34,7 +34,7 @@ def write_debug_file(project_id: str, filename: str, content: str) -> None:
         debug_path = os.path.join(base_dir, filename)
         with open(debug_path, "w", encoding="utf-8", newline="\n") as dbg:
             dbg.write(content)
-        logger.info("Wrote debug file to %s", debug_path)
+        logger.debug("Wrote debug file to %s", debug_path)
     except Exception as de:
         logger.warning("Failed writing debug file %s for project=%s: %s", filename, project_id, de)
 

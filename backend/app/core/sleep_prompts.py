@@ -17,9 +17,13 @@ def generate_pruning_prompt(content: str) -> str:
     return f"""You are given a daily memory file with:
  - header lines that start with #
  - boundary tags that mark the window:
-   === BEGIN DAILY MEMORY: MM/DD/YYYY ===
-   ...
-   === END DAILY MEMORY: MM/DD/YYYY ===
+  === BEGIN DAILY MEMORY: MM/DD/YYYY ===
+  ...
+  === END DAILY MEMORY: MM/DD/YYYY ===
+  OR
+  === BEGIN DREAM MEMORY: MM/DD/YYYY ===
+  ...
+  === END DREAM MEMORY: MM/DD/YYYY ===
  - paired USER/ASSISTANT blocks:
 
 #timestamp: MM-DD-YYYY_HH:MM:SS
@@ -34,8 +38,9 @@ def generate_pruning_prompt(content: str) -> str:
 
 Your task:
 1. PRESERVE ALL HEADER LINES (those that start with #) exactly as they are.
-1a. PRESERVE THE DAILY MEMORY BOUNDARY TAGS exactly as they are:
-    lines that begin with "=== BEGIN DAILY MEMORY:" and "=== END DAILY MEMORY:" including dates and surrounding blank lines.
+1a. PRESERVE THE MEMORY BOUNDARY TAGS exactly as they are:
+    lines that begin with "=== BEGIN DAILY MEMORY:" / "=== END DAILY MEMORY:" OR
+    "=== BEGIN DREAM MEMORY:" / "=== END DREAM MEMORY:", including dates and surrounding blank lines.
 2. Remove chatty filler, greetings, and follow-up offers from assistant responses.
 3. For each USER question, keep only the substantive answer in the assistant's response—do not repeat or echo the user's question.
 4. Do not alter the user's original prompts.
@@ -74,7 +79,7 @@ RULES:
 2) PRESERVE role markers EXACTLY:
    --- USER (data-message-author-role: user) ---
    *** ASSISTANT (data-message-author-role: assistant) ***
-3) PRESERVE the DAILY MEMORY boundary tags if present. Ensure ordering:
+3) PRESERVE the MEMORY boundary tags exactly as provided. Ensure ordering:
    - The BEGIN tag must be the FIRST line of the entire output.
    - The END tag must be the FINAL line of the entire output.
    - Do NOT place any content after the END tag.
@@ -139,3 +144,42 @@ Here is the pruned content:
 """
 
 
+def generate_dream_formatting_prompt(content: str) -> str:
+    logger.info("[SLEEP][FORMAT] Building formatting prompt")
+    return f"""You are formatting a pruned daily memory. Follow this output contract EXACTLY.
+
+INPUT MAY CONTAIN:
+- Header lines beginning with '#':
+  #timestamp: MM-DD-YYYY_HH:MM:SS
+  #route: <namespace>
+  #keep: true|false
+- Paired blocks:
+  --- USER (data-message-author-role: user) ---
+  <prompt>
+  *** ASSISTANT (data-message-author-role: assistant) ***
+  <response>
+- Boundary tags:
+  === BEGIN DREAM MEMORY: MM/DD/YYYY ===
+  === END DREAM MEMORY: MM/DD/YYYY ===
+
+RULES:
+1) PRESERVE all header lines ('#...') EXACTLY (no edits).
+2) PRESERVE role markers EXACTLY:
+   --- USER (data-message-author-role: user) ---
+   *** ASSISTANT (data-message-author-role: assistant) ***
+3) PRESERVE the MEMORY boundary tags exactly as provided. Ensure ordering:
+   - The BEGIN tag must be the FIRST line of the entire output.
+   - The END tag must be the FINAL line of the entire output.
+   - Do NOT place any content after the END tag.
+4) If the input contains only one of the two tags (BEGIN or END), DO NOT invent the missing tag; format the body and keep the present tag in its correct position.
+5) Structure the body into topic sections:
+   === TOPIC: Normalized Short Title ===
+   Then immediately these metadata lines (one per line):
+   - #topics: 3–5 keywords
+   After that, include the original USER/ASSISTANT blocks and headers verbatim under the topic (no rewording).
+
+6) Return ONLY the formatted output. No explanations.
+
+Here is the pruned content:
+{content}
+"""

@@ -2899,8 +2899,27 @@ Populate the Dream analysis modal with dream entries from `dream.json`, rendered
 - No pagination, filters, or search in this iteration.
 
 ## 4.5.3 Dream Modal Controls (Close vs. Submit)
-**Scope:** Modal control behavior for this iteration.
+**Scope:** Modal control behavior for this iteration, adding an interactive Keep workflow and backend submission.
 
 - The **Close** button MUST dismiss the Dream modal with no side effects or data mutations.
-- The **Submit** button MUST be present but perform no action in this version (disabled or treated as a no-op). Submit/review workflows are deferred to the next version.
-- No persistence, keep/forget decisions, or backend calls are triggered by either control in this version.
+- The **Keep** checkbox for each Dream item MUST be interactive, default unchecked; user selection is the source of truth for submission (no preexisting keep flag is honored).
+- The **Submit** button MUST:
+  - Collect only items with `keep=true`.
+  - Call a backend endpoint (e.g., `POST /projects/{project_id}/dream/keep`) with the kept items.
+  - On success: show a success toast (“Dream items saved”), delete `dream.json` (handled by the backend), close the modal, and ensure the Analyze Dreams button disappears once `dream.json` is gone. The Project Summary card may remain until chat naturally clears it.
+  - On failure: show an error toast (“Failed to save dream items”) with a brief reason if available; do not delete `dream.json`.
+- Backend processing (summary):
+  - For each kept item, tag the pair (using existing tagger) and append to daily RAG via the existing roll-off primitives (`tag_pair`, `append_pair`).
+  - Append kept pairs to `dream_summary.txt` using the daily.txt format; include research content folded into the response text.
+  - Delete `dream.json` only if all kept items were successfully processed; otherwise log warnings and leave `dream.json` intact.
+- Items without `keep=true` are ignored/dropped silently.
+
+## 4.5.4 Dream Summary Post-Sleep Consolidation
+**Scope:** Sleep pipeline step to fold nightly Dream summaries into the long-term cumulative sleep summary without affecting the daily chat flow.
+
+- Trigger: run at the end of every Sleep cycle **only if** `memory/{project}/dream_summary.txt` exists and is non-empty; skip silently otherwise.
+- Prune/format: reuse the same pruning + formatting pipeline used for `daily.txt` (same prompts/functions). Prompts already preserve either DAILY or DREAM boundary tags; keep whichever tags are present.
+- Append: append the fully formatted Dream summary **verbatim** (including BEGIN/END tags) to `memory/{project}/uploads/sleep_summary_all.txt`, inserting exactly one blank line before the appended block. Create the cumulative file if missing.
+- Debug: when `GENERATE_DEBUG_FILES` is enabled, reuse `write_debug_file` to emit `debug_dream_summary.txt` (no extra formatting beyond the produced text).
+- Cleanup: delete `dream_summary.txt` only after prune + format + append (and debug write, if enabled) all succeed. If any step fails, leave `dream_summary.txt` in place and log a warning with the reason.
+- Non-goal: does not change the daily roll-off process; daily.txt/FAISS behavior remains unchanged.

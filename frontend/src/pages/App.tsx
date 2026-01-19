@@ -18,7 +18,15 @@ type Message = { id?: number; role: 'user' | 'assistant'; content: string; forge
 type Project = { id: string; name?: string }
 type ModelItem = string
 type DreamResearch = { research_topic?: string; research_summary?: string }
-type DreamItem = { id?: string; origin_text?: string; assistant_response?: string; origin_type?: string; research?: DreamResearch[] }
+type DreamItem = {
+  id?: string
+  origin_text?: string
+  assistant_response?: string
+  origin_type?: string
+  research?: DreamResearch[]
+  keep?: boolean
+  remember?: boolean
+}
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -56,6 +64,19 @@ export default function App() {
   const [hasDreamItems, setHasDreamItems] = useState(false)
   const [showDreamModal, setShowDreamModal] = useState(false)
   const [dreamItems, setDreamItems] = useState<DreamItem[]>([])
+  const [savingDream, setSavingDream] = useState(false)
+
+  const toggleDreamKeep = (idx: number) => {
+    setDreamItems((prev) =>
+      prev.map((it, i) => (i === idx ? { ...it, keep: !it.keep } : it)),
+    )
+  }
+
+  const toggleDreamRemember = (idx: number) => {
+    setDreamItems((prev) =>
+      prev.map((it, i) => (i === idx ? { ...it, remember: !it.remember } : it)),
+    )
+  }
 
   // V2.6 Personality UI state
   const [showPersonalityModal, setShowPersonalityModal] = useState(false)
@@ -159,6 +180,8 @@ export default function App() {
                 research_summary: r?.research_summary,
               }))
             : [],
+          keep: false,
+          remember: false,
         }))
       setDreamItems(normalizedItems)
     } catch (e: any) {
@@ -680,16 +703,76 @@ export default function App() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2">
-                <input type="checkbox" disabled />
-                <span className="text-sm text-gray-700">Keep</span>
+              <div className="flex items-center gap-4">
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!item.remember}
+                    onChange={() => toggleDreamRemember(idx)}
+                  />
+                  <span className="text-sm text-gray-700">Remember</span>
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!item.keep}
+                    onChange={() => toggleDreamKeep(idx)}
+                  />
+                  <span className="text-sm text-gray-700">Keep</span>
+                </label>
               </div>
             </div>
           ))}
         </div>
         <DialogFooter>
           <Button onClick={() => setShowDreamModal(false)}>Close</Button>
-          <Button disabled>Submit (coming soon)</Button>
+          <Button
+            onClick={async () => {
+              if (!projectId || dreamItems.length === 0) {
+                setShowDreamModal(false)
+                return
+              }
+              setSavingDream(true)
+              try {
+                const payload = {
+                  items: dreamItems.map((k) => ({
+                    id: k.id,
+                    origin_text: k.origin_text,
+                    assistant_response: k.assistant_response,
+                    origin_type: k.origin_type,
+                    research: k.research,
+                    keep: !!k.keep,
+                    remember: !!k.remember,
+                  })),
+                }
+                const res = await fetch(`/projects/${projectId}/dream/keep`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload),
+                })
+                if (!res.ok) {
+                  const txt = await res.text().catch(() => '')
+                  throw new Error(txt || `HTTP ${res.status}`)
+                }
+                const data = await res.json().catch(() => ({}))
+                if (data?.failed && data.failed > 0) {
+                  const msg = Array.isArray(data?.errors) ? data.errors.join('; ') : 'One or more dream items failed'
+                  throw new Error(msg)
+                }
+                setShowDreamModal(false)
+                setHasDreamItems(false)
+                setDreamItems([])
+                window.alert('Dream items saved')
+              } catch (e: any) {
+                setError(e?.message || 'Failed to save dream items')
+              } finally {
+                setSavingDream(false)
+              }
+            }}
+            disabled={savingDream || dreamItems.length === 0}
+          >
+            {savingDream ? 'Saving…' : 'Submit'}
+          </Button>
         </DialogFooter>
       </Dialog>
 

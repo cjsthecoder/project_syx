@@ -6,62 +6,90 @@ priority: high
 
 # Morpheus AGI Project Rules
 
-You are working inside the **Morpheus AGI Chatbot Framework** repository.  
+You are working inside the **Morpheus AGI Chatbot Framework** repository.
+
 This project implements a modular chatbot and memory system with:
 
-- **Frontend**: React + Shadcn/UI  
-- **Backend**: FastAPI (LLM routing, Builder Model, Tagger Model)  
-- **Memory**: daily.txt, pruned_memory.txt, FAISS indexes, sleep/dream pipeline  
-- **Docs**: REQUIREMENTS.md (authoritative source of truth)
+- **Frontend**: React + Shadcn/UI
+- **Backend**: FastAPI (LLM routing, Builder Model, Tagger Model)
+- **Memory**: daily.txt, pruned_memory.txt, FAISS indexes, sleep/dream pipeline
+- **Docs**:
+  - docs/REQUIREMENTS.md (baseline, versioned requirements)
+  - docs/DELTAS.md (authoritative engineering overrides and evolutions)
+
+## Source-of-Truth Order (Critical)
+
+1. **docs/DELTAS.md** is the highest-priority authority.
+   - Any behavior, architecture, or flow described in DELTAS.md OVERRIDES REQUIREMENTS.md.
+   - If DELTAS.md modifies or supersedes a requirement, follow the delta.
+   - Never reintroduce behavior explicitly removed or changed by a delta.
+
+2. **docs/REQUIREMENTS.md** is the baseline specification.
+   - It defines original intent and stable contracts.
+   - It may contain behavior that has been intentionally superseded by DELTAS.md.
+   - Do not “fix” REQUIREMENTS.md in code without checking DELTAS.md first.
+
+3. If a change is requested that is not covered by either file:
+   - Ask clarifying questions.
+   - Do NOT invent new behavior.
+   - Assume a new delta or requirement is needed.
 
 ## General Guidance
 
-1. Refer to **docs/REQUIREMENTS.md** as the authoritative specification.
-   - Every feature, endpoint, and behavior must be consistent with REQUIREMENTS.md.
-   - If the user asks for code changes, verify alignment with requirements first.
-   - Never introduce functionality not supported by REQUIREMENTS.md unless explicitly instructed.
+- Always read **both** REQUIREMENTS.md and DELTAS.md before making changes.
+- If they conflict, DELTAS.md wins.
+- If neither mentions the topic, stop and ask.
 
-2. Maintain the current architecture.
-   - Frontend lives under `/frontend`.
-   - Backend lives under `/backend/app`.
-   - Memory pipeline uses:  
-     - `memory/{project}/daily.faiss`  
-     - `memory/{project}/index.faiss`  
-     - nightly sleep consolidations  
-     - weekly compression (future)
+## Architecture Constraints
 
-3. Frontend rules.
-   - Use Shadcn/UI components.
-   - Functional components, React hooks, TypeScript.
-   - Chat UI must support:
-     - Message list  
-     - Input box  
-     - Buttons (Query RAG, Sleep Cycle)  
-     - Project selector  
-     - Forget / Remember toggles (future)  
-   - Preserve consistent layout and styling.
+- Frontend lives under `/frontend`.
+- Backend lives under `/backend/app`.
+- Memory pipeline includes:
+  - `memory/{project}/daily.txt`
+  - `memory/{project}/daily.faiss` (or in-memory cache per DELTAS.md)
+  - `memory/{project}/index.faiss`
+  - Sleep and dream consolidation stages
 
-4. Backend rules.
-   - Use FastAPI with endpoints in `backend/app/api/`.
-   - All endpoints return JSON with a `response` field.
-   - Use LangChain for LLM calls.
-   - Keep builder/tager models configurable via env:
-     - `BUILDER_MODEL`
-     - `TAGGER_MODEL`
-   - Sleep, dream, and RAG pipelines must follow REQUIREMENTS.md.
+## Frontend Rules
 
-5. Coding style.
-   - **Python**: Pydantic, modular layout, no ad-hoc scripts.
-   - **React**: TypeScript, component-driven, clean state management.
-   - Avoid temporary hacks unless explicitly requested.
+- Use Shadcn/UI components.
+- Functional React components with hooks and TypeScript.
+- Chat UI must support:
+  - Message list
+  - Input box
+  - Buttons (Query RAG, Sleep Cycle)
+  - Project selector
+  - Forget / Remember toggles (future)
+- Preserve consistent layout and styling.
 
-6. Testing.
-   - Backend: tests under `/backend/tests/`.
-   - Frontend: smoke tests where reasonable.
+## Backend Rules
+
+- Use FastAPI with endpoints in `backend/app/api/`.
+- All endpoints return JSON with a `response` field.
+- Use LangChain for LLM calls.
+- Builder and tagger models must be configurable via env:
+  - `BUILDER_MODEL`
+  - `TAGGER_MODEL`
+- Memory, tagging, RAG, sleep, and dream pipelines must follow
+  REQUIREMENTS.md as modified by DELTAS.md.
+
+## Coding Style
+
+- **Python**: Pydantic models, modular layout, no ad-hoc scripts.
+- **React**: TypeScript, component-driven, clean state management.
+- Avoid temporary hacks unless explicitly requested.
+
+## Testing
+
+- Backend tests under `/backend/tests/`.
+- Frontend smoke tests where reasonable.
 
 ## Identity
 
-Your role is to help implement this system faithfully.  
-You must follow REQUIREMENTS.md, the memory pipeline architecture, and all versioned requirements already established.
+Your role is to faithfully implement the Morpheus system.
 
----
+You must:
+- Treat REQUIREMENTS.md as historical and contractual
+- Treat DELTAS.md as the current operational truth
+- Ask questions when intent is unclear
+- Never silently diverge from documented behavior

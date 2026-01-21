@@ -34,7 +34,7 @@ import uuid
 import os
 from ..core.memory import get_memory_manager, get_last_context_tokens
 from ..core.tagger import tag_pair
-from ..core.daily_rag import append_pair
+from ..core.daily_rag import append_pair, daily_stats, start_daily_cache_rebuild
 from filelock import FileLock
 from ..core.personality import (
     load_project_system_prompt,
@@ -45,7 +45,6 @@ from ..core.personality import (
 )
 from ..core.database import get_session
 from ..core.db_models import ChatMessage
-from ..core.daily_rag import daily_stats
 from ..core.rag_manager import rebuild_faiss_index
 import shutil
 
@@ -450,6 +449,11 @@ async def delete_project(project_id: str) -> JSONResponse:
 @router.get("/projects/{project_id}/stats")
 async def project_stats(project_id: str) -> JSONResponse:
     """Return storage_bytes, index_size_bytes, tokens_indexed, context_tokens, file_count."""
+    # DELTA-A.1: lazily warm Daily in-memory cache on first project-scoped request
+    try:
+        start_daily_cache_rebuild(project_id, reason="project_stats")
+    except Exception:
+        pass
     # storage and tokens from DB
     with get_session() as session:
         rows = session.exec(select(File).where(File.project_id == project_id)).all()
@@ -512,6 +516,11 @@ async def project_stats(project_id: str) -> JSONResponse:
 @router.get("/projects/{project_id}")
 async def get_project_detail(project_id: str) -> JSONResponse:
     try:
+        # DELTA-A.1: lazily warm Daily in-memory cache on first project-scoped request
+        try:
+            start_daily_cache_rebuild(project_id, reason="project_detail")
+        except Exception:
+            pass
         with get_session() as session:
             obj = session.get(Project, project_id)
             if not obj:
@@ -538,6 +547,11 @@ async def get_project_detail(project_id: str) -> JSONResponse:
 async def get_project_chats(project_id: str) -> JSONResponse:
     """Return the most recent N messages for the project in chronological order."""
     try:
+        # DELTA-A.1: lazily warm Daily in-memory cache on first project-scoped request
+        try:
+            start_daily_cache_rebuild(project_id, reason="project_chats")
+        except Exception:
+            pass
         mm = get_memory_manager()
         messages = mm.get_project_history(project_id)
         # Normalize datetime to ISO strings for JSON response

@@ -9,18 +9,19 @@ Use of this software requires explicit written permission from the copyright hol
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 import json
 import time
 import logging
-from typing import List, Dict, Any, Optional, Tuple
+import threading
+from typing import List, Dict, Any, Optional, Tuple, Set
 
 from filelock import FileLock
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
 from .config import get_settings
-from ..utils.logging import get_route
 
 logger = logging.getLogger(__name__)
 
@@ -28,15 +29,70 @@ def _nl(s: str) -> str:
     """Normalize line endings to LF to avoid mixed terminators."""
     return s.replace("\r\n", "\n").replace("\r", "\n")
 
-def _project_daily_paths(project_id: str) -> Tuple[str, str, str, str]:
+def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
     base_dir = os.path.join("memory", project_id)
     os.makedirs(base_dir, exist_ok=True)
-    faiss_dir = os.path.join(base_dir, "daily_faiss")
-    os.makedirs(faiss_dir, exist_ok=True)
     meta_path = os.path.join(base_dir, "daily.json")
     lock_path = os.path.join(base_dir, "daily.lock")
     txt_path = os.path.join(base_dir, "daily.txt")
-    return faiss_dir, meta_path, lock_path, txt_path
+    return meta_path, lock_path, txt_path
+
+
+@dataclass
+class _DailyCache:
+    """Per-project in-memory Daily FAISS cache state."""
+    embedding_model: str
+    vs: Optional[FAISS]  # None means empty (no vectors yet)
+
+
+_CACHE: Dict[str, _DailyCache] = {}
+_CACHE_LOCK = threading.Lock()
+_PROJECT_LOCKS: Dict[str, threading.RLock] = {}
+_WARMING: Set[str] = set()
+
+
+def _get_project_lock(project_id: str) -> threading.RLock:
+    with _CACHE_LOCK:
+        lock = _PROJECT_LOCKS.get(project_id)
+        if lock is None:
+            # Re-entrant: ensure_daily_cache() may call rebuild_daily_cache()
+            lock = threading.RLock()
+            _PROJECT_LOCKS[project_id] = lock
+        return lock
+
+
+def clear_daily_cache(project_id: str) -> None:
+    """Drop the in-memory Daily cache for a project (no disk changes)."""
+    with _CACHE_LOCK:
+        _CACHE.pop(project_id, None)
+        _WARMING.discard(project_id)
+
+
+def start_daily_cache_rebuild(project_id: str, reason: str) -> None:
+    """Kick off a background rebuild of the in-memory cache (non-blocking)."""
+    with _CACHE_LOCK:
+        if project_id in _WARMING:
+            return
+        _WARMING.add(project_id)
+
+    def _worker() -> None:
+        try:
+            rebuild_daily_cache(project_id, reason=reason)
+        finally:
+            with _CACHE_LOCK:
+                _WARMING.discard(project_id)
+
+    t = threading.Thread(target=_worker, name=f"daily-rebuild-{project_id[:8]}", daemon=True)
+    t.start()
+
+
+def _recorded_models(entries: List[Dict[str, Any]]) -> Set[str]:
+    models: Set[str] = set()
+    for e in entries:
+        m = e.get("embedding_model")
+        if isinstance(m, str) and m.strip():
+            models.add(m.strip())
+    return models
 
 
 def _load_metadata(meta_path: str) -> List[Dict[str, Any]]:
@@ -58,26 +114,102 @@ def _save_metadata(meta_path: str, entries: List[Dict[str, Any]]) -> None:
 
 
 def reset_daily(project_id: str) -> None:
-    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    meta_path, lock_path, _txt_path = _project_daily_paths(project_id)
     with FileLock(lock_path):
-        # remove faiss dir contents
-        try:
-            if os.path.isdir(faiss_dir):
-                for n in os.listdir(faiss_dir):
-                    try:
-                        os.remove(os.path.join(faiss_dir, n))
-                    except Exception as e:
-                        logger.warning("DailyRAG: failed to remove %s: %s", os.path.join(faiss_dir, n), e)
-        except Exception as e:
-            logger.warning("DailyRAG: failed to clean faiss dir %s: %s", faiss_dir, e)
-        # remove metadata
         for p in (meta_path,):
             try:
                 if os.path.exists(p):
                     os.remove(p)
             except Exception as e:
                 logger.warning("DailyRAG: failed to remove metadata %s: %s", p, e)
-        logger.info(f"DailyRAG: reset daily files for project={project_id}")
+    clear_daily_cache(project_id)
+    logger.info("DailyRAG: reset daily metadata and cleared cache for project=%s", project_id)
+
+
+def rebuild_daily_cache(project_id: str, reason: str) -> bool:
+    """Force rebuild of the in-memory cache from daily.json (updating metadata as required)."""
+    settings = get_settings()
+    runtime_model = settings.embedding_model
+    meta_path, lock_path, _txt_path = _project_daily_paths(project_id)
+    lock = _get_project_lock(project_id)
+    with lock:
+        # Always clear first to avoid using a corrupt instance
+        clear_daily_cache(project_id)
+        with FileLock(lock_path):
+            entries = _load_metadata(meta_path)
+            models = _recorded_models(entries)
+            # If daily.json doesn't reflect current EMBEDDING_MODEL, update it in-place
+            if entries and (not models or models != {runtime_model}):
+                try:
+                    for e in entries:
+                        e["embedding_model"] = runtime_model
+                    _save_metadata(meta_path, entries)
+                    logger.info(
+                        "DailyRAG: updated daily.json embedding_model to %s for project=%s (reason=%s)",
+                        runtime_model,
+                        project_id,
+                        reason,
+                    )
+                except Exception as ue:
+                    logger.warning(
+                        "DailyRAG: failed updating daily.json embedding_model project=%s: %s",
+                        project_id,
+                        ue,
+                    )
+        # Build the in-memory vectorstore from the snapshot we just loaded/updated.
+        try:
+            texts: List[str] = []
+            metas: List[dict] = []
+            for e in entries:
+                t = e.get("embed_text") or e.get("text")
+                if not isinstance(t, str) or not t.strip():
+                    continue
+                ns = (e.get("namespace") or "general")
+                texts.append(t)
+                metas.append({"source": "daily", "namespace": str(ns).lower()})
+            if not texts:
+                with _CACHE_LOCK:
+                    _CACHE[project_id] = _DailyCache(embedding_model=runtime_model, vs=None)
+                logger.debug("DailyRAG: rebuilt empty in-memory cache project=%s (reason=%s)", project_id, reason)
+                return True
+            embeddings = OpenAIEmbeddings(model=runtime_model, api_key=settings.openai_api_key)
+            try:
+                vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metas, normalize_L2=True)
+            except TypeError:
+                vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metas)
+            with _CACHE_LOCK:
+                _CACHE[project_id] = _DailyCache(embedding_model=runtime_model, vs=vs)
+            logger.info("DailyRAG: rebuilt in-memory cache project=%s vectors=%s (reason=%s)", project_id, len(texts), reason)
+            return True
+        except Exception as be:
+            logger.error("DailyRAG: rebuild failed project=%s reason=%s err=%s", project_id, reason, be)
+            with _CACHE_LOCK:
+                _CACHE.pop(project_id, None)
+            return False
+
+
+def ensure_daily_cache(project_id: str, reason: str = "warm") -> bool:
+    """Ensure a project's in-memory cache exists and matches daily.json + EMBEDDING_MODEL."""
+    settings = get_settings()
+    runtime_model = settings.embedding_model
+    meta_path, lock_path, _txt_path = _project_daily_paths(project_id)
+    lock = _get_project_lock(project_id)
+    with lock:
+        with _CACHE_LOCK:
+            cache = _CACHE.get(project_id)
+        # Fast path: cache exists and is already on current runtime model, and daily.json agrees
+        if cache is not None and cache.embedding_model == runtime_model:
+            try:
+                with FileLock(lock_path):
+                    entries = _load_metadata(meta_path)
+                models = _recorded_models(entries)
+                if not entries or (models == {runtime_model}):
+                    return True
+            except Exception:
+                # If we can't validate, rebuild per delta (but do not retry this request elsewhere).
+                pass
+        # Rebuild if missing or if daily.json indicates mismatch with runtime model.
+        return rebuild_daily_cache(project_id, reason=reason)
 
 
 def append_pair(
@@ -96,7 +228,8 @@ def append_pair(
     Note: We don't persist raw FAISS via langchain here; for V2.3 we only track metadata and rely on embeddings at retrieval-time for simplicity.
     """
     settings = get_settings()
-    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    text_for_embed = embed_override if embed_override else pair_text
     with FileLock(lock_path):
         entries = _load_metadata(meta_path)
         day_sequence = (entries[-1]["day_sequence"] + 1) if entries else 1
@@ -107,6 +240,8 @@ def append_pair(
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "pair_ids": [str(user_msg_id), str(assistant_msg_id)],
             "text": pair_text,
+            # The in-memory FAISS cache is rebuilt from daily.json; preserve vector content explicitly.
+            "embed_text": text_for_embed,
             "tokens": int(tokens),
             "embedding_model": settings.embedding_model,
             "source": "chat",
@@ -164,32 +299,46 @@ def append_pair(
                 logger.debug("[DAILYTXT] project=%s wrote %s bytes", project_id, len(block.encode('utf-8')))
             except Exception as te:
                 logger.error("DailyRAG: failed writing daily.txt: %s", te)
-        # Append to FAISS index (directory-based)
-        try:
-            embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
-            vs: Optional[FAISS] = None
-            # Use override text for vector content when provided (V3.4 tagging)
-            text_for_faiss = embed_override if embed_override else pair_text
-            try:
-                # load existing
+    # Update in-memory cache
+    try:
+        lock = _get_project_lock(project_id)
+        with lock:
+            with _CACHE_LOCK:
+                cache = _CACHE.get(project_id)
+            # If cache doesn't exist yet, build it from daily.json (lazy warm semantics)
+            if cache is None:
+                start_daily_cache_rebuild(project_id, reason="append_missing_cache")
+                return False
+            # If cache model mismatched, rebuild and return error for this request (no retry)
+            if cache.embedding_model != settings.embedding_model:
+                start_daily_cache_rebuild(project_id, reason="append_model_mismatch")
+                return False
+            # If empty cache, create a new vectorstore with this single entry
+            if cache.vs is None:
+                embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
                 try:
-                    vs = FAISS.load_local(faiss_dir, embeddings, allow_dangerous_deserialization=True)
+                    vs = FAISS.from_texts(
+                        texts=[text_for_embed],
+                        embedding=embeddings,
+                        metadatas=[{"source": "daily", "namespace": ns}],
+                        normalize_L2=True,
+                    )
                 except TypeError:
-                    vs = FAISS.load_local(faiss_dir, embeddings)
-            except Exception:
-                vs = None
-            if vs is None:
-                # create new with normalize_L2 when available
-                try:
-                    vs = FAISS.from_texts(texts=[text_for_faiss], embedding=embeddings, metadatas=[{"source": "daily", "namespace": ns}], normalize_L2=True)
-                except TypeError:
-                    vs = FAISS.from_texts(texts=[text_for_faiss], embedding=embeddings, metadatas=[{"source": "daily", "namespace": ns}])
-            else:
-                vs.add_texts([text_for_faiss], metadatas=[{"source": "daily", "namespace": ns}])
-            vs.save_local(faiss_dir)
-        except Exception as e:
-            logger.error(f"DailyRAG: failed to update FAISS daily index: {e}")
-        return True
+                    vs = FAISS.from_texts(
+                        texts=[text_for_embed],
+                        embedding=embeddings,
+                        metadatas=[{"source": "daily", "namespace": ns}],
+                    )
+                with _CACHE_LOCK:
+                    _CACHE[project_id] = _DailyCache(embedding_model=settings.embedding_model, vs=vs)
+                return True
+            # Normal path: incremental add
+            cache.vs.add_texts([text_for_embed], metadatas=[{"source": "daily", "namespace": ns}])
+            return True
+    except Exception as e:
+        logger.error("DailyRAG: in-memory add failed project=%s: %s", project_id, e)
+        start_daily_cache_rebuild(project_id, reason="append_exception")
+        return False
 
 
 def append_pair_text_only(
@@ -204,7 +353,7 @@ def append_pair_text_only(
     Append a single pair to daily.txt only (no FAISS, no daily.json).
     Used by Sleep flush to move active DB pairs into daily text at start of cycle.
     """
-    _, _, lock_path, txt_path = _project_daily_paths(project_id)
+    _meta_path, lock_path, txt_path = _project_daily_paths(project_id)
     ns = (namespace or "general").lower()
     with FileLock(lock_path):
         try:
@@ -250,52 +399,30 @@ def _cosine_from_l2_dist_sq(d2: float) -> float:
 
 
 def retrieve_daily(project_id: str, query: str, top_k: int, score_threshold: float) -> List[Tuple[str, float, Optional[str]]]:
-    """Retrieve from daily FAISS index. Returns list of (text, cosine, namespace)."""
+    """Retrieve from the in-memory Daily FAISS cache. Returns list of (text, cosine, namespace)."""
+    if top_k <= 0:
+        return []
     settings = get_settings()
-    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
-    with FileLock(lock_path):
-        try:
-            embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
-            try:
-                vs = FAISS.load_local(faiss_dir, embeddings, allow_dangerous_deserialization=True)
-            except TypeError:
-                vs = FAISS.load_local(faiss_dir, embeddings)
-        except Exception as e:
-            # Attempt on-demand backfill from metadata if index missing
-            logger.debug(f"DailyRAG: no daily index for project={project_id}: {e}")
-            try:
-                entries = _load_metadata(meta_path)
-                if entries:
-                    texts = []
-                    metas = []
-                    for e in entries:
-                        t = e.get("text")
-                        if not t:
-                            continue
-                        texts.append(t)
-                        metas.append({"source": "daily", "namespace": (e.get("namespace") or "general")})
-                    if texts:
-                        try:
-                            embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
-                            try:
-                                vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metas, normalize_L2=True)
-                            except TypeError:
-                                vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metas)
-                            vs.save_local(faiss_dir)
-                            logger.info(f"DailyRAG: backfilled daily FAISS index for project={project_id} from metadata ({len(texts)} entries)")
-                        except Exception as be:
-                            logger.error(f"DailyRAG: failed to backfill daily index: {be}")
-                            return []
-                    else:
-                        return []
-                else:
-                    return []
-            except Exception:
-                return []
+    # Warm lazily on first use for a project (non-blocking; return empty for this request).
+    with _CACHE_LOCK:
+        cache = _CACHE.get(project_id)
+    if cache is None:
+        start_daily_cache_rebuild(project_id, reason="retrieve_warm")
+        return []
+    with _CACHE_LOCK:
+        cache = _CACHE.get(project_id)
+    if cache is None or cache.vs is None:
+        return []
+    # If runtime model changed vs cache, rebuild but do not retry this request (return empty)
+    if cache.embedding_model != settings.embedding_model:
+        start_daily_cache_rebuild(project_id, reason="retrieve_model_mismatch")
+        return []
     try:
-        results = vs.similarity_search_with_score(query, k=top_k)  # type: ignore[name-defined]
-    except Exception:
-        results = []
+        results = cache.vs.similarity_search_with_score(query, k=top_k)
+    except Exception as e:
+        logger.warning("DailyRAG: retrieve failed project=%s: %s", project_id, e)
+        start_daily_cache_rebuild(project_id, reason="retrieve_exception")
+        return []
     scored: List[Tuple[str, float, Optional[str]]] = []
     for doc, dist in results:
         d = float(dist)
@@ -311,19 +438,10 @@ def retrieve_daily(project_id: str, query: str, top_k: int, score_threshold: flo
 
 
 def daily_stats(project_id: str) -> Dict[str, int]:
-    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    meta_path, lock_path, _txt_path = _project_daily_paths(project_id)
     with FileLock(lock_path):
         entries = _load_metadata(meta_path)
     size_bytes = 0
-    # Sum FAISS dir contents
-    try:
-        if os.path.isdir(faiss_dir):
-            for n in os.listdir(faiss_dir):
-                p = os.path.join(faiss_dir, n)
-                if os.path.isfile(p):
-                    size_bytes += os.path.getsize(p)
-    except Exception:
-        pass
     # Add metadata size (file or serialized estimate)
     try:
         if os.path.exists(meta_path):
@@ -333,13 +451,15 @@ def daily_stats(project_id: str) -> Dict[str, int]:
     except Exception:
         size_bytes += len(json.dumps(entries).encode("utf-8")) if entries else 0
     tokens = sum(int(e.get("tokens", 0)) for e in entries)
+    with _CACHE_LOCK:
+        cache_present = project_id in _CACHE and (_CACHE.get(project_id) is not None)
     logger.debug(
-        "DailyRAG: stats project=%s vectors=%s tokens=%s size_bytes=%s (faiss_present=%s, meta_present=%s)",
+        "DailyRAG: stats project=%s vectors=%s tokens=%s size_bytes=%s (cache_present=%s, meta_present=%s)",
         project_id,
         len(entries),
         tokens,
         size_bytes,
-        os.path.isdir(faiss_dir) and any(os.path.isfile(os.path.join(faiss_dir, n)) for n in os.listdir(faiss_dir) or []),
+        cache_present,
         os.path.exists(meta_path),
     )
     return {"daily_index_size_bytes": size_bytes, "daily_tokens_indexed": tokens, "daily_vector_count": len(entries)}
@@ -347,7 +467,7 @@ def daily_stats(project_id: str) -> Dict[str, int]:
 
 def backfill_daily_txt_from_meta(project_id: str) -> bool:
     """If daily.json exists and daily.txt missing, write out text blocks for all entries (V3.2 format)."""
-    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    meta_path, lock_path, txt_path = _project_daily_paths(project_id)
     if os.path.isfile(txt_path):
         return False
     with FileLock(lock_path):

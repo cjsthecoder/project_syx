@@ -55,7 +55,7 @@ from ..core.summarization import execute_prompt, execute_prompt_chunked, _count_
 from ..core.rag_manager import rebuild_faiss_index, load_faiss_index
 from filelock import FileLock
 from ..core.config import get_settings
-from ..core.daily_rag import _project_daily_paths
+from ..core.daily_rag import _project_daily_paths, clear_daily_cache
 from ..core.dream import dream
 from ..utils.debug_utils import write_debug_file
 def _nl(s: str) -> str:
@@ -339,19 +339,10 @@ def _sleep_cycle_worker():
                                 logger.info("[SLEEP][CLEANUP] Removed pruned.txt for %s", pid)
                             except Exception as pe:
                                 logger.warning("[SLEEP][CLEANUP] Failed removing pruned.txt for %s: %s", pid, pe)
-                            # Clear daily_faiss and remove daily.json so daily memory moves into main RAG
+                            # DELTA-A.1: Clear in-memory daily cache and remove daily.json so daily memory moves into main RAG
                             try:
-                                faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(pid)
+                                meta_path, lock_path, txt_path = _project_daily_paths(pid)
                                 with FileLock(lock_path):
-                                    # clear daily_faiss files
-                                    if os.path.isdir(faiss_dir):
-                                        for n in os.listdir(faiss_dir):
-                                            fp = os.path.join(faiss_dir, n)
-                                            if os.path.isfile(fp):
-                                                try:
-                                                    os.remove(fp)
-                                                except Exception:
-                                                    pass
                                     # remove daily.json
                                     if os.path.exists(meta_path):
                                         try:
@@ -365,7 +356,11 @@ def _sleep_cycle_worker():
                                             logger.info("[SLEEP][CLEANUP] Removed daily.txt for %s", pid)
                                         except Exception as te:
                                             logger.warning("[SLEEP][CLEANUP] Failed removing daily.txt for %s: %s", pid, te)
-                                logger.info("[SLEEP][MERGE] Cleared daily_faiss and removed daily.json for %s", pid)
+                                try:
+                                    clear_daily_cache(pid)
+                                except Exception:
+                                    pass
+                                logger.info("[SLEEP][MERGE] Cleared in-memory daily cache and removed daily.json for %s", pid)
                             except Exception as de:
                                 logger.warning("[SLEEP][MERGE] Post-merge daily cleanup error for %s: %s", pid, de)
                 except Exception as me:

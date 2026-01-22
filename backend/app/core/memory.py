@@ -26,6 +26,7 @@ from .config import get_settings
 from .daily_rag import append_pair
 from ..utils.logging import get_message_id, get_namespace
 from .tagger import tag_pair
+from ..tagging.ambiguity import classify_ambiguity
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +189,18 @@ class MemoryManager:
             elif self._is_daily_enabled(project_id):
                 ns = (asst_msg.get("namespace") or get_namespace() or "general").lower()
                 keep = bool(asst_msg.get("keep"))
+                # DELTA-A.2: ambiguity detection occurs before tagging/embedding (best-effort)
+                try:
+                    ambiguous, _reason = classify_ambiguity(user_text, asst_text)
+                except Exception:
+                    ambiguous, _reason = False, ""
+                if ambiguous:
+                    # No anchor attachment in DELTA-A.2; just mark for tagging and proceed normally
+                    logger.debug(
+                        "[AMBIGUITY] project_id=%s message_id=%s requires_semantic_anchoring_for_tagging=true",
+                        project_id,
+                        mid,
+                    )
                 # V3.4: attempt to generate tag lines and embed them into FAISS text (daily.txt unchanged)
                 tags_lines = None
                 try:

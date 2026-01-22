@@ -227,7 +227,7 @@ setup-env:
 		echo "# Morpheus AGI Chatbot Framework - Environment Variables"; \
 		echo "# Edit values as needed. Comments are placed after each variable to avoid parser conflicts."; \
 		echo ""; \
-		echo "OPENAI_API_KEY=***REMOVED***"; \
+		echo "OPENAI_API_KEY=your-openai-api-key-here"; \
 		echo "# OpenAI API key used for chat and embeddings"; \
 		echo ""; \
 		echo "MODEL_NAME=gpt-5.1"; \
@@ -355,6 +355,9 @@ setup-env:
 		echo ""; \
 		echo "BUILDER_CACHE=true"; \
 		echo "# V2.3.1: Enable in-memory builder cache"; \
+		echo ""; \
+		echo "AMBIGUITY_MODEL=gpt-5-nano"; \
+		echo "# DELTA-A.2: LLM for roll-off ambiguity detection"; \
 		echo ""; \
 		echo "TOPIC_BOOST=1.10"; \
 		echo "# V2.3.1: Multiplicative boost for topic overlap"; \

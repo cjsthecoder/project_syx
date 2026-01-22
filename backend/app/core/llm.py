@@ -123,26 +123,28 @@ class LLMProvider:
             )
             # Optionally use an override model for this call with temperature fallback + model capability cache
             def _invoke_with(model_name: str, temperature: float):
-                llm = ChatOpenAI(
-                    api_key=self.settings.openai_api_key,
-                    model=model_name,
-                    temperature=temperature,
-                    model_kwargs={
+                kwargs: Dict[str, Any] = {
+                    "api_key": self.settings.openai_api_key,
+                    "model": model_name,
+                    "model_kwargs": {
                         "max_completion_tokens": (
                             int(completion_tokens_override)
                             if completion_tokens_override is not None
                             else self.settings.model_max_tokens
                         )
                     },
-                    streaming=False,
-                 )
+                    "streaming": False,
+                }
+                kwargs["temperature"] = float(temperature)
+                llm = ChatOpenAI(**kwargs)
                 return llm.invoke(messages)
 
             used_model = self.settings.model_name
             model_to_use = override_model or self.settings.model_name
-            # Decide effective temperature based on cache (skip override if unsupported for this model)
+            # Decide effective temperature based on cache:
+            # some models only support the default temperature (=1.0); do not pass non-default values.
             if model_to_use in self._temp_unsupported:
-                effective_temp = self.settings.model_temperature
+                effective_temp = 1.0
             else:
                 effective_temp = (
                     float(temperature_override)
@@ -166,8 +168,8 @@ class LLMProvider:
                     first_time = model_to_use not in self._temp_unsupported
                     self._temp_unsupported.add(model_to_use)
                     if first_time:
-                        logger.info("LLM model %s does not support temperature; using default thereafter", model_to_use)
-                    # Retry once with default temperature, silently on subsequent calls
+                        logger.debug("LLM model %s only supports default temperature; forcing 1.0 thereafter", model_to_use)
+                    # Retry once with default temperature=1.0, silently on subsequent calls
                     if override_model and override_model != self.settings.model_name:
                         response = _invoke_with(override_model, 1.0)
                         used_model = override_model

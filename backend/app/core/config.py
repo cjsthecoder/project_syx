@@ -127,6 +127,9 @@ class Settings(BaseSettings):
     question_boost: float = Field(default=1.02, gt=0.0, description="Multiplicative boost for open-question overlap")
     namespace_boost: float = Field(default=1.05, gt=0.0, description="Multiplicative boost for namespace match")
 
+    # DELTA-A.2: Ambiguity detection on roll-off
+    ambiguity_model: str = Field(default="gpt-5-nano", description="LLM used for roll-off ambiguity detection")
+
     # V2.6: Defaults and file paths
     default_system_prompt_path: str = Field(
         default="backend/app/config/defaults/system_prompt.txt",

@@ -516,11 +516,6 @@ async def project_stats(project_id: str) -> JSONResponse:
 @router.get("/projects/{project_id}")
 async def get_project_detail(project_id: str) -> JSONResponse:
     try:
-        # DELTA-A.1: lazily warm Daily in-memory cache on first project-scoped request
-        try:
-            start_daily_cache_rebuild(project_id, reason="project_detail")
-        except Exception:
-            pass
         with get_session() as session:
             obj = session.get(Project, project_id)
             if not obj:
@@ -547,11 +542,6 @@ async def get_project_detail(project_id: str) -> JSONResponse:
 async def get_project_chats(project_id: str) -> JSONResponse:
     """Return the most recent N messages for the project in chronological order."""
     try:
-        # DELTA-A.1: lazily warm Daily in-memory cache on first project-scoped request
-        try:
-            start_daily_cache_rebuild(project_id, reason="project_chats")
-        except Exception:
-            pass
         mm = get_memory_manager()
         messages = mm.get_project_history(project_id)
         # Normalize datetime to ISO strings for JSON response

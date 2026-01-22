@@ -66,12 +66,6 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         msg_id = str(uuid.uuid4())
         set_message_id(msg_id)
         proj = request.project_id or "Continuum"
-        # DELTA-A.1: lazily warm Daily in-memory cache on first project-scoped request
-        if request.project_id:
-            try:
-                start_daily_cache_rebuild(request.project_id, reason="chat")
-            except Exception:
-                pass
         # (Telemetry removed)
         # Log the incoming request
         request_logger.log_request(endpoint="/chat", method="POST", user_id=request.conversation_id)
@@ -84,7 +78,6 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             msg_id,
             preview,
         )
-        
         
         # Build conversation history from per-project working memory (V2.2)
         conversation_history = None
@@ -454,12 +447,6 @@ async def chat_stream(request: ChatRequest):
         set_message_id(msg_id)
         request_logger.log_request(endpoint="/chat/stream", method="POST", user_id=request.conversation_id)
         proj = request.project_id or "Continuum"
-        # DELTA-A.1: lazily warm Daily in-memory cache on first project-scoped request
-        if request.project_id:
-            try:
-                start_daily_cache_rebuild(request.project_id, reason="chat_stream")
-            except Exception:
-                pass
         # Build conversation history
         conversation_history = None
         primary_ns = None

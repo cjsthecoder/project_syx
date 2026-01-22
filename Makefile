@@ -227,10 +227,10 @@ setup-env:
 		echo "# Morpheus AGI Chatbot Framework - Environment Variables"; \
 		echo "# Edit values as needed. Comments are placed after each variable to avoid parser conflicts."; \
 		echo ""; \
-		echo "OPENAI_API_KEY=your-openai-api-key-here"; \
+		echo "OPENAI_API_KEY=***REMOVED***"; \
 		echo "# OpenAI API key used for chat and embeddings"; \
 		echo ""; \
-		echo "MODEL_NAME=gpt-5.1"; \
+		echo "MODEL_NAME=gpt-5.2"; \
 		echo "# Default chat model name"; \
 		echo ""; \
 		echo "MODEL_TEMPERATURE=1.0"; \
@@ -296,7 +296,7 @@ setup-env:
 		echo "CHUNK_OVERLAP=100"; \
 		echo "# Overlap between chunks during embedding"; \
 		echo ""; \
-		echo "AVAILABLE_MODELS=[\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5-mini\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
+		echo "AVAILABLE_MODELS=[\"gpt-5.2\",\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5-mini\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
 		echo "# Whitelisted chat models for the UI selector"; \
 		echo ""; \
 		echo "RAG_ON_CHAT=true"; \
@@ -314,7 +314,7 @@ setup-env:
 		echo "RAG_SCORE_THRESHOLD=0.5"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
-		echo "CHAT_HISTORY_LIMIT_PAIRS=10"; \
+		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
 		echo "# V2.3: Number of prompt/response pairs kept in working memory:: 10 is working well"; \
 		echo ""; \
 		echo "DAILY_RAG_ENABLED=true"; \
@@ -404,7 +404,7 @@ setup-env:
 		echo "MAX_WORKERS=1"; \
 		echo "# V4.1: Dream executor workers"; \
 		echo ""; \
-		echo "DREAM_MODEL=gpt-5.1"; \
+		echo "DREAM_MODEL=gpt-5.2"; \
 		echo "DREAM_TEMPERATURE=1.0"; \
 		echo "DREAM_MAX_TOKENS=32000"; \
 		echo "DREAM_ENABLE_REMOTE_RESEARCH=true"; \

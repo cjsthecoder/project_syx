@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     
     # OpenAI Configuration
     openai_api_key: str = Field(..., description="OpenAI API key (required)")
-    model_name: str = Field(default="gpt-5.1", description="OpenAI model name")
+    model_name: str = Field(default="gpt-5.2", description="OpenAI model name")
     model_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Model temperature")
     model_max_tokens: int = Field(default=32000, gt=0, description="Maximum tokens per response")
     
@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     # V2: Model list for selector
     available_models: list[str] = Field(
         default=[
+            "gpt-5.2",
             "gpt-5.1",
             "gpt-5.1-mini",
             "gpt-5.1-nano",
@@ -118,7 +119,7 @@ class Settings(BaseSettings):
     dedupe_keep_daily: bool = Field(default=True, description="Prefer keeping daily snippet on dedupe conflicts")
 
     # V2.3.1: Builder and reranking
-    builder_model: str = Field(default="gpt-4o-mini", description="LLM used for query builder/router")
+    builder_model: str = Field(default="gpt-5-mini", description="LLM used for query builder/router")
     builder_confidence_min: float = Field(default=0.75, ge=0.0, le=1.0, description="Minimum confidence for full retrieval")
     builder_max_tokens: int = Field(default=512, gt=0, description="Max tokens for builder output")
     builder_cache: bool = Field(default=True, description="Enable in-memory cache for builder JSON")
@@ -157,7 +158,7 @@ class Settings(BaseSettings):
     enable_dream: bool = Field(default=True, description="Enable Dream orchestrator")
     max_workers: int = Field(default=1, description="Dream executor worker count (MAX_WORKERS)")
     # V4.1.2: Dream agent configuration
-    dream_model: str = Field(default="gpt-5.1", description="Dream LLM model")
+    dream_model: str = Field(default="gpt-5.2", description="Dream LLM model")
     dream_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Dream LLM temperature")
     dream_max_tokens: int = Field(default=32000, gt=0, description="Max tokens for Dream LLM completion")
     dream_enable_remote_research: bool = Field(default=True, description="Enable OpenAI web_search for Dream")

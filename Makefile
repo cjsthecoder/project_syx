@@ -356,9 +356,6 @@ setup-env:
 		echo "BUILDER_CACHE=true"; \
 		echo "# V2.3.1: Enable in-memory builder cache"; \
 		echo ""; \
-		echo "AMBIGUITY_MODEL=gpt-5-nano"; \
-		echo "# DELTA-A.2: LLM for roll-off ambiguity detection"; \
-		echo ""; \
 		echo "TOPIC_BOOST=1.10"; \
 		echo "# V2.3.1: Multiplicative boost for topic overlap"; \
 		echo ""; \

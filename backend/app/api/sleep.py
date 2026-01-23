@@ -133,6 +133,8 @@ def _sleep_cycle_worker():
                     try:
                         if pid in mem.project_deques:
                             mem.project_deques.pop(pid, None)
+                        # DELTA-A.3: clear previous rolled-off pair pointer on sleep flush
+                        mem.clear_last_rolled_off_pair(pid)
                     except Exception:
                         pass
                     if flushed:

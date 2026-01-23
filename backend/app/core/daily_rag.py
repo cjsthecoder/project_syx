@@ -123,6 +123,15 @@ def reset_daily(project_id: str) -> None:
             except Exception as e:
                 logger.warning("DailyRAG: failed to remove metadata %s: %s", p, e)
     clear_daily_cache(project_id)
+    # DELTA-A.3: clear ephemeral previous rolled-off pair pointer (best-effort)
+    try:
+        from .memory import get_memory_manager
+        try:
+            get_memory_manager().clear_last_rolled_off_pair(project_id)
+        except Exception:
+            pass
+    except Exception:
+        pass
     logger.info("DailyRAG: reset daily metadata and cleared cache for project=%s", project_id)
 
 

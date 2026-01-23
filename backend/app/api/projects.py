@@ -427,6 +427,19 @@ async def delete_project(project_id: str) -> JSONResponse:
                 os.rmdir(base)
         except Exception as e:
             logger.warning("[PROJECT] Failed cleaning project directory %s: %s", base, e)
+        # DELTA-A.3: clear ephemeral per-project memory state
+        try:
+            mm = get_memory_manager()
+            try:
+                mm.project_deques.pop(project_id, None)
+            except Exception:
+                pass
+            try:
+                mm.clear_last_rolled_off_pair(project_id)
+            except Exception:
+                pass
+        except Exception:
+            pass
         # Reset current project to Continuum if needed
         global _current_project
         if _current_project == project_id:

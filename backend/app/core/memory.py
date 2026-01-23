@@ -15,10 +15,13 @@ System (RAG) messages are not stored. Provides last_context_tokens per project f
 """
 
 import logging
+import os
+import json
 from typing import Optional, List, Dict, Any, Deque, Tuple
 from datetime import datetime, timedelta
 from collections import deque
 
+from filelock import FileLock
 from sqlmodel import select
 from .database import get_session
 from .db_models import ChatMessage, Project
@@ -26,7 +29,6 @@ from .config import get_settings
 from .daily_rag import append_pair
 from ..utils.logging import get_message_id, get_namespace
 from .tagger import tag_pair
-from ..tagging.ambiguity import classify_ambiguity
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +39,52 @@ class MemoryManager:
     def __init__(self):
         self.project_deques: Dict[str, Deque[Dict[str, Any]]] = {}
         self.last_context_tokens_per_project: Dict[str, int] = {}
+        # DELTA-A.3: previous rolled-off pair tracking (ephemeral, per project)
+        self.last_rolled_off_pair: Dict[str, str] = {}
         s = get_settings()
         self.limit = s.chat_history_limit
         self.pair_limit = s.chat_history_limit_pairs
         logger.info("Memory manager initialized (v2.2 persistent mode)")
+
+    def clear_last_rolled_off_pair(self, project_id: str) -> None:
+        """DELTA-A.3: clear per-project previous rolled-off pair pointer."""
+        try:
+            self.last_rolled_off_pair.pop(project_id, None)
+        except Exception:
+            pass
+
+    def _hydrate_last_rolled_off_pair_from_daily_json(self, project_id: str) -> Optional[str]:
+        """
+        DELTA-A.3: best-effort hydration for last_rolled_off_pair from daily.json.
+        Uses canonical stored pair text (entry['text']) and never blocks roll-off on error.
+        """
+        try:
+            base_dir = os.path.join("memory", project_id)
+            meta_path = os.path.join(base_dir, "daily.json")
+            lock_path = os.path.join(base_dir, "daily.lock")
+            if not os.path.isfile(meta_path):
+                return None
+            # Best-effort lock to avoid reading mid-write
+            try:
+                with FileLock(lock_path):
+                    with open(meta_path, "r", encoding="utf-8") as f:
+                        entries = json.load(f)
+            except Exception:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    entries = json.load(f)
+            if not isinstance(entries, list) or not entries:
+                return None
+            last = entries[-1]
+            if not isinstance(last, dict):
+                return None
+            txt = last.get("text")
+            if not isinstance(txt, str) or not txt.strip():
+                return None
+            self.last_rolled_off_pair[project_id] = txt
+            return txt
+        except Exception as e:
+            logger.debug("[ANCHOR][HYDRATE] failed project=%s err=%s", project_id, e)
+            return None
     
     def _ensure_loaded(self, project_id: str) -> None:
         if project_id in self.project_deques:
@@ -189,22 +233,20 @@ class MemoryManager:
             elif self._is_daily_enabled(project_id):
                 ns = (asst_msg.get("namespace") or get_namespace() or "general").lower()
                 keep = bool(asst_msg.get("keep"))
-                # DELTA-A.2: ambiguity detection occurs before tagging/embedding (best-effort)
-                try:
-                    ambiguous, _reason = classify_ambiguity(user_text, asst_text)
-                except Exception:
-                    ambiguous, _reason = False, ""
-                if ambiguous:
-                    # No anchor attachment in DELTA-A.2; just mark for tagging and proceed normally
+                # DELTA-A.3 (revised): always try to prepend the previous rolled-off pair for tagging context.
+                previous_pair_text: Optional[str] = self.last_rolled_off_pair.get(project_id)
+                if previous_pair_text is None:
+                    previous_pair_text = self._hydrate_last_rolled_off_pair_from_daily_json(project_id)
+                if previous_pair_text is None:
                     logger.debug(
-                        "[AMBIGUITY] project_id=%s message_id=%s requires_semantic_anchoring_for_tagging=true",
+                        "[ANCHOR] no previous rolled-off pair available project_id=%s message_id=%s",
                         project_id,
                         mid,
                     )
                 # V3.4: attempt to generate tag lines and embed them into FAISS text (daily.txt unchanged)
                 tags_lines = None
                 try:
-                    tags_lines = tag_pair(user_text, asst_text, previous_pair_text=None)
+                    tags_lines = tag_pair(user_text, asst_text, previous_pair_text=previous_pair_text)
                 except Exception:
                     tags_lines = None
                 embed_text = (("\n".join(tags_lines) + "\n" + pair_text) if tags_lines else pair_text)
@@ -217,7 +259,7 @@ class MemoryManager:
                         tags_meta = {"topics": topics, "intent": intent, "type": tag_type}
                     except Exception:
                         tags_meta = None
-                append_pair(
+                ok = append_pair(
                     project_id,
                     pair_text,
                     int(user_msg.get("id")),
@@ -228,6 +270,9 @@ class MemoryManager:
                     embed_override=embed_text,
                     tags_meta=tags_meta,
                 )
+                # DELTA-A.3: update last_rolled_off_pair only when daily append reports success.
+                if bool(ok):
+                    self.last_rolled_off_pair[project_id] = pair_text
             else:
                 logger.info("[DailyRAG] Skipping daily append (disabled for project=%s)", project_id)
         except Exception as e:

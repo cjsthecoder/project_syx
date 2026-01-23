@@ -10,7 +10,7 @@ Unify Daily and LTM retrieval behavior so both memory tiers use the same retriev
 
 #### Status
 
-Accepted
+Implemented
 
 #### Affected Requirements
 
@@ -62,7 +62,7 @@ Treating FAISS as a rebuildable cache aligns Daily memory with episodic semantic
 
 #### Status
 
-Draft
+Implemented
 
 #### Affected Requirements
 
@@ -144,3 +144,81 @@ No anchor selection or attachment occurs in this delta.
 * On ambiguity-classifier timeout/error/invalid output, proceed with normal roll-off behavior and treat the result as `AMBIGUOUS=false`.
 * No backfill/migration is required; ambiguity detection applies only to newly rolled-off pairs going forward.
 * No regular-expression-only solution is sufficient for ambiguity detection.
+
+
+### DELTA-A.3 — Previous Rolled-Off Pair Tracking and Tagging Context
+
+#### Status
+
+Accepted
+
+#### Affected Requirements
+
+* FR-3.4.2 — Tagging Prompt
+
+#### Intent
+
+Provide a stable, best-effort semantic context snippet for tagging by tracking the most recent prior rolled-off pair and supplying it to the tagging prompt.
+
+#### State
+
+* The system SHALL maintain an in-memory, per-project value `last_rolled_off_pair`.
+* `last_rolled_off_pair` represents the most recent rolled-off pair with `forget=false`.
+* This state is ephemeral and MUST NOT be persisted as a first-class memory object.
+
+#### Roll-Off Processing Rules
+
+For each rolled-off pair, the system SHALL resolve `previous_pair_text` using the following precedence:
+
+1. The in-memory `last_rolled_off_pair`, if present for the project.
+2. A best-effort fallback loaded from the most recent non-forgotten entry in `daily.json` for the project, using the canonical stored pair text (not embedding-augmented text).
+3. `None` if neither source is available.
+
+#### Forget Handling
+
+* If the rolled-off pair has `forget=true`, the system SHALL:
+
+  * NOT write the pair to daily memory.
+  * NOT update `last_rolled_off_pair`.
+  * Preserve the existing `last_rolled_off_pair` value for future roll-offs.
+
+#### Tagging Input
+
+* The system SHALL prepend `previous_pair_text` to the tagging prompt input before the current rolled-off pair when `previous_pair_text` is available.
+* If `previous_pair_text` is unavailable, the system SHALL emit a debug log and tagging SHALL proceed with the current rolled-off pair alone (best-effort).
+
+Anchors influence tagging input only and MUST NOT alter the stored text written to daily memory.
+
+#### Update Rule
+
+* `last_rolled_off_pair` SHALL be updated only when the rolled-off pair is actually persisted to daily memory (i.e., daily history is enabled for the project and the append operation reports success).
+* The human-readable `daily.txt` write is best-effort and SHALL NOT gate updating `last_rolled_off_pair` if the daily-memory append otherwise succeeds.
+* After processing a rolled-off pair with `forget=false` and successful daily persistence, the system SHALL set:
+
+  * `last_rolled_off_pair = current_pair_text`
+* `current_pair_text` SHALL be the canonical rolled-off pair text as used for daily memory storage (user + assistant, unmodified).
+
+#### Multiple Roll-Offs in a Single Prune
+
+* If multiple pairs roll off sequentially during a single pruning operation, the above logic SHALL be applied in order.
+* Each roll-off MAY reference the immediately preceding rolled-off pair processed in the same operation.
+
+#### Reset / Invalidation
+
+* `last_rolled_off_pair` SHALL be cleared for a project when:
+
+  * Daily memory is explicitly reset for that project.
+  * The sleep-cycle flush step clears active in-memory chat state for that project.
+  * The project is deleted.
+
+#### Restart Semantics
+
+* On process restart, `last_rolled_off_pair` SHALL be empty.
+* When required and missing, the system MAY hydrate `last_rolled_off_pair` from `daily.json` as a best-effort fallback.
+* Absence of an anchor MUST NOT block roll-off processing or tagging.
+
+#### New Invariants
+
+* Anchors follow semantic roll-off order, not conversational order.
+* Anchors are ephemeral and are never persisted as independent memory entries.
+* Anchors are used exclusively to improve tagging quality.

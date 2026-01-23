@@ -62,7 +62,7 @@ Treating FAISS as a rebuildable cache aligns Daily memory with episodic semantic
 
 #### Status
 
-Implemented
+Removed
 
 #### Affected Requirements
 

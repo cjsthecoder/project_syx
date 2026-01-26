@@ -1174,6 +1174,9 @@ Add a second toggle next to the existing Forget control to carry a “keep” fl
     response: <assistant text>
     ```
     - Projects already emitting `[namespace: <ns>]` may continue doing so; the Keep tag is appended similarly, e.g. `[namespace: other] [keep: true]`.
+  - Each pair entry block is delimited by:
+    - `=== BEGIN DAILY PAIR ===`
+    - `=== END DAILY PAIR ===`
 
 - API:
   - Update `GET /projects/{id}/chats` to include `keep` for assistant messages.

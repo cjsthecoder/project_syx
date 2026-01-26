@@ -15,11 +15,50 @@ from .config import get_settings
 
 logger = logging.getLogger(__name__)
 
-_PROMPT = """Classify this exchange for memory tagging.
-Return 1-3 metadata lines only in this format:
+_PROMPT = """You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+The goal is to help future searches reliably find this exchange.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Return ONLY the following metadata lines.
+Do not include explanations or extra text.
+
 #topics: <keywords>
-#intent: <purpose>
-#type: <category such as technical, design, story, system, etc.>"""
+#intent: <short phrase>
+#type: <category>
+"""
 
 
 def tag_pair(user_text: str, assistant_text: str, previous_pair_text: Optional[str] = None) -> Optional[List[str]]:

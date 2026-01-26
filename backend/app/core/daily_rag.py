@@ -29,6 +29,9 @@ def _nl(s: str) -> str:
     """Normalize line endings to LF to avoid mixed terminators."""
     return s.replace("\r\n", "\n").replace("\r", "\n")
 
+_BEGIN_DAILY_PAIR = "=== BEGIN DAILY PAIR ==="
+_END_DAILY_PAIR = "=== END DAILY PAIR ==="
+
 def _format_tags_block(tags_meta: Optional[Dict[str, str]]) -> str:
     """
     Format tag metadata lines for inclusion in daily.txt.
@@ -311,6 +314,7 @@ def append_pair(
                     ts_local = ts
                 tags_block = _format_tags_block(tags_meta)
                 block = (
+                    f"{_BEGIN_DAILY_PAIR}\n"
                     f"#timestamp: {ts_local}\n"
                     f"#route: {ns}\n"
                     f"#keep: {str(bool(keep)).lower()}\n"
@@ -321,6 +325,8 @@ def append_pair(
                     f"\n"
                     f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
                     f"{assistant_text}\n"
+                    f"\n"
+                    f"{_END_DAILY_PAIR}\n"
                     f"\n"
                 )
                 with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
@@ -402,6 +408,7 @@ def append_pair_text_only(
             except Exception:
                 ts_local = ts
             block = (
+                f"{_BEGIN_DAILY_PAIR}\n"
                 f"#timestamp: {ts_local}\n"
                 f"#route: {ns}\n"
                 f"#keep: {str(bool(keep)).lower()}\n"
@@ -411,6 +418,8 @@ def append_pair_text_only(
                 f"\n"
                 f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
                 f"{assistant_text or ''}\n"
+                f"\n"
+                f"{_END_DAILY_PAIR}\n"
                 f"\n"
             )
             with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
@@ -529,6 +538,7 @@ def backfill_daily_txt_from_meta(project_id: str) -> bool:
                     tags_meta = e.get("tags_meta") if isinstance(e, dict) else None
                     tags_block = _format_tags_block(tags_meta if isinstance(tags_meta, dict) else None)
                     block = (
+                        f"{_BEGIN_DAILY_PAIR}\n"
                         f"#timestamp: {ts_local}\n"
                         f"#route: {ns}\n"
                         f"#keep: {str(keep).lower()}\n"
@@ -539,6 +549,8 @@ def backfill_daily_txt_from_meta(project_id: str) -> bool:
                         f"\n"
                         f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
                         f"{a}\n"
+                        f"\n"
+                        f"{_END_DAILY_PAIR}\n"
                         f"\n"
                     )
                     tf.write(_nl(block))

@@ -1067,6 +1067,7 @@ Ensure each project maintains a single plain‑text mirror of its daily context 
   prompt: <user text>
   response: <assistant text>
   ```
+- The daily text block MAY include tag metadata lines (e.g., `#topics/#intent/#type`) for rolled-off pairs when available.
 - Purpose:
   - Human‑readable backup of the daily FAISS index (`memory/{project}/daily_faiss/`).
   - Input source for future summarization and pruning logic.
@@ -1477,7 +1478,7 @@ Implementation Notes
 
 ### Overview
 Extend the daytime “Awake Phase” to semantically tag each chat pair as it rolls off the active context buffer.  
-Tags are embedded into the daily vector text for improved retrieval; `daily.txt` remains unchanged.
+Tags are embedded into the daily vector text for improved retrieval; `daily.txt` may include the same tag lines.
 
 ---
 
@@ -1506,9 +1507,8 @@ Constraints:
 - Keep response minimal (≈ 3 short lines), fast (small tokens), and deterministic (temperature ~ 0).
 - Timeout budget is small; if exceeded, skip tags (see Fail‑Safe).
 
-#### FR-3.4.3 — Integration (Vectors Only)
-- Do not modify `daily.txt` formatting. Keep the current V3.2 block format.
-- Prepend the returned lines to the text that is embedded into `daily_faiss` only:
+#### FR-3.4.3 — Integration
+- Prepend the returned lines to the text that is embedded into `daily_faiss`:
   ```
   #topics: …
   #intent: …
@@ -1516,6 +1516,7 @@ Constraints:
   User: …
   Assistant: …
   ```
+- Include the same tag lines in `daily.txt` for the rolled-off pair (as metadata lines, not part of the user/assistant message text).
 - Optionally store the parsed fields in `daily.json` for analytics/backfill as:
   `tags_meta: { topics, intent, type }` (optional).
 

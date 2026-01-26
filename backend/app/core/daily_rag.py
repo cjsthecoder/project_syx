@@ -29,6 +29,24 @@ def _nl(s: str) -> str:
     """Normalize line endings to LF to avoid mixed terminators."""
     return s.replace("\r\n", "\n").replace("\r", "\n")
 
+def _format_tags_block(tags_meta: Optional[Dict[str, str]]) -> str:
+    """
+    Format tag metadata lines for inclusion in daily.txt.
+
+    Uses the same 3-line convention as the roll-off tagger output.
+    Returns a string that already ends with a newline (or "" if no tags).
+    """
+    if not tags_meta:
+        return ""
+    try:
+        topics = str(tags_meta.get("topics", "") or "")
+        intent = str(tags_meta.get("intent", "") or "")
+        tag_type = str(tags_meta.get("type", "") or "")
+        # Keep the lines stable; daily.txt readers can ignore them if undesired.
+        return f"#topics: {topics}\n#intent: {intent}\n#type: {tag_type}\n"
+    except Exception:
+        return ""
+
 def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
     base_dir = os.path.join("memory", project_id)
     os.makedirs(base_dir, exist_ok=True)
@@ -291,10 +309,12 @@ def append_pair(
                     ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime(time.mktime(tstruct)))
                 except Exception:
                     ts_local = ts
+                tags_block = _format_tags_block(tags_meta)
                 block = (
                     f"#timestamp: {ts_local}\n"
                     f"#route: {ns}\n"
                     f"#keep: {str(bool(keep)).lower()}\n"
+                    f"{tags_block}"
                     f"\n"
                     f"--- USER (data-message-author-role: user) ---\n"
                     f"{user_text}\n"
@@ -506,10 +526,13 @@ def backfill_daily_txt_from_meta(project_id: str) -> bool:
                         a = a.strip()
                     else:
                         u, a = "", text.strip()
+                    tags_meta = e.get("tags_meta") if isinstance(e, dict) else None
+                    tags_block = _format_tags_block(tags_meta if isinstance(tags_meta, dict) else None)
                     block = (
                         f"#timestamp: {ts_local}\n"
                         f"#route: {ns}\n"
                         f"#keep: {str(keep).lower()}\n"
+                        f"{tags_block}"
                         f"\n"
                         f"--- USER (data-message-author-role: user) ---\n"
                         f"{u}\n"

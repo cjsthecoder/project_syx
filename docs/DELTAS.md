@@ -39,7 +39,7 @@ Treating FAISS as a rebuildable cache aligns Daily memory with episodic semantic
 * `daily.json` is the sole authoritative store for Daily memory.
 * Daily FAISS indices may be discarded and rebuilt at any time without data loss.
 * Loss or corruption of Daily FAISS data must never imply loss of memory.
-* `daily.txt` behavior remains unchanged (it is still written/used exactly as it is today for the sleep pipeline).
+* `daily.txt` continues to be written/used for the sleep pipeline; it may include tag metadata lines for rolled-off pairs.
 
 #### Implementation Notes
 

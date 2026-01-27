@@ -73,7 +73,7 @@ def _open_questions_agent(project_id: str, summary_text: str) -> dict:
         # Expect { "questions": [...] } per 4.1.1 format guidance
         lst = obj.get("questions")
         if not isinstance(lst, list):
-            logger.warning("project=%s invalid JSON structure (no questions list)", project_id)
+            logger.info("project=%s invalid JSON structure (no questions list)", project_id)
             return {"questions": []}
         # Just return parsed object; filtering already handled by formatter prompt
         return obj

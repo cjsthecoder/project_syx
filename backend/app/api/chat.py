@@ -78,7 +78,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             msg_id,
             preview,
         )
-        
+
         # Build conversation history from per-project working memory (V2.2)
         conversation_history = None
         if request.project_id:

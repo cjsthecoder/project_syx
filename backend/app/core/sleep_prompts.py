@@ -30,6 +30,9 @@ INPUT CONTAINS:
 - Inside the memory container are one or more DAILY PAIR blocks delimited by:
   === BEGIN DAILY PAIR ===
   === END DAILY PAIR ===
+  OR
+  === BEGIN DREAM PAIR ===
+  === END DREAM PAIR ===
 
 Each DAILY PAIR may contain:
 - Header metadata lines beginning with '#', including:
@@ -230,6 +233,9 @@ INPUT MAY CONTAIN:
   #timestamp: MM-DD-YYYY_HH:MM:SS
   #route: <namespace>
   #keep: true|false
+- Dream pair boundary tags:
+  === BEGIN DREAM PAIR ===
+  === END DREAM PAIR ===
 - Paired blocks:
   --- USER (data-message-author-role: user) ---
   <prompt>
@@ -244,18 +250,19 @@ RULES:
 2) PRESERVE role markers EXACTLY:
    --- USER (data-message-author-role: user) ---
    *** ASSISTANT (data-message-author-role: assistant) ***
-3) PRESERVE the MEMORY boundary tags exactly as provided. Ensure ordering:
+3) PRESERVE any DREAM PAIR boundary tags exactly as provided (do not rename or delete them).
+4) PRESERVE the MEMORY boundary tags exactly as provided. Ensure ordering:
    - The BEGIN tag must be the FIRST line of the entire output.
    - The END tag must be the FINAL line of the entire output.
    - Do NOT place any content after the END tag.
-4) If the input contains only one of the two tags (BEGIN or END), DO NOT invent the missing tag; format the body and keep the present tag in its correct position.
-5) Structure the body into topic sections:
+5) If the input contains only one of the two tags (BEGIN or END), DO NOT invent the missing tag; format the body and keep the present tag in its correct position.
+6) Structure the body into topic sections:
    === TOPIC: Normalized Short Title ===
    Then immediately these metadata lines (one per line):
    - #topics: 3–5 keywords
    After that, include the original USER/ASSISTANT blocks and headers verbatim under the topic (no rewording).
 
-6) Return ONLY the formatted output. No explanations.
+7) Return ONLY the formatted output. No explanations.
 
 Here is the pruned content:
 {content}

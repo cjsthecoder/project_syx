@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def write_debug_file(project_id: str, filename: str, content: str) -> None:
     """
-    Write a debug file under memory/{project_id}/ when GENERATE_DEBUG_FILES is enabled.
+    Write a debug file under memory/{project_id}/debug/ when GENERATE_DEBUG_FILES is enabled.
 
     Args:
         project_id: Project identifier
@@ -29,9 +29,9 @@ def write_debug_file(project_id: str, filename: str, content: str) -> None:
         return
 
     try:
-        base_dir = os.path.join("memory", project_id)
-        os.makedirs(base_dir, exist_ok=True)
+        base_dir = os.path.join("memory", project_id, "debug")
         debug_path = os.path.join(base_dir, filename)
+        os.makedirs(os.path.dirname(debug_path), exist_ok=True)
         with open(debug_path, "w", encoding="utf-8", newline="\n") as dbg:
             dbg.write(content)
         logger.debug("Wrote debug file to %s", debug_path)

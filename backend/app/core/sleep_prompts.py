@@ -14,89 +14,168 @@ logger = logging.getLogger(__name__)
 
 def generate_pruning_prompt(content: str) -> str:
     logger.info("[SLEEP][PRUNE] Building pruning prompt")
-    return f"""You are given a daily memory file with:
- - header lines that start with #
- - boundary tags that mark the window:
+    return f"""You are pruning conversational memory during a sleep cycle.
+
+Your task is to SELECT which DAILY PAIR blocks should be kept for further
+long-term memory processing and which should be discarded.
+
+INPUT CONTAINS:
+- A single MEMORY CONTAINER wrapper, one of:
   === BEGIN DAILY MEMORY: MM/DD/YYYY ===
-  ...
   === END DAILY MEMORY: MM/DD/YYYY ===
   OR
   === BEGIN DREAM MEMORY: MM/DD/YYYY ===
-  ...
   === END DREAM MEMORY: MM/DD/YYYY ===
- - paired USER/ASSISTANT blocks:
 
-#timestamp: MM-DD-YYYY_HH:MM:SS
-#route: <namespace>
-#keep: true|false
+- Inside the memory container are one or more DAILY PAIR blocks delimited by:
+  === BEGIN DAILY PAIR ===
+  === END DAILY PAIR ===
 
---- USER (data-message-author-role: user) ---
-<prompt>
+Each DAILY PAIR may contain:
+- Header metadata lines beginning with '#', including:
+  #timestamp
+  #route
+  #keep
+  #topics
+  #intent
+  #type
+- A USER block and an ASSISTANT block
 
-*** ASSISTANT (data-message-author-role: assistant) ***
-<response>
+CORE RULES:
 
-Your task:
-1. PRESERVE ALL HEADER LINES (those that start with #) exactly as they are.
-1a. PRESERVE THE MEMORY BOUNDARY TAGS exactly as they are:
-    lines that begin with "=== BEGIN DAILY MEMORY:" / "=== END DAILY MEMORY:" OR
-    "=== BEGIN DREAM MEMORY:" / "=== END DREAM MEMORY:", including dates and surrounding blank lines.
-2. Remove chatty filler, greetings, and follow-up offers from assistant responses.
-3. For each USER question, keep only the substantive answer in the assistant's response—do not repeat or echo the user's question.
-4. Do not alter the user's original prompts.
-5. Keep assistant responses that contain explanations, facts, or decisions.
-6. Keep the timestamps.
-7. If multiple Q&A can be summarized more tightly, you may combine them, without losing important facts or decisions.
-8. PRESERVE ANY REFERENCES section if present at the end.
+1) MEMORY CONTAINER PRESERVATION
+- PRESERVE the BEGIN and END MEMORY wrapper lines EXACTLY as provided.
+- Do NOT remove, rename, reorder, or invent memory container tags.
+- The wrapper must remain the first and last content in the output.
 
-Return only the pruned content (headers + pruned USER/ASSISTANT blocks), no extra commentary.
+2) DAILY PAIR ATOMICITY
+- Treat each DAILY PAIR as an indivisible unit.
+- NEVER split, merge, or partially remove a DAILY PAIR.
+- NEVER move metadata between DAILY PAIR blocks.
 
-Here is the daily memory content:
+3) METADATA PRESERVATION
+- PRESERVE all existing metadata lines EXACTLY as written.
+- Do NOT edit, reword, add, or remove metadata.
+- Do NOT infer new topics, intents, or types.
+
+4) KEEP RULES
+- If a DAILY PAIR contains '#keep: true', it MUST be preserved.
+- If '#keep: false', you MAY discard it if it meets discard criteria.
+
+5) DISCARD CRITERIA (all must apply)
+A DAILY PAIR may be discarded ONLY if:
+- It is not marked keep:true
+- It contains no durable technical, narrative, design, or project-relevant information
+- It does not introduce or resolve an important idea, decision, explanation, or question
+- It would not be useful if retrieved later in isolation
+
+Examples of discardable content:
+- Social chatter, acknowledgements, pleasantries
+- Meta comments about the conversation itself
+- Low-information follow-ups already covered elsewhere
+
+6) PRESERVE CRITERIA (any one is sufficient)
+A DAILY PAIR SHOULD be preserved if it:
+- Introduces a new concept, explanation, or framing
+- Develops story world, characters, or narrative mechanics
+- Explains technical, scientific, or system behavior
+- Raises or answers a meaningful question
+- Contains information likely useful for future recall or synthesis
+
+7) OUTPUT REQUIREMENTS
+- Return ONLY the original MEMORY CONTAINER wrapper and the selected DAILY PAIR blocks.
+- Preserve original ordering.
+- Preserve all text, formatting, and metadata verbatim.
+- Do NOT add commentary, explanations, or summaries.
+- Do NOT invent or remove DAILY PAIR boundaries.
+
+Here is the memory content to prune:
 {content}
 """
 
 
 def generate_formatting_prompt(content: str) -> str:
     logger.info("[SLEEP][FORMAT] Building formatting prompt")
-    return f"""You are formatting a pruned daily memory. Follow this output contract EXACTLY.
+    return f"""You are formatting a pruned memory file during a sleep cycle.
+Follow this output contract EXACTLY.
 
-INPUT MAY CONTAIN:
-- Header lines beginning with '#':
+INPUT CONTAINS:
+- A single MEMORY CONTAINER wrapper:
+  === BEGIN DAILY MEMORY: MM/DD/YYYY ===
+  === END DAILY MEMORY: MM/DD/YYYY ===
+  OR
+  === BEGIN DREAM MEMORY: MM/DD/YYYY ===
+  === END DREAM MEMORY: MM/DD/YYYY ===
+
+- Inside the memory container are one or more DAILY PAIR blocks delimited by:
+  === BEGIN DAILY PAIR ===
+  === END DAILY PAIR ===
+
+Each DAILY PAIR may contain:
+- Header metadata lines beginning with '#', including:
   #timestamp: MM-DD-YYYY_HH:MM:SS
   #route: <namespace>
   #keep: true|false
-- Paired blocks:
+  #topics: <keywords>
+  #intent: <purpose>
+  #type: <category>
+- Paired role blocks:
   --- USER (data-message-author-role: user) ---
   <prompt>
   *** ASSISTANT (data-message-author-role: assistant) ***
   <response>
-- Boundary tags:
-  === BEGIN DAILY MEMORY: MM/DD/YYYY ===
-  === END DAILY MEMORY: MM/DD/YYYY ===
 
 RULES:
-1) PRESERVE all header lines ('#...') EXACTLY (no edits).
-2) PRESERVE role markers EXACTLY:
-   --- USER (data-message-author-role: user) ---
-   *** ASSISTANT (data-message-author-role: assistant) ***
-3) PRESERVE the MEMORY boundary tags exactly as provided. Ensure ordering:
-   - The BEGIN tag must be the FIRST line of the entire output.
-   - The END tag must be the FINAL line of the entire output.
-   - Do NOT place any content after the END tag.
-4) If the input contains only one of the two tags (BEGIN or END), DO NOT invent the missing tag; format the body and keep the present tag in its correct position.
-5) Structure the body into topic sections:
-   === TOPIC: Normalized Short Title ===
-   Then immediately these metadata lines (one per line):
-   - #topics: 3–5 keywords
-   - #decisions:
-   - #open_questions:
-   - #user_context:
-   After that, include the original USER/ASSISTANT blocks and headers verbatim under the topic (no rewording).
 
-6) Appendices must appear BEFORE the END tag in this exact order:
+1) MEMORY CONTAINER PRESERVATION
+- PRESERVE the BEGIN and END MEMORY wrapper lines EXACTLY as provided.
+- The BEGIN wrapper MUST be the FIRST line of the output.
+- The END wrapper MUST be the FINAL line of the output.
+- Do NOT place any content outside the wrapper.
+- If only one wrapper tag is present in the input, preserve it in its correct position and do NOT invent the missing one.
+
+2) DAILY PAIR ATOMICITY
+- Treat each DAILY PAIR as an indivisible unit.
+- NEVER split, merge, reorder, or partially remove a DAILY PAIR.
+- NEVER move metadata or content across DAILY PAIR boundaries.
+
+3) METADATA PRESERVATION
+- PRESERVE all existing header metadata lines ('#...') EXACTLY as written.
+- Do NOT edit, reword, reorder, add, or remove metadata.
+- Do NOT infer or synthesize new metadata fields.
+
+4) ROLE MARKER PRESERVATION
+- PRESERVE role markers EXACTLY:
+  --- USER (data-message-author-role: user) ---
+  *** ASSISTANT (data-message-author-role: assistant) ***
+
+5) TOPIC STRUCTURE
+- Structure the body into topic sections by grouping one or more complete DAILY PAIR blocks.
+- Each topic section MUST begin with:
+  === TOPIC: Normalized Short Title ===
+
+- The topic title MUST be derived from existing #topics metadata
+  (for example, a concise human-readable phrase).
+- Do NOT invent new topics or reinterpret meaning.
+
+- Immediately after the TOPIC line, repeat the following metadata verbatim
+  if present in the first DAILY PAIR of that section:
+  - #topics
+  - #intent
+  - #type
+
+- If a metadata field is missing, leave it absent rather than inventing it.
+
+- Under each topic section, include the DAILY PAIR blocks verbatim,
+  including their BEGIN/END DAILY PAIR markers.
+
+6) APPENDICES
+Appendices must appear BEFORE the END MEMORY wrapper, in this exact order:
 
 [Decisions Log]
 - One item per line prefixed with '- '
+- Only include explicit decisions stated in the content.
+- Do NOT infer or invent decisions.
 
 [Open Questions]
 Return a single JSON object with this structure:
@@ -104,42 +183,40 @@ Return a single JSON object with this structure:
 {{
   "questions": [
     {{
-      "question": "<exact question text or inferred question>",
+      "question": "<exact or naturally rewritten question>",
       "topic": "<topic title where the question originated>",
       "resolution": "<ignore | remind_user | answer_local | answer_remote>"
     }}
   ]
 }}
 
-Rules for JSON:
+Rules for Open Questions:
 - Deduplicate questions.
-- Group questions by their originating Topic block.
-- Extract explicit user questions (those ending in '?').
+- Group by originating TOPIC.
+- Extract explicit user questions (ending with '?').
 - ALSO extract implicit open questions using these patterns:
-  • Statements of uncertainty ("I'm not sure...", "We haven't decided...", "Needs more thought", "Not clear how...")
-  • Unresolved design choices ("We could do X or Y", "Two options exist...", "We need to pick between...")
-  • Pending tasks framed as decisions ("We still need a name for...", "We haven't solved...", "Next we must decide...")
-  • Assistant-raised forks ("This depends on whether...", "We need to determine...", "A key open decision is...")
+  • Statements of uncertainty
+  • Unresolved design choices
+  • Pending decisions or tasks
+  • Assistant-raised forks or dependencies
 
-- For implicit questions, convert the statement into a natural question without changing meaning.
-  Example:
-    Input: "We haven't decided on the API shape yet."
-    Question: "What should the API shape be?"
-
-- Classify each question with a resolution type based on the entire daily memory:
-  • "ignore" for questions that are rhetorical, obsolete, duplicates, or already fully answered.
-    Questions classified as "ignore" MUST NOT be included in the returned JSON.
-  • "remind_user" for questions requiring user preference or subjective decision.
-  • "answer_local" for questions likely answerable using today's memory or existing project RAG.
-  • "answer_remote" for factual, technical, or research-driven questions requiring external sources.
+- Convert implicit statements into natural questions without changing meaning.
+- Classification rules:
+  • "ignore": rhetorical, obsolete, duplicates, or already fully answered
+    (ignored questions MUST NOT appear in the JSON)
+  • "remind_user": subjective or preference-based
+  • "answer_local": answerable from existing memory or project RAG
+  • "answer_remote": requires external research
 
 - If no open questions exist, return {{ "questions": [] }}.
+- Return ONLY the JSON object. No extra text.
 
-- Return ONLY the JSON object exactly as shown with no additional explanations.
+7) OUTPUT REQUIREMENTS
+- Return ONLY the formatted output.
+- Do NOT include explanations or commentary.
+- Do NOT add or remove content beyond the rules above.
 
-7) Return ONLY the formatted output. No explanations.
-
-Here is the pruned content:
+Here is the pruned memory content:
 {content}
 """
 

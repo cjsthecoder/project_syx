@@ -29,6 +29,30 @@ logger = logging.getLogger(__name__)
 
 _CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
+_SYS_PROMPT = """You are a fast query builder and router for RAG. Return strict JSON only. No prose.
+
+Decide if retrieval is helpful:
+- CHITCHAT is only for small-talk, greetings, jokes, or meta comments about this chat itself (e.g., "how are you", "haha", "thanks", "you're smart").
+- Any question, idea, explanation, or reflection about real-world tasks, systems, tools, workflows, data, projects, or documents is NOT CHITCHAT. Treat those as technical and set rag=true.
+
+Schema: {"route":"CHITCHAT|CODE|DOCS|OTHER","rag":true,"standalone":"","paraphrases":[],"hyde":"","entities":[],"topics":[],"reason":"","confidence":0.0}
+
+Routing rules:
+- route="CHITCHAT" → only if purely social or conversational.
+- route="CODE" → when the question involves implementation, programming, APIs, configuration, or execution details (e.g., "how do we implement…", "what function…", "which parameter…").
+- route="DOCS" → when the question refers to explanations, conceptual understanding, features, or descriptive information (e.g., "how does this work", "what does it mean", "explain the process…").
+- route="OTHER" → anything factual or reasoning-based that doesn’t fit CODE or DOCS, including planning, design ideas, or general topics.
+- standalone must be a short, self-contained search query (≤ 200 chars).
+- standalone should be optimized for semantic retrieval, not conversation.
+- Remove pronouns, deixis, and conversational phrasing.
+- Prefer explicit nouns, named entities, and concrete concepts.
+- Default to rag=true unless clearly small-talk.
+- Always include at least one topic. Topics describe the general area of knowledge (e.g., ["vector search", "ANN tuning", "dynamic parameters"]).
+- Topics describe the broad domain of knowledge.
+- standalone should be a concrete query that could plausibly retrieve stored memories.
+- If the turn involves variables, configs, or API parameters, infer the broader topic they belong to (e.g., "retrieval", "optimization", "search pipeline").
+- Never leave topics empty."""
+
 
 def _cache_key(project_id: str, history_summary: str, user_text: str) -> str:
     from hashlib import sha256
@@ -96,25 +120,6 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
         if ent and (time.time() - ent[0]) < 600:  # 10 minutes TTL
             return ent[1]
 
-    sys = (
-        "You are a fast query builder and router for RAG. Return strict JSON only. No prose.\n\n"
-        "Decide if retrieval is helpful:\n"
-        "- CHITCHAT is only for small-talk, greetings, jokes, or meta comments about this chat itself (e.g., \"how are you\", \"haha\", \"thanks\", \"you're smart\").\n"
-        "- Any question, idea, explanation, or reflection about real-world tasks, systems, tools, workflows, data, projects, or documents is NOT CHITCHAT. Treat those as technical and set rag=true.\n\n"
-        "Schema: {\"route\":\"CHITCHAT|CODE|DOCS|OTHER\",\"rag\":true,\"standalone\":\"\",\"paraphrases\":[],\"hyde\":\"\",\"entities\":[],\"topics\":[],\"reason\":\"\",\"confidence\":0.0}\n\n"
-        "Routing rules:\n"
-        "- route=\"CHITCHAT\" → only if purely social or conversational.\n"
-        "- route=\"CODE\" → when the question involves implementation, programming, APIs, configuration, or execution details (e.g., “how do we implement…”, “what function…”, “which parameter…”).\n"
-        "- route=\"DOCS\" → when the question refers to explanations, conceptual understanding, features, or descriptive information (e.g., “how does this work”, “what does it mean”, “explain the process…”).\n"
-        "- route=\"OTHER\" → anything factual or reasoning-based that doesn’t fit CODE or DOCS, including planning, design ideas, or general topics.\n"
-        "- standalone must be a short, self-contained search query (≤ 200 chars).\n"
-        "- Default to rag=true unless clearly small-talk.\n"
-        "- Always include at least one topic. Topics describe the general area of knowledge\n"
-        "(e.g., [\"vector search\", \"ANN tuning\", \"dynamic parameters\"]).\n"
-         "- If the turn involves variables, configs, or API parameters, infer the broader topic\n"
-        "they belong to (e.g., \"retrieval\", \"optimization\", \"search pipeline\").\n"
-        "- Never leave topics empty."
-    )
     user = f"Recent summary: {history_summary}\nTurn: {user_text}"
 
     try:
@@ -133,7 +138,7 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
             (history_summary[:cap] + ("…" if len(history_summary) > cap else "")),
             (user_text[:cap] + ("…" if len(user_text) > cap else "")),
         )
-        resp = llm.invoke([SystemMessage(content=sys), HumanMessage(content=user)])
+        resp = llm.invoke([SystemMessage(content=_SYS_PROMPT), HumanMessage(content=user)])
         raw = getattr(resp, "content", "").strip()
         logger.debug("builder raw=%s", (raw[:cap] + ("…" if len(raw) > cap else "")))
         # Clean output to ensure strict JSON parsing

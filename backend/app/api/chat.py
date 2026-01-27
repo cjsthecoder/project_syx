@@ -16,6 +16,7 @@ This module provides the main chat functionality with LangChain integration.
 import logging
 import time
 import uuid
+from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -23,7 +24,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from ..core.models import ChatRequest, ChatResponse, ErrorResponse
 from ..core.llm import generate_chat_response, get_llm_health
 from ..core.memory import get_memory_manager, set_last_context_tokens
-from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id, set_route, clear_route, set_namespace, clear_namespace
+from ..utils.debug_utils import write_debug_file
+from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id, set_route, clear_route, set_namespace, clear_namespace, get_route
 from ..core.rag_manager import _load_route_config
 from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings, get_model_config
@@ -51,6 +53,86 @@ router = APIRouter()
 # Initialize loggers
 request_logger = RequestLogger("chat")
 llm_logger = LLMLogger()
+
+def _estimate_tokens(text: str) -> int:
+    """Best-effort token estimate for debug headers."""
+    try:
+        import tiktoken  # type: ignore
+        enc = tiktoken.get_encoding("cl100k_base")
+        return int(len(enc.encode(text or "")))
+    except Exception:
+        return int(len((text or "").split()))
+
+def _dump_prompt_debug(
+    *,
+    project_id: Optional[str],
+    base_system_prompt: Optional[str],
+    assistant_hint: Optional[str],
+    rag_system_prompt: Optional[str],
+    conversation_history: Optional[list[dict]],
+    user_prompt: Optional[str],
+    model: Optional[str],
+) -> None:
+    """
+    Write a prompt debug snapshot to memory/{project_id}/debug/prompts/.
+    Safe/no-op when project_id is missing or debug files are disabled.
+    """
+    if not project_id:
+        return
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    fname = f"{ts}_{project_id}_query.txt"
+    route = None
+    try:
+        route = get_route()
+    except Exception:
+        route = None
+    rag_used = bool(rag_system_prompt)
+
+    # Build conversation history section
+    hist_lines: list[str] = []
+    if conversation_history:
+        for m in conversation_history:
+            role = (m.get("role") or "").lower()
+            content = (m.get("content") or "")
+            if role == "user":
+                hist_lines.append("USER:")
+                hist_lines.append(content)
+                hist_lines.append("")
+            elif role == "assistant":
+                hist_lines.append("ASSISTANT:")
+                hist_lines.append(content)
+                hist_lines.append("")
+            else:
+                hist_lines.append(f"{role.upper()}:")
+                hist_lines.append(content)
+                hist_lines.append("")
+    hist_text = "\n".join(hist_lines).rstrip() + ("\n" if hist_lines else "")
+
+    body = (
+        f"# timestamp: {ts}\n"
+        + (f"# project_id: {project_id}\n" if project_id else "")
+        + (f"# route: {route}\n" if route else "")
+        + f"# rag: {str(bool(rag_used)).lower()}\n"
+        + (f"# model: {model}\n" if model else "")
+    )
+    # Estimate tokens over the whole formatted dump (best-effort)
+    payload_preview = (
+        "=== SYSTEM ===\n"
+        + (base_system_prompt or "")
+        + "\n\n=== ASSISTANT_HINT ===\n"
+        + (assistant_hint or "")
+        + "\n\n=== SYSTEM (RAG CONTEXT) ===\n"
+        + (rag_system_prompt or "")
+        + "\n\n=== CONVERSATION HISTORY ===\n"
+        + hist_text
+        + "\n=== USER PROMPT ===\n"
+        + (user_prompt or "")
+        + "\n"
+    )
+    body += f"# total_tokens_estimate: {_estimate_tokens(body + payload_preview)}\n\n"
+    body += payload_preview
+
+    write_debug_file(project_id, f"prompts/{fname}", body)
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -297,6 +379,19 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         )
         
         logger.debug(f"Chat: model={request.model or 'default'} message_len={len(request.message)} conv_id={request.conversation_id}")
+        # Prompt debug snapshot (best-effort; no-op unless GENERATE_DEBUG_FILES=true)
+        try:
+            _dump_prompt_debug(
+                project_id=request.project_id,
+                base_system_prompt=base_system_prompt,
+                assistant_hint=assistant_hint,
+                rag_system_prompt=rag_system_prompt,
+                conversation_history=conversation_history,
+                user_prompt=request.message,
+                model=(request.model or settings.model_name),
+            )
+        except Exception:
+            pass
         # Generate response using LangChain
         t_model0 = time.time()
         llm_response = generate_chat_response(
@@ -599,6 +694,19 @@ async def chat_stream(request: ChatRequest):
                 elif m.get("role") == "assistant":
                     msgs.append(AIMessage(content=m.get("content") or ""))
         msgs.append(HumanMessage(content=request.message or ""))
+        # Prompt debug snapshot (best-effort; no-op unless GENERATE_DEBUG_FILES=true)
+        try:
+            _dump_prompt_debug(
+                project_id=request.project_id,
+                base_system_prompt=base_system_prompt,
+                assistant_hint=assistant_hint,
+                rag_system_prompt=rag_system_prompt,
+                conversation_history=conversation_history,
+                user_prompt=(request.message or ""),
+                model=(request.model or settings.model_name),
+            )
+        except Exception:
+            pass
 
         # Initialize streaming LLM client (LangChain 0.2.x native astream)
         # Force temperature to 1.0 for maximum compatibility with small models

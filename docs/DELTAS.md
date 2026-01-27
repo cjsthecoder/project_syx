@@ -150,7 +150,7 @@ No anchor selection or attachment occurs in this delta.
 
 #### Status
 
-Accepted
+Implemented
 
 #### Affected Requirements
 
@@ -222,3 +222,97 @@ Anchors influence tagging input only and MUST NOT alter the stored text written 
 * Anchors follow semantic roll-off order, not conversational order.
 * Anchors are ephemeral and are never persisted as independent memory entries.
 * Anchors are used exclusively to improve tagging quality.
+
+### DELTA-A.4 — Unified RAG Retrieval Pipeline for Daily and LTM
+
+#### Status
+
+Planned
+
+#### Affected Requirements
+
+* FR-2.3-3 — Retrieval Flow
+* FR-2.3.1.7 — Retrieval Order and Context Assembly
+* FR-2.5.3 — Retrieval Logic Update
+
+#### Intent
+
+Unify Daily and LTM retrieval into a single canonical RAG query path so that both sources are queried, ranked, and selected using the same retrieval logic, differing only by source metadata and weighting.
+
+This delta eliminates divergent retrieval behavior and enables consistent ranking, tuning, and telemetry across all memory sources.
+
+---
+
+### A.4.1 — Canonical Retrieval Entry Point
+
+#### Status
+
+Accepted
+
+#### Intent
+
+Introduce a single, canonical retrieval entry point that queries both Daily and LTM memories using identical logic and produces a unified set of ranked retrieval candidates.
+
+This step establishes the foundation for shared ranking, thresholding, and telemetry in later sub-deltas.
+
+#### State
+
+* The system SHALL define a single retrieval function responsible for all RAG memory queries.
+* This function SHALL accept:
+
+  * A normalized query string.
+  * A list of memory sources to query (at minimum: Daily and LTM).
+  * A retrieval configuration object (source-level limits and future ranking/threshold parameters).
+
+#### Retrieval Behavior
+
+* The canonical retrieval function SHALL:
+
+  * Query Daily and LTM memories using the same semantic search mechanism.
+  * Normalize all retrieved results into a single, canonical candidate shape containing:
+
+    * Source identifier (`daily` or `ltm`)
+    * Retrieved text
+    * Associated metadata (tags, timestamp, route, intent, type)
+    * Raw similarity score from the underlying vector search (cosine similarity in the range 0.0–1.0)
+  * Apply no namespace boosts or route-based eligibility pruning at this stage.
+
+* The function SHALL NOT:
+
+  * Apply source-specific branching logic.
+  * Apply ranking or thresholding decisions at this stage.
+  * Apply fallback behavior when no candidates meet a similarity threshold (thresholding does not occur in this step).
+  * Inject retrieved content directly into the model prompt.
+
+#### Source Semantics
+
+* Daily and LTM memories SHALL be treated as equivalent retrieval sources at the API level.
+* Differences between sources (recency, priority, trust) SHALL be expressed only through metadata and scoring adjustments in later steps.
+* For the purposes of unified retrieval, `ltm` SHALL include all content embedded in the project’s main FAISS index, regardless of origin (uploads, sleep summaries, dream artifacts, or other long-lived memory sources).
+* For `daily` candidates, canonical metadata SHALL be sourced authoritatively from `daily.json` (not inferred from embedded text). A stable daily entry identifier MUST exist for each daily vector so candidates can be deterministically joined to `daily.json`.
+* For `ltm` candidates, missing metadata fields are allowed and SHALL be left absent/null. No parsing from retrieved text is performed in this step.
+
+#### Ordering Guarantees
+
+* The canonical retrieval function SHALL preserve:
+
+  * The original retrieval order returned by the underlying vector search for each source.
+  * Source attribution for every retrieved candidate.
+
+* The returned list SHALL be a flat list concatenated as:
+  * Daily candidates first, then LTM candidates.
+  * Per-source order is preserved within each segment.
+* No cross-source ordering or merging SHALL occur in this step beyond the fixed concatenation order above.
+
+#### Output Contract
+
+* The function SHALL return a flat list of retrieval candidates with no filtering beyond source-level query execution limits.
+* An empty result set from one source SHALL NOT block retrieval from other sources.
+* Failure to query one source SHALL degrade gracefully and SHALL NOT abort the overall retrieval operation.
+* On error querying a source, the system SHALL trigger a best-effort rebuild/repair for that source and return an empty candidate set for that source for the current request (no automatic retry within the request).
+
+#### New Invariants
+
+* All RAG retrieval passes through a single code path.
+* Daily and LTM are no longer queried via separate, source-specific logic.
+* Retrieval consistency is guaranteed across memory tiers prior to ranking and selection.

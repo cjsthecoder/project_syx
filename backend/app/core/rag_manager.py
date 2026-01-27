@@ -24,6 +24,7 @@ from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any
 import json
 import logging
+import threading
 
 try:
     # Newer split package
@@ -41,6 +42,7 @@ from .db_models import File as FileRow
 from sqlmodel import select
 
 logger = logging.getLogger(__name__)
+from .similarity import cosine_from_l2_distance
 def _load_route_config() -> Dict[str, Dict[str, Any]]:
     """Load route configuration from backend/app/config/meta_namespaces.json.
     Returns dict keyed by route name with namespaces, rag_k, score_threshold.
@@ -262,6 +264,105 @@ def _cosine_from_l2_dist_sq(d2: float) -> float:
     return max(0.0, min(1.0, 1.0 - (d2 / 2.0)))
 
 
+def canonical_retrieve_candidates(
+    project_id: str,
+    query: str,
+    *,
+    daily_top_k: int,
+    ltm_top_k: int,
+) -> List[Dict[str, Any]]:
+    """
+    DELTA-A.4.1: Canonical retrieval entry point.
+
+    Returns a flat list of candidates concatenated as:
+      - Daily candidates first (preserving Daily vector-search order)
+      - LTM candidates second (preserving LTM vector-search order)
+
+    No thresholding, no boosting, and no route-based eligibility pruning occurs here.
+    Scores are normalized to cosine similarity in [0.0, 1.0].
+
+    On error querying a source, trigger best-effort rebuild/repair (where applicable)
+    and return an empty candidate set for that source for the current request (no retry).
+    """
+    out: List[Dict[str, Any]] = []
+    daily_count = 0
+    ltm_count = 0
+
+    # Daily
+    if daily_top_k > 0:
+        try:
+            from .daily_rag import retrieve_daily_candidates
+
+            daily = retrieve_daily_candidates(project_id, query, int(daily_top_k))
+            daily_count = len(daily)
+            out.extend(daily)
+        except Exception:
+            # Daily implementation already triggers cache rebuild on error; degrade gracefully.
+            pass
+
+    # LTM (main FAISS index)
+    if ltm_top_k > 0:
+        vs = load_faiss_index(project_id)
+        if vs:
+            try:
+                results = vs.similarity_search_with_score(query, k=int(ltm_top_k))
+            except Exception as e:
+                # Best-effort repair: rebuild main index asynchronously (no retry in-request).
+                try:
+                    logger.warning("RAG: LTM candidate search failed project=%s; scheduling rebuild: %s", project_id, e)
+
+                    def _rebuild() -> None:
+                        try:
+                            rebuild_faiss_index(project_id)
+                        except Exception:
+                            pass
+
+                    threading.Thread(target=_rebuild, name=f"ltm-rebuild-{project_id[:8]}", daemon=True).start()
+                except Exception:
+                    pass
+                results = []
+            for doc, dist in results:
+                md = getattr(doc, "metadata", None) or {}
+                cos = cosine_from_l2_distance(dist)
+                out.append(
+                    {
+                        "source": "ltm",
+                        "text": getattr(doc, "page_content", "") or "",
+                        "score": float(cos),
+                        "metadata": {
+                            # Allow missing/absent metadata fields in A.4.1
+                            "timestamp": md.get("timestamp"),
+                            "route": md.get("namespace"),
+                            "tags": None,
+                            "topics": None,
+                            "intent": None,
+                            "type": None,
+                            # Existing main index metadata retained for downstream use/telemetry
+                            "filename": md.get("filename"),
+                            "page_number": md.get("page_number"),
+                            "chunk_id": md.get("chunk_id"),
+                            "namespace": md.get("namespace"),
+                        },
+                    }
+                )
+            ltm_count = len(results)
+
+    try:
+        qprev = (query or "")[:120].replace("\n", " ")
+        logger.debug(
+            "[A.4.1][CANONICAL_RETRIEVE] project_id=%s daily_k=%s ltm_k=%s daily_candidates=%s ltm_candidates=%s query_preview=\"%s\"",
+            project_id,
+            int(daily_top_k),
+            int(ltm_top_k),
+            int(daily_count),
+            int(ltm_count),
+            qprev,
+        )
+    except Exception:
+        pass
+    return out
+
+
 def retrieve_context(
     project_id: str,
     query: str,
@@ -283,50 +384,44 @@ def retrieve_context(
       - hits: list of per-snippet metadata dicts
         (each with snippet, filename, page_number, score)
     """
-    vs = load_faiss_index(project_id)
-    if not vs:
+    # DELTA-A.4.1: all retrieval passes through canonical entry point (LTM-only here).
+    cands = canonical_retrieve_candidates(project_id, query, daily_top_k=0, ltm_top_k=top_k)
+    ltm = [c for c in (cands or []) if (c.get("source") == "ltm")]
+    if not ltm:
         logger.debug(f"RAG: no index available for project '{project_id}', skipping retrieval")
         return {"context_text": "", "snippets": [], "tokens_used": 0}
 
-    try:
-        # similarity_search_with_score returns (Document, distance)
-        results = vs.similarity_search_with_score(query, k=top_k)
-    except Exception:
-        results = []
-    logger.debug(f"RAG: query='{query[:120]}...' top_k={top_k} got {len(results)} results (pre-filter)")
+    logger.debug(f"RAG: query='{query[:120]}...' top_k={top_k} got {len(ltm)} results (pre-filter)")
 
     filtered: List[Tuple[str, dict, float]] = []
     details = []
-    scored: List[Tuple[str, dict, float, float]] = []  # (content, meta, cos, dist)
+    scored: List[Tuple[str, dict, float]] = []  # (content, meta, effective_cos)
     passed_cosines: List[float] = []
     rn_set = set(route_namespaces or [])
     nb = float(namespace_boost or 1.0)
-    for doc, dist in results:
-        # dist is L2 distance; FAISS in LangChain returns distance (not squared) sometimes;
-        # use d^2 approximation for cosine if needed
-        d = float(dist)
-        d2 = d * d
-        # try both interpretations and pick the higher cosine within bounds
-        cos_a = _cosine_from_l2_dist_sq(d2)
-        cos_b = _cosine_from_l2_dist_sq(d) if d >= 0 else 0.0
-        cos = max(min(cos_a, 1.0), min(cos_b, 1.0))
-        # Namespace boost before thresholding
+
+    for c in ltm:
+        content = c.get("text") or ""
+        meta = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
+        # Canonical score is raw cosine; downstream may apply namespace boost for selection.
+        cos = float(c.get("score") or 0.0)
         try:
-            ns = (doc.metadata or {}).get("namespace")
+            ns = meta.get("namespace") or meta.get("route")
             if ns and ns in rn_set and nb > 1.0:
                 cos = min(1.0, cos * nb)
         except Exception:
             pass
         if cos >= score_threshold:
-            filtered.append((doc.page_content, doc.metadata or {}, cos))
+            filtered.append((content, meta, cos))
             passed_cosines.append(cos)
-        scored.append((doc.page_content, doc.metadata or {}, cos, d))
-        details.append({
-            "file": (doc.metadata or {}).get("filename"),
-            "page": (doc.metadata or {}).get("page_number"),
-            "cos": round(cos, 3),
-            "dist": round(d, 4),
-        })
+        scored.append((content, meta, cos))
+        details.append(
+            {
+                "file": meta.get("filename"),
+                "page": meta.get("page_number"),
+                "cos": round(cos, 3),
+            }
+        )
     logger.debug(f"RAG: filtered {len(filtered)} >= threshold {score_threshold}; details={details}")
 
     # Build context respecting token caps
@@ -345,7 +440,7 @@ def retrieve_context(
         # Fallback: if nothing passed threshold, include the best-scoring snippet
         if scored:
             best = sorted(scored, key=lambda t: t[2], reverse=True)[0]
-            content, meta, cos, _ = best
+            content, meta, cos = best
             trimmed = _trim_to_tokens(content, snippet_max_tokens)
             tokens_used = _count_tokens(trimmed)
             header = f"Snippet 1 (fallback, score={cos:.2f}, file={meta.get('filename')}, page={meta.get('page_number')})\n"
@@ -428,37 +523,79 @@ def merge_daily_and_main(
     """Retrieve from daily and main, apply weights/dedupe/budgets, return labeled context.
     Returns dict with keys: context_text, tokens_used.
     """
-    from .daily_rag import retrieve_daily
     logger.debug(
         "DailyRAG: starting merged retrieval project=%s main_k=%s daily_k=%s thresholds(main=%.3f,daily=%.3f)", 
         project_id, main_top_k, daily_top_k, main_threshold, daily_threshold
     )
-    # main
-    main = retrieve_context(
-        project_id,
-        query,
-        main_top_k,
-        main_snippet_max_tokens,
-        main_threshold,
-        global_context_max_tokens,
-        route_namespaces=route_namespaces,
-        namespace_boost=namespace_boost,
-    )
-    main_snips = main.get("snippets", [])
-    main_hits = int(main.get("hit_count", 0))
-    main_avg = float(main.get("hit_avg", 0.0))
-    # daily
-    daily_results = retrieve_daily(project_id, query, daily_top_k, daily_threshold)
-    logger.debug("DailyRAG: daily results pre-cap=%s", len(daily_results))
-    daily_hits = int(len(daily_results))
-    daily_avg = float(sum(s for _, s, _ in daily_results)/daily_hits) if daily_hits else 0.0
+    # DELTA-A.4.1: retrieval via canonical entry point (raw candidates; no thresholding/boosting here)
+    cands = canonical_retrieve_candidates(project_id, query, daily_top_k=daily_top_k, ltm_top_k=main_top_k)
+    daily_cands = [c for c in (cands or []) if c.get("source") == "daily"]
+    main_cands = [c for c in (cands or []) if c.get("source") == "ltm"]
+
+    # Apply legacy thresholding/boosting downstream (preserve current behavior).
+    rn_set = set(route_namespaces or [])
+    nb = float(namespace_boost or 1.0)
+
+    # main: apply namespace boost BEFORE thresholding (legacy behavior)
+    main_passed: List[Tuple[str, dict, float]] = []
+    main_scored: List[Tuple[str, dict, float]] = []
+    main_passed_scores: List[float] = []
+    for c in main_cands:
+        content = c.get("text") or ""
+        meta = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
+        raw = float(c.get("score") or 0.0)
+        eff = raw
+        try:
+            ns = meta.get("namespace") or meta.get("route")
+            if ns and ns in rn_set and nb > 1.0:
+                eff = min(1.0, eff * nb)
+        except Exception:
+            pass
+        main_scored.append((content, meta, eff))
+        if eff >= main_threshold:
+            main_passed.append((content, meta, eff))
+            main_passed_scores.append(eff)
+
+    main_hits = int(len(main_passed_scores))
+    main_avg = float(sum(main_passed_scores) / main_hits) if main_hits else 0.0
+
+    # Build main snippets (with headers) within global token cap, matching retrieve_context style.
+    tokens_used_main = 0
+    main_snips: List[str] = []
+    for i, (content, meta, score) in enumerate(main_passed):
+        trimmed = _trim_to_tokens(content, main_snippet_max_tokens)
+        t = _count_tokens(trimmed)
+        if tokens_used_main + t > global_context_max_tokens:
+            break
+        header = f"Snippet {i+1} (score={score:.2f}, file={meta.get('filename')}, page={meta.get('page_number')})\n"
+        main_snips.append(header + trimmed)
+        tokens_used_main += t
+    if not main_snips and main_scored:
+        # Legacy fallback: include best snippet even if below threshold
+        content, meta, score = sorted(main_scored, key=lambda t: t[2], reverse=True)[0]
+        trimmed = _trim_to_tokens(content, main_snippet_max_tokens)
+        header = f"Snippet 1 (fallback, score={score:.2f}, file={meta.get('filename')}, page={meta.get('page_number')})\n"
+        main_snips = [header + trimmed]
+
+    # daily: legacy thresholding is applied on raw cosine (no boost)
+    daily_passed = [c for c in daily_cands if float(c.get("score") or 0.0) >= float(daily_threshold)]
+    logger.debug("DailyRAG: daily results pre-cap=%s", len(daily_passed))
+    daily_hits = int(len(daily_passed))
+    daily_avg = float(sum(float(c.get("score") or 0.0) for c in daily_passed) / daily_hits) if daily_hits else 0.0
     # build daily text chunks within daily_max_tokens
     tokens_used_daily = 0
     daily_texts: List[str] = []
-    rn_set = set(route_namespaces or [])
-    nb = float(namespace_boost or 1.0)
-    for text, score, ns in daily_results:
-        # apply namespace boost before token cap and weighting
+    for c in daily_passed:
+        text = c.get("text") or ""
+        score = float(c.get("score") or 0.0)
+        ns = None
+        try:
+            md = c.get("metadata") or {}
+            if isinstance(md, dict):
+                ns = md.get("route") or md.get("namespace")
+        except Exception:
+            ns = None
+        # apply namespace boost before token cap and weighting (legacy behavior; does not affect inclusion)
         try:
             if ns and ns in rn_set and nb > 1.0:
                 score = min(1.0, score * nb)

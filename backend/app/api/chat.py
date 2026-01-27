@@ -54,6 +54,20 @@ router = APIRouter()
 request_logger = RequestLogger("chat")
 llm_logger = LLMLogger()
 
+RAG_SYSTEM_PROMPT = """Each retrieved snippet includes a similarity score in the range [0.0–1.0].
+The similarity score reflects semantic closeness to the query, not factual correctness.
+
+Guidance for use:
+- Higher scores indicate stronger semantic relevance to the current query.
+- Prefer high-scoring snippets when making factual claims or direct assertions.
+- Lower-scoring snippets may be used for background, framing, or creative inspiration.
+- Do not treat lower-scoring snippets as authoritative unless supported by higher-scoring context.
+
+When multiple snippets conflict:
+- Favor information from higher-scoring snippets.
+- If only lower-scoring snippets are available, respond cautiously and note uncertainty.
+"""
+
 def _estimate_tokens(text: str) -> int:
     """Best-effort token estimate for debug headers."""
     try:
@@ -354,6 +368,15 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                         logger.debug(f"Chat: injecting merged context tokens={rc.get('tokens_used')}")
                     else:
                         logger.debug("Chat: no merged RAG context injected (empty)")
+        # If we have retrieved context, inject RAG guidance into the base system prompt
+        if rag_system_prompt:
+            try:
+                if base_system_prompt:
+                    base_system_prompt = (base_system_prompt.rstrip() + "\n\n" + RAG_SYSTEM_PROMPT.strip() + "\n")
+                else:
+                    base_system_prompt = (RAG_SYSTEM_PROMPT.strip() + "\n")
+            except Exception:
+                pass
         # Enforce model whitelist if override provided
         if request.model:
             try:
@@ -643,6 +666,15 @@ async def chat_stream(request: ChatRequest):
                     )
                     if rc.get("context_text"):
                         rag_system_prompt = rc["context_text"]
+        # If we have retrieved context, inject RAG guidance into the base system prompt
+        if rag_system_prompt:
+            try:
+                if base_system_prompt:
+                    base_system_prompt = (base_system_prompt.rstrip() + "\n\n" + RAG_SYSTEM_PROMPT.strip() + "\n")
+                else:
+                    base_system_prompt = (RAG_SYSTEM_PROMPT.strip() + "\n")
+            except Exception:
+                pass
         # Persist user immediately
         if request.project_id:
             try:

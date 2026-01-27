@@ -223,18 +223,25 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                 )
 
                 # Append to dream_summary.txt using daily.txt-like format
+                _BEGIN_DREAM_PAIR = "=== BEGIN DREAM PAIR ==="
+                _END_DREAM_PAIR = "=== END DREAM PAIR ==="
                 ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())
                 keep_flag = bool(it.get("keep"))
+                tags_block = ("\n".join(tags_lines) + "\n") if tags_lines else ""
                 block = (
+                    f"{_BEGIN_DREAM_PAIR}\n"
                     f"#timestamp: {ts_local}\n"
                     f"#route: general\n"
                     f"#keep: {str(keep_flag).lower()}\n"
+                    f"{tags_block}"
                     f"\n"
                     f"--- USER (data-message-author-role: user) ---\n"
                     f"{origin_text}\n"
                     f"\n"
                     f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
                     f"{assistant_resp_full}\n"
+                    f"\n"
+                    f"{_END_DREAM_PAIR}\n"
                     f"\n"
                 )
                 with FileLock(summary_lock_path):

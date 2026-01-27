@@ -22,6 +22,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
 from .config import get_settings
+from .similarity import cosine_from_l2_distance
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,9 @@ class _DailyCache:
     """Per-project in-memory Daily FAISS cache state."""
     embedding_model: str
     vs: Optional[FAISS]  # None means empty (no vectors yet)
+    # Canonical daily.json snapshot keyed by stable entry id.
+    # Used to join retrieval hits (via metadata daily_entry_id) back to authoritative metadata.
+    meta_by_id: Dict[str, Dict[str, Any]]
 
 
 _CACHE: Dict[str, _DailyCache] = {}
@@ -190,16 +194,27 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
         try:
             texts: List[str] = []
             metas: List[dict] = []
+            meta_by_id: Dict[str, Dict[str, Any]] = {}
             for e in entries:
                 t = e.get("embed_text") or e.get("text")
                 if not isinstance(t, str) or not t.strip():
                     continue
                 ns = (e.get("namespace") or "general")
+                eid = e.get("id")
+                if isinstance(eid, str) and eid.strip():
+                    meta_by_id[eid] = e
                 texts.append(t)
-                metas.append({"source": "daily", "namespace": str(ns).lower()})
+                metas.append(
+                    {
+                        "source": "daily",
+                        "namespace": str(ns).lower(),
+                        "daily_entry_id": str(eid) if eid is not None else None,
+                        "day_sequence": e.get("day_sequence"),
+                    }
+                )
             if not texts:
                 with _CACHE_LOCK:
-                    _CACHE[project_id] = _DailyCache(embedding_model=runtime_model, vs=None)
+                    _CACHE[project_id] = _DailyCache(embedding_model=runtime_model, vs=None, meta_by_id={})
                 logger.debug("DailyRAG: rebuilt empty in-memory cache project=%s (reason=%s)", project_id, reason)
                 return True
             embeddings = OpenAIEmbeddings(model=runtime_model, api_key=settings.openai_api_key)
@@ -208,7 +223,7 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
             except TypeError:
                 vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metas)
             with _CACHE_LOCK:
-                _CACHE[project_id] = _DailyCache(embedding_model=runtime_model, vs=vs)
+                _CACHE[project_id] = _DailyCache(embedding_model=runtime_model, vs=vs, meta_by_id=meta_by_id)
             logger.info("DailyRAG: rebuilt in-memory cache project=%s vectors=%s (reason=%s)", project_id, len(texts), reason)
             return True
         except Exception as be:
@@ -355,20 +370,31 @@ def append_pair(
                     vs = FAISS.from_texts(
                         texts=[text_for_embed],
                         embedding=embeddings,
-                        metadatas=[{"source": "daily", "namespace": ns}],
+                        metadatas=[{"source": "daily", "namespace": ns, "daily_entry_id": entry.get("id"), "day_sequence": entry.get("day_sequence")}],
                         normalize_L2=True,
                     )
                 except TypeError:
                     vs = FAISS.from_texts(
                         texts=[text_for_embed],
                         embedding=embeddings,
-                        metadatas=[{"source": "daily", "namespace": ns}],
+                        metadatas=[{"source": "daily", "namespace": ns, "daily_entry_id": entry.get("id"), "day_sequence": entry.get("day_sequence")}],
                     )
                 with _CACHE_LOCK:
-                    _CACHE[project_id] = _DailyCache(embedding_model=settings.embedding_model, vs=vs)
+                    _CACHE[project_id] = _DailyCache(
+                        embedding_model=settings.embedding_model,
+                        vs=vs,
+                        meta_by_id={str(entry.get("id")): entry} if entry.get("id") else {},
+                    )
                 return True
             # Normal path: incremental add
-            cache.vs.add_texts([text_for_embed], metadatas=[{"source": "daily", "namespace": ns}])
+            cache.vs.add_texts([text_for_embed], metadatas=[{"source": "daily", "namespace": ns, "daily_entry_id": entry.get("id"), "day_sequence": entry.get("day_sequence")}])
+            # Update in-memory authoritative mapping for deterministic joins
+            try:
+                eid2 = entry.get("id")
+                if eid2:
+                    cache.meta_by_id[str(eid2)] = entry
+            except Exception:
+                pass
             return True
     except Exception as e:
         logger.error("DailyRAG: in-memory add failed project=%s: %s", project_id, e)
@@ -473,6 +499,80 @@ def retrieve_daily(project_id: str, query: str, top_k: int, score_threshold: flo
             scored.append((doc.page_content, cos, ns))
     scored.sort(key=lambda t: t[1], reverse=True)
     return scored[:top_k]
+
+
+def retrieve_daily_candidates(project_id: str, query: str, top_k: int) -> List[Dict[str, Any]]:
+    """
+    DELTA-A.4.1: Canonical Daily retrieval candidates (raw top-K, no thresholding, no boosting).
+
+    Returns a list of candidate dicts in the same order returned by the underlying vector search.
+    Each candidate includes authoritative metadata sourced from daily.json via the in-memory cache's
+    `meta_by_id` mapping, keyed by stable `daily_entry_id`.
+    """
+    if top_k <= 0:
+        return []
+    settings = get_settings()
+    # Warm lazily on first use for a project (non-blocking; return empty for this request).
+    with _CACHE_LOCK:
+        cache = _CACHE.get(project_id)
+    if cache is None:
+        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_warm")
+        return []
+    with _CACHE_LOCK:
+        cache = _CACHE.get(project_id)
+    if cache is None or cache.vs is None:
+        return []
+    # If runtime model changed vs cache, rebuild but do not retry this request (return empty).
+    if cache.embedding_model != settings.embedding_model:
+        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_model_mismatch")
+        return []
+    try:
+        results = cache.vs.similarity_search_with_score(query, k=top_k)
+    except Exception as e:
+        logger.warning("DailyRAG: candidate retrieve failed project=%s: %s", project_id, e)
+        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_exception")
+        return []
+
+    out: List[Dict[str, Any]] = []
+    for doc, dist in results:
+        cos = cosine_from_l2_distance(dist)
+        md = getattr(doc, "metadata", None) or {}
+        eid = md.get("daily_entry_id")
+        entry = None
+        try:
+            if eid is not None:
+                entry = cache.meta_by_id.get(str(eid))
+        except Exception:
+            entry = None
+        # Authoritative metadata from daily.json when available; otherwise best-effort from doc metadata.
+        created_at = (entry.get("created_at") if isinstance(entry, dict) else None)
+        route = (entry.get("namespace") if isinstance(entry, dict) else md.get("namespace"))
+        tags_meta = (entry.get("tags_meta") if isinstance(entry, dict) else None)
+        topics = (tags_meta.get("topics") if isinstance(tags_meta, dict) else None)
+        intent = (tags_meta.get("intent") if isinstance(tags_meta, dict) else None)
+        tag_type = (tags_meta.get("type") if isinstance(tags_meta, dict) else None)
+        out.append(
+            {
+                "source": "daily",
+                "text": getattr(doc, "page_content", "") or "",
+                "score": float(cos),
+                "metadata": {
+                    "id": str(eid) if eid is not None else None,
+                    "timestamp": created_at,
+                    "route": (str(route).lower() if isinstance(route, str) else route),
+                    "tags": (entry.get("tags") if isinstance(entry, dict) else None),
+                    "topics": topics,
+                    "intent": intent,
+                    "type": tag_type,
+                    "tags_meta": tags_meta,
+                    "keep": (entry.get("keep") if isinstance(entry, dict) else None),
+                    "day_sequence": (entry.get("day_sequence") if isinstance(entry, dict) else md.get("day_sequence")),
+                    "pair_ids": (entry.get("pair_ids") if isinstance(entry, dict) else None),
+                    "source": (entry.get("source") if isinstance(entry, dict) else "daily"),
+                },
+            }
+        )
+    return out
 
 
 def daily_stats(project_id: str) -> Dict[str, int]:

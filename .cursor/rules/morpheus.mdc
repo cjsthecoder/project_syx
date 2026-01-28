@@ -39,6 +39,7 @@ This project implements a modular chatbot and memory system with:
 - Always read **both** REQUIREMENTS.md and DELTAS.md before making changes.
 - If they conflict, DELTAS.md wins.
 - If neither mentions the topic, stop and ask.
+- Do not commit code to git, without being told to specifically.
 
 ## Architecture Constraints
 

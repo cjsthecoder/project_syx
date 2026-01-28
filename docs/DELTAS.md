@@ -316,3 +316,78 @@ This step establishes the foundation for shared ranking, thresholding, and telem
 * All RAG retrieval passes through a single code path.
 * Daily and LTM are no longer queried via separate, source-specific logic.
 * Retrieval consistency is guaranteed across memory tiers prior to ranking and selection.
+
+
+### DELTA-A.4.2 — Deterministic Candidate Ordering by Similarity Score
+
+#### Status
+
+Accepted
+
+#### Affected Requirements
+
+* FR-2.3-3 — Retrieval Flow
+* FR-2.3.1.4 — Metadata-Aware Reranking
+* FR-2.3.1.7 — Retrieval Order and Context Assembly
+* FR-2.5.3 — Retrieval Logic Update
+* FR-2.5.4 — Namespace Boosting
+
+#### Intent
+
+Make retrieval relevance explicit and deterministic by ordering all retrieved RAG candidates by similarity score prior to any selection, truncation, or prompt assembly.
+
+This step stabilizes behavior, removes accidental ordering bias, and prepares the pipeline for later pruning and token-budget decisions.
+
+#### Scope
+
+This requirement applies to **all RAG retrieval sources**, including:
+
+* Daily memory retrieval
+* Long-term memory (LTM) retrieval
+* Any future memory sources introduced into the unified retrieval pipeline
+
+#### Ordering Rule
+
+* The system SHALL sort retrieved candidates in **descending order of similarity score** before context assembly.
+* Ordering MUST be purely numeric and deterministic, using the canonical raw cosine similarity score (0.0–1.0) produced at the canonical retrieval boundary (no boosts/weights applied in A.4.2).
+* Sorting uses full-precision floating point values (no rounding/normalization in A.4.2).
+* No semantic inference, re-ranking, or model-based judgment is permitted at this stage.
+* No candidates SHALL be dropped or filtered as part of A.4.2.
+
+#### Tie Handling
+
+* When two or more candidates have identical similarity scores, the system SHALL use a stable sort (preserve the original pre-sort candidate order; no additional tie-breaker is introduced in A.4.2).
+
+#### Source Interaction
+
+* A.4.2 does not define cross-source prioritization rules.
+* A.4.2 supersedes A.4.1’s fixed per-source concatenation ordering by introducing a single global sort across all retrieved candidates (Daily and LTM may interleave purely by score).
+* Daily vs. LTM preference, recency bias, or source weighting is explicitly deferred to later requirements (e.g., A.4.3).
+
+#### Architectural Constraints
+
+To prevent further entanglement of retrieval logic:
+
+* Candidate retrieval, ordering, selection, and prompt assembly MUST be implemented as separate, single-responsibility stages.
+* Ordering logic MUST be isolated in its own function or module.
+* Retrieval-stage code MUST NOT:
+
+  * Perform prompt formatting
+  * Enforce token budgets
+  * Apply selection or thresholding rules
+
+Conversely:
+
+* Prompt assembly code MUST NOT modify retrieval ordering or selection decisions.
+
+#### Invariants
+
+* Higher similarity score always implies earlier presentation to the model.
+* Ordering behavior MUST be reproducible across identical inputs.
+* The model MUST NOT be relied upon to infer relevance ordering from unsorted context.
+
+#### Rationale
+
+LLMs are position-sensitive. Presenting higher-relevance snippets earlier improves consistency, reduces anchoring errors, and makes future pruning behavior safe and explainable.
+
+A.4.2 introduces no new intelligence; it encodes explicit policy for attention ordering.

@@ -43,6 +43,7 @@ from sqlmodel import select
 
 logger = logging.getLogger(__name__)
 from .similarity import cosine_from_l2_distance
+from .retrieval_ordering import order_candidates_by_similarity_score
 def _load_route_config() -> Dict[str, Dict[str, Any]]:
     """Load route configuration from backend/app/config/meta_namespaces.json.
     Returns dict keyed by route name with namespaces, rag_k, score_threshold.
@@ -385,8 +386,10 @@ def retrieve_context(
         (each with snippet, filename, page_number, score)
     """
     # DELTA-A.4.1: all retrieval passes through canonical entry point (LTM-only here).
+    # DELTA-A.4.2: order candidates by raw similarity score before selection and assembly.
     cands = canonical_retrieve_candidates(project_id, query, daily_top_k=0, ltm_top_k=top_k)
     ltm = [c for c in (cands or []) if (c.get("source") == "ltm")]
+    ltm = order_candidates_by_similarity_score(ltm)
     if not ltm:
         logger.debug(f"RAG: no index available for project '{project_id}', skipping retrieval")
         return {"context_text": "", "snippets": [], "tokens_used": 0}
@@ -404,7 +407,8 @@ def retrieve_context(
         content = c.get("text") or ""
         meta = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
         # Canonical score is raw cosine; downstream may apply namespace boost for selection.
-        cos = float(c.get("score") or 0.0)
+        raw_cos = float(c.get("score") or 0.0)
+        cos = raw_cos
         try:
             ns = meta.get("namespace") or meta.get("route")
             if ns and ns in rn_set and nb > 1.0:
@@ -419,7 +423,7 @@ def retrieve_context(
             {
                 "file": meta.get("filename"),
                 "page": meta.get("page_number"),
-                "cos": round(cos, 3),
+                "cos": round(raw_cos, 3),
             }
         )
     logger.debug(f"RAG: filtered {len(filtered)} >= threshold {score_threshold}; details={details}")
@@ -520,190 +524,152 @@ def merge_daily_and_main(
     route_namespaces: Optional[List[str]] = None,
     namespace_boost: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """Retrieve from daily and main, apply weights/dedupe/budgets, return labeled context.
-    Returns dict with keys: context_text, tokens_used.
+    """Retrieve from daily and main, apply selection/dedupe/budgets, return context.
+
+    DELTA-A.4.2: candidate ordering is by raw similarity score across all sources
+    before any selection/truncation/prompt assembly.
     """
     logger.debug(
         "DailyRAG: starting merged retrieval project=%s main_k=%s daily_k=%s thresholds(main=%.3f,daily=%.3f)", 
         project_id, main_top_k, daily_top_k, main_threshold, daily_threshold
     )
-    # DELTA-A.4.1: retrieval via canonical entry point (raw candidates; no thresholding/boosting here)
+    # DELTA-A.4.1: retrieval via canonical entry point (raw candidates; no thresholding/boosting here).
     cands = canonical_retrieve_candidates(project_id, query, daily_top_k=daily_top_k, ltm_top_k=main_top_k)
-    daily_cands = [c for c in (cands or []) if c.get("source") == "daily"]
-    main_cands = [c for c in (cands or []) if c.get("source") == "ltm"]
+    # DELTA-A.4.2: global ordering by raw similarity score (stable; ties preserve pre-sort order).
+    ordered = order_candidates_by_similarity_score(list(cands or []))
 
     # Apply legacy thresholding/boosting downstream (preserve current behavior).
     rn_set = set(route_namespaces or [])
     nb = float(namespace_boost or 1.0)
 
-    # main: apply namespace boost BEFORE thresholding (legacy behavior)
-    main_passed: List[Tuple[str, dict, float]] = []
-    main_scored: List[Tuple[str, dict, float]] = []
+    # Selection stage (thresholding happens AFTER ordering).
     main_passed_scores: List[float] = []
-    for c in main_cands:
-        content = c.get("text") or ""
-        meta = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
+    daily_passed_scores: List[float] = []
+    selected: List[Dict[str, Any]] = []
+
+    for c in ordered:
+        src = c.get("source")
         raw = float(c.get("score") or 0.0)
-        eff = raw
-        try:
-            ns = meta.get("namespace") or meta.get("route")
-            if ns and ns in rn_set and nb > 1.0:
-                eff = min(1.0, eff * nb)
-        except Exception:
-            pass
-        main_scored.append((content, meta, eff))
-        if eff >= main_threshold:
-            main_passed.append((content, meta, eff))
-            main_passed_scores.append(eff)
+        md = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
+        if src == "daily":
+            if raw >= float(daily_threshold):
+                selected.append(c)
+                daily_passed_scores.append(raw)
+        elif src == "ltm":
+            eff = raw
+            try:
+                ns = md.get("namespace") or md.get("route")
+                if ns and ns in rn_set and nb > 1.0:
+                    eff = min(1.0, eff * nb)
+            except Exception:
+                pass
+            if eff >= float(main_threshold):
+                selected.append(c)
+                main_passed_scores.append(eff)
 
     main_hits = int(len(main_passed_scores))
+    daily_hits = int(len(daily_passed_scores))
     main_avg = float(sum(main_passed_scores) / main_hits) if main_hits else 0.0
+    daily_avg = float(sum(daily_passed_scores) / daily_hits) if daily_hits else 0.0
 
-    # Build main snippets (with headers) within global token cap, matching retrieve_context style.
-    tokens_used_main = 0
-    main_snips: List[str] = []
-    for i, (content, meta, score) in enumerate(main_passed):
-        trimmed = _trim_to_tokens(content, main_snippet_max_tokens)
-        t = _count_tokens(trimmed)
-        if tokens_used_main + t > global_context_max_tokens:
-            break
-        header = f"Snippet {i+1} (score={score:.2f}, file={meta.get('filename')}, page={meta.get('page_number')})\n"
-        main_snips.append(header + trimmed)
-        tokens_used_main += t
-    if not main_snips and main_scored:
-        # Legacy fallback: include best snippet even if below threshold
-        content, meta, score = sorted(main_scored, key=lambda t: t[2], reverse=True)[0]
-        trimmed = _trim_to_tokens(content, main_snippet_max_tokens)
-        header = f"Snippet 1 (fallback, score={score:.2f}, file={meta.get('filename')}, page={meta.get('page_number')})\n"
-        main_snips = [header + trimmed]
+    # Legacy fallback: if nothing passed thresholds, include the top candidate by raw score.
+    fallback_used = False
+    if not selected and ordered:
+        selected = [ordered[0]]
+        fallback_used = True
 
-    # daily: legacy thresholding is applied on raw cosine (no boost)
-    daily_passed = [c for c in daily_cands if float(c.get("score") or 0.0) >= float(daily_threshold)]
-    logger.debug("DailyRAG: daily results pre-cap=%s", len(daily_passed))
-    daily_hits = int(len(daily_passed))
-    daily_avg = float(sum(float(c.get("score") or 0.0) for c in daily_passed) / daily_hits) if daily_hits else 0.0
-    # build daily text chunks within daily_max_tokens
-    tokens_used_daily = 0
-    daily_texts: List[str] = []
-    for c in daily_passed:
-        text = c.get("text") or ""
-        score = float(c.get("score") or 0.0)
-        ns = None
-        try:
-            md = c.get("metadata") or {}
-            if isinstance(md, dict):
-                ns = md.get("route") or md.get("namespace")
-        except Exception:
-            ns = None
-        # apply namespace boost before token cap and weighting (legacy behavior; does not affect inclusion)
-        try:
-            if ns and ns in rn_set and nb > 1.0:
-                score = min(1.0, score * nb)
-        except Exception:
-            pass
-        trimmed = _trim_to_tokens(text, main_snippet_max_tokens)
-        t = _count_tokens(trimmed)
-        if tokens_used_daily + t > daily_max_tokens:
-            break
-        daily_texts.append(trimmed)
-        tokens_used_daily += t
-    logger.debug("DailyRAG: daily included=%s tokens=%s", len(daily_texts), tokens_used_daily)
-    # dedupe (exact, and optionally near-duplicate)
-    daily_before_exact = len(daily_texts)
-    main_before_exact = len(main_snips)
-    def _hash(s: str) -> str:
-        return s.strip()
-    merged_daily = []
+    # Prepare rendered candidate texts (trimmed) in score order for dedupe/budget/assembly.
+    rendered: List[Tuple[Dict[str, Any], str]] = []
+    for c in selected:
+        txt = c.get("text") or ""
+        trimmed = _trim_to_tokens(txt, main_snippet_max_tokens)
+        rendered.append((c, trimmed))
+
+    # Dedupe stage (stable; preserves ordering by score).
+    exact_removed = 0
+    near_removed = 0
+    kept: List[Tuple[Dict[str, Any], str]] = []
     seen_hashes = set()
-    for s in daily_texts:
-        h = _hash(s)
-        if dedupe_exact and h in seen_hashes:
-            continue
-        seen_hashes.add(h)
-        merged_daily.append(s)
-    merged_main = []
-    for s in main_snips:
-        h = _hash(s)
-        if dedupe_exact and h in seen_hashes:
-            continue
-        merged_main.append(s)
-        seen_hashes.add(h)
-    exact_removed = (daily_before_exact + main_before_exact) - 0  # will adjust after building merged_* lists
-    if dedupe_near:
-        def sig(text: str) -> set:
-            toks = (text or "").lower().split()
-            return set(toks)
-        def jaccard(a: set, b: set) -> float:
-            if not a or not b:
-                return 0.0
-            return len(a & b) / len(a | b)
-        kept_daily = []
-        sigs = []
-        for s in merged_daily:
-            sa = sig(s)
-            if any(jaccard(sa, sb) >= dedupe_similarity_threshold for sb in sigs):
-                continue
-            kept_daily.append(s)
-            sigs.append(sa)
-        merged_daily = kept_daily
-        kept_main = []
-        for s in merged_main:
-            sa = sig(s)
-            if any(jaccard(sa, sb) >= dedupe_similarity_threshold for sb in sigs):
-                continue
-            kept_main.append(s)
-            sigs.append(sa)
-        merged_main = kept_main
-        # compute removals
-    exact_removed = (daily_before_exact + main_before_exact) - (len(merged_daily) + len(merged_main))
-    before_near_total = len(merged_daily) + len(merged_main)
-    # after near stage, merged_* already updated
-    near_removed = max(0, before_near_total - (len(merged_daily) + len(merged_main)))
-    # simple topic and namespace boosting via ordering (no metadata docstore available here)
-    def _boost_score(text: str) -> float:
-        score = 1.0
-        if topics:
-            for t in topics:
-                if t and (t.lower() in (text or "").lower()):
-                    score *= (topic_boost or 1.0)
-                    break
-        # namespace heuristic removed in V2.5 (route-based boosting now applied earlier)
-        return score
+    seen_sigs: List[set] = []
 
-    merged_main.sort(key=lambda s: _boost_score(s), reverse=True)
-    merged_daily.sort(key=lambda s: _boost_score(s), reverse=True)
+    def _hash(s: str) -> str:
+        return (s or "").strip()
 
-    # assemble labeled context respecting global cap
+    def sig(text: str) -> set:
+        toks = (text or "").lower().split()
+        return set(toks)
+
+    def jaccard(a: set, b: set) -> float:
+        if not a or not b:
+            return 0.0
+        return len(a & b) / len(a | b)
+
+    for c, txt in rendered:
+        h = _hash(txt)
+        if dedupe_exact and h in seen_hashes:
+            exact_removed += 1
+            continue
+        # Near-dup check against already-kept (stable; no cross-source preference here per A.4.2 invariant).
+        if dedupe_near:
+            sa = sig(txt)
+            if any(jaccard(sa, sb) >= dedupe_similarity_threshold for sb in seen_sigs):
+                near_removed += 1
+                continue
+        kept.append((c, txt))
+        seen_hashes.add(h)
+        if dedupe_near:
+            seen_sigs.append(sig(txt))
+
+    # Budgeting + prompt assembly stage (after ordering + selection).
+    tokens_used_total = 0
+    tokens_used_daily = 0
     pieces: List[str] = []
-    tokens_used = 0
-    if merged_daily:
-        daily_block = "Context (Daily):\n---\n" + "\n\n---\n".join(merged_daily)
-        td = _count_tokens(daily_block)
-        if tokens_used + td <= global_context_max_tokens:
-            pieces.append(daily_block)
-            tokens_used += td
-    if merged_main and tokens_used < global_context_max_tokens:
-        main_block = "Context (Main):\n---\n" + "\n\n---\n".join(merged_main)
-        tm = _count_tokens(main_block)
-        if tokens_used + tm > global_context_max_tokens:
-            # trim main block to fit
-            remain = global_context_max_tokens - tokens_used
-            main_block = _trim_to_tokens(main_block, remain)
-            tm = _count_tokens(main_block)
-        pieces.append(main_block)
-        tokens_used += tm
-    context_text = "\n\n".join(pieces) if pieces else ""
-    logger.debug("DailyRAG: merged context tokens=%s blocks(daily=%s,main=%s)", tokens_used, 1 if merged_daily else 0, 1 if merged_main else 0)
-    # Also return the selected texts for optional telemetry events
+    daily_texts: List[str] = []
+    main_texts: List[str] = []
+
+    for idx, (c, txt) in enumerate(kept):
+        src = c.get("source") or "unknown"
+        score = float(c.get("score") or 0.0)
+        md = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
+
+        # Enforce daily_max_tokens cap for daily source (legacy constraint).
+        t = _count_tokens(txt)
+        if src == "daily":
+            if tokens_used_daily + t > int(daily_max_tokens):
+                continue
+            tokens_used_daily += t
+            daily_texts.append(txt)
+        else:
+            main_texts.append(txt)
+
+        if tokens_used_total + t > int(global_context_max_tokens):
+            break
+        tokens_used_total += t
+
+        # Candidate header (keeps ordering explicit; score is raw cosine).
+        if src == "ltm":
+            header = f"Snippet {idx+1} (source=ltm, score={score:.2f}, file={md.get('filename')}, page={md.get('page_number')})\n"
+        else:
+            header = f"Snippet {idx+1} (source=daily, score={score:.2f}, route={md.get('route')})\n"
+        pieces.append(header + txt)
+
+    context_text = ("Context:\n---\n" + "\n\n---\n".join(pieces)) if pieces else ""
+    logger.debug(
+        "DailyRAG: merged context tokens=%s snippets=%s (fallback=%s)",
+        tokens_used_total,
+        len(pieces),
+        str(bool(fallback_used)).lower(),
+    )
+
     return {
         "context_text": context_text,
-        "tokens_used": tokens_used,
-        "daily_texts": merged_daily,
-        "main_texts": merged_main,
-        "main_hits": main_hits,
-        "main_avg": main_avg,
-        "daily_hits": daily_hits,
-        "daily_avg": daily_avg,
+        "tokens_used": int(tokens_used_total),
+        "daily_texts": daily_texts,
+        "main_texts": main_texts,
+        "main_hits": int(main_hits),
+        "main_avg": float(main_avg),
+        "daily_hits": int(daily_hits),
+        "daily_avg": float(daily_avg),
         "total_hits": int(main_hits + daily_hits),
         "dedupe_exact_removed": int(max(0, exact_removed)),
         "dedupe_near_removed": int(max(0, near_removed)),

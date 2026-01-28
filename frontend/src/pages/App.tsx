@@ -45,8 +45,8 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [ragBuilding, setRagBuilding] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [model, setModel] = useState('gpt-5.1')
-  const [models, setModels] = useState<ModelItem[]>(['gpt-5.1'])
+  const [model, setModel] = useState('gpt-5.2')
+  const [models, setModels] = useState<ModelItem[]>(['gpt-5.2'])
 
   // V2.1 UI state
   const [showCreateModal, setShowCreateModal] = useState(false)

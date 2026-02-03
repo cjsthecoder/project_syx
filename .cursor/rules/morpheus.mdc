@@ -79,6 +79,7 @@ This project implements a modular chatbot and memory system with:
 - **Python**: Pydantic models, modular layout, no ad-hoc scripts.
 - **React**: TypeScript, component-driven, clean state management.
 - Avoid temporary hacks unless explicitly requested.
+- for exceptions, do not use a blind 'pass'. if the call returns an exception use a logger.warning to show it happened.  If it truly is a 'best effort' call and does warrant a log message, add a comment there and use the 'pass'
 
 ## Testing
 

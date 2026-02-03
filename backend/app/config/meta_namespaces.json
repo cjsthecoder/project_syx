@@ -1,23 +1,15 @@
 {
   "CODE": {
-    "namespaces": ["code", "config", "api"],
-    "rag_k": 10,
-    "score_threshold": 0.45
+    "namespaces": ["code", "config", "api"]
   },
   "DOCS": {
-    "namespaces": ["docs", "requirements", "notes"],
-    "rag_k": 10,
-    "score_threshold": 0.30
+    "namespaces": ["docs", "requirements", "notes"]
   },
   "OTHER": {
-    "namespaces": ["general", "project"],
-    "rag_k": 8,
-    "score_threshold": 0.40
+    "namespaces": ["general", "project"]
   },
   "CHITCHAT": {
-    "namespaces": [],
-    "rag_k": 0,
-    "score_threshold": 0.0
+    "namespaces": []
   }
 }
 

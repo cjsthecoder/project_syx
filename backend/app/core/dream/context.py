@@ -107,10 +107,7 @@ def _get_user_profile(project_id: str) -> str:
     up = retrieve_context(
         project_id=project_id,
         query="User Profile Codex",
-        top_k=settings.rag_top_k,
-        snippet_max_tokens=settings.rag_snippet_max_tokens,
         score_threshold=settings.rag_score_threshold,
-        context_max_tokens=settings.rag_context_max_tokens,
     )
     user_profile_text = up.get("context_text") or ""
     if not user_profile_text.strip():
@@ -134,10 +131,7 @@ def _get_project_system_prompt(project_id: str) -> str:
     sp = retrieve_context(
         project_id=project_id,
         query="Project system rules",
-        top_k=settings.rag_top_k,
-        snippet_max_tokens=settings.rag_snippet_max_tokens,
         score_threshold=settings.rag_score_threshold,
-        context_max_tokens=settings.rag_context_max_tokens,
     )
     system_prompt_text = sp.get("context_text") or ""
     if not system_prompt_text.strip():
@@ -317,10 +311,7 @@ def _build_project_rag_context(project_id: str) -> str:
             res = retrieve_context(
                 project_id=project_id,
                 query=topic,
-                top_k=settings.rag_top_k,
-                snippet_max_tokens=settings.rag_snippet_max_tokens,
                 score_threshold=settings.rag_score_threshold,
-                context_max_tokens=settings.rag_context_max_tokens,
             )
         except Exception as re_err:
             logger.debug(

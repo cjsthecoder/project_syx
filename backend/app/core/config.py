@@ -15,6 +15,7 @@ This module handles environment variable loading and configuration validation.
 
 import os
 import logging
+import math
 from typing import Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings
@@ -96,10 +97,10 @@ class Settings(BaseSettings):
     
     # V2.1: RAG-on-chat controls
     rag_on_chat: bool = Field(default=True, description="Enable retrieval injection during chat")
-    rag_top_k: int = Field(default=5, gt=0, description="Top-K retrieved chunks")
-    rag_snippet_max_tokens: int = Field(default=500, gt=0, description="Max tokens per snippet")
-    rag_context_max_tokens: int = Field(default=5000, gt=100, description="Max tokens for entire context block")
-    rag_score_threshold: float = Field(default=0.75, ge=0.0, le=1.0, description="Cosine similarity threshold (0..1)")
+    # DELTA-A.4.1: retrieval-stage limits are controlled by BASE_TOP_K + RETRIEVAL_MULTIPLIER (not route config).
+    base_top_k: int = Field(default=5, gt=0, description="DELTA-A.4.1: base retrieval top-K (used to derive per-source K)")
+    retrieval_multiplier: float = Field(default=2.0, gt=0.0, description="DELTA-A.4.1: per-source K multiplier (PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER))")
+    rag_score_threshold: float = Field(default=0.75, ge=0.0, le=1.0, description="Cosine similarity threshold (0..1) — temporary A.4.3-stage selection policy only")
 
     # V2.2: Chat history working memory
     chat_history_limit: int = Field(default=20, gt=0, description="Number of recent messages kept per project")
@@ -107,9 +108,7 @@ class Settings(BaseSettings):
     # V2.3: Daily RAG bridge controls (global defaults)
     chat_history_limit_pairs: int = Field(default=10, gt=0, description="Number of recent prompt/response pairs kept in working memory")
     daily_rag_enabled: bool = Field(default=True, description="Enable daily RAG roll-off globally (per-project can override)")
-    daily_rag_k: int = Field(default=3, gt=0, description="Top-K results from daily index")
-    daily_rag_score_threshold: float = Field(default=0.70, ge=0.0, le=1.0, description="Similarity threshold for daily results")
-    daily_rag_max_tokens: int = Field(default=2500, gt=0, description="Max tokens contributed by daily layer")
+    daily_rag_score_threshold: float = Field(default=0.70, ge=0.0, le=1.0, description="Similarity threshold for daily results — temporary A.4.3-stage selection policy only")
     daily_rag_weight: float = Field(default=1.2, gt=0.0, description="Weight multiplier applied to daily scores")
 
     # V2.3: Deduplication controls
@@ -121,7 +120,7 @@ class Settings(BaseSettings):
     # V2.3.1: Builder and reranking
     builder_model: str = Field(default="gpt-5-mini", description="LLM used for query builder/router")
     builder_confidence_min: float = Field(default=0.75, ge=0.0, le=1.0, description="Minimum confidence for full retrieval")
-    builder_max_tokens: int = Field(default=512, gt=0, description="Max tokens for builder output")
+    builder_max_tokens: int = Field(default=1024, gt=0, description="Max tokens for builder output")
     builder_cache: bool = Field(default=True, description="Enable in-memory cache for builder JSON")
     topic_boost: float = Field(default=1.10, gt=0.0, description="Multiplicative boost for topic overlap")
     decision_boost: float = Field(default=1.05, gt=0.0, description="Multiplicative boost for decision overlap")
@@ -171,6 +170,25 @@ settings = Settings()
 def get_settings() -> Settings:
     """Get application settings."""
     return settings
+
+
+def compute_per_source_k(base_top_k: int, retrieval_multiplier: float) -> int:
+    """
+    DELTA-A.4.1:
+      PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)
+    """
+    try:
+        k = int(math.ceil(float(base_top_k) * float(retrieval_multiplier)))
+    except Exception:
+        # Best-effort fallback: if multiplier is invalid, treat it as 1.0 by
+        # returning BASE_TOP_K (clamped to non-negative).
+        try:
+            return max(0, int(base_top_k))
+        except Exception:
+            return 0
+
+    # Allow 0 to represent "skip retrieval" (e.g., multiplier=0 or base_top_k=0).
+    return max(0, k)
 
 
 def validate_openai_key() -> bool:

@@ -31,8 +31,10 @@ class LLMProvider:
         """Initialize the LLM provider."""
         self.settings = get_settings()
         self._llm: Optional[ChatOpenAI] = None
-        # Cache of models that do not support non-default temperature
-        self._temp_unsupported: set[str] = set()
+        # Cache of models that do not support non-default temperature values (only allow 1.0).
+        self._temp_only_default: set[str] = set()
+        # Cache of models that reject the temperature parameter entirely.
+        self._temp_param_rejected: set[str] = set()
         self._initialize_llm()
     
     def _initialize_llm(self) -> None:
@@ -42,14 +44,27 @@ class LLMProvider:
                 raise ValueError("OpenAI API key is not configured or invalid")
             
             model_config = get_model_config()
-            
-            self._llm = ChatOpenAI(
-                api_key=self.settings.openai_api_key,
-                model=model_config["model_name"],
-                temperature=1.0,
-                model_kwargs={"max_completion_tokens": model_config["max_tokens"]},
-                streaming=False,
-            )
+            # Initialize with configured temperature, but fall back if the model rejects the param.
+            try:
+                self._llm = ChatOpenAI(
+                    api_key=self.settings.openai_api_key,
+                    model=model_config["model_name"],
+                    temperature=float(self.settings.model_temperature),
+                    model_kwargs={"max_completion_tokens": model_config["max_tokens"]},
+                    streaming=False,
+                )
+            except Exception as e:
+                msg = str(e).lower()
+                if "temperature" in msg or "invalid_request_error" in msg:
+                    # Fall back to omitting temperature.
+                    self._llm = ChatOpenAI(
+                        api_key=self.settings.openai_api_key,
+                        model=model_config["model_name"],
+                        model_kwargs={"max_completion_tokens": model_config["max_tokens"]},
+                        streaming=False,
+                    )
+                else:
+                    raise
             
             logger.debug(f"LLM provider initialized with model: {model_config['model_name']}")
             
@@ -122,7 +137,7 @@ class LLMProvider:
                 else self.settings.model_temperature
             )
             # Optionally use an override model for this call with temperature fallback + model capability cache
-            def _invoke_with(model_name: str, temperature: float):
+            def _invoke_with(model_name: str, temperature: float, *, include_temperature: bool):
                 kwargs: Dict[str, Any] = {
                     "api_key": self.settings.openai_api_key,
                     "model": model_name,
@@ -135,47 +150,57 @@ class LLMProvider:
                     },
                     "streaming": False,
                 }
-                kwargs["temperature"] = float(temperature)
+                if include_temperature:
+                    kwargs["temperature"] = float(temperature)
                 llm = ChatOpenAI(**kwargs)
                 return llm.invoke(messages)
 
             used_model = self.settings.model_name
             model_to_use = override_model or self.settings.model_name
-            # Decide effective temperature based on cache:
-            # some models only support the default temperature (=1.0); do not pass non-default values.
-            if model_to_use in self._temp_unsupported:
-                effective_temp = 1.0
-            else:
-                effective_temp = (
-                    float(temperature_override)
-                    if temperature_override is not None
-                    else self.settings.model_temperature
-                )
+            include_temp = model_to_use not in self._temp_param_rejected
+            requested_temp = (
+                float(temperature_override)
+                if temperature_override is not None
+                else float(self.settings.model_temperature)
+            )
+            effective_temp = 1.0 if model_to_use in self._temp_only_default else requested_temp
             try:
                 if override_model and override_model != self.settings.model_name:
                     used_model = override_model
-                    response = _invoke_with(override_model, effective_temp)
+                    response = _invoke_with(override_model, effective_temp, include_temperature=include_temp)
                 else:
-                    if effective_temp != self.settings.model_temperature:
-                        response = _invoke_with(self.settings.model_name, effective_temp)
+                    if include_temp and (effective_temp != float(self.settings.model_temperature)):
+                        response = _invoke_with(self.settings.model_name, effective_temp, include_temperature=True)
                     else:
                         response = self._llm.invoke(messages)
             except Exception as e:
-                # Fallback: retry with default temperature if temperature override is not supported
+                # Fallback: handle models that (a) only allow temperature=1.0 or (b) reject the param entirely.
                 msg = str(e).lower()
-                if "temperature" in msg or "unsupported_value" in msg or "invalid_request_error" in msg:
-                    # Remember that this model doesn't support non-default temperature
-                    first_time = model_to_use not in self._temp_unsupported
-                    self._temp_unsupported.add(model_to_use)
-                    if first_time:
-                        logger.debug("LLM model %s only supports default temperature; forcing 1.0 thereafter", model_to_use)
-                    # Retry once with default temperature=1.0, silently on subsequent calls
-                    if override_model and override_model != self.settings.model_name:
-                        response = _invoke_with(override_model, 1.0)
-                        used_model = override_model
+                if "temperature" in msg or "invalid_request_error" in msg or "unsupported_value" in msg or "unsupported value" in msg:
+                    # If error suggests only default temperature is supported, force 1.0.
+                    if "only the default" in msg or "does not support" in msg:
+                        first_time = model_to_use not in self._temp_only_default
+                        self._temp_only_default.add(model_to_use)
+                        if first_time:
+                            logger.debug("LLM model %s only supports default temperature=1.0; forcing 1.0 thereafter", model_to_use)
+                        if override_model and override_model != self.settings.model_name:
+                            response = _invoke_with(override_model, 1.0, include_temperature=True)
+                            used_model = override_model
+                        else:
+                            response = _invoke_with(self.settings.model_name, 1.0, include_temperature=True)
+                            used_model = self.settings.model_name
                     else:
-                        response = _invoke_with(self.settings.model_name, 1.0)
-                        used_model = self.settings.model_name
+                        # Otherwise assume the parameter itself is rejected; omit it.
+                        first_time = model_to_use not in self._temp_param_rejected
+                        self._temp_param_rejected.add(model_to_use)
+                        if first_time:
+                            logger.debug("LLM model %s rejected temperature param; omitting temperature thereafter", model_to_use)
+                        if override_model and override_model != self.settings.model_name:
+                            response = _invoke_with(override_model, requested_temp, include_temperature=False)
+                            used_model = override_model
+                        else:
+                            response = _invoke_with(self.settings.model_name, requested_temp, include_temperature=False)
+                            used_model = self.settings.model_name
                 else:
                     raise
             

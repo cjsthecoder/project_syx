@@ -8,14 +8,17 @@ Unauthorized copying, modification, distribution, or use of this software is str
 Use of this software requires explicit written permission from the copyright holder.
 """
 import logging
-from typing import List, Optional
+import json
+from typing import Dict, Optional, Any
+from datetime import datetime
 
-from .llm import get_llm_provider
 from .config import get_settings
+from ..utils.debug_utils import write_debug_file
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-_PROMPT = """You are a memory tagging system.
+_SYS_PROMPT = """You are a memory tagging system.
 
 Your task is to extract compact, durable metadata for later retrieval.
 The goal is to help future searches reliably find this exchange.
@@ -52,53 +55,231 @@ Intent should describe the purpose of the exchange, for example:
 Type should be one or two broad categories such as:
 technical, story, design, system, research, planning, meta
 
-Return ONLY the following metadata lines.
-Do not include explanations or extra text.
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
 
-#topics: <keywords>
-#intent: <short phrase>
-#type: <category>
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{"topics":"","intent":"","type":"","semantic_handle":""}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
 """
 
 
-def tag_pair(user_text: str, assistant_text: str, previous_pair_text: Optional[str] = None) -> Optional[List[str]]:
+def _responses_text(resp: Any) -> str:
+    """Extract text content from an OpenAI Responses API response."""
+    try:
+        text = getattr(resp, "output_text", None)
+        if isinstance(text, str) and text:
+            return text
+    except Exception:
+        pass
+    out: list[str] = []
+    try:
+        for item in getattr(resp, "output", []) or []:
+            if getattr(item, "type", "") == "message":
+                for c in getattr(item, "content", []) or []:
+                    if getattr(c, "type", "") == "output_text":
+                        out.append(getattr(c, "text", "") or "")
+    except Exception:
+        pass
+    return "".join(out).strip()
+
+
+def _slice_first_json(text: str) -> str:
+    """Best-effort extraction of the first balanced JSON object from text."""
+    if not text:
+        return text
+    in_string = False
+    string_quote = ""
+    escape_next = False
+    depth = 0
+    start = -1
+    end = -1
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == "\\":
+                escape_next = True
+                continue
+            if ch == string_quote:
+                in_string = False
+            continue
+        if ch == '"' or ch == "'":
+            in_string = True
+            string_quote = ch
+            continue
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+            continue
+        if ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+    if start != -1 and end != -1:
+        return text[start:end]
+    return text
+
+
+def tag_pair(
+    user_text: str,
+    assistant_text: str,
+    previous_pair_text: Optional[str] = None,
+    *,
+    project_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     """
-    Generate 3 tag lines (#topics, #intent, #type) using the builder model.
-    Returns list of 3 strings in canonical order, or None on failure.
+    Generate tag metadata (#topics, #intent, #type, #semantic_handle) using the builder model.
+
+    Return value:
+    - None on failure
+    - On success: {"topics": str, "intent": str, "type": str, "semantic_handle": Optional[str]}
+      where semantic_handle is None if the line is missing, or a string (possibly empty) if present.
     """
     try:
-        provider = get_llm_provider()
         settings = get_settings()
         context = (previous_pair_text + "\n\n") if previous_pair_text else ""
-        msg = f"{_PROMPT}\n\n{context}USER: {user_text}\nASSISTANT: {assistant_text}\n"
-        # Small, deterministic output
-        resp = provider.generate_response(
-            message=msg,
-            override_model=settings.builder_model,
-            temperature_override=0.0,
-            completion_tokens_override=settings.builder_max_tokens,
-        )
-        if not resp or not isinstance(resp, dict) or not resp.get("success"):
-            logger.warning("[TAGGER][WARN] failed: %s", (resp or {}).get("error") if isinstance(resp, dict) else "unknown")
-            return None
-        raw = resp.get("response") or ""
-        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-        # Normalize and pick the first matching line per key
-        out: List[str] = []
-        for key in ("#topics:", "#intent:", "#type:"):
-            found = next((ln for ln in lines if ln.lower().startswith(key)), None)
-            out.append(found if found else f"{key} ")
-        # Log trimmed for brevity
+        user_prompt = f"{context}USER: {user_text}\nASSISTANT: {assistant_text}\n"
+
+        client = OpenAI(api_key=settings.openai_api_key)
+        raw = ""
+        data: Optional[Dict[str, Any]] = None
         try:
-            tv = out[0][8:].strip() if len(out) > 0 else ""
-            iv = out[1][8:].strip() if len(out) > 1 else ""
-            ty = out[2][6:].strip() if len(out) > 2 else ""
-            logger.info("[TAGGER] topics=%s intent=%s type=%s", tv[:120], iv[:120], ty[:120])
+            resp = client.responses.create(
+                model=settings.builder_model,
+                input=[
+                    {"role": "system", "content": _SYS_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                # Guarantee a JSON text payload (avoid reasoning-only outputs).
+                text={"format": {"type": "json_object"}},
+                reasoning={"effort": "low"},
+                max_output_tokens=int(settings.builder_max_tokens),
+            )
+        except Exception:
+            resp = client.responses.create(
+                model=settings.builder_model,
+                input=_SYS_PROMPT + "\n\n" + user_prompt,
+                text={"format": {"type": "json_object"}},
+                reasoning={"effort": "low"},
+                max_output_tokens=int(settings.builder_max_tokens),
+            )
+        raw = _responses_text(resp)
+        clean = raw
+        if clean.startswith("```"):
+            lines2 = [ln for ln in clean.splitlines() if not ln.strip().startswith("```")]
+            clean = "\n".join(lines2).strip()
+        clean = _slice_first_json(clean)
+        try:
+            data = json.loads(clean)
+        except Exception:
+            data = None
+        if not isinstance(data, dict):
+            raise ValueError("tagger returned non-json output")
+
+        topics = str(data.get("topics", "") or "")
+        intent = str(data.get("intent", "") or "")
+        tag_type = str(data.get("type", "") or "")
+        # semantic_handle may be missing only if the model violated schema; treat missing as None.
+        semantic_handle = data.get("semantic_handle", None) if "semantic_handle" in data else None
+        if semantic_handle is None:
+            semantic_handle = ""
+        if not isinstance(semantic_handle, str):
+            semantic_handle = str(semantic_handle)
+
+        # Debug dump (best-effort; no-op unless GENERATE_DEBUG_FILES=true)
+        try:
+            if project_id:
+                ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+                fname = f"{ts}_tagger.txt"
+                body = (
+                    f"# timestamp: {ts}\n"
+                    f"# project_id: {project_id}\n"
+                    f"# model: {settings.builder_model}\n"
+                    f"# success: true\n"
+                    "\n"
+                    "====== USER_TEXT ======\n"
+                    + (user_text or "")
+                    + "\n\n====== ASSISTANT_TEXT ======\n"
+                    + (assistant_text or "")
+                    + "\n\n====== PREVIOUS_PAIR_TEXT ======\n"
+                    + (previous_pair_text or "")
+                    + "\n\n====== TAGGER PROMPT (SYSTEM) ======\n"
+                    + (_SYS_PROMPT or "")
+                    + "\n\n====== TAGGER PROMPT (USER) ======\n"
+                    + (user_prompt or "")
+                    + "\n\n====== TAGGER RESPONSE (raw) ======\n"
+                    + (raw or "")
+                    + "\n\n====== TAGGER PARSED ======\n"
+                    + f"topics: {topics}\n"
+                    + f"intent: {intent}\n"
+                    + f"type: {tag_type}\n"
+                    + f"semantic_handle: {semantic_handle}\n"
+                )
+                write_debug_file(project_id, f"prompts/{fname}", body)
         except Exception:
             pass
-        return out
+
+        # Log trimmed for brevity
+        try:
+            logger.info(
+                "[TAGGER] topics=%s intent=%s type=%s semantic_handle=%s",
+                (topics or "")[:120],
+                (intent or "")[:120],
+                (tag_type or "")[:120],
+                (semantic_handle or "")[:120] if isinstance(semantic_handle, str) else "None",
+            )
+        except Exception:
+            pass
+
+        return {
+            "topics": topics,
+            "intent": intent,
+            "type": tag_type,
+            "semantic_handle": semantic_handle,
+        }
     except Exception as e:
         logger.warning("[TAGGER][WARN] %s", e)
+        # Debug dump on failure (best-effort)
+        try:
+            settings = get_settings()
+            if project_id:
+                ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+                fname = f"{ts}_tagger.txt"
+                body = (
+                    f"# timestamp: {ts}\n"
+                    f"# project_id: {project_id}\n"
+                    f"# model: {settings.builder_model}\n"
+                    f"# success: false\n"
+                    f"# error: {str(e)}\n"
+                    "\n"
+                    "====== USER_TEXT ======\n"
+                    + (user_text or "")
+                    + "\n\n====== ASSISTANT_TEXT ======\n"
+                    + (assistant_text or "")
+                    + "\n\n====== PREVIOUS_PAIR_TEXT ======\n"
+                    + (previous_pair_text or "")
+                    + "\n\n====== TAGGER PROMPT (SYSTEM) ======\n"
+                    + (_SYS_PROMPT or "")
+                    + "\n"
+                )
+                write_debug_file(project_id, f"prompts/{fname}", body)
+        except Exception:
+            pass
         return None
 
 

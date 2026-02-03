@@ -15,15 +15,13 @@ import json
 import time
 import logging
 import threading
-from typing import List, Dict, Any, Optional, Tuple, Set
+from typing import List, Dict, Any, Optional, Tuple, Set, Sequence
 
 from filelock import FileLock
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
 from .config import get_settings
-from .similarity import cosine_from_l2_distance
-
 logger = logging.getLogger(__name__)
 
 def _nl(s: str) -> str:
@@ -33,7 +31,7 @@ def _nl(s: str) -> str:
 _BEGIN_DAILY_PAIR = "=== BEGIN DAILY PAIR ==="
 _END_DAILY_PAIR = "=== END DAILY PAIR ==="
 
-def _format_tags_block(tags_meta: Optional[Dict[str, str]]) -> str:
+def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
     """
     Format tag metadata lines for inclusion in daily.txt.
 
@@ -46,8 +44,12 @@ def _format_tags_block(tags_meta: Optional[Dict[str, str]]) -> str:
         topics = str(tags_meta.get("topics", "") or "")
         intent = str(tags_meta.get("intent", "") or "")
         tag_type = str(tags_meta.get("type", "") or "")
-        # Keep the lines stable; daily.txt readers can ignore them if undesired.
-        return f"#topics: {topics}\n#intent: {intent}\n#type: {tag_type}\n"
+        semantic_handle = tags_meta.get("semantic_handle", None)
+        lines = [f"#topics: {topics}", f"#intent: {intent}", f"#type: {tag_type}"]
+        # semantic_handle is required but may be empty; include only when present.
+        if semantic_handle is not None:
+            lines.append(f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}")
+        return "\n".join(lines) + "\n"
     except Exception:
         return ""
 
@@ -68,6 +70,52 @@ class _DailyCache:
     # Canonical daily.json snapshot keyed by stable entry id.
     # Used to join retrieval hits (via metadata daily_entry_id) back to authoritative metadata.
     meta_by_id: Dict[str, Dict[str, Any]]
+
+
+@dataclass
+class DailySource:
+    """
+    A.4.1 source adapter boundary for Daily.
+
+    Owns no retrieval mechanics. Provides a safe-to-use vectorstore handle plus
+    authoritative metadata join map.
+    """
+    embedding_model: str
+    vs: FAISS
+    meta_by_id: Dict[str, Dict[str, Any]]
+
+
+def get_daily_source(project_id: str) -> Optional[DailySource]:
+    """
+    A.4.1: Provide a safe Daily vectorstore handle + authoritative metadata.
+
+    - Daily lifecycle (warm/rebuild/mismatch) remains owned by daily_rag.py.
+    - Canonical retrieval owns embedding + per-source K + search loop + shaping.
+    """
+    settings = get_settings()
+    # Warm lazily on first use for a project (non-blocking; return None for this request).
+    with _CACHE_LOCK:
+        cache = _CACHE.get(project_id)
+    if cache is None:
+        start_daily_cache_rebuild(project_id, reason="get_source_warm")
+        return None
+    with _CACHE_LOCK:
+        cache = _CACHE.get(project_id)
+    if cache is None or cache.vs is None:
+        return None
+    # If runtime model changed vs cache, rebuild but do not retry this request.
+    if cache.embedding_model != settings.embedding_model:
+        start_daily_cache_rebuild(project_id, reason="get_source_model_mismatch")
+        return None
+    return DailySource(embedding_model=cache.embedding_model, vs=cache.vs, meta_by_id=cache.meta_by_id)
+
+
+def notify_daily_search_failure(project_id: str, reason: str) -> None:
+    """Source-owned rebuild trigger for canonical to call on Daily search failure."""
+    try:
+        start_daily_cache_rebuild(project_id, reason=reason)
+    except Exception:
+        pass
 
 
 _CACHE: Dict[str, _DailyCache] = {}
@@ -148,15 +196,6 @@ def reset_daily(project_id: str) -> None:
             except Exception as e:
                 logger.warning("DailyRAG: failed to remove metadata %s: %s", p, e)
     clear_daily_cache(project_id)
-    # DELTA-A.3: clear ephemeral previous rolled-off pair pointer (best-effort)
-    try:
-        from .memory import get_memory_manager
-        try:
-            get_memory_manager().clear_last_rolled_off_pair(project_id)
-        except Exception:
-            pass
-    except Exception:
-        pass
     logger.info("DailyRAG: reset daily metadata and cleared cache for project=%s", project_id)
 
 
@@ -266,7 +305,7 @@ def append_pair(
     namespace: Optional[str] = None,
     keep: bool = False,
     embed_override: Optional[str] = None,
-    tags_meta: Optional[Dict[str, str]] = None,
+    tags_meta: Optional[Dict[str, Any]] = None,
     write_daily_txt: bool = True,
 ) -> bool:
     """Append a single embedded pair to the daily index and metadata.
@@ -455,124 +494,6 @@ def append_pair_text_only(
         except Exception as e:
             logger.error("[DAILYTXT][ERROR] Text-only append failed project=%s: %s", project_id, e)
             return False
-
-
-def _cosine_from_l2_dist_sq(d2: float) -> float:
-    # For unit vectors: d^2 = 2(1 - cos)
-    return max(0.0, min(1.0, 1.0 - (d2 / 2.0)))
-
-
-def retrieve_daily(project_id: str, query: str, top_k: int, score_threshold: float) -> List[Tuple[str, float, Optional[str]]]:
-    """Retrieve from the in-memory Daily FAISS cache. Returns list of (text, cosine, namespace)."""
-    if top_k <= 0:
-        return []
-    settings = get_settings()
-    # Warm lazily on first use for a project (non-blocking; return empty for this request).
-    with _CACHE_LOCK:
-        cache = _CACHE.get(project_id)
-    if cache is None:
-        start_daily_cache_rebuild(project_id, reason="retrieve_warm")
-        return []
-    with _CACHE_LOCK:
-        cache = _CACHE.get(project_id)
-    if cache is None or cache.vs is None:
-        return []
-    # If runtime model changed vs cache, rebuild but do not retry this request (return empty)
-    if cache.embedding_model != settings.embedding_model:
-        start_daily_cache_rebuild(project_id, reason="retrieve_model_mismatch")
-        return []
-    try:
-        results = cache.vs.similarity_search_with_score(query, k=top_k)
-    except Exception as e:
-        logger.warning("DailyRAG: retrieve failed project=%s: %s", project_id, e)
-        start_daily_cache_rebuild(project_id, reason="retrieve_exception")
-        return []
-    scored: List[Tuple[str, float, Optional[str]]] = []
-    for doc, dist in results:
-        d = float(dist)
-        d2 = d * d
-        cos_a = _cosine_from_l2_dist_sq(d2)
-        cos_b = _cosine_from_l2_dist_sq(d) if d >= 0 else 0.0
-        cos = max(min(cos_a, 1.0), min(cos_b, 1.0))
-        if cos >= score_threshold:
-            ns = (getattr(doc, "metadata", None) or {}).get("namespace")
-            scored.append((doc.page_content, cos, ns))
-    scored.sort(key=lambda t: t[1], reverse=True)
-    return scored[:top_k]
-
-
-def retrieve_daily_candidates(project_id: str, query: str, top_k: int) -> List[Dict[str, Any]]:
-    """
-    DELTA-A.4.1: Canonical Daily retrieval candidates (raw top-K, no thresholding, no boosting).
-
-    Returns a list of candidate dicts in the same order returned by the underlying vector search.
-    Each candidate includes authoritative metadata sourced from daily.json via the in-memory cache's
-    `meta_by_id` mapping, keyed by stable `daily_entry_id`.
-    """
-    if top_k <= 0:
-        return []
-    settings = get_settings()
-    # Warm lazily on first use for a project (non-blocking; return empty for this request).
-    with _CACHE_LOCK:
-        cache = _CACHE.get(project_id)
-    if cache is None:
-        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_warm")
-        return []
-    with _CACHE_LOCK:
-        cache = _CACHE.get(project_id)
-    if cache is None or cache.vs is None:
-        return []
-    # If runtime model changed vs cache, rebuild but do not retry this request (return empty).
-    if cache.embedding_model != settings.embedding_model:
-        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_model_mismatch")
-        return []
-    try:
-        results = cache.vs.similarity_search_with_score(query, k=top_k)
-    except Exception as e:
-        logger.warning("DailyRAG: candidate retrieve failed project=%s: %s", project_id, e)
-        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_exception")
-        return []
-
-    out: List[Dict[str, Any]] = []
-    for doc, dist in results:
-        cos = cosine_from_l2_distance(dist)
-        md = getattr(doc, "metadata", None) or {}
-        eid = md.get("daily_entry_id")
-        entry = None
-        try:
-            if eid is not None:
-                entry = cache.meta_by_id.get(str(eid))
-        except Exception:
-            entry = None
-        # Authoritative metadata from daily.json when available; otherwise best-effort from doc metadata.
-        created_at = (entry.get("created_at") if isinstance(entry, dict) else None)
-        route = (entry.get("namespace") if isinstance(entry, dict) else md.get("namespace"))
-        tags_meta = (entry.get("tags_meta") if isinstance(entry, dict) else None)
-        topics = (tags_meta.get("topics") if isinstance(tags_meta, dict) else None)
-        intent = (tags_meta.get("intent") if isinstance(tags_meta, dict) else None)
-        tag_type = (tags_meta.get("type") if isinstance(tags_meta, dict) else None)
-        out.append(
-            {
-                "source": "daily",
-                "text": getattr(doc, "page_content", "") or "",
-                "score": float(cos),
-                "metadata": {
-                    "id": str(eid) if eid is not None else None,
-                    "timestamp": created_at,
-                    "route": (str(route).lower() if isinstance(route, str) else route),
-                    "tags": (entry.get("tags") if isinstance(entry, dict) else None),
-                    "topics": topics,
-                    "intent": intent,
-                    "type": tag_type,
-                    "tags_meta": tags_meta,
-                    "keep": (entry.get("keep") if isinstance(entry, dict) else None),
-                    "day_sequence": (entry.get("day_sequence") if isinstance(entry, dict) else md.get("day_sequence")),
-                    "pair_ids": (entry.get("pair_ids") if isinstance(entry, dict) else None),
-                    "source": (entry.get("source") if isinstance(entry, dict) else "daily"),
-                },
-            }
-        )
-    return out
 
 
 def daily_stats(project_id: str) -> Dict[str, int]:

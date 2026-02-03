@@ -18,7 +18,6 @@ Policy:
 - Recreate FAISS index per upload (fresh build from uploads dir)
 """
 
-import os
 import time
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any
@@ -35,7 +34,7 @@ except Exception:
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 
-from .config import get_settings
+from .config import get_settings, compute_per_source_k
 import os
 from .database import get_session
 from .db_models import File as FileRow
@@ -46,7 +45,7 @@ from .similarity import cosine_from_l2_distance
 from .retrieval_ordering import order_candidates_by_similarity_score
 def _load_route_config() -> Dict[str, Dict[str, Any]]:
     """Load route configuration from backend/app/config/meta_namespaces.json.
-    Returns dict keyed by route name with namespaces, rag_k, score_threshold.
+    Returns dict keyed by route name with namespaces only.
     """
     try:
         base_dir = os.path.join(os.path.dirname(__file__), "..", "config")
@@ -57,7 +56,11 @@ def _load_route_config() -> Dict[str, Dict[str, Any]]:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
             if isinstance(data, dict):
-                return data
+                out: Dict[str, Dict[str, Any]] = {}
+                for k, v in data.items():
+                    if isinstance(v, dict):
+                        out[str(k)] = {"namespaces": (v.get("namespaces") or [])}
+                return out
     except Exception as e:
         logger.debug("Failed loading route config: %s", e)
     return {}
@@ -260,55 +263,141 @@ def load_faiss_index(project_id: str) -> Optional[FAISS]:
         return None
 
 
-def _cosine_from_l2_dist_sq(d2: float) -> float:
-    # For unit vectors: d^2 = 2(1 - cos)
-    return max(0.0, min(1.0, 1.0 - (d2 / 2.0)))
-
-
 def canonical_retrieve_candidates(
     project_id: str,
     query: str,
     *,
-    daily_top_k: int,
-    ltm_top_k: int,
+    sources: Optional[List[str]] = None,
+    per_source_k_override: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
     DELTA-A.4.1: Canonical retrieval entry point.
 
-    Returns a flat list of candidates concatenated as:
-      - Daily candidates first (preserving Daily vector-search order)
-      - LTM candidates second (preserving LTM vector-search order)
-
-    No thresholding, no boosting, and no route-based eligibility pruning occurs here.
+    - Computes the query embedding exactly once and reuses it across all sources queried.
+    - No thresholding, no boosting, and no route-based eligibility pruning occurs here.
     Scores are normalized to cosine similarity in [0.0, 1.0].
 
     On error querying a source, trigger best-effort rebuild/repair (where applicable)
     and return an empty candidate set for that source for the current request (no retry).
     """
+    settings = get_settings()
+    per_source_k = (
+        int(per_source_k_override)
+        if per_source_k_override is not None
+        else compute_per_source_k(settings.base_top_k, settings.retrieval_multiplier)
+    )
+    srcs = [s.lower() for s in (sources or ["daily", "ltm"]) if isinstance(s, str)]
+
     out: List[Dict[str, Any]] = []
     daily_count = 0
     ltm_count = 0
 
-    # Daily
-    if daily_top_k > 0:
-        try:
-            from .daily_rag import retrieve_daily_candidates
+    # Allow callers to explicitly skip retrieval by passing k<=0.
+    # This keeps the "0 means skip RAG" contract stable at the retrieval boundary.
+    if int(per_source_k) <= 0:
+        return []
 
-            daily = retrieve_daily_candidates(project_id, query, int(daily_top_k))
-            daily_count = len(daily)
-            out.extend(daily)
+    # Embed ONCE (shared query vector)
+    qvec: Optional[List[float]] = None
+    try:
+        embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
+        qvec = embeddings.embed_query(query or "")
+    except Exception as e:
+        logger.warning("RAG: failed to embed query for canonical retrieval project=%s: %s", project_id, e)
+        return []
+
+    # Daily
+    if "daily" in srcs:
+        try:
+            from .daily_rag import get_daily_source, notify_daily_search_failure
+
+            ds = get_daily_source(project_id)
+            if ds is not None:
+                try:
+                    results = ds.vs.similarity_search_with_score_by_vector(qvec, k=int(per_source_k))  # type: ignore[attr-defined]
+                except Exception as e:
+                    logger.warning("RAG: Daily candidate search failed project=%s: %s", project_id, e)
+                    notify_daily_search_failure(project_id, reason="canonical_daily_search_exception")
+                    results = []
+                for doc, dist in results:
+                    cos = cosine_from_l2_distance(dist)
+                    md = getattr(doc, "metadata", None) or {}
+                    eid = md.get("daily_entry_id")
+                    entry = None
+                    try:
+                        if eid is not None:
+                            entry = ds.meta_by_id.get(str(eid))
+                    except Exception:
+                        entry = None
+                    # Authoritative from daily.json when available; otherwise best-effort from doc metadata.
+                    if isinstance(entry, dict):
+                        created_at = entry.get("created_at")
+                        route = entry.get("namespace")
+                        tags_meta = entry.get("tags_meta") if isinstance(entry.get("tags_meta"), dict) else None
+                        topics = tags_meta.get("topics") if isinstance(tags_meta, dict) else None
+                        intent = tags_meta.get("intent") if isinstance(tags_meta, dict) else None
+                        tag_type = tags_meta.get("type") if isinstance(tags_meta, dict) else None
+                        out.append(
+                            {
+                                "source": "daily",
+                                "text": getattr(doc, "page_content", "") or "",
+                                "score": float(cos),
+                                "metadata": {
+                                    "id": str(eid) if eid is not None else None,
+                                    "timestamp": created_at,
+                                    "route": (str(route).lower() if isinstance(route, str) else route),
+                                    "tags": entry.get("tags"),
+                                    "topics": topics,
+                                    "intent": intent,
+                                    "type": tag_type,
+                                    "tags_meta": tags_meta,
+                                    "keep": entry.get("keep"),
+                                    "day_sequence": entry.get("day_sequence"),
+                                    "pair_ids": entry.get("pair_ids"),
+                                },
+                            }
+                        )
+                    else:
+                        # Join-miss: return candidate with partial metadata (lossless recall).
+                        ns = md.get("namespace")
+                        out.append(
+                            {
+                                "source": "daily",
+                                "text": getattr(doc, "page_content", "") or "",
+                                "score": float(cos),
+                                "metadata": {
+                                    "id": None,
+                                    "timestamp": None,
+                                    "route": (str(ns).lower() if isinstance(ns, str) else ns),
+                                    "tags": None,
+                                    "topics": None,
+                                    "intent": None,
+                                    "type": None,
+                                    "tags_meta": None,
+                                    "keep": None,
+                                    "day_sequence": None,
+                                    "pair_ids": None,
+                                },
+                            }
+                        )
+                daily_count = len(results)
         except Exception:
-            # Daily implementation already triggers cache rebuild on error; degrade gracefully.
+            # Daily source owns rebuild semantics; degrade gracefully.
             pass
 
     # LTM (main FAISS index)
-    if ltm_top_k > 0:
-        vs = load_faiss_index(project_id)
-        if vs:
+    if "ltm" in srcs:
+        def _ltm_search_by_vector() -> List[Tuple[Any, float]]:
+            """
+            Source-owned LTM search wrapper (best-effort rebuild-on-error; no retry in-request).
+            Canonical retrieval calls this but does not own rebuild semantics.
+            """
+            vs = load_faiss_index(project_id)
+            if not vs:
+                return []
             try:
-                results = vs.similarity_search_with_score(query, k=int(ltm_top_k))
+                return list(vs.similarity_search_with_score_by_vector(qvec, k=int(per_source_k)))  # type: ignore[attr-defined]
             except Exception as e:
-                # Best-effort repair: rebuild main index asynchronously (no retry in-request).
                 try:
                     logger.warning("RAG: LTM candidate search failed project=%s; scheduling rebuild: %s", project_id, e)
 
@@ -321,8 +410,10 @@ def canonical_retrieve_candidates(
                     threading.Thread(target=_rebuild, name=f"ltm-rebuild-{project_id[:8]}", daemon=True).start()
                 except Exception:
                     pass
-                results = []
-            for doc, dist in results:
+                return []
+
+        results = _ltm_search_by_vector()
+        for doc, dist in results:
                 md = getattr(doc, "metadata", None) or {}
                 cos = cosine_from_l2_distance(dist)
                 out.append(
@@ -338,6 +429,11 @@ def canonical_retrieve_candidates(
                             "topics": None,
                             "intent": None,
                             "type": None,
+                            "id": None,
+                            "tags_meta": None,
+                            "keep": None,
+                            "day_sequence": None,
+                            "pair_ids": None,
                             # Existing main index metadata retained for downstream use/telemetry
                             "filename": md.get("filename"),
                             "page_number": md.get("page_number"),
@@ -346,15 +442,15 @@ def canonical_retrieve_candidates(
                         },
                     }
                 )
-            ltm_count = len(results)
+        ltm_count = len(results)
 
     try:
         qprev = (query or "")[:120].replace("\n", " ")
         logger.debug(
-            "[A.4.1][CANONICAL_RETRIEVE] project_id=%s daily_k=%s ltm_k=%s daily_candidates=%s ltm_candidates=%s query_preview=\"%s\"",
+            "[A.4.1][CANONICAL_RETRIEVE] project_id=%s sources=%s per_source_k=%s daily_candidates=%s ltm_candidates=%s query_preview=\"%s\"",
             project_id,
-            int(daily_top_k),
-            int(ltm_top_k),
+            srcs,
+            int(per_source_k),
             int(daily_count),
             int(ltm_count),
             qprev,
@@ -367,10 +463,7 @@ def canonical_retrieve_candidates(
 def retrieve_context(
     project_id: str,
     query: str,
-    top_k: int,
-    snippet_max_tokens: int,
     score_threshold: float,
-    context_max_tokens: int,
     route_namespaces: Optional[List[str]] = None,
     namespace_boost: Optional[float] = None,
 ) -> Dict[str, Any]:
@@ -385,16 +478,16 @@ def retrieve_context(
       - hits: list of per-snippet metadata dicts
         (each with snippet, filename, page_number, score)
     """
-    # DELTA-A.4.1: all retrieval passes through canonical entry point (LTM-only here).
+    # DELTA-A.4.1: all retrieval passes through canonical entry point (LTM-only here; embed-once).
     # DELTA-A.4.2: order candidates by raw similarity score before selection and assembly.
-    cands = canonical_retrieve_candidates(project_id, query, daily_top_k=0, ltm_top_k=top_k)
+    cands = canonical_retrieve_candidates(project_id, query, sources=["ltm"])
     ltm = [c for c in (cands or []) if (c.get("source") == "ltm")]
     ltm = order_candidates_by_similarity_score(ltm)
     if not ltm:
         logger.debug(f"RAG: no index available for project '{project_id}', skipping retrieval")
         return {"context_text": "", "snippets": [], "tokens_used": 0}
 
-    logger.debug(f"RAG: query='{query[:120]}...' top_k={top_k} got {len(ltm)} results (pre-filter)")
+    logger.debug(f"RAG: query='{query[:120]}...' got {len(ltm)} results (pre-filter)")
 
     filtered: List[Tuple[str, dict, float]] = []
     details = []
@@ -428,16 +521,13 @@ def retrieve_context(
         )
     logger.debug(f"RAG: filtered {len(filtered)} >= threshold {score_threshold}; details={details}")
 
-    # Build context respecting token caps
+    # Build context (no token caps in A.4.1/A.4.2; trimming/budgeting is deferred to A.4.3).
     tokens_used = 0
     pieces: List[str] = []
     for i, (content, meta, score) in enumerate(filtered):
-        trimmed = _trim_to_tokens(content, snippet_max_tokens)
-        snippet_tokens = _count_tokens(trimmed)
-        if tokens_used + snippet_tokens > context_max_tokens:
-            break
+        snippet_tokens = _count_tokens(content)
         header = f"Snippet {i+1} (score={score:.2f}, file={meta.get('filename')}, page={meta.get('page_number')})\n"
-        pieces.append(header + trimmed)
+        pieces.append(header + content)
         tokens_used += snippet_tokens
 
     if not pieces:
@@ -445,14 +535,13 @@ def retrieve_context(
         if scored:
             best = sorted(scored, key=lambda t: t[2], reverse=True)[0]
             content, meta, cos = best
-            trimmed = _trim_to_tokens(content, snippet_max_tokens)
-            tokens_used = _count_tokens(trimmed)
+            tokens_used = _count_tokens(content)
             header = f"Snippet 1 (fallback, score={cos:.2f}, file={meta.get('filename')}, page={meta.get('page_number')})\n"
-            context_text = "Context:\n---\n" + header + trimmed
+            context_text = "Context:\n---\n" + header + content
             logger.debug("RAG: fallback applied - included top-scoring snippet despite threshold")
             hits = [
                 {
-                    "snippet": trimmed,
+                    "snippet": content,
                     "filename": meta.get("filename"),
                     "page_number": meta.get("page_number"),
                     "score": float(cos),
@@ -460,13 +549,13 @@ def retrieve_context(
             ]
             return {
                 "context_text": context_text,
-                "snippets": [header + trimmed],
+                "snippets": [header + content],
                 "tokens_used": tokens_used,
                 "hit_count": len(passed_cosines),
                 "hit_avg": (sum(passed_cosines) / len(passed_cosines) if passed_cosines else 0.0),
                 "hits": hits,
             }
-        logger.debug("RAG: no snippets selected after token capping and no fallback available")
+        logger.debug("RAG: no snippets selected and no fallback available")
         return {
             "context_text": "",
             "snippets": [],
@@ -479,10 +568,9 @@ def retrieve_context(
     # Build hits metadata aligned with pieces
     hits = []
     for (content, meta, score) in filtered[: len(pieces)]:
-        trimmed = _trim_to_tokens(content, snippet_max_tokens)
         hits.append(
             {
-                "snippet": trimmed,
+                "snippet": content,
                 "filename": meta.get("filename"),
                 "page_number": meta.get("page_number"),
                 "score": float(score),
@@ -504,14 +592,10 @@ def retrieve_context(
 def merge_daily_and_main(
     project_id: str,
     query: str,
-    main_top_k: int,
-    main_snippet_max_tokens: int,
     main_threshold: float,
-    daily_top_k: int,
+    daily_enabled: bool,
     daily_threshold: float,
     daily_weight: float,
-    daily_max_tokens: int,
-    global_context_max_tokens: int,
     dedupe_exact: bool,
     dedupe_near: bool,
     dedupe_similarity_threshold: float,
@@ -523,18 +607,46 @@ def merge_daily_and_main(
     question_boost: Optional[float] = None,
     route_namespaces: Optional[List[str]] = None,
     namespace_boost: Optional[float] = None,
+    per_source_k_override: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Retrieve from daily and main, apply selection/dedupe/budgets, return context.
 
     DELTA-A.4.2: candidate ordering is by raw similarity score across all sources
     before any selection/truncation/prompt assembly.
     """
+    settings = get_settings()
+    per_source_k = (
+        int(per_source_k_override)
+        if per_source_k_override is not None
+        else compute_per_source_k(settings.base_top_k, settings.retrieval_multiplier)
+    )
+    if int(per_source_k) <= 0:
+        return {
+            "context_text": "",
+            "tokens_used": 0,
+            "daily_texts": [],
+            "main_texts": [],
+            "main_hits": 0,
+            "main_avg": 0.0,
+            "daily_hits": 0,
+            "daily_avg": 0.0,
+            "total_hits": 0,
+            "dedupe_exact_removed": 0,
+            "dedupe_near_removed": 0,
+            "main_threshold": float(main_threshold),
+            "daily_threshold": float(daily_threshold),
+        }
     logger.debug(
-        "DailyRAG: starting merged retrieval project=%s main_k=%s daily_k=%s thresholds(main=%.3f,daily=%.3f)", 
-        project_id, main_top_k, daily_top_k, main_threshold, daily_threshold
+        "DailyRAG: starting merged retrieval project=%s per_source_k=%s daily_enabled=%s thresholds(main=%.3f,daily=%.3f)",
+        project_id,
+        int(per_source_k),
+        str(bool(daily_enabled)).lower(),
+        main_threshold,
+        daily_threshold,
     )
     # DELTA-A.4.1: retrieval via canonical entry point (raw candidates; no thresholding/boosting here).
-    cands = canonical_retrieve_candidates(project_id, query, daily_top_k=daily_top_k, ltm_top_k=main_top_k)
+    sources = ["ltm"] + (["daily"] if bool(daily_enabled) else [])
+    cands = canonical_retrieve_candidates(project_id, query, sources=sources, per_source_k_override=per_source_k)
     # DELTA-A.4.2: global ordering by raw similarity score (stable; ties preserve pre-sort order).
     ordered = order_candidates_by_similarity_score(list(cands or []))
 
@@ -582,8 +694,7 @@ def merge_daily_and_main(
     rendered: List[Tuple[Dict[str, Any], str]] = []
     for c in selected:
         txt = c.get("text") or ""
-        trimmed = _trim_to_tokens(txt, main_snippet_max_tokens)
-        rendered.append((c, trimmed))
+        rendered.append((c, txt))
 
     # Dedupe stage (stable; preserves ordering by score).
     exact_removed = 0
@@ -620,9 +731,9 @@ def merge_daily_and_main(
         if dedupe_near:
             seen_sigs.append(sig(txt))
 
-    # Budgeting + prompt assembly stage (after ordering + selection).
+    # Prompt assembly stage (after ordering + selection).
+    # NOTE: No token budgeting at this stage; A.4.3 owns trimming/budget decisions.
     tokens_used_total = 0
-    tokens_used_daily = 0
     pieces: List[str] = []
     daily_texts: List[str] = []
     main_texts: List[str] = []
@@ -632,18 +743,11 @@ def merge_daily_and_main(
         score = float(c.get("score") or 0.0)
         md = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
 
-        # Enforce daily_max_tokens cap for daily source (legacy constraint).
         t = _count_tokens(txt)
         if src == "daily":
-            if tokens_used_daily + t > int(daily_max_tokens):
-                continue
-            tokens_used_daily += t
             daily_texts.append(txt)
         else:
             main_texts.append(txt)
-
-        if tokens_used_total + t > int(global_context_max_tokens):
-            break
         tokens_used_total += t
 
         # Candidate header (keeps ordering explicit; score is raw cosine).

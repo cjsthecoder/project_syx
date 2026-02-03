@@ -98,10 +98,7 @@ def _run_open_question_pipeline(project_id: str, question: str, topic: str, reso
         rc = retrieve_context(
             project_id=project_id,
             query=question,
-            top_k=settings.rag_top_k,
-            snippet_max_tokens=settings.rag_snippet_max_tokens,
             score_threshold=settings.rag_score_threshold,
-            context_max_tokens=settings.rag_context_max_tokens,
         )
         local_context = rc.get("context_text") or ""
     except Exception as e:

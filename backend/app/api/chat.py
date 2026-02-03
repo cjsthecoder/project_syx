@@ -17,7 +17,7 @@ import logging
 import time
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any, List, Tuple
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -28,13 +28,15 @@ from ..utils.debug_utils import write_debug_file
 from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id, set_route, clear_route, set_namespace, clear_namespace, get_route
 from ..core.rag_manager import _load_route_config
 from ..utils.errors import handle_llm_error, log_error_context
-from ..core.config import get_settings, get_model_config
+from ..core.config import get_settings, get_model_config, compute_per_source_k
 from ..core.rag_manager import retrieve_context, merge_daily_and_main
 from ..core.personality import load_project_system_prompt, load_project_personality
 from ..core.daily_rag import start_daily_cache_rebuild
 from ..core.database import get_session
 from ..core.db_models import Project
-from ..core.query_builder import build_query
+from ..core.query_builder import build_query, format_contextual_turn
+import os
+import json
 from itertools import islice
 from langchain_openai import ChatOpenAI
 try:
@@ -66,6 +68,11 @@ Guidance for use:
 When multiple snippets conflict:
 - Favor information from higher-scoring snippets.
 - If only lower-scoring snippets are available, respond cautiously and note uncertainty.
+
+Output constraint:
+- Do NOT include similarity scores, snippet numbers, filenames, page numbers, routes, or other retrieval 
+metadata in your response unless the user explicitly asks for them.
+- Use scores only to guide which retrieved text to rely on.
 """
 
 def _estimate_tokens(text: str) -> int:
@@ -94,7 +101,7 @@ def _dump_prompt_debug(
     if not project_id:
         return
     ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-    fname = f"{ts}_{project_id}_query.txt"
+    fname = f"{ts}_prompt_to_execute.txt"
     route = None
     try:
         route = get_route()
@@ -131,15 +138,15 @@ def _dump_prompt_debug(
     )
     # Estimate tokens over the whole formatted dump (best-effort)
     payload_preview = (
-        "=== SYSTEM ===\n"
+        "====== SYSTEM ======\n"
         + (base_system_prompt or "")
-        + "\n\n=== ASSISTANT_HINT ===\n"
+        + "\n\n====== ASSISTANT_HINT ======\n"
         + (assistant_hint or "")
-        + "\n\n=== SYSTEM (RAG CONTEXT) ===\n"
+        + "\n\n====== (RAG CONTEXT) ======\n"
         + (rag_system_prompt or "")
-        + "\n\n=== CONVERSATION HISTORY ===\n"
+        + "\n\n====== CONVERSATION HISTORY ======\n"
         + hist_text
-        + "\n=== USER PROMPT ===\n"
+        + "\n====== USER PROMPT ======\n"
         + (user_prompt or "")
         + "\n"
     )
@@ -147,6 +154,414 @@ def _dump_prompt_debug(
     body += payload_preview
 
     write_debug_file(project_id, f"prompts/{fname}", body)
+
+
+class _ChatPipeline:
+    """
+    Shared chat pipeline helpers for /chat and /chat/stream.
+
+    Goal: eliminate duplicated logic between streaming and non-streaming endpoints.
+    """
+
+    def __init__(self, settings) -> None:
+        self.settings = settings
+
+    def build_conversation_history(self, project_id: Optional[str]) -> Optional[list[dict]]:
+        """Return chronological role/content history suitable for LLM calls."""
+        if not project_id:
+            return None
+        try:
+            mm = get_memory_manager()
+            hist = mm.get_project_history(project_id)
+            # Preserve tagger outputs for downstream builder context assembly.
+            return [
+                {
+                    "role": m.get("role"),
+                    "content": m.get("content"),
+                    "tags_meta_json": m.get("tags_meta_json"),
+                    "semantic_handle": m.get("semantic_handle"),
+                }
+                for m in hist
+            ]
+        except Exception:
+            return None
+
+    def load_project_prompts(self, project_id: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[float]]:
+        """Load base system prompt and personality-derived assistant hint."""
+        if not project_id:
+            return None, None, None
+        try:
+            base_system_prompt = load_project_system_prompt(project_id)
+            p = load_project_personality(project_id)
+            personality_creativity = float(p.get("creativity") or 0.0)
+            tone = p.get("tone") or "analytical"
+            verb = p.get("verbosity") or "concise"
+            fmt = p.get("format") or "markdown"
+            domains = p.get("domain_focus") or []
+            if not isinstance(domains, list):
+                domains = []
+            assistant_hint = (
+                f"Follow these preferences: tone={tone}, verbosity={verb}, format={fmt}, "
+                f"domain_focus={domains}. Respond concisely in the chosen format."
+            )
+            return base_system_prompt, assistant_hint, personality_creativity
+        except Exception:
+            return None, None, None
+
+    def _build_builder_summary(self, project_id: Optional[str], conversation_history: Optional[list[dict]]) -> str:
+        """
+        Build a compact summary string for the query builder.
+        NOTE: current behavior is lossy truncation; keep stable until replaced.
+        """
+        try:
+            # New behavior: pass ONLY the most recent assistant tag JSON block into the builder.
+            # This lets query_builder build "Context/Intent/Type" without using chopped pairs.
+            if conversation_history:
+                for m in reversed(conversation_history):
+                    if (m.get("role") or "").lower() != "assistant":
+                        continue
+                    tj = m.get("tags_meta_json")
+                    if isinstance(tj, str) and tj.strip():
+                        return tj.strip()[:2000]
+
+            # Fallback: after sleep flush, ChatMessage history is wiped. Use Project.last_semantic_handle
+            # to seed the builder summary with a minimal JSON block containing only semantic_handle.
+            if project_id:
+                try:
+                    with get_session() as session:
+                        p = session.get(Project, project_id)
+                        h = getattr(p, "last_semantic_handle", None) if p is not None else None
+                        if isinstance(h, str) and h.strip():
+                            return json.dumps({"semantic_handle": h.strip()}, ensure_ascii=False)[:2000]
+                except Exception:
+                    pass
+
+            return ""
+        except Exception:
+            return ""
+
+    def previous_pair_text(self, conversation_history: Optional[list[dict]]) -> Optional[str]:
+        """Immediately previous active pair text (User/Assistant), or None."""
+        if not conversation_history:
+            return None
+        try:
+            # Find the most recent assistant message and the nearest preceding user.
+            last_asst_idx = None
+            for i in range(len(conversation_history) - 1, -1, -1):
+                if (conversation_history[i].get("role") or "").lower() == "assistant":
+                    last_asst_idx = i
+                    break
+            if last_asst_idx is None:
+                return None
+            user_idx = None
+            for j in range(last_asst_idx - 1, -1, -1):
+                if (conversation_history[j].get("role") or "").lower() == "user":
+                    user_idx = j
+                    break
+            if user_idx is None:
+                return None
+            u = conversation_history[user_idx].get("content") or ""
+            a = conversation_history[last_asst_idx].get("content") or ""
+            return f"User: {u}\nAssistant: {a}"
+        except Exception:
+            return None
+
+    def _daily_enabled(self, project_id: str) -> bool:
+        try:
+            with get_session() as session:
+                p = session.get(Project, project_id)
+                if p is not None:
+                    return bool(p.daily_rag_enabled)
+        except Exception:
+            pass
+        return True
+
+    def compute_rag_context(
+        self,
+        *,
+        project_id: Optional[str],
+        message: str,
+        preview: str,
+        msg_id: str,
+        conversation_history: Optional[list[dict]],
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Run builder + merged retrieval when enabled.
+        Returns (rag_system_prompt, primary_ns).
+        """
+        rag_system_prompt: Optional[str] = None
+        primary_ns: Optional[str] = None
+        if (not self.settings.rag_on_chat) or (not project_id):
+            return None, None
+
+        summary = self._build_builder_summary(project_id, conversation_history)
+        b = build_query(project_id, summary, message)
+        if b is None:
+            # [BUILDER] failure
+            try:
+                logger.debug(
+                    "[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview=\"%s\"",
+                    project_id,
+                    msg_id,
+                    "UNKNOWN",
+                    "false",
+                    0.00,
+                    0,
+                    preview,
+                )
+                logger.debug(
+                    "[ROUTE] project_id=%s message_id=%s route=%s namespaces=%s",
+                    project_id,
+                    msg_id,
+                    "UNKNOWN",
+                    [],
+                )
+            except Exception:
+                pass
+            logger.debug("builder unavailable; skipping RAG for this turn")
+            return None, None
+
+        route = (b.get("route") or "").upper()
+        # Route-only classifier: no rag/confidence/topics required.
+        conf = float(b.get("confidence") or 0.0) if isinstance(b.get("confidence"), (int, float, str)) else 0.0
+        topics = b.get("topics") or []
+        # Builder is still run for categorization/route/topics, but its rewritten queries
+        # (standalone/paraphrases/hyde) must NOT change the canonical retrieval query.
+        standalone = b.get("standalone") or message
+        paraphrases = b.get("paraphrases") or []
+        hyde = b.get("hyde") or ""
+
+        # [BUILDER]
+        try:
+            builder_prev = (standalone or preview or "")[:self.settings.log_preview_max_chars]
+            logger.debug(
+                "[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview=\"%s\"",
+                project_id,
+                msg_id,
+                route or "UNKNOWN",
+                "true",
+                conf,
+                len(topics or []),
+                builder_prev,
+            )
+        except Exception:
+            pass
+
+        # Select namespaces for route (policy-only; retrieval uses BASE_TOP_K/RETRIEVAL_MULTIPLIER)
+        try:
+            rcfg = _load_route_config()
+        except Exception:
+            rcfg = {}
+        rdef = rcfg.get(route or "OTHER") or rcfg.get("OTHER") or {}
+        namespaces = rdef.get("namespaces") or []
+        try:
+            logger.debug(
+                "[ROUTE] project_id=%s message_id=%s route=%s namespaces=%s base_top_k=%s retrieval_multiplier=%.2f",
+                project_id,
+                msg_id,
+                route or "UNKNOWN",
+                namespaces,
+                int(self.settings.base_top_k),
+                float(self.settings.retrieval_multiplier),
+            )
+        except Exception:
+            pass
+
+        set_route(route or "UNKNOWN")
+        try:
+            primary_ns = (route or "general").lower() if route else "general"
+        except Exception:
+            primary_ns = "general"
+        set_namespace(primary_ns)
+
+        # Route policy (system-wide) controls retrieval multiplier (including 0 => skip RAG).
+        retrieval_multiplier = None
+        max_keep = None
+        try:
+            base_dir = os.path.join(os.path.dirname(__file__), "..", "config")
+            policy_path = os.path.abspath(os.path.join(base_dir, "route_policy.json"))
+            policy = {}
+            if os.path.isfile(policy_path):
+                with open(policy_path, "r", encoding="utf-8") as f:
+                    policy = json.load(f)
+            pdef = (policy.get(route) if isinstance(policy, dict) else None) or (policy.get("DIRECT") if isinstance(policy, dict) else None) or {}
+            if isinstance(pdef, dict):
+                retrieval_multiplier = pdef.get("retrieval_multiplier")
+                max_keep = pdef.get("max_keep")
+        except Exception:
+            retrieval_multiplier = None
+            max_keep = None
+        try:
+            mult_val = float(retrieval_multiplier) if retrieval_multiplier is not None else float(self.settings.retrieval_multiplier)
+        except Exception:
+            mult_val = float(self.settings.retrieval_multiplier)
+        per_source_k = compute_per_source_k(int(self.settings.base_top_k), float(mult_val))
+        if per_source_k <= 0:
+            logger.info("Chat: skipping RAG due to route=%s per_source_k=%s", route, per_source_k)
+            return None, primary_ns
+
+        daily_enabled = self._daily_enabled(project_id)
+
+        # Canonical retrieval query: use the exact contextual query string we built
+        # (<user_prompt> + optional Context/Intent/Type), unchanged by builder rewrites.
+        # NOTE: `summary` is the tags_meta_json block from _build_builder_summary().
+        primary_query = format_contextual_turn(message, summary)
+        queries = [primary_query] if primary_query else []
+
+        # Debug: persist the actual RAG query string used for retrieval.
+        # Only emit when retrieval actually runs (we are past rag=false / CHITCHAT checks).
+        try:
+            ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+            fname = f"{ts}_rag_query.txt"
+            body = (
+                f"# timestamp: {ts}\n"
+                f"# project_id: {project_id}\n"
+                f"# route: {route or 'UNKNOWN'}\n"
+                f"# rag: true\n"
+                f"# base_top_k: {int(self.settings.base_top_k)}\n"
+                f"# retrieval_multiplier: {mult_val}\n"
+                f"# per_source_k: {int(per_source_k)}\n"
+                f"# max_keep: {max_keep}\n"
+                f"# queries_count: {len([q for q in queries if q])}\n"
+                "\n"
+                "====== USER PROMPT ======\n"
+                f"{message or ''}\n"
+                "\n"
+                "====== RAG Query String ======\n"
+                f"{primary_query}\n"
+            )
+            write_debug_file(project_id, f"prompts/{fname}", body)
+        except Exception:
+            pass
+
+        logger.debug(
+            "Chat: performing merged retrieval (daily+main) for project=%s route=%s conf=%.2f queries=%s",
+            project_id,
+            route,
+            conf,
+            len(queries),
+        )
+
+        rc = merge_daily_and_main(
+            project_id=project_id,
+            query=primary_query,
+            main_threshold=self.settings.rag_score_threshold,
+            daily_enabled=bool(daily_enabled),
+            daily_threshold=self.settings.daily_rag_score_threshold,
+            daily_weight=self.settings.daily_rag_weight,
+            dedupe_exact=self.settings.dedupe_exact,
+            dedupe_near=self.settings.dedupe_near,
+            dedupe_similarity_threshold=self.settings.dedupe_similarity_threshold,
+            prefer_daily=self.settings.dedupe_keep_daily,
+            topics=topics,
+            preferred_namespace=None,
+            topic_boost=self.settings.topic_boost,
+            decision_boost=self.settings.decision_boost,
+            question_boost=self.settings.question_boost,
+            route_namespaces=namespaces,
+            namespace_boost=self.settings.namespace_boost,
+            per_source_k_override=int(per_source_k),
+        )
+
+        try:
+            logger.debug(
+                "[RETRIEVAL] project_id=%s message_id=%s route=%s rag_used=%s main_hits=%s main_avg=%.2f main_threshold=%.2f daily_hits=%s daily_avg=%.2f daily_threshold=%.2f total_hits=%s dedupe_exact_removed=%s dedupe_near_removed=%s",
+                project_id,
+                msg_id,
+                route or "UNKNOWN",
+                "true",
+                int(rc.get("main_hits", 0)),
+                float(rc.get("main_avg", 0.0)),
+                float(rc.get("main_threshold", self.settings.rag_score_threshold)),
+                int(rc.get("daily_hits", 0)),
+                float(rc.get("daily_avg", 0.0)),
+                float(rc.get("daily_threshold", self.settings.daily_rag_score_threshold)),
+                int(rc.get("total_hits", 0)),
+                int(rc.get("dedupe_exact_removed", 0)),
+                int(rc.get("dedupe_near_removed", 0)),
+            )
+        except Exception:
+            pass
+
+        if rc.get("context_text"):
+            rag_system_prompt = rc["context_text"]
+            logger.debug("Chat: injecting merged context tokens=%s", rc.get("tokens_used"))
+        else:
+            logger.debug("Chat: no merged RAG context injected (empty)")
+
+        return rag_system_prompt, primary_ns
+
+    def apply_rag_guidance(self, base_system_prompt: Optional[str], rag_system_prompt: Optional[str]) -> Optional[str]:
+        """Append guidance to system prompt only when RAG context exists."""
+        if not rag_system_prompt:
+            return base_system_prompt
+        try:
+            if base_system_prompt:
+                return base_system_prompt.rstrip() + "\n\n" + RAG_SYSTEM_PROMPT.strip() + "\n"
+            return RAG_SYSTEM_PROMPT.strip() + "\n"
+        except Exception:
+            return base_system_prompt
+
+    def enforce_model_whitelist(self, requested_model: Optional[str]) -> None:
+        if not requested_model:
+            return
+        if requested_model not in self.settings.available_models:
+            raise HTTPException(status_code=400, detail={"error": "Model not allowed"})
+
+    def build_llm_messages(
+        self,
+        *,
+        base_system_prompt: Optional[str],
+        assistant_hint: Optional[str],
+        rag_system_prompt: Optional[str],
+        conversation_history: Optional[list[dict]],
+        user_message: str,
+    ) -> list:
+        msgs: list = []
+        if base_system_prompt:
+            msgs.append(SystemMessage(content=base_system_prompt))
+        if assistant_hint:
+            msgs.append(AIMessage(content=assistant_hint))
+        if rag_system_prompt:
+            msgs.append(SystemMessage(content=rag_system_prompt))
+        if conversation_history:
+            for m in conversation_history:
+                if (m.get("role") or "").lower() == "user":
+                    msgs.append(HumanMessage(content=m.get("content") or ""))
+                elif (m.get("role") or "").lower() == "assistant":
+                    msgs.append(AIMessage(content=m.get("content") or ""))
+        msgs.append(HumanMessage(content=user_message or ""))
+        return msgs
+
+    def persist_user(self, project_id: Optional[str], message: str) -> None:
+        if not project_id:
+            return
+        try:
+            get_memory_manager().append_user_message(project_id, message)
+        except Exception:
+            pass
+
+    def persist_assistant(
+        self,
+        project_id: Optional[str],
+        message: str,
+        namespace: Optional[str],
+        *,
+        user_text_for_tagging: Optional[str] = None,
+        previous_pair_text_for_tagging: Optional[str] = None,
+    ) -> None:
+        if not project_id:
+            return
+        try:
+            get_memory_manager().append_assistant_message(
+                project_id,
+                message,
+                namespace=(namespace or "general"),
+                user_text_for_tagging=user_text_for_tagging,
+                previous_pair_text_for_tagging=previous_pair_text_for_tagging,
+            )
+        except Exception:
+            pass
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -175,215 +590,19 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             preview,
         )
 
-        # Build conversation history from per-project working memory (V2.2)
-        conversation_history = None
-        if request.project_id:
-            memory_manager = get_memory_manager()
-            proj_msgs = memory_manager.get_project_history(request.project_id)
-            # chronological messages already; map to role/content for LLM
-            conversation_history = [{"role": m["role"], "content": m["content"]} for m in proj_msgs]
-
-        # V2.6: Load project system prompt and personality (if project context)
-        base_system_prompt = None
-        assistant_hint = None
-        personality_creativity = None
-        if request.project_id:
-            try:
-                base_system_prompt = load_project_system_prompt(request.project_id)
-                p = load_project_personality(request.project_id)
-                personality_creativity = float(p.get("creativity") or 0.0)
-                # Assistant hint using standard template
-                tone = p.get("tone") or "analytical"
-                verb = p.get("verbosity") or "concise"
-                fmt = p.get("format") or "markdown"
-                domains = p.get("domain_focus") or []
-                if not isinstance(domains, list):
-                    domains = []
-                assistant_hint = (
-                    f"Follow these preferences: tone={tone}, verbosity={verb}, format={fmt}, "
-                    f"domain_focus={domains}. Respond concisely in the chosen format."
-                )
-            except Exception:
-                base_system_prompt = None
-                assistant_hint = None
-                personality_creativity = None
-
-        # Optional RAG retrieval (V2.3.1: builder + daily/main merge)
-        rag_system_prompt = None
-        primary_ns = None
-        if settings.rag_on_chat and request.project_id:
-            # Summarize recent pairs (simple heuristic)
-            summary = ''
-            try:
-                mm = get_memory_manager()
-                hist = mm.get_project_history(request.project_id)
-                tail = hist[-8:] if len(hist) > 8 else hist
-                parts = []
-                for m in tail:
-                    parts.append(f"{m.get('role')}: {(m.get('content') or '')[:120]}")
-                summary = " | ".join(parts)[:1000]
-            except Exception:
-                summary = ''
-            # (Telemetry removed)
-            b = build_query(request.project_id, summary, request.message)
-            if b is None:
-                # [BUILDER] failure
-                logger.debug(
-                    "[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview=\"%s\"",
-                    proj,
-                    msg_id,
-                    "UNKNOWN",
-                    "false",
-                    0.00,
-                    0,
-                    preview,
-                )
-                # [ROUTE] log with CHITCHAT-like bypass baseline
-                logger.debug(
-                    "[ROUTE] project_id=%s message_id=%s route=%s namespaces=%s rag_k=%s score_threshold=%.2f",
-                    proj,
-                    msg_id,
-                    "UNKNOWN",
-                    [],
-                    0,
-                    0.0,
-                )
-                logger.debug("builder unavailable; skipping RAG for this turn")
-            else:
-                route = (b.get('route') or '').upper()
-                do_rag = bool(b.get('rag'))
-                conf = float(b.get('confidence') or 0.0)
-                topics = b.get('topics') or []
-                standalone = b.get('standalone') or request.message
-                paraphrases = b.get('paraphrases') or []
-                hyde = b.get('hyde') or ''
-                # [BUILDER]
-                builder_prev = (standalone or preview or "")[:settings.log_preview_max_chars]
-                logger.debug(
-                    "[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview=\"%s\"",
-                    proj,
-                    msg_id,
-                    route or "UNKNOWN",
-                    "true" if do_rag else "false",
-                    conf,
-                    len(topics or []),
-                    builder_prev,
-                )
-                # [ROUTE] selection and logging
-                try:
-                    rcfg = _load_route_config()
-                except Exception:
-                    rcfg = {}
-                rdef = rcfg.get(route or "OTHER") or rcfg.get("OTHER") or {}
-                namespaces = rdef.get("namespaces") or []
-                rag_k_route = int(rdef.get("rag_k", settings.rag_top_k))
-                score_th = float(rdef.get("score_threshold", settings.rag_score_threshold))
-                logger.debug(
-                    "[ROUTE] project_id=%s message_id=%s route=%s namespaces=%s rag_k=%s score_threshold=%.2f",
-                    proj,
-                    msg_id,
-                    route or "UNKNOWN",
-                    namespaces,
-                    rag_k_route,
-                    score_th,
-                )
-                set_route(route or "UNKNOWN")
-                # Choose a primary namespace (persist the builder route; fallback to general)
-                try:
-                    if route:
-                        primary_ns = (route or "general").lower()
-                    else:
-                        primary_ns = "general"
-                except Exception:
-                    primary_ns = "general"
-                set_namespace(primary_ns)
-                # Strict skip: no retrieval for CHITCHAT or rag=false
-                if (not do_rag) or route == 'CHITCHAT':
-                    logger.info("Chat: skipping RAG due to route=%s rag=%s", route, do_rag)
-                    # (Telemetry removed)
-                else:
-                    # Check per-project toggle for Daily RAG. If disabled, set daily_top_k=0 to skip daily.
-                    daily_enabled = True
-                    try:
-                        with get_session() as session:
-                            p = session.get(Project, request.project_id)
-                            if p is not None:
-                                daily_enabled = bool(p.daily_rag_enabled)
-                    except Exception:
-                        daily_enabled = True
-                    queries = [standalone]
-                    if conf >= settings.builder_confidence_min:
-                        queries.extend(paraphrases[:3])
-                        if hyde:
-                            queries.append(hyde)
-                    # Simple multi-query expansion: join variants to widen recall
-                    q_join = "\n".join([q for q in queries if q])
-                    primary_query = q_join if q_join else (request.message or "")
-                    logger.debug(
-                        "Chat: performing merged retrieval (daily+main) for project=%s route=%s conf=%.2f queries=%s",
-                        request.project_id, route, conf, len(queries)
-                    )
-                    rc = merge_daily_and_main(
-                        project_id=request.project_id,
-                        query=primary_query,
-                        main_top_k=rag_k_route,
-                        main_snippet_max_tokens=settings.rag_snippet_max_tokens,
-                        main_threshold=score_th,
-                        daily_top_k=(rag_k_route if daily_enabled else 0),
-                        daily_threshold=score_th,
-                        daily_weight=settings.daily_rag_weight,
-                        daily_max_tokens=settings.daily_rag_max_tokens,
-                        global_context_max_tokens=settings.rag_context_max_tokens,
-                        dedupe_exact=settings.dedupe_exact,
-                        dedupe_near=settings.dedupe_near,
-                        dedupe_similarity_threshold=settings.dedupe_similarity_threshold,
-                        prefer_daily=settings.dedupe_keep_daily,
-                        topics=topics,
-                        preferred_namespace=None,
-                        topic_boost=settings.topic_boost,
-                        decision_boost=settings.decision_boost,
-                        question_boost=settings.question_boost,
-                        route_namespaces=namespaces,
-                        namespace_boost=settings.namespace_boost,
-                    )
-                    # [RETRIEVAL]
-                    logger.debug(
-                        "[RETRIEVAL] project_id=%s message_id=%s route=%s rag_used=%s main_hits=%s main_avg=%.2f main_threshold=%.2f daily_hits=%s daily_avg=%.2f daily_threshold=%.2f total_hits=%s dedupe_exact_removed=%s dedupe_near_removed=%s",
-                        proj,
-                        msg_id,
-                        route or "UNKNOWN",
-                        "true",
-                        int(rc.get("main_hits", 0)),
-                        float(rc.get("main_avg", 0.0)),
-                        float(rc.get("main_threshold", settings.rag_score_threshold)),
-                        int(rc.get("daily_hits", 0)),
-                        float(rc.get("daily_avg", 0.0)),
-                        float(rc.get("daily_threshold", settings.daily_rag_score_threshold)),
-                        int(rc.get("total_hits", 0)),
-                        int(rc.get("dedupe_exact_removed", 0)),
-                        int(rc.get("dedupe_near_removed", 0)),
-                    )
-                    if rc.get("context_text"):
-                        rag_system_prompt = rc["context_text"]
-                        logger.debug(f"Chat: injecting merged context tokens={rc.get('tokens_used')}")
-                    else:
-                        logger.debug("Chat: no merged RAG context injected (empty)")
-        # If we have retrieved context, inject RAG guidance into the base system prompt
-        if rag_system_prompt:
-            try:
-                if base_system_prompt:
-                    base_system_prompt = (base_system_prompt.rstrip() + "\n\n" + RAG_SYSTEM_PROMPT.strip() + "\n")
-                else:
-                    base_system_prompt = (RAG_SYSTEM_PROMPT.strip() + "\n")
-            except Exception:
-                pass
-        # Enforce model whitelist if override provided
-        if request.model:
-            try:
-                if request.model not in settings.available_models:
-                    raise HTTPException(status_code=400, detail={"error": "Model not allowed"})
-            except Exception:
-                pass
+        pipeline = _ChatPipeline(settings)
+        memory_manager = get_memory_manager() if request.project_id else None
+        conversation_history = pipeline.build_conversation_history(request.project_id)
+        base_system_prompt, assistant_hint, personality_creativity = pipeline.load_project_prompts(request.project_id)
+        rag_system_prompt, primary_ns = pipeline.compute_rag_context(
+            project_id=request.project_id,
+            message=request.message,
+            preview=preview,
+            msg_id=msg_id,
+            conversation_history=conversation_history,
+        )
+        base_system_prompt = pipeline.apply_rag_guidance(base_system_prompt, rag_system_prompt)
+        pipeline.enforce_model_whitelist(request.model)
         # Log LLM request
         try:
             logger.debug(
@@ -443,12 +662,15 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         
         # Persist user and assistant messages (project-scoped working memory)
         try:
-            if request.project_id:
+            if request.project_id and memory_manager is not None:
+                prev_pair = pipeline.previous_pair_text(conversation_history)
                 memory_manager.append_user_message(request.project_id, request.message)
                 memory_manager.append_assistant_message(
                     request.project_id,
                     llm_response["response"],
                     namespace=(primary_ns or "general"),
+                    user_text_for_tagging=request.message,
+                    previous_pair_text_for_tagging=prev_pair,
                 )
         except Exception as e:
             logger.error(
@@ -565,122 +787,22 @@ async def chat_stream(request: ChatRequest):
         set_message_id(msg_id)
         request_logger.log_request(endpoint="/chat/stream", method="POST", user_id=request.conversation_id)
         proj = request.project_id or "Continuum"
-        # Build conversation history
-        conversation_history = None
-        primary_ns = None
-        if request.project_id:
-            mm = get_memory_manager()
-            hist = mm.get_project_history(request.project_id)
-            conversation_history = [{"role": m["role"], "content": m["content"]} for m in hist]
-        # Load system prompt + personality
-        base_system_prompt = None
-        assistant_hint = None
-        personality_creativity = None
-        if request.project_id:
-            try:
-                base_system_prompt = load_project_system_prompt(request.project_id)
-                p = load_project_personality(request.project_id)
-                personality_creativity = float(p.get("creativity") or 0.0)
-                tone = p.get("tone") or "analytical"
-                verb = p.get("verbosity") or "concise"
-                fmt = p.get("format") or "markdown"
-                domains = p.get("domain_focus") or []
-                if not isinstance(domains, list):
-                    domains = []
-                assistant_hint = f"Follow these preferences: tone={tone}, verbosity={verb}, format={fmt}, domain_focus={domains}. Respond concisely in the chosen format."
-            except Exception:
-                base_system_prompt = None
-                assistant_hint = None
-                personality_creativity = None
-        # Optional RAG assembly (reuse same logic as /chat but simplified)
-        rag_system_prompt = None
-        preview = (request.message or "")[:settings.log_preview_max_chars]
-        if settings.rag_on_chat and request.project_id:
-            try:
-                mm = get_memory_manager()
-                hist = mm.get_project_history(request.project_id)
-                tail = hist[-8:] if len(hist) > 8 else hist
-                parts = []
-                for m in tail:
-                    parts.append(f"{m.get('role')}: {(m.get('content') or '')[:120]}")
-                summary = " | ".join(parts)[:1000]
-            except Exception:
-                summary = ""
-            b = build_query(request.project_id, summary, request.message)
-            if b:
-                route = (b.get('route') or '').upper()
-                do_rag = bool(b.get('rag'))
-                conf = float(b.get('confidence') or 0.0)
-                standalone = b.get('standalone') or request.message
-                paraphrases = b.get('paraphrases') or []
-                # Select namespaces and build merged context if enabled
-                try:
-                    rcfg = _load_route_config()
-                except Exception:
-                    rcfg = {}
-                rdef = rcfg.get(route or "OTHER") or rcfg.get("OTHER") or {}
-                namespaces = rdef.get("namespaces") or []
-                rag_k_route = int(rdef.get("rag_k", settings.rag_top_k))
-                score_th = float(rdef.get("score_threshold", settings.rag_score_threshold))
-                try:
-                    primary_ns = (route or "general").lower() if route else "general"
-                except Exception:
-                    primary_ns = "general"
-                if do_rag and (route != "CHITCHAT"):
-                    # daily enabled?
-                    daily_enabled = True
-                    try:
-                        with get_session() as session:
-                            p = session.get(Project, request.project_id)
-                            if p is not None:
-                                daily_enabled = bool(p.daily_rag_enabled)
-                    except Exception:
-                        daily_enabled = True
-                    queries = [standalone]
-                    if conf >= settings.builder_confidence_min:
-                        queries.extend(paraphrases[:3])
-                    q_join = "\n".join([q for q in queries if q])
-                    primary_query = q_join if q_join else (request.message or "")
-                    rc = merge_daily_and_main(
-                        project_id=request.project_id,
-                        query=primary_query,
-                        main_top_k=rag_k_route,
-                        main_snippet_max_tokens=settings.rag_snippet_max_tokens,
-                        main_threshold=score_th,
-                        daily_top_k=(rag_k_route if daily_enabled else 0),
-                        daily_threshold=score_th,
-                        daily_weight=settings.daily_rag_weight,
-                        daily_max_tokens=settings.daily_rag_max_tokens,
-                        global_context_max_tokens=settings.rag_context_max_tokens,
-                        dedupe_exact=settings.dedupe_exact,
-                        dedupe_near=settings.dedupe_near,
-                        dedupe_similarity_threshold=settings.dedupe_similarity_threshold,
-                        prefer_daily=settings.dedupe_keep_daily,
-                        topics=b.get('topics') or [],
-                        preferred_namespace=None,
-                        topic_boost=settings.topic_boost,
-                        decision_boost=settings.decision_boost,
-                        question_boost=settings.question_boost,
-                        route_namespaces=namespaces,
-                        namespace_boost=settings.namespace_boost,
-                    )
-                    if rc.get("context_text"):
-                        rag_system_prompt = rc["context_text"]
-        # If we have retrieved context, inject RAG guidance into the base system prompt
-        if rag_system_prompt:
-            try:
-                if base_system_prompt:
-                    base_system_prompt = (base_system_prompt.rstrip() + "\n\n" + RAG_SYSTEM_PROMPT.strip() + "\n")
-                else:
-                    base_system_prompt = (RAG_SYSTEM_PROMPT.strip() + "\n")
-            except Exception:
-                pass
-        # Persist user immediately
-        if request.project_id:
-            try:
-                get_memory_manager().append_user_message(request.project_id, request.message)
-            except Exception:
-                pass
+
+        pipeline = _ChatPipeline(settings)
+        conversation_history = pipeline.build_conversation_history(request.project_id)
+        base_system_prompt, assistant_hint, personality_creativity = pipeline.load_project_prompts(request.project_id)
+        rag_system_prompt, primary_ns = pipeline.compute_rag_context(
+            project_id=request.project_id,
+            message=(request.message or ""),
+            preview=(request.message or "")[:settings.log_preview_max_chars],
+            msg_id=msg_id,
+            conversation_history=conversation_history,
+        )
+        base_system_prompt = pipeline.apply_rag_guidance(base_system_prompt, rag_system_prompt)
+        pipeline.enforce_model_whitelist(request.model)
+        # Persist user immediately (streaming semantics)
+        pipeline.persist_user(request.project_id, request.message)
+        prev_pair = pipeline.previous_pair_text(conversation_history)
         # Fallback: if streaming is disabled, return a simulated stream using the non-streaming path
         if not settings.streaming_enabled:
             async def fake_stream():
@@ -696,10 +818,12 @@ async def chat_stream(request: ChatRequest):
                     # Persist assistant once complete
                     try:
                         if request.project_id:
-                            get_memory_manager().append_assistant_message(
+                            pipeline.persist_assistant(
                                 request.project_id,
                                 text,
-                                namespace=(primary_ns or "general"),
+                                (primary_ns or "general"),
+                                user_text_for_tagging=(request.message or ""),
+                                previous_pair_text_for_tagging=prev_pair,
                             )
                     except Exception:
                         pass
@@ -711,21 +835,13 @@ async def chat_stream(request: ChatRequest):
                     yield f"\n[error] {str(e)}\n"
             return StreamingResponse(fake_stream(), media_type="text/plain; charset=utf-8")
         # True streaming via LangChain callback iterator
-        # Build messages list
-        msgs = []
-        if base_system_prompt:
-            msgs.append(SystemMessage(content=base_system_prompt))
-        if assistant_hint:
-            msgs.append(AIMessage(content=assistant_hint))
-        if rag_system_prompt:
-            msgs.append(SystemMessage(content=rag_system_prompt))
-        if conversation_history:
-            for m in conversation_history:
-                if m.get("role") == "user":
-                    msgs.append(HumanMessage(content=m.get("content") or ""))
-                elif m.get("role") == "assistant":
-                    msgs.append(AIMessage(content=m.get("content") or ""))
-        msgs.append(HumanMessage(content=request.message or ""))
+        msgs = pipeline.build_llm_messages(
+            base_system_prompt=base_system_prompt,
+            assistant_hint=assistant_hint,
+            rag_system_prompt=rag_system_prompt,
+            conversation_history=conversation_history,
+            user_message=(request.message or ""),
+        )
         # Prompt debug snapshot (best-effort; no-op unless GENERATE_DEBUG_FILES=true)
         try:
             _dump_prompt_debug(
@@ -740,28 +856,50 @@ async def chat_stream(request: ChatRequest):
         except Exception:
             pass
 
-        # Initialize streaming LLM client (LangChain 0.2.x native astream)
-        # Force temperature to 1.0 for maximum compatibility with small models
-        llm = ChatOpenAI(
-            api_key=settings.openai_api_key,
-            model=(request.model or settings.model_name),
-            temperature=1.0,
-            model_kwargs={"max_completion_tokens": settings.model_max_tokens},
-            streaming=True,
-        )
-
         # Token stream using astream (yields AIMessageChunk with incremental content)
         async def token_stream():
             collected = []
             try:
-                async for chunk in llm.astream(msgs):
+                # Initialize streaming LLM client (LangChain 0.2.x native astream)
+                # Try with temperature=1.0, but some models reject the temperature parameter entirely.
+                model_name = (request.model or settings.model_name)
+                llm = ChatOpenAI(
+                    api_key=settings.openai_api_key,
+                    model=model_name,
+                    temperature=1.0,
+                    model_kwargs={"max_completion_tokens": settings.model_max_tokens},
+                    streaming=True,
+                )
+                yielded_any = False
+                try:
+                    async for chunk in llm.astream(msgs):
+                        # Only emit actual text content; skip metadata/header chunks
+                        piece = getattr(chunk, "content", None)
+                        if not piece:
+                            piece = getattr(chunk, "delta", None)
+                        if isinstance(piece, str) and piece:
+                            yielded_any = True
+                            collected.append(piece)
+                            yield piece
+                except Exception as e:
+                    msg = str(e).lower()
+                    if (not yielded_any) and ("temperature" in msg or "unsupported_value" in msg or "invalid_request_error" in msg):
+                        llm2 = ChatOpenAI(
+                            api_key=settings.openai_api_key,
+                            model=model_name,
+                            model_kwargs={"max_completion_tokens": settings.model_max_tokens},
+                            streaming=True,
+                        )
+                        async for chunk in llm2.astream(msgs):
+                            piece = getattr(chunk, "content", None)
+                            if not piece:
+                                piece = getattr(chunk, "delta", None)
+                            if isinstance(piece, str) and piece:
+                                collected.append(piece)
+                                yield piece
+                    else:
+                        raise
                     # Only emit actual text content; skip metadata/header chunks
-                    piece = getattr(chunk, "content", None)
-                    if not piece:
-                        piece = getattr(chunk, "delta", None)
-                    if isinstance(piece, str) and piece:
-                        collected.append(piece)
-                        yield piece
                 # Signal end of stream
                 yield "\n::event: done\n"
             finally:
@@ -769,10 +907,12 @@ async def chat_stream(request: ChatRequest):
                 try:
                     if request.project_id:
                         full_text = "".join(collected)
-                        get_memory_manager().append_assistant_message(
+                        pipeline.persist_assistant(
                             request.project_id,
                             full_text,
-                            namespace=(primary_ns or "general"),
+                            (primary_ns or "general"),
+                            user_text_for_tagging=(request.message or ""),
+                            previous_pair_text_for_tagging=prev_pair,
                         )
                 except Exception:
                     pass

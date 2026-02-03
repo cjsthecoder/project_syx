@@ -263,17 +263,24 @@ This step establishes the foundation for shared ranking, thresholding, and telem
   * A normalized query string.
   * A list of memory sources to query (at minimum: Daily and LTM).
   * A retrieval configuration object (source-level limits and future ranking/threshold parameters).
+* The canonical retrieval function MUST compute the query embedding exactly once (using `settings.embedding_model`) and reuse the same query vector across all queried sources.
+* Candidate retrieval MUST NOT be controlled by route configuration (e.g., `meta_namespaces.json`); route/policy inputs are deferred to later stages (A.4.3+).
+* Retrieval-stage limits SHALL be controlled only by:
+  * `BASE_TOP_K`
+  * `RETRIEVAL_MULTIPLIER`
+  with per-source query limit:
+  * `PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)`
 
 #### Retrieval Behavior
 
 * The canonical retrieval function SHALL:
 
-  * Query Daily and LTM memories using the same semantic search mechanism.
+  * Query Daily and LTM memories using the same semantic search mechanism, driven by the shared query vector.
   * Normalize all retrieved results into a single, canonical candidate shape containing:
 
     * Source identifier (`daily` or `ltm`)
     * Retrieved text
-    * Associated metadata (tags, timestamp, route, intent, type)
+    * Associated metadata (see “Canonical Candidate Shape” below)
     * Raw similarity score from the underlying vector search (cosine similarity in the range 0.0–1.0)
   * Apply no namespace boosts or route-based eligibility pruning at this stage.
 
@@ -283,6 +290,7 @@ This step establishes the foundation for shared ranking, thresholding, and telem
   * Apply ranking or thresholding decisions at this stage.
   * Apply fallback behavior when no candidates meet a similarity threshold (thresholding does not occur in this step).
   * Inject retrieved content directly into the model prompt.
+  * Apply route-based `rag_k` or `score_threshold` values at retrieval time.
 
 #### Source Semantics
 
@@ -290,6 +298,10 @@ This step establishes the foundation for shared ranking, thresholding, and telem
 * Differences between sources (recency, priority, trust) SHALL be expressed only through metadata and scoring adjustments in later steps.
 * For the purposes of unified retrieval, `ltm` SHALL include all content embedded in the project’s main FAISS index, regardless of origin (uploads, sleep summaries, dream artifacts, or other long-lived memory sources).
 * For `daily` candidates, canonical metadata SHALL be sourced authoritatively from `daily.json` (not inferred from embedded text). A stable daily entry identifier MUST exist for each daily vector so candidates can be deterministically joined to `daily.json`.
+* If a `daily` candidate cannot be deterministically joined to `daily.json`, it SHALL still be returned (lossless recall). In that case:
+  * `metadata.id` SHALL be null/absent
+  * Daily-only fields (e.g., `tags_meta`, `topics`, `intent`, `type`, `keep`, `day_sequence`, `pair_ids`) SHALL be null/absent
+  * `metadata.route` MAY be populated best-effort from the FAISS document metadata namespace if present; otherwise null/absent
 * For `ltm` candidates, missing metadata fields are allowed and SHALL be left absent/null. No parsing from retrieved text is performed in this step.
 
 #### Ordering Guarantees
@@ -299,22 +311,42 @@ This step establishes the foundation for shared ranking, thresholding, and telem
   * The original retrieval order returned by the underlying vector search for each source.
   * Source attribution for every retrieved candidate.
 
-* The returned list SHALL be a flat list concatenated as:
-  * Daily candidates first, then LTM candidates.
-  * Per-source order is preserved within each segment.
-* No cross-source ordering or merging SHALL occur in this step beyond the fixed concatenation order above.
+* A.4.1 does not define a cross-source ordering rule for the combined candidate set; deterministic ordering is defined by A.4.2.
 
 #### Output Contract
 
-* The function SHALL return a flat list of retrieval candidates with no filtering beyond source-level query execution limits.
+* The function SHALL return a flat list of retrieval candidates with no filtering beyond source-level query execution limits (`PER_SOURCE_K` per queried source).
 * An empty result set from one source SHALL NOT block retrieval from other sources.
 * Failure to query one source SHALL degrade gracefully and SHALL NOT abort the overall retrieval operation.
-* On error querying a source, the system SHALL trigger a best-effort rebuild/repair for that source and return an empty candidate set for that source for the current request (no automatic retry within the request).
+* If query embedding fails, retrieval is unavailable for the request and the function SHALL return an empty candidate list.
+* Rebuild/repair semantics are source-owned. On error querying a source or model mismatch for that source, the system SHALL:
+  * Degrade gracefully and return an empty candidate set for that source for the current request (no automatic retry within the request)
+  * Allow the owning source subsystem to trigger best-effort rebuild/repair asynchronously per its lifecycle rules
+
+#### Canonical Candidate Shape
+
+Every candidate MUST include the following uniform schema (missing fields are allowed and represented as null/absent):
+
+* `source`: `daily` | `ltm`
+* `text`: string
+* `score`: float (raw cosine similarity in [0.0–1.0])
+* `metadata`:
+  * `id`: optional string
+  * `timestamp`: optional string
+  * `route`: optional string
+  * `tags`: optional list
+  * `topics`: optional list
+  * `intent`: optional string
+  * `type`: optional string
+  * `tags_meta`: optional object
+  * `keep`: optional boolean
+  * `day_sequence`: optional integer
+  * `pair_ids`: optional list
 
 #### New Invariants
 
 * All RAG retrieval passes through a single code path.
-* Daily and LTM are no longer queried via separate, source-specific logic.
+* Candidate shape is uniform across sources; enrichment is conditional.
 * Retrieval consistency is guaranteed across memory tiers prior to ranking and selection.
 
 

@@ -227,6 +227,7 @@ setup-env:
 		echo "# Morpheus AGI Chatbot Framework - Environment Variables"; \
 		echo "# Edit values as needed. Comments are placed after each variable to avoid parser conflicts."; \
 		echo ""; \
+		echo "# === Core: OpenAI + Chat Model ==="; \
 		echo "OPENAI_API_KEY=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"; \
 		echo "# OpenAI API key used for chat and embeddings"; \
 		echo ""; \
@@ -239,6 +240,10 @@ setup-env:
 		echo "MODEL_MAX_TOKENS=128000"; \
 		echo "# Max tokens in a single model response"; \
 		echo ""; \
+		echo "AVAILABLE_MODELS=[\"gpt-5.2\",\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5-mini\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
+		echo "# Whitelisted chat models for the UI selector"; \
+		echo ""; \
+		echo "# === Server + CORS ==="; \
 		echo "HOST=0.0.0.0"; \
 		echo "# Server host interface"; \
 		echo ""; \
@@ -248,6 +253,10 @@ setup-env:
 		echo "RELOAD=true"; \
 		echo "# Enable auto-reload in development"; \
 		echo ""; \
+		echo "CORS_ORIGINS=[\"http://localhost:3000\",\"http://localhost:5173\"]"; \
+		echo "# Allowed browser origins for API"; \
+		echo ""; \
+		echo "# === Logging ==="; \
 		echo "LOG_LEVEL=INFO"; \
 		echo "# Log level (DEBUG, INFO, WARNING, ERROR)"; \
 		echo ""; \
@@ -266,15 +275,10 @@ setup-env:
 		echo "LOG_BACKUP_COUNT=5"; \
 		echo "# Number of rotated log files per session"; \
 		echo ""; \
-		echo "NAMESPACE_BOOST=1.20"; \
-		echo "# V2.5: Multiplicative boost for namespace match"; \
-		echo ""; \
 		echo "LOG_PREVIEW_MAX_CHARS=1024"; \
 		echo "# Max chars for log previews"; \
 		echo ""; \
-		echo "CORS_ORIGINS=[\"http://localhost:3000\",\"http://localhost:5173\"]"; \
-		echo "# Allowed browser origins for API"; \
-		echo ""; \
+		echo "# === Database + Storage ==="; \
 		echo "DB_PATH=app/data/morpheus.db"; \
 		echo "# SQLite database file path (or full URL like sqlite:///...)"; \
 		echo ""; \
@@ -287,6 +291,7 @@ setup-env:
 		echo "STORAGE_LIMIT_MB=500"; \
 		echo "# Per-project storage cap (MB)"; \
 		echo ""; \
+		echo "# === Embeddings + Indexing ==="; \
 		echo "EMBEDDING_MODEL=text-embedding-3-large"; \
 		echo "# Embedding model for document indexing"; \
 		echo ""; \
@@ -296,42 +301,33 @@ setup-env:
 		echo "CHUNK_OVERLAP=100"; \
 		echo "# Overlap between chunks during embedding"; \
 		echo ""; \
-		echo "AVAILABLE_MODELS=[\"gpt-5.2\",\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5-mini\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
-		echo "# Whitelisted chat models for the UI selector"; \
-		echo ""; \
+		echo "# === RAG (Main / LTM) ==="; \
 		echo "RAG_ON_CHAT=true"; \
 		echo "# If true, inject retrieved context into chat when index exists"; \
 		echo ""; \
-		echo "RAG_TOP_K=10"; \
-		echo "# Number of top snippets to retrieve"; \
+		echo "BASE_TOP_K=8"; \
+		echo "# DELTA-A.4.1: Base top-K used to derive per-source retrieval K"; \
 		echo ""; \
-		echo "RAG_SNIPPET_MAX_TOKENS=500"; \
-		echo "# Max tokens per RAG snippet"; \
-		echo ""; \
-		echo "RAG_CONTEXT_MAX_TOKENS=10000"; \
-		echo "# Max total tokens for injected context block"; \
+		echo "RETRIEVAL_MULTIPLIER=2.0"; \
+		echo "# DELTA-A.4.1: PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)"; \
 		echo ""; \
 		echo "RAG_SCORE_THRESHOLD=0.5"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
+		echo "# === Daily Memory + Daily RAG ==="; \
 		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
 		echo "# V2.3: Number of prompt/response pairs kept in working memory:: 10 is working well"; \
 		echo ""; \
 		echo "DAILY_RAG_ENABLED=true"; \
 		echo "# V2.3: Global default toggle; per-project override via UI"; \
 		echo ""; \
-		echo "DAILY_RAG_K=9"; \
-		echo "# V2.3: Top-K results from daily index"; \
-		echo ""; \
 		echo "DAILY_RAG_SCORE_THRESHOLD=0.40"; \
 		echo "# V2.3: Similarity threshold for daily results"; \
-		echo ""; \
-		echo "DAILY_RAG_MAX_TOKENS=3000"; \
-		echo "# V2.3: Max tokens contributed by daily layer"; \
 		echo ""; \
 		echo "DAILY_RAG_WEIGHT=1.2"; \
 		echo "# V2.3: Weight multiplier for daily scores before merging"; \
 		echo ""; \
+		echo "# === Deduplication (Daily + Main) ==="; \
 		echo "DEDUPE_EXACT=true"; \
 		echo "# V2.3: Remove exact-text duplicates across daily/main"; \
 		echo ""; \
@@ -344,13 +340,14 @@ setup-env:
 		echo "DEDUPE_KEEP_DAILY=true"; \
 		echo "# V2.3: Prefer keeping the daily hit on dedupe"; \
 		echo ""; \
-		echo "BUILDER_MODEL=gpt-4o-mini"; \
+		echo "# === Query Builder + Reranking ==="; \
+		echo "BUILDER_MODEL=gpt-5-mini"; \
 		echo "# V2.3.1: LLM for query builder/router"; \
 		echo ""; \
 		echo "BUILDER_CONFIDENCE_MIN=0.75"; \
 		echo "# V2.3.1: Confidence threshold for full retrieval"; \
 		echo ""; \
-		echo "BUILDER_MAX_TOKENS=512"; \
+		echo "BUILDER_MAX_TOKENS=1024"; \
 		echo "# V2.3.1: Max tokens for builder output"; \
 		echo ""; \
 		echo "BUILDER_CACHE=true"; \
@@ -362,18 +359,24 @@ setup-env:
 		echo "DECISION_BOOST=1.05"; \
 		echo "# V2.3.1: Multiplicative boost for decision overlap"; \
 		echo ""; \
-        echo "QUESTION_BOOST=1.02"; \
+		echo "QUESTION_BOOST=1.02"; \
 		echo "# V2.3.1: Multiplicative boost for open-question overlap"; \
 		echo ""; \
+		echo "NAMESPACE_BOOST=1.20"; \
+		echo "# V2.5: Multiplicative boost for namespace match"; \
+		echo ""; \
+		echo "# === Working Memory ==="; \
 		echo "CHAT_HISTORY_LIMIT=20"; \
 		echo "# Number of recent messages kept per project in working memory"; \
 		echo ""; \
+		echo "# === Project Defaults (seeded files) ==="; \
 		echo "DEFAULT_SYSTEM_PROMPT_PATH=app/config/defaults/system_prompt.txt"; \
 		echo "# V2.6: Default system prompt file path (relative to backend/ cwd)"; \
 		echo ""; \
 		echo "DEFAULT_PERSONALITY_PROMPT_PATH=app/config/defaults/personality.json"; \
 		echo "# V2.6: Default personality JSON file path (relative to backend/ cwd)"; \
 		echo ""; \
+		echo "# === Sleep Cycle + Verification ==="; \
 		echo "ENABLE_SCHEDULER=true"; \
 		echo "# V3.1: Enable daily sleep scheduler"; \
 		echo ""; \
@@ -386,6 +389,7 @@ setup-env:
 		echo "VERIFY_RAG=true"; \
 		echo "# V3.3: Enable post-rebuild verification"; \
 		echo ""; \
+		echo "# === Streaming Chat ==="; \
 		echo "STREAMING_ENABLED=true"; \
 		echo "# V3.5: Enable streaming chat endpoint"; \
 		echo ""; \
@@ -395,6 +399,7 @@ setup-env:
 		echo "STREAM_TIMEOUT_MS=60000"; \
 		echo "# V3.5: Overall stream timeout (ms)"; \
 		echo ""; \
+		echo "# === Dream Pipeline ==="; \
 		echo "ENABLE_DREAM=true"; \
 		echo "# V4.1: Enable Dream orchestrator"; \
 		echo ""; \
@@ -409,6 +414,7 @@ setup-env:
 		echo "DREAM_TOPIC_BOOST=1.5"; \
 		echo "# V4.1.2: Dream agent configuration"; \
 		echo ""; \
+		echo "# === Debug / Observability ==="; \
 		echo "GENERATE_DEBUG_FILES=true"; \
 		echo "# V4.1.3.1: Enable debug file generation (e.g., debug_context.txt)"; \
 		echo ""; \

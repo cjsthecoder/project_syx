@@ -189,23 +189,28 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
             except Exception:
                 tokens = len((pair_text or "").split())
 
-            # Tagging
-            tags_lines = None
-            try:
-                tags_lines = tag_pair(origin_text, assistant_resp_full, previous_pair_text=None)
-            except Exception:
-                tags_lines = None
-
-            embed_text = (("\n".join(tags_lines) + "\n" + pair_text) if tags_lines else pair_text)
+            # Tagging (V3.x: includes semantic_handle)
             tags_meta = None
-            if tags_lines:
-                try:
-                    topics = tags_lines[0][8:].strip()
-                    intent = tags_lines[1][8:].strip()
-                    tag_type = tags_lines[2][6:].strip()
-                    tags_meta = {"topics": topics, "intent": intent, "type": tag_type}
-                except Exception:
-                    tags_meta = None
+            try:
+                tags_meta = tag_pair(origin_text, assistant_resp_full, previous_pair_text=None, project_id=project_id)
+            except Exception:
+                tags_meta = None
+
+            tags_block = ""
+            try:
+                if isinstance(tags_meta, dict):
+                    topics = str(tags_meta.get("topics", "") or "")
+                    intent = str(tags_meta.get("intent", "") or "")
+                    tag_type = str(tags_meta.get("type", "") or "")
+                    semantic_handle = tags_meta.get("semantic_handle", None)
+                    lines = [f"#topics: {topics}", f"#intent: {intent}", f"#type: {tag_type}"]
+                    if semantic_handle is not None:
+                        lines.append(f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}")
+                    tags_block = "\n".join(lines) + "\n"
+            except Exception:
+                tags_block = ""
+
+            embed_text = (tags_block + pair_text) if tags_block else pair_text
 
             try:
                 # Append to daily RAG (FAISS + daily.txt + daily.json metadata)
@@ -227,7 +232,6 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                 _END_DREAM_PAIR = "=== END DREAM PAIR ==="
                 ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())
                 keep_flag = bool(it.get("keep"))
-                tags_block = ("\n".join(tags_lines) + "\n") if tags_lines else ""
                 block = (
                     f"{_BEGIN_DREAM_PAIR}\n"
                     f"#timestamp: {ts_local}\n"

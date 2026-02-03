@@ -39,52 +39,10 @@ class MemoryManager:
     def __init__(self):
         self.project_deques: Dict[str, Deque[Dict[str, Any]]] = {}
         self.last_context_tokens_per_project: Dict[str, int] = {}
-        # DELTA-A.3: previous rolled-off pair tracking (ephemeral, per project)
-        self.last_rolled_off_pair: Dict[str, str] = {}
         s = get_settings()
         self.limit = s.chat_history_limit
         self.pair_limit = s.chat_history_limit_pairs
         logger.info("Memory manager initialized (v2.2 persistent mode)")
-
-    def clear_last_rolled_off_pair(self, project_id: str) -> None:
-        """DELTA-A.3: clear per-project previous rolled-off pair pointer."""
-        try:
-            self.last_rolled_off_pair.pop(project_id, None)
-        except Exception:
-            pass
-
-    def _hydrate_last_rolled_off_pair_from_daily_json(self, project_id: str) -> Optional[str]:
-        """
-        DELTA-A.3: best-effort hydration for last_rolled_off_pair from daily.json.
-        Uses canonical stored pair text (entry['text']) and never blocks roll-off on error.
-        """
-        try:
-            base_dir = os.path.join("memory", project_id)
-            meta_path = os.path.join(base_dir, "daily.json")
-            lock_path = os.path.join(base_dir, "daily.lock")
-            if not os.path.isfile(meta_path):
-                return None
-            # Best-effort lock to avoid reading mid-write
-            try:
-                with FileLock(lock_path):
-                    with open(meta_path, "r", encoding="utf-8") as f:
-                        entries = json.load(f)
-            except Exception:
-                with open(meta_path, "r", encoding="utf-8") as f:
-                    entries = json.load(f)
-            if not isinstance(entries, list) or not entries:
-                return None
-            last = entries[-1]
-            if not isinstance(last, dict):
-                return None
-            txt = last.get("text")
-            if not isinstance(txt, str) or not txt.strip():
-                return None
-            self.last_rolled_off_pair[project_id] = txt
-            return txt
-        except Exception as e:
-            logger.debug("[ANCHOR][HYDRATE] failed project=%s err=%s", project_id, e)
-            return None
     
     def _ensure_loaded(self, project_id: str) -> None:
         if project_id in self.project_deques:
@@ -110,6 +68,8 @@ class MemoryManager:
                         "forget": getattr(r, 'forget', False),
                         "namespace": getattr(r, 'namespace', None),
                         "keep": getattr(r, 'keep', False),
+                        "tags_meta_json": getattr(r, "tags_meta_json", None),
+                        "semantic_handle": getattr(r, "semantic_handle", None),
                     })
         except Exception as e:
             logger.error(f"Failed to load history for {project_id}: {e}")
@@ -140,15 +100,70 @@ class MemoryManager:
         })
         self.prune_to_limit(project_id)
 
-    def append_assistant_message(self, project_id: str, content: str, namespace: Optional[str] = None) -> None:
+    def append_assistant_message(
+        self,
+        project_id: str,
+        content: str,
+        namespace: Optional[str] = None,
+        *,
+        user_text_for_tagging: Optional[str] = None,
+        previous_pair_text_for_tagging: Optional[str] = None,
+    ) -> None:
         if not project_id:
             return
         self._ensure_loaded(project_id)
         now = datetime.utcnow()
         ns = (namespace or get_namespace() or "general").lower()
+        tags_meta: Optional[Dict[str, Any]] = None
+        tags_meta_json: Optional[str] = None
+        semantic_handle: Optional[str] = None
+        # V3.x: tag immediately after assistant reply using the immediately previous active pair as context anchor.
+        try:
+            if user_text_for_tagging is not None:
+                tagged = tag_pair(
+                    user_text_for_tagging,
+                    content,
+                    previous_pair_text=previous_pair_text_for_tagging,
+                    project_id=project_id,
+                )
+                if isinstance(tagged, dict):
+                    tags_meta = {
+                        "topics": tagged.get("topics", "") or "",
+                        "intent": tagged.get("intent", "") or "",
+                        "type": tagged.get("type", "") or "",
+                        # semantic_handle is required but may be empty; store None only if missing.
+                        "semantic_handle": tagged.get("semantic_handle", None),
+                    }
+                    semantic_handle = tags_meta.get("semantic_handle", None)  # type: ignore[assignment]
+                    try:
+                        tags_meta_json = json.dumps(tags_meta, ensure_ascii=False)
+                    except Exception:
+                        tags_meta_json = None
+        except Exception:
+            tags_meta = None
+            tags_meta_json = None
+            semantic_handle = None
         with get_session() as session:
-            msg = ChatMessage(project_id=project_id, role="assistant", content=content, created_at=now, namespace=ns, keep=False)
+            msg = ChatMessage(
+                project_id=project_id,
+                role="assistant",
+                content=content,
+                created_at=now,
+                namespace=ns,
+                keep=False,
+                tags_meta_json=tags_meta_json,
+                semantic_handle=semantic_handle,
+            )
             session.add(msg)
+            # V3.x: persist last non-empty semantic handle across sleep flush (ChatMessage is wiped).
+            try:
+                if isinstance(semantic_handle, str) and semantic_handle.strip():
+                    p = session.get(Project, project_id)
+                    if p is not None:
+                        p.last_semantic_handle = semantic_handle.strip()
+                        session.add(p)
+            except Exception:
+                pass
             session.commit()
             session.refresh(msg)
         self.project_deques[project_id].append({
@@ -159,6 +174,8 @@ class MemoryManager:
             "forget": False,
             "namespace": ns,
             "keep": False,
+            "tags_meta_json": tags_meta_json,
+            "semantic_handle": semantic_handle,
         })
         self.prune_to_limit(project_id)
 
@@ -233,32 +250,30 @@ class MemoryManager:
             elif self._is_daily_enabled(project_id):
                 ns = (asst_msg.get("namespace") or get_namespace() or "general").lower()
                 keep = bool(asst_msg.get("keep"))
-                # DELTA-A.3 (revised): always try to prepend the previous rolled-off pair for tagging context.
-                previous_pair_text: Optional[str] = self.last_rolled_off_pair.get(project_id)
-                if previous_pair_text is None:
-                    previous_pair_text = self._hydrate_last_rolled_off_pair_from_daily_json(project_id)
-                if previous_pair_text is None:
-                    logger.debug(
-                        "[ANCHOR] no previous rolled-off pair available project_id=%s message_id=%s",
-                        project_id,
-                        mid,
-                    )
-                # V3.4: attempt to generate tag lines and embed them into FAISS text (daily.txt unchanged)
-                tags_lines = None
-                try:
-                    tags_lines = tag_pair(user_text, asst_text, previous_pair_text=previous_pair_text)
-                except Exception:
-                    tags_lines = None
-                embed_text = (("\n".join(tags_lines) + "\n" + pair_text) if tags_lines else pair_text)
+                # V3.x: roll-off does NOT call the tagger. It reuses metadata stored on the assistant row.
                 tags_meta = None
-                if tags_lines:
+                tags_meta_json = asst_msg.get("tags_meta_json")
+                if isinstance(tags_meta_json, str) and tags_meta_json.strip():
                     try:
-                        topics = tags_lines[0][8:].strip()
-                        intent = tags_lines[1][8:].strip()
-                        tag_type = tags_lines[2][6:].strip()
-                        tags_meta = {"topics": topics, "intent": intent, "type": tag_type}
+                        parsed = json.loads(tags_meta_json)
+                        if isinstance(parsed, dict):
+                            tags_meta = parsed
                     except Exception:
                         tags_meta = None
+                tags_block = ""
+                if isinstance(tags_meta, dict):
+                    try:
+                        topics = str(tags_meta.get("topics", "") or "")
+                        intent = str(tags_meta.get("intent", "") or "")
+                        tag_type = str(tags_meta.get("type", "") or "")
+                        semantic_handle = tags_meta.get("semantic_handle", None)
+                        lines = [f"#topics: {topics}", f"#intent: {intent}", f"#type: {tag_type}"]
+                        if semantic_handle is not None:
+                            lines.append(f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}")
+                        tags_block = "\n".join(lines) + "\n"
+                    except Exception:
+                        tags_block = ""
+                embed_text = (tags_block + pair_text) if tags_block else pair_text
                 ok = append_pair(
                     project_id,
                     pair_text,
@@ -270,9 +285,6 @@ class MemoryManager:
                     embed_override=embed_text,
                     tags_meta=tags_meta,
                 )
-                # DELTA-A.3: update last_rolled_off_pair only when daily append reports success.
-                if bool(ok):
-                    self.last_rolled_off_pair[project_id] = pair_text
             else:
                 logger.info("[DailyRAG] Skipping daily append (disabled for project=%s)", project_id)
         except Exception as e:

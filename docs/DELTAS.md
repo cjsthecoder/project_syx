@@ -360,6 +360,7 @@ Accepted
 
 * FR-2.3-3 — Retrieval Flow
 * FR-2.3.1.4 — Metadata-Aware Reranking
+* FR-2.3.1.5 — Query Expansion and Namespacing
 * FR-2.3.1.7 — Retrieval Order and Context Assembly
 * FR-2.5.3 — Retrieval Logic Update
 * FR-2.5.4 — Namespace Boosting
@@ -385,6 +386,12 @@ This requirement applies to **all RAG retrieval sources**, including:
 * Sorting uses full-precision floating point values (no rounding/normalization in A.4.2).
 * No semantic inference, re-ranking, or model-based judgment is permitted at this stage.
 * No candidates SHALL be dropped or filtered as part of A.4.2.
+
+#### Note — Namespace Boosting Removed
+
+Namespace-based score boosting has been removed. Importance is now expressed exclusively via route policy and selection logic.
+
+This change supersedes REQUIREMENTS-era namespace routing/boosting requirements, including FR-2.5.4 and the meta-namespaces integration described in FR-2.5.3 and FR-2.3.1.5.
 
 #### Tie Handling
 
@@ -423,3 +430,143 @@ Conversely:
 LLMs are position-sensitive. Presenting higher-relevance snippets earlier improves consistency, reduces anchoring errors, and makes future pruning behavior safe and explainable.
 
 A.4.2 introduces no new intelligence; it encodes explicit policy for attention ordering.
+
+
+## DELTA-A.4.3 — Policy-Driven Candidate Selection and Pruning
+
+### Status
+
+Planned
+
+### Affected Requirements
+
+* FR-2.3-3 — Retrieval Flow
+* FR-2.3.1.4 — Metadata-Aware Reranking
+* FR-2.3.1.7 — Retrieval Order and Context Assembly
+* FR-2.5.3 — Retrieval Logic Update
+
+---
+
+### Intent
+
+Apply deterministic, policy-driven pruning to the globally ordered retrieval candidate list produced by A.4.2 in order to bound context size and control downstream prompt assembly.
+
+This delta introduces selection policy, not retrieval intelligence. It defines how many candidates are retained after ordering, without changing how candidates are retrieved or scored.
+
+A.4.3 formalizes the separation between:
+
+* Retrieval (A.4.1)
+* Ordering (A.4.2)
+* Selection (A.4.3)
+* Rehydration and expansion (A.4.4)
+
+---
+
+### Scope
+
+This delta applies only to the selection and truncation of retrieval candidates that have already been retrieved and globally ordered.
+
+The logic in this step operates on list position and policy configuration only. It does not introduce semantic reasoning or content expansion.
+
+---
+
+### Inputs
+
+A.4.3 consumes the following inputs:
+
+* A globally ordered list of retrieval candidates from A.4.2
+* A route-derived retrieval policy
+* Environment-level configuration values
+
+---
+
+### Selection Policy Parameters
+
+Selection behavior is controlled by the following parameters:
+
+* BASE_TOP_K
+  Environment-level constant that defines the baseline retrieval size
+
+* RETRIEVAL_MULTIPLIER
+  Route-specific scalar applied to BASE_TOP_K
+
+* MAX_KEEP
+  Route-specific absolute cap on the number of candidates retained
+
+Derived value:
+
+RETRIEVAL_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER * N_SOURCES)
+
+Where N_SOURCES reflects the number of retrieval sources queried, such as Daily and LTM.
+
+Note: MAX_KEEP exists as a per-route policy input and is currently used for recording and telemetry. It defines the intended upper bound for retained candidates but does not alter retrieval behavior itself.
+
+---
+
+### Selection Process
+
+1. Candidates are processed in the order produced by A.4.2, from highest to lowest similarity score.
+2. Candidates are appended to the retained list sequentially.
+3. Selection stops when either:
+
+   * MAX_KEEP candidates have been retained, or
+   * The ordered candidate list is exhausted.
+
+No reordering, skipping, or conditional filtering occurs during this step.
+
+---
+
+### Source Handling
+
+Candidates from different retrieval sources, such as Daily and LTM, are treated uniformly during selection.
+
+Source attribution is preserved but does not influence selection order or retention count.
+
+---
+
+### Output
+
+The output of A.4.3 is a truncated, ordered list of retrieval candidates.
+
+Each retained candidate preserves:
+
+* Original text
+* Similarity score
+* Source attribution
+* Associated metadata
+
+No new metadata is introduced during this step.
+
+---
+
+### Error and Edge Handling
+
+* If the ordered candidate list is empty, the output is an empty list.
+* If policy configuration is missing or invalid, default configuration values are applied and recorded via telemetry.
+* Selection failure does not block request execution.
+
+---
+
+### Invariants
+
+* Selection is positional and deterministic.
+* Higher-ranked candidates are always retained before lower-ranked candidates.
+* Context size is bounded before prompt assembly.
+* Identical inputs and configuration produce identical outputs.
+
+---
+
+### Rationale
+
+Without an explicit selection step, retrieval pipelines tend to rely on implicit truncation or prompt-length side effects, leading to unpredictable behavior and silent relevance loss.
+
+A.4.3 makes context budgeting explicit and observable, enabling later rehydration and expansion in A.4.4 without destabilizing retrieval correctness.
+
+---
+
+### Implementation Notes
+
+* Selection logic should be implemented as a standalone function or module.
+* Instrumentation hooks are expected immediately before and after selection to record candidate counts and applied policy values.
+* A.4.3 is intended to be completed before introducing any rehydration or adjacency expansion logic in A.4.4.
+

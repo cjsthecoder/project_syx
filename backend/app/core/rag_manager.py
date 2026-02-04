@@ -43,60 +43,6 @@ from sqlmodel import select
 logger = logging.getLogger(__name__)
 from .similarity import cosine_from_l2_distance
 from .retrieval_ordering import order_candidates_by_similarity_score
-def _load_route_config() -> Dict[str, Dict[str, Any]]:
-    """Load route configuration from backend/app/config/meta_namespaces.json.
-    Returns dict keyed by route name with namespaces only.
-    """
-    try:
-        base_dir = os.path.join(os.path.dirname(__file__), "..", "config")
-        path = os.path.abspath(os.path.join(base_dir, "meta_namespaces.json"))
-        if not os.path.isfile(path):
-            logger.debug("Route config not found at %s; using defaults", path)
-            return {}
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                out: Dict[str, Dict[str, Any]] = {}
-                for k, v in data.items():
-                    if isinstance(v, dict):
-                        out[str(k)] = {"namespaces": (v.get("namespaces") or [])}
-                return out
-    except Exception as e:
-        logger.debug("Failed loading route config: %s", e)
-    return {}
-
-
-def _load_namespace_globs_map(project_id: str) -> Dict[str, List[str]]:
-    """Load per-project namespace map (namespace -> [globs]) from memory/{project}/namespace_map.json.
-    Returns empty dict if missing.
-    """
-    try:
-        base = os.path.join("memory", project_id)
-        path = os.path.join(base, "namespace_map.json")
-        if not os.path.isfile(path):
-            logger.info("Namespace map missing for project=%s; defaulting to 'general' for all files", project_id)
-            return {}
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                return {str(ns): list(v) for ns, v in data.items() if isinstance(v, list)}
-    except Exception as e:
-        logger.warning("Failed to load namespace map for project=%s: %s", project_id, e)
-    return {}
-
-
-def _resolve_namespace(project_id: str, uploads_rel_path: str, ns_map: Optional[Dict[str, List[str]]] = None) -> str:
-    """Resolve namespace for a given file path relative to uploads/ using case-insensitive, first-match-wins globs."""
-    import fnmatch
-    if ns_map is None:
-        ns_map = _load_namespace_globs_map(project_id)
-    path_l = uploads_rel_path.replace("\\", "/").lower()
-    for ns, patterns in ns_map.items():
-        for pat in patterns:
-            pat_l = str(pat).replace("\\", "/").lower()
-            if fnmatch.fnmatch(path_l, pat_l):
-                return ns
-    return "general"
 
 try:
     import tiktoken  # type: ignore
@@ -171,12 +117,9 @@ def rebuild_faiss_index(project_id: str) -> str:
     # For per-file stats
     file_token_sums: Dict[str, int] = {}
     file_page_max: Dict[str, int] = {}
-    ns_map = _load_namespace_globs_map(project_id)
     for f in files:
-        uploads_rel = os.path.relpath(f, uploads_dir).replace("\\", "/")
-        file_ns = _resolve_namespace(project_id, uploads_rel, ns_map)
         for raw_text, meta in _read_file_text(f):
-            collected.append((raw_text, meta, file_ns))
+            collected.append((raw_text, meta))
             fname = meta.get("filename") or os.path.basename(f)
             file_token_sums[fname] = file_token_sums.get(fname, 0) + _count_tokens(raw_text)
             pg = int(meta.get("page_number") or 1)
@@ -197,7 +140,7 @@ def rebuild_faiss_index(project_id: str) -> str:
     )
 
     now_iso = datetime.utcnow().isoformat()
-    for raw_text, base_meta, file_ns in collected:
+    for raw_text, base_meta in collected:
         for i, chunk in enumerate(splitter.split_text(raw_text)):
             texts.append(chunk)
             m = {
@@ -206,7 +149,6 @@ def rebuild_faiss_index(project_id: str) -> str:
                 "page_number": base_meta.get("page_number"),
                 "chunk_id": i,
                 "timestamp": now_iso,
-                "namespace": file_ns,
             }
             metadatas.append(m)
 
@@ -332,7 +274,7 @@ def canonical_retrieve_candidates(
                     # Authoritative from daily.json when available; otherwise best-effort from doc metadata.
                     if isinstance(entry, dict):
                         created_at = entry.get("created_at")
-                        route = entry.get("namespace")
+                        route = None
                         tags_meta = entry.get("tags_meta") if isinstance(entry.get("tags_meta"), dict) else None
                         topics = tags_meta.get("topics") if isinstance(tags_meta, dict) else None
                         intent = tags_meta.get("intent") if isinstance(tags_meta, dict) else None
@@ -359,7 +301,6 @@ def canonical_retrieve_candidates(
                         )
                     else:
                         # Join-miss: return candidate with partial metadata (lossless recall).
-                        ns = md.get("namespace")
                         out.append(
                             {
                                 "source": "daily",
@@ -368,7 +309,7 @@ def canonical_retrieve_candidates(
                                 "metadata": {
                                     "id": None,
                                     "timestamp": None,
-                                    "route": (str(ns).lower() if isinstance(ns, str) else ns),
+                                    "route": None,
                                     "tags": None,
                                     "topics": None,
                                     "intent": None,
@@ -424,7 +365,7 @@ def canonical_retrieve_candidates(
                         "metadata": {
                             # Allow missing/absent metadata fields in A.4.1
                             "timestamp": md.get("timestamp"),
-                            "route": md.get("namespace"),
+                            "route": None,
                             "tags": None,
                             "topics": None,
                             "intent": None,
@@ -438,7 +379,6 @@ def canonical_retrieve_candidates(
                             "filename": md.get("filename"),
                             "page_number": md.get("page_number"),
                             "chunk_id": md.get("chunk_id"),
-                            "namespace": md.get("namespace"),
                         },
                     }
                 )
@@ -464,8 +404,6 @@ def retrieve_context(
     project_id: str,
     query: str,
     score_threshold: float,
-    route_namespaces: Optional[List[str]] = None,
-    namespace_boost: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Retrieve top-k snippets and assemble a single Context: block string.
 
@@ -493,21 +431,12 @@ def retrieve_context(
     details = []
     scored: List[Tuple[str, dict, float]] = []  # (content, meta, effective_cos)
     passed_cosines: List[float] = []
-    rn_set = set(route_namespaces or [])
-    nb = float(namespace_boost or 1.0)
-
     for c in ltm:
         content = c.get("text") or ""
         meta = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
         # Canonical score is raw cosine; downstream may apply namespace boost for selection.
         raw_cos = float(c.get("score") or 0.0)
         cos = raw_cos
-        try:
-            ns = meta.get("namespace") or meta.get("route")
-            if ns and ns in rn_set and nb > 1.0:
-                cos = min(1.0, cos * nb)
-        except Exception:
-            pass
         if cos >= score_threshold:
             filtered.append((content, meta, cos))
             passed_cosines.append(cos)
@@ -605,8 +534,6 @@ def merge_daily_and_main(
     topic_boost: Optional[float] = None,
     decision_boost: Optional[float] = None,
     question_boost: Optional[float] = None,
-    route_namespaces: Optional[List[str]] = None,
-    namespace_boost: Optional[float] = None,
     per_source_k_override: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Retrieve from daily and main, apply selection/dedupe/budgets, return context.
@@ -650,10 +577,6 @@ def merge_daily_and_main(
     # DELTA-A.4.2: global ordering by raw similarity score (stable; ties preserve pre-sort order).
     ordered = order_candidates_by_similarity_score(list(cands or []))
 
-    # Apply legacy thresholding/boosting downstream (preserve current behavior).
-    rn_set = set(route_namespaces or [])
-    nb = float(namespace_boost or 1.0)
-
     # Selection stage (thresholding happens AFTER ordering).
     main_passed_scores: List[float] = []
     daily_passed_scores: List[float] = []
@@ -669,12 +592,6 @@ def merge_daily_and_main(
                 daily_passed_scores.append(raw)
         elif src == "ltm":
             eff = raw
-            try:
-                ns = md.get("namespace") or md.get("route")
-                if ns and ns in rn_set and nb > 1.0:
-                    eff = min(1.0, eff * nb)
-            except Exception:
-                pass
             if eff >= float(main_threshold):
                 selected.append(c)
                 main_passed_scores.append(eff)

@@ -26,7 +26,6 @@ from ..core.llm import generate_chat_response, get_llm_health
 from ..core.memory import get_memory_manager, set_last_context_tokens
 from ..utils.debug_utils import write_debug_file
 from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id, set_route, clear_route, set_namespace, clear_namespace, get_route
-from ..core.rag_manager import _load_route_config
 from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings, get_model_config, compute_per_source_k
 from ..core.rag_manager import retrieve_context, merge_daily_and_main
@@ -347,20 +346,12 @@ class _ChatPipeline:
         except Exception:
             pass
 
-        # Select namespaces for route (policy-only; retrieval uses BASE_TOP_K/RETRIEVAL_MULTIPLIER)
-        try:
-            rcfg = _load_route_config()
-        except Exception:
-            rcfg = {}
-        rdef = rcfg.get(route or "OTHER") or rcfg.get("OTHER") or {}
-        namespaces = rdef.get("namespaces") or []
         try:
             logger.debug(
-                "[ROUTE] project_id=%s message_id=%s route=%s namespaces=%s base_top_k=%s retrieval_multiplier=%.2f",
+                "[ROUTE] project_id=%s message_id=%s route=%s base_top_k=%s retrieval_multiplier=%.2f",
                 project_id,
                 msg_id,
                 route or "UNKNOWN",
-                namespaces,
                 int(self.settings.base_top_k),
                 float(self.settings.retrieval_multiplier),
             )
@@ -458,8 +449,6 @@ class _ChatPipeline:
             topic_boost=self.settings.topic_boost,
             decision_boost=self.settings.decision_boost,
             question_boost=self.settings.question_boost,
-            route_namespaces=namespaces,
-            namespace_boost=self.settings.namespace_boost,
             per_source_k_override=int(per_source_k),
         )
 

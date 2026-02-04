@@ -521,25 +521,19 @@ def retrieve_context(
 def merge_daily_and_main(
     project_id: str,
     query: str,
-    main_threshold: float,
     daily_enabled: bool,
-    daily_threshold: float,
-    daily_weight: float,
-    dedupe_exact: bool,
-    dedupe_near: bool,
-    dedupe_similarity_threshold: float,
-    prefer_daily: bool,
-    topics: Optional[List[str]] = None,
-    preferred_namespace: Optional[str] = None,
-    topic_boost: Optional[float] = None,
-    decision_boost: Optional[float] = None,
-    question_boost: Optional[float] = None,
+    max_keep: int,
     per_source_k_override: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Retrieve from daily and main, apply selection/dedupe/budgets, return context.
+    """Retrieve from daily and main, then apply A.4.3 positional truncation.
 
     DELTA-A.4.2: candidate ordering is by raw similarity score across all sources
-    before any selection/truncation/prompt assembly.
+    before selection/truncation/prompt assembly.
+
+    DELTA-A.4.3: selection is positional/deterministic:
+    - consume the globally ordered list from A.4.2
+    - retain the first MAX_KEEP candidates
+    - no reordering, skipping, thresholding, boosting, or dedupe occurs here
     """
     settings = get_settings()
     per_source_k = (
@@ -547,7 +541,7 @@ def merge_daily_and_main(
         if per_source_k_override is not None
         else compute_per_source_k(settings.base_top_k, settings.retrieval_multiplier)
     )
-    if int(per_source_k) <= 0:
+    if int(per_source_k) <= 0 or int(max_keep) <= 0:
         return {
             "context_text": "",
             "tokens_used": 0,
@@ -558,18 +552,15 @@ def merge_daily_and_main(
             "daily_hits": 0,
             "daily_avg": 0.0,
             "total_hits": 0,
-            "dedupe_exact_removed": 0,
-            "dedupe_near_removed": 0,
-            "main_threshold": float(main_threshold),
-            "daily_threshold": float(daily_threshold),
+            "ordered_candidates": 0,
+            "kept_candidates": 0,
         }
     logger.debug(
-        "DailyRAG: starting merged retrieval project=%s per_source_k=%s daily_enabled=%s thresholds(main=%.3f,daily=%.3f)",
+        "DailyRAG: starting merged retrieval project=%s per_source_k=%s daily_enabled=%s max_keep=%s",
         project_id,
         int(per_source_k),
         str(bool(daily_enabled)).lower(),
-        main_threshold,
-        daily_threshold,
+        int(max_keep),
     )
     # DELTA-A.4.1: retrieval via canonical entry point (raw candidates; no thresholding/boosting here).
     sources = ["ltm"] + (["daily"] if bool(daily_enabled) else [])
@@ -577,94 +568,31 @@ def merge_daily_and_main(
     # DELTA-A.4.2: global ordering by raw similarity score (stable; ties preserve pre-sort order).
     ordered = order_candidates_by_similarity_score(list(cands or []))
 
-    # Selection stage (thresholding happens AFTER ordering).
-    main_passed_scores: List[float] = []
-    daily_passed_scores: List[float] = []
-    selected: List[Dict[str, Any]] = []
-
-    for c in ordered:
-        src = c.get("source")
-        raw = float(c.get("score") or 0.0)
-        md = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
-        if src == "daily":
-            if raw >= float(daily_threshold):
-                selected.append(c)
-                daily_passed_scores.append(raw)
-        elif src == "ltm":
-            eff = raw
-            if eff >= float(main_threshold):
-                selected.append(c)
-                main_passed_scores.append(eff)
-
-    main_hits = int(len(main_passed_scores))
-    daily_hits = int(len(daily_passed_scores))
-    main_avg = float(sum(main_passed_scores) / main_hits) if main_hits else 0.0
-    daily_avg = float(sum(daily_passed_scores) / daily_hits) if daily_hits else 0.0
-
-    # Legacy fallback: if nothing passed thresholds, include the top candidate by raw score.
-    fallback_used = False
-    if not selected and ordered:
-        selected = [ordered[0]]
-        fallback_used = True
-
-    # Prepare rendered candidate texts (trimmed) in score order for dedupe/budget/assembly.
-    rendered: List[Tuple[Dict[str, Any], str]] = []
-    for c in selected:
-        txt = c.get("text") or ""
-        rendered.append((c, txt))
-
-    # Dedupe stage (stable; preserves ordering by score).
-    exact_removed = 0
-    near_removed = 0
-    kept: List[Tuple[Dict[str, Any], str]] = []
-    seen_hashes = set()
-    seen_sigs: List[set] = []
-
-    def _hash(s: str) -> str:
-        return (s or "").strip()
-
-    def sig(text: str) -> set:
-        toks = (text or "").lower().split()
-        return set(toks)
-
-    def jaccard(a: set, b: set) -> float:
-        if not a or not b:
-            return 0.0
-        return len(a & b) / len(a | b)
-
-    for c, txt in rendered:
-        h = _hash(txt)
-        if dedupe_exact and h in seen_hashes:
-            exact_removed += 1
-            continue
-        # Near-dup check against already-kept (stable; no cross-source preference here per A.4.2 invariant).
-        if dedupe_near:
-            sa = sig(txt)
-            if any(jaccard(sa, sb) >= dedupe_similarity_threshold for sb in seen_sigs):
-                near_removed += 1
-                continue
-        kept.append((c, txt))
-        seen_hashes.add(h)
-        if dedupe_near:
-            seen_sigs.append(sig(txt))
+    # DELTA-A.4.3: positional truncation only.
+    kept_candidates = list(ordered[: int(max_keep)]) if ordered else []
 
     # Prompt assembly stage (after ordering + selection).
-    # NOTE: No token budgeting at this stage; A.4.3 owns trimming/budget decisions.
     tokens_used_total = 0
     pieces: List[str] = []
     daily_texts: List[str] = []
     main_texts: List[str] = []
 
-    for idx, (c, txt) in enumerate(kept):
+    main_scores: List[float] = []
+    daily_scores: List[float] = []
+
+    for idx, c in enumerate(kept_candidates):
+        txt = c.get("text") or ""
         src = c.get("source") or "unknown"
-        score = float(c.get("score") or 0.0)
+        score = float(c.get("score") or 0.0)  # raw cosine
         md = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
 
         t = _count_tokens(txt)
         if src == "daily":
             daily_texts.append(txt)
+            daily_scores.append(score)
         else:
             main_texts.append(txt)
+            main_scores.append(score)
         tokens_used_total += t
 
         # Candidate header (keeps ordering explicit; score is raw cosine).
@@ -675,11 +603,16 @@ def merge_daily_and_main(
         pieces.append(header + txt)
 
     context_text = ("Context:\n---\n" + "\n\n---\n".join(pieces)) if pieces else ""
+    main_hits = int(len(main_scores))
+    daily_hits = int(len(daily_scores))
+    main_avg = float(sum(main_scores) / main_hits) if main_hits else 0.0
+    daily_avg = float(sum(daily_scores) / daily_hits) if daily_hits else 0.0
     logger.debug(
-        "DailyRAG: merged context tokens=%s snippets=%s (fallback=%s)",
+        "DailyRAG: merged context tokens=%s snippets=%s (kept=%s ordered=%s)",
         tokens_used_total,
         len(pieces),
-        str(bool(fallback_used)).lower(),
+        int(len(pieces)),
+        int(len(ordered)),
     )
 
     return {
@@ -692,10 +625,8 @@ def merge_daily_and_main(
         "daily_hits": int(daily_hits),
         "daily_avg": float(daily_avg),
         "total_hits": int(main_hits + daily_hits),
-        "dedupe_exact_removed": int(max(0, exact_removed)),
-        "dedupe_near_removed": int(max(0, near_removed)),
-        "main_threshold": float(main_threshold),
-        "daily_threshold": float(daily_threshold),
+        "ordered_candidates": int(len(ordered)),
+        "kept_candidates": int(len(pieces)),
     }
 
 

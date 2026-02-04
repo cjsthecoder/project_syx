@@ -36,7 +36,7 @@ Return strict JSON only. No prose.
 Your task is to classify the user's message into exactly one route.
 
 Schema:
-{"route":"CHITCHAT|DIRECT|PROCEDURAL|EXPLORATORY|SYNTHESIS"}
+{"route":"CHITCHAT|DIRECT|PROCEDURAL|EXPLORATORY|SYNTHESIS|OTHER"}
 
 Definitions:
 
@@ -46,9 +46,9 @@ Definitions:
   No real-world task, question, or information need.
 
 - DIRECT:
-  A clear, specific question with a narrow target.
+  A clear, specific question with a narrow target that can be answered directly.
   Examples: factual lookups, definitions, short answers, direct questions.
-  The user likely expects a precise response.
+  Excludes requests that require summarization, aggregation, or synthesis of multiple ideas.
 
 - PROCEDURAL:
   How-to questions, step-by-step guidance, implementation, configuration, or execution details.
@@ -59,8 +59,14 @@ Definitions:
   Examples: "why", "compare", "analyze", "what are the differences", "how does X relate to Y".
 
 - SYNTHESIS:
-  Design, planning, tradeoff analysis, or "help me think" requests.
-  Examples: architecture decisions, strategy, combining ideas, evaluating options.
+  Requests that require combining, abstracting, or distilling information.
+  Includes summaries, overviews, big-picture explanations, design or planning tasks,
+  tradeoff analysis, or "help me think" requests.
+  Examples: "summarize X", "give an overview of Y", "what is the core idea behind Z",
+  architecture decisions, strategy, or evaluating options.
+
+- OTHER:
+  Fallback for unclear, mixed, or unexpected requests that do not fit the above routes.
 
 Rules:
 - Choose CHITCHAT only if the message is purely social or conversational.
@@ -160,7 +166,11 @@ def _filter_route_only(data: Dict[str, Any]) -> Dict[str, Any]:
         route = (data.get("route") or "").strip()
     except Exception:
         route = ""
-    return {"route": route}
+    ru = str(route or "").strip().upper()
+    allowed = {"CHITCHAT", "DIRECT", "PROCEDURAL", "EXPLORATORY", "SYNTHESIS", "OTHER"}
+    if ru not in allowed:
+        ru = "OTHER"
+    return {"route": ru}
 
 
 def _slice_first_json(text: str) -> str:

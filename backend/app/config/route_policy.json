@@ -4,7 +4,7 @@
     "Routes are produced by the interaction-mode classifier (see backend/app/core/query_builder.py _SYS_PROMPT).",
     "retrieval_multiplier scales BASE_TOP_K to determine per-source K: PER_SOURCE_K = ceil(BASE_TOP_K * retrieval_multiplier).",
     "If retrieval_multiplier is 0, retrieval should be skipped for that turn (e.g., CHITCHAT).",
-    "max_keep is reserved for A.4.3 trimming/selection (not yet enforced at the canonical boundary)."
+    "max_keep is enforced by A.4.3 selection to bound retained candidates."
   ],
 
   "CHITCHAT": {
@@ -15,26 +15,32 @@
 
   "DIRECT": {
     "_comment": "A clear, specific question with a narrow target. The user likely expects a precise response.",
-    "retrieval_multiplier": 1.0,
-    "max_keep": 6
+    "retrieval_multiplier": 1.5,
+    "max_keep": 12
   },
 
   "PROCEDURAL": {
     "_comment": "How-to questions, step-by-step guidance, implementation, configuration, or execution details.",
-    "retrieval_multiplier": 1.5,
-    "max_keep": 10
+    "retrieval_multiplier": 2.0,
+    "max_keep": 16
   },
 
   "EXPLORATORY": {
     "_comment": "Open-ended questions focused on understanding, comparison, or investigation.",
-    "retrieval_multiplier": 2.5,
-    "max_keep": 14
+    "retrieval_multiplier": 3.0,
+    "max_keep": 20
   },
 
   "SYNTHESIS": {
     "_comment": "Design, planning, tradeoff analysis, or 'help me think' requests.",
-    "retrieval_multiplier": 3.0,
-    "max_keep": 18
+    "retrieval_multiplier": 3.5,
+    "max_keep": 24
+  },
+
+  "OTHER": {
+    "_comment": "Fallback route for unknown/unexpected classifications. Stable compat default.",
+    "retrieval_multiplier": 1.75,
+    "max_keep": 10
   }
 }
 

@@ -1,0 +1,96 @@
+"""
+Route policy loader and validator (DELTA-A.4.3).
+
+Strict, fail-fast semantics:
+- route_policy.json is required and validated on startup.
+- policy is cached for process lifetime (reload on restart only).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import dataclass
+from typing import Any, Dict
+
+
+@dataclass(frozen=True)
+class RoutePolicy:
+    retrieval_multiplier: float
+    max_keep: int
+
+
+EXPECTED_ROUTES = ("CHITCHAT", "DIRECT", "PROCEDURAL", "EXPLORATORY", "SYNTHESIS", "OTHER")
+
+
+def _policy_path() -> str:
+    base_dir = os.path.join(os.path.dirname(__file__), "..", "config")
+    return os.path.abspath(os.path.join(base_dir, "route_policy.json"))
+
+
+def _coerce_float(v: Any, *, field: str, route: str) -> float:
+    try:
+        return float(v)
+    except Exception as e:
+        raise ValueError(f"route_policy invalid {route}.{field}: not a float ({v!r})") from e
+
+
+def _coerce_int(v: Any, *, field: str, route: str) -> int:
+    # Accept ints and integral floats/strings, but reject fractional.
+    try:
+        if isinstance(v, bool):
+            raise ValueError("bool not allowed")
+        if isinstance(v, int):
+            return int(v)
+        fv = float(v)
+        iv = int(fv)
+        if abs(fv - iv) > 1e-9:
+            raise ValueError("fractional value")
+        return iv
+    except Exception as e:
+        raise ValueError(f"route_policy invalid {route}.{field}: not an int ({v!r})") from e
+
+
+def load_and_validate_route_policy() -> Dict[str, RoutePolicy]:
+    """
+    Load backend/app/config/route_policy.json and validate expected routes.
+    Raises ValueError/FileNotFoundError on invalid/missing policy (fail-fast).
+    """
+    path = _policy_path()
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"route_policy.json missing at {path}")
+
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError("route_policy.json must be a JSON object")
+
+    out: Dict[str, RoutePolicy] = {}
+    for r in EXPECTED_ROUTES:
+        node = data.get(r)
+        if not isinstance(node, dict):
+            raise ValueError(f"route_policy missing/invalid route block: {r}")
+        if "retrieval_multiplier" not in node or "max_keep" not in node:
+            raise ValueError(f"route_policy route {r} missing retrieval_multiplier/max_keep")
+        rm = _coerce_float(node.get("retrieval_multiplier"), field="retrieval_multiplier", route=r)
+        mk = _coerce_int(node.get("max_keep"), field="max_keep", route=r)
+        if rm < 0.0:
+            raise ValueError(f"route_policy invalid {r}.retrieval_multiplier: must be >= 0")
+        if mk < 0:
+            raise ValueError(f"route_policy invalid {r}.max_keep: must be >= 0")
+        out[r] = RoutePolicy(retrieval_multiplier=rm, max_keep=mk)
+
+    return out
+
+
+# Strict, process-lifetime cache (reload on restart only)
+_POLICY: Dict[str, RoutePolicy] = load_and_validate_route_policy()
+
+
+def get_route_policy(route: str) -> RoutePolicy:
+    """Return policy for route; unknown routes fall back to OTHER (stable compat)."""
+    r = (route or "").strip().upper()
+    if r in _POLICY:
+        return _POLICY[r]
+    return _POLICY["OTHER"]
+

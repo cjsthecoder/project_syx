@@ -29,6 +29,7 @@ from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_mess
 from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings, get_model_config, compute_per_source_k
 from ..core.rag_manager import retrieve_context, merge_daily_and_main
+from ..core.route_policy import get_route_policy
 from ..core.personality import load_project_system_prompt, load_project_personality
 from ..core.daily_rag import start_daily_cache_rebuild
 from ..core.database import get_session
@@ -365,27 +366,10 @@ class _ChatPipeline:
             primary_ns = "general"
         set_namespace(primary_ns)
 
-        # Route policy (system-wide) controls retrieval multiplier (including 0 => skip RAG).
-        retrieval_multiplier = None
-        max_keep = None
-        try:
-            base_dir = os.path.join(os.path.dirname(__file__), "..", "config")
-            policy_path = os.path.abspath(os.path.join(base_dir, "route_policy.json"))
-            policy = {}
-            if os.path.isfile(policy_path):
-                with open(policy_path, "r", encoding="utf-8") as f:
-                    policy = json.load(f)
-            pdef = (policy.get(route) if isinstance(policy, dict) else None) or (policy.get("DIRECT") if isinstance(policy, dict) else None) or {}
-            if isinstance(pdef, dict):
-                retrieval_multiplier = pdef.get("retrieval_multiplier")
-                max_keep = pdef.get("max_keep")
-        except Exception:
-            retrieval_multiplier = None
-            max_keep = None
-        try:
-            mult_val = float(retrieval_multiplier) if retrieval_multiplier is not None else float(self.settings.retrieval_multiplier)
-        except Exception:
-            mult_val = float(self.settings.retrieval_multiplier)
+        # DELTA-A.4.3: route_policy.json is validated at startup and cached for process lifetime.
+        pol = get_route_policy(route or "OTHER")
+        mult_val = float(pol.retrieval_multiplier)
+        max_keep = int(pol.max_keep)
         per_source_k = compute_per_source_k(int(self.settings.base_top_k), float(mult_val))
         if per_source_k <= 0:
             logger.info("Chat: skipping RAG due to route=%s per_source_k=%s", route, per_source_k)
@@ -436,38 +420,27 @@ class _ChatPipeline:
         rc = merge_daily_and_main(
             project_id=project_id,
             query=primary_query,
-            main_threshold=self.settings.rag_score_threshold,
             daily_enabled=bool(daily_enabled),
-            daily_threshold=self.settings.daily_rag_score_threshold,
-            daily_weight=self.settings.daily_rag_weight,
-            dedupe_exact=self.settings.dedupe_exact,
-            dedupe_near=self.settings.dedupe_near,
-            dedupe_similarity_threshold=self.settings.dedupe_similarity_threshold,
-            prefer_daily=self.settings.dedupe_keep_daily,
-            topics=topics,
-            preferred_namespace=None,
-            topic_boost=self.settings.topic_boost,
-            decision_boost=self.settings.decision_boost,
-            question_boost=self.settings.question_boost,
+            max_keep=int(max_keep),
             per_source_k_override=int(per_source_k),
         )
 
         try:
             logger.debug(
-                "[RETRIEVAL] project_id=%s message_id=%s route=%s rag_used=%s main_hits=%s main_avg=%.2f main_threshold=%.2f daily_hits=%s daily_avg=%.2f daily_threshold=%.2f total_hits=%s dedupe_exact_removed=%s dedupe_near_removed=%s",
+                "[RETRIEVAL] project_id=%s message_id=%s route=%s rag_used=%s per_source_k=%s max_keep=%s ordered=%s kept=%s main_hits=%s main_avg=%.2f daily_hits=%s daily_avg=%.2f total_hits=%s",
                 project_id,
                 msg_id,
                 route or "UNKNOWN",
                 "true",
+                int(per_source_k),
+                int(max_keep),
+                int(rc.get("ordered_candidates", 0)),
+                int(rc.get("kept_candidates", 0)),
                 int(rc.get("main_hits", 0)),
                 float(rc.get("main_avg", 0.0)),
-                float(rc.get("main_threshold", self.settings.rag_score_threshold)),
                 int(rc.get("daily_hits", 0)),
                 float(rc.get("daily_avg", 0.0)),
-                float(rc.get("daily_threshold", self.settings.daily_rag_score_threshold)),
                 int(rc.get("total_hits", 0)),
-                int(rc.get("dedupe_exact_removed", 0)),
-                int(rc.get("dedupe_near_removed", 0)),
             )
         except Exception:
             pass

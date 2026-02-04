@@ -40,6 +40,7 @@ from .core.personality import backfill_all_projects
 from .core.database import get_session
 from .core.db_models import Project
 from .core.rag_manager import rebuild_faiss_index
+from .core.route_policy import load_and_validate_route_policy
 import shutil
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -52,6 +53,13 @@ logger = get_logger()  # Use single shared logger
 # Get settings
 settings = get_settings()
 logger.info("Config: DB_PATH=%s", settings.db_path)
+
+# DELTA-A.4.3: route_policy.json is required; validate at startup (fail-fast).
+try:
+    load_and_validate_route_policy()
+except Exception as e:
+    logger.error("[CONFIG] route_policy.json validation failed: %s", e)
+    raise
 
 # Lifespan handler to manage startup/shutdown
 @asynccontextmanager

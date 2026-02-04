@@ -362,9 +362,6 @@ setup-env:
 		echo "QUESTION_BOOST=1.02"; \
 		echo "# V2.3.1: Multiplicative boost for open-question overlap"; \
 		echo ""; \
-		echo "NAMESPACE_BOOST=1.20"; \
-		echo "# V2.5: Multiplicative boost for namespace match"; \
-		echo ""; \
 		echo "# === Working Memory ==="; \
 		echo "CHAT_HISTORY_LIMIT=20"; \
 		echo "# Number of recent messages kept per project in working memory"; \

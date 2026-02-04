@@ -238,7 +238,6 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
                 t = e.get("embed_text") or e.get("text")
                 if not isinstance(t, str) or not t.strip():
                     continue
-                ns = (e.get("namespace") or "general")
                 eid = e.get("id")
                 if isinstance(eid, str) and eid.strip():
                     meta_by_id[eid] = e
@@ -246,7 +245,6 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
                 metas.append(
                     {
                         "source": "daily",
-                        "namespace": str(ns).lower(),
                         "daily_entry_id": str(eid) if eid is not None else None,
                         "day_sequence": e.get("day_sequence"),
                     }
@@ -330,7 +328,6 @@ def append_pair(
             "embedding_model": settings.embedding_model,
             "source": "chat",
             "scope": "daily",
-            "namespace": ns,
             "keep": bool(keep),
             "confidence": 1.0,
             "tags": ["rolled_off"],
@@ -409,14 +406,14 @@ def append_pair(
                     vs = FAISS.from_texts(
                         texts=[text_for_embed],
                         embedding=embeddings,
-                        metadatas=[{"source": "daily", "namespace": ns, "daily_entry_id": entry.get("id"), "day_sequence": entry.get("day_sequence")}],
+                        metadatas=[{"source": "daily", "daily_entry_id": entry.get("id"), "day_sequence": entry.get("day_sequence")}],
                         normalize_L2=True,
                     )
                 except TypeError:
                     vs = FAISS.from_texts(
                         texts=[text_for_embed],
                         embedding=embeddings,
-                        metadatas=[{"source": "daily", "namespace": ns, "daily_entry_id": entry.get("id"), "day_sequence": entry.get("day_sequence")}],
+                        metadatas=[{"source": "daily", "daily_entry_id": entry.get("id"), "day_sequence": entry.get("day_sequence")}],
                     )
                 with _CACHE_LOCK:
                     _CACHE[project_id] = _DailyCache(
@@ -426,7 +423,7 @@ def append_pair(
                     )
                 return True
             # Normal path: incremental add
-            cache.vs.add_texts([text_for_embed], metadatas=[{"source": "daily", "namespace": ns, "daily_entry_id": entry.get("id"), "day_sequence": entry.get("day_sequence")}])
+            cache.vs.add_texts([text_for_embed], metadatas=[{"source": "daily", "daily_entry_id": entry.get("id"), "day_sequence": entry.get("day_sequence")}])
             # Update in-memory authoritative mapping for deterministic joins
             try:
                 eid2 = entry.get("id")
@@ -540,7 +537,7 @@ def backfill_daily_txt_from_meta(project_id: str) -> bool:
                 tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
                 for e in entries:
                     ts = e.get("created_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                    ns = (e.get("namespace") or "general").lower()
+                    ns = "general"
                     keep = bool(e.get("keep", False))
                     text = e.get("text") or ""
                     # Localize timestamp to MM-DD-YYYY_HH:MM:SS

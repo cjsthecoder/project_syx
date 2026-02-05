@@ -35,6 +35,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 
 from .config import get_settings, compute_per_source_k
+from .embed_batching import iter_token_batches
 import os
 from .database import get_session
 from .db_models import File as FileRow
@@ -153,12 +154,50 @@ def rebuild_faiss_index(project_id: str) -> str:
             metadatas.append(m)
 
     embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
-    # Normalize L2 to make cosine similarity computable via L2 distance relation
-    try:
-        vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metadatas, normalize_L2=True)
-    except TypeError:
-        # Older versions may not support normalize_L2
-        vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metadatas)
+    max_req_tokens = int(getattr(settings, "max_embed_tokens_per_request", 250_000))
+
+    # Build vectorstore incrementally with token-aware batching to avoid provider-side
+    # "max tokens per request" failures on large corpora.
+    vs: Optional[FAISS] = None
+    batch_idx = 0
+    for batch_texts, batch_metas, est_tokens in iter_token_batches(
+        texts,
+        metadatas=metadatas,
+        max_tokens_per_batch=max_req_tokens,
+        model_name=settings.embedding_model,
+    ):
+        batch_idx += 1
+        vecs = embeddings.embed_documents(list(batch_texts))
+        if vs is None:
+            # Normalize L2 to make cosine similarity computable via L2 distance relation
+            try:
+                vs = FAISS.from_embeddings(
+                    list(zip(batch_texts, vecs)),
+                    embeddings,
+                    metadatas=batch_metas,
+                    normalize_L2=True,
+                )
+            except TypeError:
+                # Older versions may not support normalize_L2
+                vs = FAISS.from_embeddings(list(zip(batch_texts, vecs)), embeddings, metadatas=batch_metas)
+        else:
+            vs.add_embeddings(list(zip(batch_texts, vecs)), metadatas=batch_metas)
+        logger.debug(
+            "RAG: embedded batch=%s texts=%s est_tokens=%s max_req_tokens=%s",
+            int(batch_idx),
+            int(len(batch_texts)),
+            int(est_tokens),
+            int(max_req_tokens),
+        )
+
+    if vs is None:
+        # Should be unreachable because collected/texts is non-empty, but keep safe behavior.
+        try:
+            for n in os.listdir(faiss_dir):
+                os.remove(os.path.join(faiss_dir, n))
+        except Exception:
+            pass
+        return faiss_dir
     # Save index
     vs.save_local(faiss_dir)
 

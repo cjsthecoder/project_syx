@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     embedding_model: str = Field(default="text-embedding-3-large", description="OpenAI embedding model")
     chunk_size: int = Field(default=800, gt=0, description="Chunk size for embeddings")
     chunk_overlap: int = Field(default=100, ge=0, description="Chunk overlap for embeddings")
+    max_embed_tokens_per_request: int = Field(
+        default=250_000,
+        gt=0,
+        description="Max total tokens per embeddings API request (safety headroom under provider cap)",
+    )
 
     # V2: Model list for selector
     available_models: list[str] = Field(

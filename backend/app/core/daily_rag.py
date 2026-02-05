@@ -22,6 +22,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
 from .config import get_settings
+from .embed_batching import iter_token_batches
 logger = logging.getLogger(__name__)
 
 def _nl(s: str) -> str:
@@ -255,10 +256,45 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
                 logger.debug("DailyRAG: rebuilt empty in-memory cache project=%s (reason=%s)", project_id, reason)
                 return True
             embeddings = OpenAIEmbeddings(model=runtime_model, api_key=settings.openai_api_key)
-            try:
-                vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metas, normalize_L2=True)
-            except TypeError:
-                vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metas)
+            max_req_tokens = int(getattr(settings, "max_embed_tokens_per_request", 250_000))
+
+            vs: Optional[FAISS] = None
+            batch_idx = 0
+            for batch_texts, batch_metas, est_tokens in iter_token_batches(
+                texts,
+                metadatas=metas,
+                max_tokens_per_batch=max_req_tokens,
+                model_name=runtime_model,
+            ):
+                batch_idx += 1
+                vecs = embeddings.embed_documents(list(batch_texts))
+                if vs is None:
+                    try:
+                        vs = FAISS.from_embeddings(
+                            list(zip(batch_texts, vecs)),
+                            embeddings,
+                            metadatas=batch_metas,
+                            normalize_L2=True,
+                        )
+                    except TypeError:
+                        vs = FAISS.from_embeddings(list(zip(batch_texts, vecs)), embeddings, metadatas=batch_metas)
+                else:
+                    vs.add_embeddings(list(zip(batch_texts, vecs)), metadatas=batch_metas)
+                logger.debug(
+                    "DailyRAG: embedded batch=%s texts=%s est_tokens=%s max_req_tokens=%s project=%s reason=%s",
+                    int(batch_idx),
+                    int(len(batch_texts)),
+                    int(est_tokens),
+                    int(max_req_tokens),
+                    project_id,
+                    reason,
+                )
+
+            if vs is None:
+                with _CACHE_LOCK:
+                    _CACHE[project_id] = _DailyCache(embedding_model=runtime_model, vs=None, meta_by_id=meta_by_id)
+                logger.debug("DailyRAG: rebuilt empty in-memory cache project=%s (reason=%s)", project_id, reason)
+                return True
             with _CACHE_LOCK:
                 _CACHE[project_id] = _DailyCache(embedding_model=runtime_model, vs=vs, meta_by_id=meta_by_id)
             logger.info("DailyRAG: rebuilt in-memory cache project=%s vectors=%s (reason=%s)", project_id, len(texts), reason)

@@ -436,7 +436,7 @@ A.4.2 introduces no new intelligence; it encodes explicit policy for attention o
 
 ### Status
 
-Planned
+Accepted
 
 ### Affected Requirements
 
@@ -475,7 +475,7 @@ The logic in this step operates on list position and policy configuration only. 
 A.4.3 consumes the following inputs:
 
 * A globally ordered list of retrieval candidates from A.4.2
-* A route-derived retrieval policy
+* A route-derived retrieval policy (system-wide `route_policy.json`)
 * Environment-level configuration values
 
 ---
@@ -497,9 +497,9 @@ Derived value:
 
 RETRIEVAL_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER * N_SOURCES)
 
-Where N_SOURCES reflects the number of retrieval sources queried, such as Daily and LTM.
+Where N_SOURCES reflects the number of retrieval sources attempted (queried), such as Daily and LTM.
 
-Note: MAX_KEEP exists as a per-route policy input and is currently used for recording and telemetry. It defines the intended upper bound for retained candidates but does not alter retrieval behavior itself.
+Note: MAX_KEEP exists as a per-route policy input and is enforced by A.4.3 selection to bound retained candidates.
 
 ---
 
@@ -512,7 +512,7 @@ Note: MAX_KEEP exists as a per-route policy input and is currently used for reco
    * MAX_KEEP candidates have been retained, or
    * The ordered candidate list is exhausted.
 
-No reordering, skipping, or conditional filtering occurs during this step.
+No reordering, skipping, thresholding, boosting, or deduplication occurs during this step.
 
 ---
 
@@ -542,8 +542,9 @@ No new metadata is introduced during this step.
 ### Error and Edge Handling
 
 * If the ordered candidate list is empty, the output is an empty list.
-* If policy configuration is missing or invalid, default configuration values are applied and recorded via telemetry.
+* If policy configuration is missing or invalid, the system MUST fail fast on startup (no per-request fallbacks).
 * Selection failure does not block request execution.
+* Unknown or new routes MUST fall back to OTHER (stable compatibility behavior).
 
 ---
 
@@ -568,5 +569,6 @@ A.4.3 makes context budgeting explicit and observable, enabling later rehydratio
 
 * Selection logic should be implemented as a standalone function or module.
 * Instrumentation hooks are expected immediately before and after selection to record candidate counts and applied policy values.
+* `route_policy.json` is loaded and validated once at startup and cached for process lifetime (reload on restart only).
 * A.4.3 is intended to be completed before introducing any rehydration or adjacency expansion logic in A.4.4.
 

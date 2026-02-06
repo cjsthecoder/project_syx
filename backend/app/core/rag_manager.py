@@ -1056,23 +1056,30 @@ def merge_daily_and_main(
     for idx, c in enumerate(kept_candidates):
         txt = c.get("text") or ""
         src = c.get("source") or "unknown"
-        score = float(c.get("score") or 0.0)  # raw cosine
+        # Canonical retrieval currently stores `score` as score01 (cosine mapped from [-1,1] -> [0,1]).
+        # For human-readable prompt headers, show both:
+        #   cos = 2*score01 - 1
+        #   score01 = score
+        score01 = float(c.get("score") or 0.0)
+        cos = (2.0 * float(score01)) - 1.0
         md = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
 
         t = _count_tokens(txt)
         if src == "daily":
             daily_texts.append(txt)
-            daily_scores.append(score)
+            daily_scores.append(score01)
         else:
             main_texts.append(txt)
-            main_scores.append(score)
+            main_scores.append(score01)
         tokens_used_total += t
 
-        # Candidate header (keeps ordering explicit; score is raw cosine).
+        # Candidate header (keeps ordering explicit; show cos + score for troubleshooting).
         if src == "ltm":
-            header = f"Snippet {idx+1} (source=ltm, score={score:.2f}, file={md.get('filename')}, page={md.get('page_number')})\n"
+            header = (
+                f"Snippet {idx+1} (source=ltm, cos={cos:.4f}, score={score01:.4f}, file={md.get('filename')}, page={md.get('page_number')})\n"
+            )
         else:
-            header = f"Snippet {idx+1} (source=daily, score={score:.2f}, route={md.get('route')})\n"
+            header = f"Snippet {idx+1} (source=daily, cos={cos:.4f}, score={score01:.4f}, route={md.get('route')})\n"
         pieces.append(header + txt)
 
     context_text = ("Context:\n---\n" + "\n\n---\n".join(pieces)) if pieces else ""

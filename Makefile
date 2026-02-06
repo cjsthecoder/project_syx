@@ -295,10 +295,10 @@ setup-env:
 		echo "EMBEDDING_MODEL=text-embedding-3-large"; \
 		echo "# Embedding model for document indexing"; \
 		echo ""; \
-		echo "CHUNK_SIZE=2000"; \
+		echo "CHUNK_SIZE=800"; \
 		echo "# Text chunk size used during embedding"; \
 		echo ""; \
-		echo "CHUNK_OVERLAP=250"; \
+		echo "CHUNK_OVERLAP=100"; \
 		echo "# Overlap between chunks during embedding"; \
 		echo ""; \
 		echo "MAX_EMBED_TOKENS_PER_REQUEST=250000"; \

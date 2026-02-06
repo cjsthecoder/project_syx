@@ -20,19 +20,13 @@ Policy:
 
 import time
 from datetime import datetime
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional, Dict, Any, Iterable, Set, cast
 import json
 import logging
 import threading
 
-try:
-    # Newer split package
-    from langchain_text_splitters import RecursiveCharacterTextSplitter  # type: ignore
-except Exception:
-    # Fallback to legacy import path
-    from langchain.text_splitter import RecursiveCharacterTextSplitter  # type: ignore
-from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
+import faiss  # type: ignore
+import numpy as np  # type: ignore
 
 from .config import get_settings, compute_per_source_k
 from .embed_batching import iter_token_batches
@@ -42,13 +36,235 @@ from .db_models import File as FileRow
 from sqlmodel import select
 
 logger = logging.getLogger(__name__)
-from .similarity import cosine_from_l2_distance
 from .retrieval_ordering import order_candidates_by_similarity_score
+from ..utils.debug_utils import write_debug_file
+from ..llm_model.llm_client import get_llm_client
+from .vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
 
 try:
     import tiktoken  # type: ignore
 except Exception:
     tiktoken = None  # token counting optional until installed
+
+
+_A441_SCHEMA_VERSION = "A.4.4.1"
+_LTM_MANIFEST_NAME = "index_manifest.json"
+_LTM_ADJACENCY_INDEX_NAME = "adjacency_index.json"
+_LTM_DOCSTORE_NAME = "docstore.json"
+_LTM_INDEX_TO_ID_NAME = "index_to_id.json"
+_LTM_INDEX_FILE_NAME = "index.faiss"
+
+_LTM_REBUILDING: Set[str] = set()
+_LTM_REBUILD_LOCK = threading.Lock()
+
+
+def _atomic_write_json(path: str, obj: Any) -> None:
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2, sort_keys=True)
+    os.replace(tmp, path)
+
+
+def _safe_load_json(path: str) -> Optional[Any]:
+    try:
+        if not os.path.isfile(path):
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            obj = json.load(f)
+        return obj
+    except Exception:
+        return None
+
+
+def _uploads_relative_doc_id(uploads_dir: str, file_path: str) -> str:
+    """Stable relative path identity under uploads/ (langchain-removal requirements)."""
+    try:
+        rel = os.path.relpath(file_path, uploads_dir)
+    except Exception:
+        rel = os.path.basename(file_path)
+    return str(rel).replace(os.sep, "/")
+
+
+def _ltm_doc_id(filename: Optional[str], page_number: Optional[Any]) -> Optional[str]:
+    """
+    DELTA-A.4.4.1: doc_id boundary rules.
+
+    - Adjacency is within the same uploaded source document only (no cross-file).
+    - PDFs are not supported in the langchain-removal implementation.
+    """
+    if not filename or not isinstance(filename, str):
+        return None
+    return filename
+
+
+def _split_text_simple(text: str, *, chunk_size: int, chunk_overlap: int) -> List[str]:
+    """Deterministic character splitter (boundaries may differ vs LangChain)."""
+    t = text or ""
+    if int(chunk_size) <= 0:
+        return []
+    ov = max(0, int(chunk_overlap))
+    if ov >= int(chunk_size):
+        ov = max(0, int(chunk_size) - 1)
+    step = int(chunk_size) - ov
+    out: List[str] = []
+    i = 0
+    n = len(t)
+    while i < n:
+        ch = t[i : i + int(chunk_size)]
+        if ch and ch.strip():
+            out.append(ch)
+        i += step
+    return out
+
+
+def _normalize_rows(v: np.ndarray) -> np.ndarray:
+    """Unit-normalize rows (safe for zero vectors)."""
+    if v.size == 0:
+        return v.astype("float32")
+    v = v.astype("float32")
+    norms = np.linalg.norm(v, axis=1, keepdims=True)
+    norms = np.where(norms == 0.0, 1.0, norms)
+    return v / norms
+
+
+def _cosine_to_01(cos: float) -> float:
+    """Map cosine in [-1,1] to [0,1]."""
+    try:
+        c = float(cos)
+    except Exception:
+        return 0.0
+    if c < -1.0:
+        c = -1.0
+    if c > 1.0:
+        c = 1.0
+    return (c + 1.0) / 2.0
+
+
+def _clear_dir_contents(path: str) -> None:
+    """Remove all files under directory (best-effort)."""
+    try:
+        if not os.path.isdir(path):
+            return
+        for root, _dirs, files in os.walk(path):
+            for fn in files:
+                try:
+                    os.remove(os.path.join(root, fn))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+def _build_ltm_adjacency_lists(
+    *, docstore: Dict[str, Dict[str, Any]], index_to_id: List[str]
+) -> Optional[Dict[str, List[str]]]:
+    """
+    Build ordered adjacency list per doc_id:
+      doc_id -> [item_id0, item_id1, ...]
+    Validates chunk_seq is gap-free starting at 0 within each doc_id.
+    """
+    try:
+        by_doc: Dict[str, List[Tuple[int, str]]] = {}
+        for item_id in index_to_id:
+            entry = docstore.get(item_id) or {}
+            md = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+            doc_id = md.get("doc_id")
+            seq = md.get("chunk_seq")
+            if not isinstance(doc_id, str):
+                continue
+            try:
+                si = int(seq)
+            except Exception:
+                continue
+            by_doc.setdefault(doc_id, []).append((si, str(item_id)))
+
+        out: Dict[str, List[str]] = {}
+        for doc_id, pairs in by_doc.items():
+            pairs = sorted(pairs, key=lambda p: p[0])
+            if not pairs:
+                continue
+            seqs = [p[0] for p in pairs]
+            if seqs[0] != 0 or seqs != list(range(0, len(seqs))):
+                return None
+            out[doc_id] = [p[1] for p in pairs]
+        return out
+    except Exception:
+        return None
+
+
+def _write_ltm_manifest_and_adjacency(
+    *,
+    project_id: str,
+    faiss_dir: str,
+    index_dim: int,
+    chunk_size: int,
+    chunk_overlap: int,
+    docstore: Dict[str, Dict[str, Any]],
+    index_to_id: List[str],
+) -> bool:
+    """
+    Persist A.4.4.1 adjacency sidecar + manifest.
+    If this fails, retrieval may still work, but adjacency is treated as unavailable.
+    """
+    try:
+        adj_list = _build_ltm_adjacency_lists(docstore=docstore, index_to_id=index_to_id)
+        if adj_list is None:
+            return False
+
+        adj_path = os.path.join(faiss_dir, _LTM_ADJACENCY_INDEX_NAME)
+        _atomic_write_json(
+            adj_path,
+            {
+                "schema_version": _A441_SCHEMA_VERSION,
+                "project_id": project_id,
+                "built_at": datetime.utcnow().isoformat(),
+                "by_doc_id": adj_list,
+            },
+        )
+        manifest_path = os.path.join(faiss_dir, _LTM_MANIFEST_NAME)
+        _atomic_write_json(
+            manifest_path,
+            {
+                "schema_version": _A441_SCHEMA_VERSION,
+                "index_kind": "ltm",
+                "project_id": project_id,
+                "built_at": datetime.utcnow().isoformat(),
+                "chunk_size": int(chunk_size),
+                "chunk_overlap": int(chunk_overlap),
+                "index_dim": int(index_dim),
+                "score_mode": "cosine_ip_mapped_01",
+                "index_file": _LTM_INDEX_FILE_NAME,
+                "docstore_file": _LTM_DOCSTORE_NAME,
+                "index_to_id_file": _LTM_INDEX_TO_ID_NAME,
+                "adjacency_index": _LTM_ADJACENCY_INDEX_NAME,
+            },
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _schedule_ltm_rebuild(project_id: str, reason: str) -> None:
+    """Best-effort background rebuild (no in-request retry)."""
+    try:
+        with _LTM_REBUILD_LOCK:
+            if project_id in _LTM_REBUILDING:
+                return
+            _LTM_REBUILDING.add(project_id)
+
+        def _rebuild() -> None:
+            try:
+                rebuild_faiss_index(project_id)
+            except Exception:
+                pass
+            finally:
+                with _LTM_REBUILD_LOCK:
+                    _LTM_REBUILDING.discard(project_id)
+
+        threading.Thread(target=_rebuild, name=f"ltm-rebuild-{project_id[:8]}", daemon=True).start()
+        logger.warning("RAG: scheduled LTM rebuild project=%s reason=%s", project_id, reason)
+    except Exception:
+        pass
 
 
 def _read_file_text(path: str) -> List[Tuple[str, dict]]:
@@ -60,17 +276,6 @@ def _read_file_text(path: str) -> List[Tuple[str, dict]]:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
         return [(content, {"filename": name})]
-    elif ext == ".pdf":
-        try:
-            from pypdf import PdfReader
-        except Exception as e:
-            raise RuntimeError(f"pypdf not available: {e}")
-        reader = PdfReader(path)
-        chunks: List[Tuple[str, dict]] = []
-        for i, page in enumerate(reader.pages):
-            text = page.extract_text() or ""
-            chunks.append((text, {"filename": name, "page_number": i + 1}))
-        return chunks
     else:
         return []
 
@@ -97,16 +302,16 @@ def _trim_to_tokens(text: str, max_tokens: int) -> str:
 
 
 def rebuild_faiss_index(project_id: str) -> str:
-    """Rebuild FAISS index for a project from uploads directory.
-
-    Returns the directory where the index is saved.
-    """
+    """Rebuild FAISS index for a project from uploads directory (raw FAISS, no LangChain)."""
     settings = get_settings()
     uploads_dir = os.path.join("memory", project_id, "uploads")
     faiss_dir = os.path.join("memory", project_id, "faiss")
     os.makedirs(faiss_dir, exist_ok=True)
 
-    files = []
+    # No legacy support: rebuild from scratch.
+    _clear_dir_contents(faiss_dir)
+
+    files: List[str] = []
     if os.path.isdir(uploads_dir):
         for root, _, names in os.walk(uploads_dir):
             for name in names:
@@ -114,51 +319,50 @@ def rebuild_faiss_index(project_id: str) -> str:
 
     texts: List[str] = []
     metadatas: List[dict] = []
-    collected = []
     # For per-file stats
     file_token_sums: Dict[str, int] = {}
     file_page_max: Dict[str, int] = {}
-    for f in files:
-        for raw_text, meta in _read_file_text(f):
-            collected.append((raw_text, meta))
-            fname = meta.get("filename") or os.path.basename(f)
-            file_token_sums[fname] = file_token_sums.get(fname, 0) + _count_tokens(raw_text)
-            pg = int(meta.get("page_number") or 1)
-            file_page_max[fname] = max(file_page_max.get(fname, 1), pg)
-
-    if not collected:
-        # No files -> clear any existing index
-        try:
-            for n in os.listdir(faiss_dir):
-                os.remove(os.path.join(faiss_dir, n))
-        except Exception:
-            pass
-        return faiss_dir
-
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=settings.chunk_size,
-        chunk_overlap=settings.chunk_overlap,
-    )
 
     now_iso = datetime.utcnow().isoformat()
-    for raw_text, base_meta in collected:
-        for i, chunk in enumerate(splitter.split_text(raw_text)):
-            texts.append(chunk)
-            m = {
-                "project_id": project_id,
-                "filename": base_meta.get("filename"),
-                "page_number": base_meta.get("page_number"),
-                "chunk_id": i,
-                "timestamp": now_iso,
-            }
-            metadatas.append(m)
+    for f in files:
+        doc_id = _uploads_relative_doc_id(uploads_dir, f)
+        for raw_text, meta in _read_file_text(f):
+            fname = meta.get("filename") or os.path.basename(f)
+            file_token_sums[fname] = file_token_sums.get(fname, 0) + _count_tokens(raw_text)
+            file_page_max[fname] = 1
+            for i, chunk in enumerate(
+                _split_text_simple(
+                    raw_text,
+                    chunk_size=int(settings.chunk_size),
+                    chunk_overlap=int(settings.chunk_overlap),
+                )
+            ):
+                texts.append(chunk)
+                metadatas.append(
+                    {
+                        "project_id": project_id,
+                        "filename": fname,
+                        "page_number": None,
+                        "doc_id": doc_id,
+                        "source_document_id": doc_id,
+                        "chunk_seq": int(i),
+                        "chunk_index": int(i),
+                        "chunk_id": int(i),
+                        "timestamp": now_iso,
+                    }
+                )
 
-    embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
+    if not texts:
+        return faiss_dir
+
     max_req_tokens = int(getattr(settings, "max_embed_tokens_per_request", 250_000))
+    llm = get_llm_client()
 
-    # Build vectorstore incrementally with token-aware batching to avoid provider-side
-    # "max tokens per request" failures on large corpora.
-    vs: Optional[FAISS] = None
+    index: Optional[faiss.IndexFlatIP] = None
+    index_dim: Optional[int] = None
+    index_to_id: List[str] = []
+    docstore: Dict[str, Dict[str, Any]] = {}
+
     batch_idx = 0
     for batch_texts, batch_metas, est_tokens in iter_token_batches(
         texts,
@@ -167,21 +371,26 @@ def rebuild_faiss_index(project_id: str) -> str:
         model_name=settings.embedding_model,
     ):
         batch_idx += 1
-        vecs = embeddings.embed_documents(list(batch_texts))
-        if vs is None:
-            # Normalize L2 to make cosine similarity computable via L2 distance relation
-            try:
-                vs = FAISS.from_embeddings(
-                    list(zip(batch_texts, vecs)),
-                    embeddings,
-                    metadatas=batch_metas,
-                    normalize_L2=True,
-                )
-            except TypeError:
-                # Older versions may not support normalize_L2
-                vs = FAISS.from_embeddings(list(zip(batch_texts, vecs)), embeddings, metadatas=batch_metas)
-        else:
-            vs.add_embeddings(list(zip(batch_texts, vecs)), metadatas=batch_metas)
+        res = llm.embed(list(batch_texts), model=settings.embedding_model)
+        vecs = res.vectors
+        if not vecs:
+            continue
+        mat = _normalize_rows(np.array(vecs, dtype="float32"))
+        if index is None:
+            index_dim = int(mat.shape[1])
+            index = faiss.IndexFlatIP(int(index_dim))
+        if mat.shape[1] != int(index_dim or 0):
+            raise RuntimeError(f"Embedding dim changed mid-build: {mat.shape[1]} vs {index_dim}")
+
+        # Maintain strict alignment: row i -> index_to_id[i] -> docstore[id]
+        for txt, md in zip(list(batch_texts), list(batch_metas)):
+            did = str(md.get("doc_id") or "")
+            seq = int(md.get("chunk_seq") or 0)
+            item_id = f"{did}::chunk={seq}"
+            index_to_id.append(item_id)
+            docstore[item_id] = {"text": str(txt or ""), "metadata": dict(md or {})}
+        index.add(mat)
+
         logger.debug(
             "RAG: embedded batch=%s texts=%s est_tokens=%s max_req_tokens=%s",
             int(batch_idx),
@@ -190,16 +399,29 @@ def rebuild_faiss_index(project_id: str) -> str:
             int(max_req_tokens),
         )
 
-    if vs is None:
-        # Should be unreachable because collected/texts is non-empty, but keep safe behavior.
-        try:
-            for n in os.listdir(faiss_dir):
-                os.remove(os.path.join(faiss_dir, n))
-        except Exception:
-            pass
+    if index is None or index_dim is None or int(index.ntotal) <= 0:
         return faiss_dir
-    # Save index
-    vs.save_local(faiss_dir)
+
+    # Persist raw FAISS + sidecars under existing faiss/ layout.
+    faiss.write_index(index, os.path.join(faiss_dir, _LTM_INDEX_FILE_NAME))
+    _atomic_write_json(os.path.join(faiss_dir, _LTM_INDEX_TO_ID_NAME), index_to_id)
+    _atomic_write_json(os.path.join(faiss_dir, _LTM_DOCSTORE_NAME), docstore)
+
+    # A.4.4.1 adjacency + manifest (best-effort; does not block retrieval).
+    try:
+        ok = _write_ltm_manifest_and_adjacency(
+            project_id=project_id,
+            faiss_dir=faiss_dir,
+            index_dim=int(index_dim),
+            chunk_size=int(settings.chunk_size),
+            chunk_overlap=int(settings.chunk_overlap),
+            docstore=docstore,
+            index_to_id=index_to_id,
+        )
+        if not ok:
+            logger.warning("RAG: failed to write A.4.4.1 adjacency index project=%s", project_id)
+    except Exception:
+        logger.warning("RAG: exception writing A.4.4.1 adjacency index project=%s", project_id)
 
     # Backfill file token/page stats in DB
     try:
@@ -211,7 +433,7 @@ def rebuild_faiss_index(project_id: str) -> str:
                 if row:
                     row.token_count = int(tok_sum)
                     row.page_count = int(file_page_max.get(fname, row.page_count or 1))
-                    row.embedding_status = 'indexed'
+                    row.embedding_status = "indexed"
                     session.add(row)
             session.commit()
     except Exception:
@@ -219,30 +441,191 @@ def rebuild_faiss_index(project_id: str) -> str:
     return faiss_dir
 
 
-def load_faiss_index(project_id: str) -> Optional[FAISS]:
-    """Load FAISS index for project if exists and non-empty."""
+class LTMIndex:
+    def __init__(
+        self,
+        *,
+        index: faiss.IndexFlatIP,
+        index_to_id: List[str],
+        docstore: Dict[str, Dict[str, Any]],
+        built_at: Optional[str],
+        schema_version: Optional[str],
+    ):
+        self.index = index
+        self.index_to_id = index_to_id
+        self.docstore = docstore
+        self._built_at = built_at
+        self._schema_version = schema_version
+
+    def size(self) -> int:
+        return int(self.index.ntotal)
+
+    def info(self) -> VectorIndexInfo:
+        return VectorIndexInfo(
+            index_kind="ltm",
+            dim=int(self.index.d),
+            score_mode="cosine_ip_mapped_01",
+            built_at=self._built_at,
+            schema_version=self._schema_version,
+        )
+
+    def get_by_id(self, item_id: str) -> Optional[VectorEntry]:
+        try:
+            entry = self.docstore.get(str(item_id))
+            if not isinstance(entry, dict):
+                return None
+            txt = entry.get("text") if isinstance(entry.get("text"), str) else ""
+            md = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+            return VectorEntry(text=txt or "", metadata=md)
+        except Exception:
+            return None
+
+    def search_by_vector(self, qvec_norm: np.ndarray, *, k: int) -> List[VectorHit]:
+        if int(self.index.ntotal) <= 0:
+            return []
+        q = np.array([qvec_norm], dtype="float32")
+        D, I = self.index.search(q, k=int(k))
+        out: List[VectorHit] = []
+        for idx, ip in zip(I[0].tolist(), D[0].tolist()):
+            if int(idx) < 0 or int(idx) >= len(self.index_to_id):
+                continue
+            item_id = self.index_to_id[int(idx)]
+            ve = self.get_by_id(str(item_id))
+            if ve is None:
+                continue
+            ipf = float(ip)
+            score01 = _cosine_to_01(ipf)
+            out.append(VectorHit(entry=ve, ip=ipf, score01=float(score01)))
+        return out
+
+
+def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
+    """Load raw FAISS index + docstore for project if exists and non-empty."""
     settings = get_settings()
     faiss_dir = os.path.join("memory", project_id, "faiss")
     if not os.path.isdir(faiss_dir):
         logger.debug(f"RAG: index directory missing for project '{project_id}' at {faiss_dir}")
         return None
     try:
-        embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
-        try:
-            vs = FAISS.load_local(faiss_dir, embeddings, allow_dangerous_deserialization=True)
-        except TypeError:
-            # Fallback for older versions without allow_dangerous_deserialization
-            vs = FAISS.load_local(faiss_dir, embeddings)
-        # Heuristic: if docstore empty, treat as no index
-        if not getattr(vs, "docstore", None) or len(vs.docstore._dict) == 0:  # type: ignore
-            logger.debug(f"RAG: loaded index for '{project_id}' but docstore is empty")
+        idx_path = os.path.join(faiss_dir, _LTM_INDEX_FILE_NAME)
+        ids_path = os.path.join(faiss_dir, _LTM_INDEX_TO_ID_NAME)
+        ds_path = os.path.join(faiss_dir, _LTM_DOCSTORE_NAME)
+        if not os.path.isfile(idx_path) or not os.path.isfile(ids_path) or not os.path.isfile(ds_path):
             return None
-        logger.debug(f"RAG: loaded index for '{project_id}' with {len(vs.docstore._dict)} documents")
-        return vs
+        index = cast(faiss.IndexFlatIP, faiss.read_index(idx_path))
+        ids_obj = _safe_load_json(ids_path)
+        ds_obj = _safe_load_json(ds_path)
+        if not isinstance(ids_obj, list) or not isinstance(ds_obj, dict) or int(index.ntotal) <= 0:
+            return None
+        index_to_id = [str(x) for x in ids_obj]
+        docstore = cast(Dict[str, Dict[str, Any]], ds_obj)
+        # DELTA-A.4.4.1: validate adjacency sidecar only when index claims A.4.4.1+
+        try:
+            manifest_path = os.path.join(faiss_dir, _LTM_MANIFEST_NAME)
+            manifest = _safe_load_json(manifest_path)
+            claims_a441 = bool(isinstance(manifest, dict) and manifest.get("schema_version") == _A441_SCHEMA_VERSION)
+            if claims_a441:
+                # Invalidate adjacency (trigger background rebuild) if chunking params changed since build.
+                try:
+                    built_cs = int(manifest.get("chunk_size")) if manifest.get("chunk_size") is not None else None
+                    built_co = int(manifest.get("chunk_overlap")) if manifest.get("chunk_overlap") is not None else None
+                except Exception:
+                    built_cs, built_co = None, None
+                if built_cs != int(settings.chunk_size) or built_co != int(settings.chunk_overlap):
+                    _schedule_ltm_rebuild(project_id, reason="a441_chunk_params_mismatch")
+                else:
+                    adj_name = manifest.get("adjacency_index") or _LTM_ADJACENCY_INDEX_NAME
+                    adj_path = os.path.join(faiss_dir, str(adj_name))
+                    adj_obj = _safe_load_json(adj_path)
+                    # If missing/invalid, rebuild (A.4.4.1+ only). Legacy absence is expected.
+                    if not isinstance(adj_obj, dict) or adj_obj.get("schema_version") != _A441_SCHEMA_VERSION:
+                        _schedule_ltm_rebuild(project_id, reason="a441_adjacency_missing_or_invalid")
+        except Exception:
+            # Best-effort only; never block retrieval.
+            pass
+        built_at = None
+        schema_version = None
+        try:
+            manifest_path = os.path.join(faiss_dir, _LTM_MANIFEST_NAME)
+            manifest = _safe_load_json(manifest_path)
+            if isinstance(manifest, dict):
+                built_at = manifest.get("built_at") if isinstance(manifest.get("built_at"), str) else None
+                schema_version = manifest.get("schema_version") if isinstance(manifest.get("schema_version"), str) else None
+        except Exception:
+            pass
+        logger.debug(f"RAG: loaded index for '{project_id}' with {int(index.ntotal)} vectors")
+        return LTMIndex(
+            index=index,
+            index_to_id=index_to_id,
+            docstore=docstore,
+            built_at=built_at,
+            schema_version=schema_version,
+        )
     except Exception as e:
         logger.debug(f"RAG: failed to load index for '{project_id}': {e}")
         return None
 
+
+def ltm_lookup_adjacent_docstore_ids(
+    project_id: str,
+    *,
+    doc_id: str,
+    chunk_seq: int,
+) -> Dict[str, Optional[str]]:
+    """
+    DELTA-A.4.4.1: deterministic neighbor lookup for LTM chunks.
+
+    Returns dict with keys: prev_docstore_id, next_docstore_id.
+    If adjacency is unavailable (legacy index, missing/corrupt sidecar), returns None values.
+    """
+    faiss_dir = os.path.join("memory", project_id, "faiss")
+    manifest = _safe_load_json(os.path.join(faiss_dir, _LTM_MANIFEST_NAME))
+    claims_a441 = bool(isinstance(manifest, dict) and manifest.get("schema_version") == _A441_SCHEMA_VERSION)
+    if not claims_a441:
+        return {"prev_docstore_id": None, "next_docstore_id": None}
+
+    adj_name = (manifest.get("adjacency_index") if isinstance(manifest, dict) else None) or _LTM_ADJACENCY_INDEX_NAME
+    adj = _safe_load_json(os.path.join(faiss_dir, str(adj_name)))
+    if not isinstance(adj, dict) or adj.get("schema_version") != _A441_SCHEMA_VERSION:
+        # A.4.4.1+ but adjacency missing/invalid: degrade (no expansion) and schedule rebuild
+        _schedule_ltm_rebuild(project_id, reason="a441_lookup_missing_or_invalid")
+        return {"prev_docstore_id": None, "next_docstore_id": None}
+
+    by_doc = adj.get("by_doc_id")
+    if not isinstance(by_doc, dict):
+        _schedule_ltm_rebuild(project_id, reason="a441_lookup_bad_shape")
+        return {"prev_docstore_id": None, "next_docstore_id": None}
+
+    seq_map = by_doc.get(doc_id)
+    if not isinstance(seq_map, list):
+        return {"prev_docstore_id": None, "next_docstore_id": None}
+
+    i = int(chunk_seq)
+    prev_id = seq_map[i - 1] if 0 <= (i - 1) < len(seq_map) else None
+    next_id = seq_map[i + 1] if 0 <= (i + 1) < len(seq_map) else None
+    return {
+        "prev_docstore_id": str(prev_id) if isinstance(prev_id, str) else None,
+        "next_docstore_id": str(next_id) if isinstance(next_id, str) else None,
+    }
+
+
+def ltm_fetch_chunk_by_docstore_id(project_id: str, docstore_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch a stored LTM chunk by docstore_id.
+    Returns {text, metadata} or None on failure.
+    """
+    vs = load_faiss_index(project_id)
+    if not vs:
+        return None
+    try:
+        entry = vs.docstore.get(str(docstore_id))
+        if not isinstance(entry, dict):
+            return None
+        txt = entry.get("text") if isinstance(entry.get("text"), str) else ""
+        md = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+        return {"text": txt or "", "metadata": md}
+    except Exception:
+        return None
 
 def canonical_retrieve_candidates(
     project_id: str,
@@ -278,14 +661,14 @@ def canonical_retrieve_candidates(
     if int(per_source_k) <= 0:
         return []
 
-    # Embed ONCE (shared query vector)
+    # Embed ONCE (shared query vector) via LLMClient boundary (plain-data; no vendor SDK outside llm_model)
     qvec: Optional[List[float]] = None
     try:
-        embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
-        qvec = embeddings.embed_query(query or "")
+        qvec = get_llm_client().embed_query(query or "", model=settings.embedding_model)
     except Exception as e:
         logger.warning("RAG: failed to embed query for canonical retrieval project=%s: %s", project_id, e)
         return []
+    qmat = _normalize_rows(np.array([qvec], dtype="float32"))
 
     # Daily
     if "daily" in srcs:
@@ -295,14 +678,14 @@ def canonical_retrieve_candidates(
             ds = get_daily_source(project_id)
             if ds is not None:
                 try:
-                    results = ds.vs.similarity_search_with_score_by_vector(qvec, k=int(per_source_k))  # type: ignore[attr-defined]
+                    results = ds.vs.search_by_vector(qmat[0], k=int(per_source_k))
                 except Exception as e:
                     logger.warning("RAG: Daily candidate search failed project=%s: %s", project_id, e)
                     notify_daily_search_failure(project_id, reason="canonical_daily_search_exception")
                     results = []
-                for doc, dist in results:
-                    cos = cosine_from_l2_distance(dist)
-                    md = getattr(doc, "metadata", None) or {}
+                for hit in results:
+                    score01 = float(hit.score01)
+                    md = hit.entry.metadata if isinstance(hit.entry.metadata, dict) else {}
                     eid = md.get("daily_entry_id")
                     entry = None
                     try:
@@ -321,8 +704,8 @@ def canonical_retrieve_candidates(
                         out.append(
                             {
                                 "source": "daily",
-                                "text": getattr(doc, "page_content", "") or "",
-                                "score": float(cos),
+                                "text": hit.entry.text or "",
+                                "score": float(score01),
                                 "metadata": {
                                     "id": str(eid) if eid is not None else None,
                                     "timestamp": created_at,
@@ -335,6 +718,11 @@ def canonical_retrieve_candidates(
                                     "keep": entry.get("keep"),
                                     "day_sequence": entry.get("day_sequence"),
                                     "pair_ids": entry.get("pair_ids"),
+                                    # DELTA-A.4.4.1 adjacency identity for Daily entries
+                                    "doc_id": "daily",
+                                    "chunk_seq": entry.get("day_sequence"),
+                                    "source_document_id": "daily",
+                                    "chunk_index": entry.get("day_sequence"),
                                 },
                             }
                         )
@@ -343,8 +731,8 @@ def canonical_retrieve_candidates(
                         out.append(
                             {
                                 "source": "daily",
-                                "text": getattr(doc, "page_content", "") or "",
-                                "score": float(cos),
+                                "text": hit.entry.text or "",
+                                "score": float(score01),
                                 "metadata": {
                                     "id": None,
                                     "timestamp": None,
@@ -357,6 +745,10 @@ def canonical_retrieve_candidates(
                                     "keep": None,
                                     "day_sequence": None,
                                     "pair_ids": None,
+                                    "doc_id": "daily",
+                                    "chunk_seq": md.get("chunk_seq") if isinstance(md, dict) else None,
+                                    "source_document_id": "daily",
+                                    "chunk_index": md.get("chunk_seq") if isinstance(md, dict) else None,
                                 },
                             }
                         )
@@ -367,40 +759,33 @@ def canonical_retrieve_candidates(
 
     # LTM (main FAISS index)
     if "ltm" in srcs:
-        def _ltm_search_by_vector() -> List[Tuple[Any, float]]:
+        def _ltm_search_by_vector() -> List[VectorHit]:
             """
             Source-owned LTM search wrapper (best-effort rebuild-on-error; no retry in-request).
             Canonical retrieval calls this but does not own rebuild semantics.
             """
-            vs = load_faiss_index(project_id)
-            if not vs:
+            ltm = load_faiss_index(project_id)
+            if not ltm:
                 return []
             try:
-                return list(vs.similarity_search_with_score_by_vector(qvec, k=int(per_source_k)))  # type: ignore[attr-defined]
+                return ltm.search_by_vector(qmat[0], k=int(per_source_k))
             except Exception as e:
                 try:
                     logger.warning("RAG: LTM candidate search failed project=%s; scheduling rebuild: %s", project_id, e)
-
-                    def _rebuild() -> None:
-                        try:
-                            rebuild_faiss_index(project_id)
-                        except Exception:
-                            pass
-
-                    threading.Thread(target=_rebuild, name=f"ltm-rebuild-{project_id[:8]}", daemon=True).start()
+                    _schedule_ltm_rebuild(project_id, reason="canonical_ltm_search_exception")
                 except Exception:
                     pass
                 return []
 
         results = _ltm_search_by_vector()
-        for doc, dist in results:
-                md = getattr(doc, "metadata", None) or {}
-                cos = cosine_from_l2_distance(dist)
+        for hit in results:
+                md = hit.entry.metadata if isinstance(hit.entry.metadata, dict) else {}
+                score01 = float(hit.score01)
                 out.append(
                     {
                         "source": "ltm",
-                        "text": getattr(doc, "page_content", "") or "",
-                        "score": float(cos),
+                        "text": hit.entry.text or "",
+                        "score": float(score01),
                         "metadata": {
                             # Allow missing/absent metadata fields in A.4.1
                             "timestamp": md.get("timestamp"),
@@ -418,6 +803,11 @@ def canonical_retrieve_candidates(
                             "filename": md.get("filename"),
                             "page_number": md.get("page_number"),
                             "chunk_id": md.get("chunk_id"),
+                            # DELTA-A.4.4.1 adjacency identity
+                            "doc_id": md.get("doc_id"),
+                            "chunk_seq": md.get("chunk_seq"),
+                            "source_document_id": md.get("doc_id"),
+                            "chunk_index": md.get("chunk_seq"),
                         },
                     }
                 )
@@ -609,6 +999,50 @@ def merge_daily_and_main(
 
     # DELTA-A.4.3: positional truncation only.
     kept_candidates = list(ordered[: int(max_keep)]) if ordered else []
+
+    # Debug dumps (human-readable .txt) for A.4.2 ordering and A.4.3 selection.
+    try:
+        if project_id:
+            ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+            qprev = (query or "")[:240].replace("\n", " ")
+
+            def _fmt_list(title: str, items: List[Dict[str, Any]]) -> str:
+                lines = [
+                    f"# timestamp: {ts}",
+                    f"# project_id: {project_id}",
+                    f"# query_preview: {qprev}",
+                    f"# per_source_k: {int(per_source_k)}",
+                    f"# max_keep: {int(max_keep)}",
+                    f"# daily_enabled: {str(bool(daily_enabled)).lower()}",
+                    "",
+                    f"====== {title} ======",
+                    "",
+                ]
+                for rank, c in enumerate(items, start=1):
+                    md = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
+                    src = c.get("source")
+                    score = c.get("score")
+                    doc_id = md.get("source_document_id") or md.get("doc_id")
+                    chunk_idx = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_seq")
+                    fname = md.get("filename")
+                    lines.append(
+                        f"{rank:>3}. source={src} score={score} source_document_id={doc_id} chunk_index={chunk_idx} file={fname}"
+                    )
+                lines.append("")
+                return "\n".join(lines)
+
+            write_debug_file(
+                project_id,
+                f"rag/retrieval/{ts}_ordered_candidates.txt",
+                _fmt_list("ORDERED_CANDIDATES (A.4.2)", ordered),
+            )
+            write_debug_file(
+                project_id,
+                f"rag/retrieval/{ts}_kept_candidates.txt",
+                _fmt_list("KEPT_CANDIDATES (A.4.3)", kept_candidates),
+            )
+    except Exception:
+        pass
 
     # Prompt assembly stage (after ordering + selection).
     tokens_used_total = 0

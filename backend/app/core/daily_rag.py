@@ -18,12 +18,98 @@ import threading
 from typing import List, Dict, Any, Optional, Tuple, Set, Sequence
 
 from filelock import FileLock
-from langchain_openai import OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
+import faiss  # type: ignore
+import numpy as np  # type: ignore
 
 from .config import get_settings
 from .embed_batching import iter_token_batches
+from .vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
+from ..llm_model.llm_client import get_llm_client
+from ..utils.debug_utils import write_debug_file
 logger = logging.getLogger(__name__)
+
+def _normalize_rows(v: np.ndarray) -> np.ndarray:
+    if v.size == 0:
+        return v.astype("float32")
+    v = v.astype("float32")
+    norms = np.linalg.norm(v, axis=1, keepdims=True)
+    norms = np.where(norms == 0.0, 1.0, norms)
+    return v / norms
+
+
+class DailyVectorIndex:
+    """
+    Minimal in-memory vector index for Daily (raw FAISS IndexFlatIP).
+
+    Stores:
+      - index: FAISS index over unit-normalized vectors
+      - index_to_id: row index -> item_id
+      - docstore: item_id -> {text, metadata}
+    """
+
+    def __init__(self, *, dim: int) -> None:
+        self.index: faiss.IndexFlatIP = faiss.IndexFlatIP(int(dim))
+        self.index_to_id: List[str] = []
+        self.docstore: Dict[str, Dict[str, Any]] = {}
+        self._dim: int = int(dim)
+
+    def size(self) -> int:
+        return int(self.index.ntotal)
+
+    def info(self) -> VectorIndexInfo:
+        return VectorIndexInfo(index_kind="daily", dim=int(self._dim), score_mode="cosine_ip_mapped_01")
+
+    def get_by_id(self, item_id: str) -> Optional[VectorEntry]:
+        try:
+            entry = self.docstore.get(str(item_id))
+            if not isinstance(entry, dict):
+                return None
+            txt = entry.get("text") if isinstance(entry.get("text"), str) else ""
+            md = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+            return VectorEntry(text=txt or "", metadata=md)
+        except Exception:
+            return None
+
+    def add(self, *, item_id: str, vector: List[float], text: str, metadata: Dict[str, Any]) -> None:
+        mat = _normalize_rows(np.array([vector], dtype="float32"))
+        if mat.shape[1] != int(self.index.d):
+            raise RuntimeError(f"DailyVectorIndex dim mismatch: got={mat.shape[1]} expected={self.index.d}")
+        self.index.add(mat)
+        self.index_to_id.append(str(item_id))
+        self.docstore[str(item_id)] = {"text": str(text or ""), "metadata": dict(metadata or {})}
+
+    def add_many(
+        self, *, item_ids: List[str], vectors: List[List[float]], texts: List[str], metadatas: List[dict]
+    ) -> None:
+        if not vectors:
+            return
+        mat = _normalize_rows(np.array(vectors, dtype="float32"))
+        if mat.shape[1] != int(self.index.d):
+            raise RuntimeError(f"DailyVectorIndex dim mismatch: got={mat.shape[1]} expected={self.index.d}")
+        self.index.add(mat)
+        for item_id, txt, md in zip(item_ids, texts, metadatas):
+            self.index_to_id.append(str(item_id))
+            self.docstore[str(item_id)] = {"text": str(txt or ""), "metadata": dict(md or {})}
+
+    def search_by_vector(self, qvec_norm: np.ndarray, *, k: int) -> List[VectorHit]:
+        if int(self.index.ntotal) <= 0:
+            return []
+        q = np.array([qvec_norm], dtype="float32")
+        D, I = self.index.search(q, k=int(k))
+        out: List[VectorHit] = []
+        # NOTE: I[0] and D[0] are numpy arrays; do not use `or []` which triggers ambiguous truthiness.
+        for idx, ip in zip(I[0].tolist(), D[0].tolist()):
+            if int(idx) < 0 or int(idx) >= len(self.index_to_id):
+                continue
+            item_id = self.index_to_id[int(idx)]
+            ve = self.get_by_id(str(item_id))
+            if ve is None:
+                continue
+            ipf = float(ip)
+            # map cosine [-1,1] -> [0,1]
+            score01 = (max(-1.0, min(1.0, ipf)) + 1.0) / 2.0
+            out.append(VectorHit(entry=ve, ip=ipf, score01=float(score01)))
+        return out
 
 def _nl(s: str) -> str:
     """Normalize line endings to LF to avoid mixed terminators."""
@@ -65,12 +151,14 @@ def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
 
 @dataclass
 class _DailyCache:
-    """Per-project in-memory Daily FAISS cache state."""
+    """Per-project in-memory Daily cache state (raw FAISS, no LangChain)."""
     embedding_model: str
-    vs: Optional[FAISS]  # None means empty (no vectors yet)
+    vs: Optional[VectorIndex]  # None means empty (no vectors yet)
     # Canonical daily.json snapshot keyed by stable entry id.
     # Used to join retrieval hits (via metadata daily_entry_id) back to authoritative metadata.
     meta_by_id: Dict[str, Dict[str, Any]]
+    # DELTA-A.4.4.1: O(1) adjacency lookup by day_sequence (chunk_seq).
+    id_by_seq: Dict[int, str]
 
 
 @dataclass
@@ -82,8 +170,9 @@ class DailySource:
     authoritative metadata join map.
     """
     embedding_model: str
-    vs: FAISS
+    vs: VectorIndex
     meta_by_id: Dict[str, Dict[str, Any]]
+    id_by_seq: Dict[int, str]
 
 
 def get_daily_source(project_id: str) -> Optional[DailySource]:
@@ -108,7 +197,34 @@ def get_daily_source(project_id: str) -> Optional[DailySource]:
     if cache.embedding_model != settings.embedding_model:
         start_daily_cache_rebuild(project_id, reason="get_source_model_mismatch")
         return None
-    return DailySource(embedding_model=cache.embedding_model, vs=cache.vs, meta_by_id=cache.meta_by_id)
+    return DailySource(
+        embedding_model=cache.embedding_model,
+        vs=cache.vs,
+        meta_by_id=cache.meta_by_id,
+        id_by_seq=cache.id_by_seq,
+    )
+
+
+def daily_lookup_adjacent_entry_ids(project_id: str, *, day_sequence: int) -> Dict[str, Optional[str]]:
+    """
+    DELTA-A.4.4.1: deterministic neighbor lookup for Daily entries.
+
+    Returns dict with keys: prev_entry_id, next_entry_id.
+    If cache is cold/unavailable, returns None values (no expansion).
+    """
+    ds = get_daily_source(project_id)
+    if ds is None:
+        return {"prev_entry_id": None, "next_entry_id": None}
+    try:
+        seq = int(day_sequence)
+    except Exception:
+        return {"prev_entry_id": None, "next_entry_id": None}
+    prev_id = ds.id_by_seq.get(seq - 1)
+    next_id = ds.id_by_seq.get(seq + 1)
+    return {
+        "prev_entry_id": str(prev_id) if isinstance(prev_id, str) else None,
+        "next_entry_id": str(next_id) if isinstance(next_id, str) else None,
+    }
 
 
 def notify_daily_search_failure(project_id: str, reason: str) -> None:
@@ -235,6 +351,7 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
             texts: List[str] = []
             metas: List[dict] = []
             meta_by_id: Dict[str, Dict[str, Any]] = {}
+            id_by_seq: Dict[int, str] = {}
             for e in entries:
                 t = e.get("embed_text") or e.get("text")
                 if not isinstance(t, str) or not t.strip():
@@ -242,24 +359,38 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
                 eid = e.get("id")
                 if isinstance(eid, str) and eid.strip():
                     meta_by_id[eid] = e
+                    try:
+                        seq = int(e.get("day_sequence"))
+                        if seq > 0:
+                            id_by_seq[seq] = eid
+                    except Exception:
+                        pass
                 texts.append(t)
                 metas.append(
                     {
                         "source": "daily",
                         "daily_entry_id": str(eid) if eid is not None else None,
                         "day_sequence": e.get("day_sequence"),
+                        # DELTA-A.4.4.1 adjacency identity for Daily
+                        "doc_id": "daily",
+                        "chunk_seq": e.get("day_sequence"),
                     }
                 )
             if not texts:
                 with _CACHE_LOCK:
-                    _CACHE[project_id] = _DailyCache(embedding_model=runtime_model, vs=None, meta_by_id={})
+                    _CACHE[project_id] = _DailyCache(
+                        embedding_model=runtime_model,
+                        vs=None,
+                        meta_by_id={},
+                        id_by_seq={},
+                    )
                 logger.debug("DailyRAG: rebuilt empty in-memory cache project=%s (reason=%s)", project_id, reason)
                 return True
-            embeddings = OpenAIEmbeddings(model=runtime_model, api_key=settings.openai_api_key)
             max_req_tokens = int(getattr(settings, "max_embed_tokens_per_request", 250_000))
 
-            vs: Optional[FAISS] = None
+            vs: Optional[DailyVectorIndex] = None
             batch_idx = 0
+            llm = get_llm_client()
             for batch_texts, batch_metas, est_tokens in iter_token_batches(
                 texts,
                 metadatas=metas,
@@ -267,19 +398,24 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
                 model_name=runtime_model,
             ):
                 batch_idx += 1
-                vecs = embeddings.embed_documents(list(batch_texts))
+                res = llm.embed(list(batch_texts), model=runtime_model)
+                vecs = res.vectors
+                if not vecs:
+                    continue
                 if vs is None:
-                    try:
-                        vs = FAISS.from_embeddings(
-                            list(zip(batch_texts, vecs)),
-                            embeddings,
-                            metadatas=batch_metas,
-                            normalize_L2=True,
-                        )
-                    except TypeError:
-                        vs = FAISS.from_embeddings(list(zip(batch_texts, vecs)), embeddings, metadatas=batch_metas)
-                else:
-                    vs.add_embeddings(list(zip(batch_texts, vecs)), metadatas=batch_metas)
+                    vs = DailyVectorIndex(dim=len(vecs[0]))
+                item_ids = []
+                for md in list(batch_metas):
+                    # Stable daily item id for docstore: use daily_entry_id when present else synthetic.
+                    eid = md.get("daily_entry_id")
+                    seq = md.get("day_sequence") or md.get("chunk_seq")
+                    item_ids.append(str(eid) if eid is not None else f"daily::seq={seq}")
+                vs.add_many(
+                    item_ids=item_ids,
+                    vectors=vecs,
+                    texts=list(batch_texts),
+                    metadatas=list(batch_metas),
+                )
                 logger.debug(
                     "DailyRAG: embedded batch=%s texts=%s est_tokens=%s max_req_tokens=%s project=%s reason=%s",
                     int(batch_idx),
@@ -292,12 +428,38 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
 
             if vs is None:
                 with _CACHE_LOCK:
-                    _CACHE[project_id] = _DailyCache(embedding_model=runtime_model, vs=None, meta_by_id=meta_by_id)
+                    _CACHE[project_id] = _DailyCache(
+                        embedding_model=runtime_model,
+                        vs=None,
+                        meta_by_id=meta_by_id,
+                        id_by_seq=id_by_seq,
+                    )
                 logger.debug("DailyRAG: rebuilt empty in-memory cache project=%s (reason=%s)", project_id, reason)
                 return True
             with _CACHE_LOCK:
-                _CACHE[project_id] = _DailyCache(embedding_model=runtime_model, vs=vs, meta_by_id=meta_by_id)
+                _CACHE[project_id] = _DailyCache(
+                    embedding_model=runtime_model,
+                    vs=vs,
+                    meta_by_id=meta_by_id,
+                    id_by_seq=id_by_seq,
+                )
             logger.info("DailyRAG: rebuilt in-memory cache project=%s vectors=%s (reason=%s)", project_id, len(texts), reason)
+            # Debug report (human-readable .txt)
+            try:
+                ts = time.strftime("%Y-%m-%dT%H-%M-%S", time.localtime())
+                seqs = sorted(id_by_seq.keys())
+                body = (
+                    f"# timestamp: {ts}\n"
+                    f"# project_id: {project_id}\n"
+                    f"# reason: {reason}\n"
+                    f"# embedding_model: {runtime_model}\n"
+                    f"# vectors: {len(texts)}\n"
+                    f"# day_sequence_min: {seqs[0] if seqs else None}\n"
+                    f"# day_sequence_max: {seqs[-1] if seqs else None}\n"
+                )
+                write_debug_file(project_id, f"rag/daily/{ts}_daily_cache_report.txt", body)
+            except Exception:
+                pass
             return True
         except Exception as be:
             logger.error("DailyRAG: rebuild failed project=%s reason=%s err=%s", project_id, reason, be)
@@ -437,34 +599,62 @@ def append_pair(
                 return False
             # If empty cache, create a new vectorstore with this single entry
             if cache.vs is None:
-                embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
-                try:
-                    vs = FAISS.from_texts(
-                        texts=[text_for_embed],
-                        embedding=embeddings,
-                        metadatas=[{"source": "daily", "daily_entry_id": entry.get("id"), "day_sequence": entry.get("day_sequence")}],
-                        normalize_L2=True,
-                    )
-                except TypeError:
-                    vs = FAISS.from_texts(
-                        texts=[text_for_embed],
-                        embedding=embeddings,
-                        metadatas=[{"source": "daily", "daily_entry_id": entry.get("id"), "day_sequence": entry.get("day_sequence")}],
-                    )
+                llm = get_llm_client()
+                vecs = llm.embed([text_for_embed], model=settings.embedding_model).vectors
+                if not vecs:
+                    start_daily_cache_rebuild(project_id, reason="append_embed_empty")
+                    return False
+                vs = DailyVectorIndex(dim=len(vecs[0]))
+                md0 = {
+                    "source": "daily",
+                    "daily_entry_id": entry.get("id"),
+                    "day_sequence": entry.get("day_sequence"),
+                    "doc_id": "daily",
+                    "chunk_seq": entry.get("day_sequence"),
+                }
+                vs.add(item_id=str(entry.get("id") or f"daily::seq={entry.get('day_sequence')}"), vector=vecs[0], text=text_for_embed, metadata=md0)
                 with _CACHE_LOCK:
                     _CACHE[project_id] = _DailyCache(
                         embedding_model=settings.embedding_model,
                         vs=vs,
                         meta_by_id={str(entry.get("id")): entry} if entry.get("id") else {},
+                        id_by_seq={int(entry.get("day_sequence")): str(entry.get("id"))}
+                        if entry.get("id") and entry.get("day_sequence") is not None
+                        else {},
                     )
                 return True
             # Normal path: incremental add
-            cache.vs.add_texts([text_for_embed], metadatas=[{"source": "daily", "daily_entry_id": entry.get("id"), "day_sequence": entry.get("day_sequence")}])
+            llm = get_llm_client()
+            vecs2 = llm.embed([text_for_embed], model=settings.embedding_model).vectors
+            if not vecs2:
+                start_daily_cache_rebuild(project_id, reason="append_embed_empty")
+                return False
+            md2 = {
+                "source": "daily",
+                "daily_entry_id": entry.get("id"),
+                "day_sequence": entry.get("day_sequence"),
+                "doc_id": "daily",
+                "chunk_seq": entry.get("day_sequence"),
+            }
+            cache.vs.add(
+                item_id=str(entry.get("id") or f"daily::seq={entry.get('day_sequence')}"),
+                vector=vecs2[0],
+                text=text_for_embed,
+                metadata=md2,
+            )
             # Update in-memory authoritative mapping for deterministic joins
             try:
                 eid2 = entry.get("id")
                 if eid2:
                     cache.meta_by_id[str(eid2)] = entry
+            except Exception:
+                pass
+            # Update adjacency map (best-effort)
+            try:
+                seq2 = entry.get("day_sequence")
+                eid3 = entry.get("id")
+                if eid3 is not None and seq2 is not None:
+                    cache.id_by_seq[int(seq2)] = str(eid3)
             except Exception:
                 pass
             return True

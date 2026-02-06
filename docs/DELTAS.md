@@ -572,3 +572,164 @@ A.4.3 makes context budgeting explicit and observable, enabling later rehydratio
 * `route_policy.json` is loaded and validated once at startup and cached for process lifetime (reload on restart only).
 * A.4.3 is intended to be completed before introducing any rehydration or adjacency expansion logic in A.4.4.
 
+### DELTA-A.4.4 — Context Rehydration and Chunk Expansion
+
+#### Status
+
+Planned
+
+#### Affected Requirements
+
+* FR-007 — File Upload and RAG Initialization (chunk identity/metadata)
+* FR-2.3.1.7 — Retrieval Order and Context Assembly
+
+#### Intent
+
+Rehydrate selected retrieval candidates into semantically complete context by expanding from matched chunks to adjacent chunks while preserving meaning across chunk boundaries.
+
+This delta introduces controlled chunk expansion and context assembly rules that guarantee semantic completeness without introducing retrieval-stage intelligence or ambiguity.
+
+A.4.4 explicitly separates:
+
+* **Retrieval and selection** (A.4.1–A.4.3)
+* **Context reconstruction** (A.4.4)
+
+No relevance scoring, ranking, or pruning decisions are introduced in this delta.
+
+---
+
+### A.4.4.1 — Minimal Chunk Adjacency and Full-Chunk Retrieval
+
+#### Status
+
+Accepted
+
+#### Intent
+
+Implement the minimal functionality required to support safe context rehydration by:
+
+1. Enabling deterministic lookup of neighboring chunks.
+2. Ensuring that any retrieved chunk is always consumed in full, never as a partial slice.
+
+This sub-delta intentionally does **not** address policy, expansion depth, token budgets, or optimization. Its purpose is to make later expansion *possible*, not *smart*.
+
+---
+
+#### Core Requirements
+
+The system SHALL:
+
+1. **Provide a stable chunk adjacency index**
+
+   * The system MUST be able to determine, for any chunk:
+
+     * The immediately previous chunk (if any)
+     * The immediately next chunk (if any)
+   * Adjacency is defined **only within the same source document** (no cross-file adjacency).
+   * For PDFs, adjacency is defined **only within the same page** (no cross-page adjacency). Each `(filename, page_number)` is treated as its own source document for adjacency purposes.
+   * This MAY be implemented as:
+
+     * Sequence numbers
+     * Linked identifiers (`prev_id` / `next_id`)
+     * Absolute offsets
+   * The canonical model is a per-document linear sequence:
+
+     * `doc_id` identifies the source document (for PDFs: `(filename, page_number)`).
+     * `chunk_seq` is a **monotonic, gap-free** integer sequence within a `doc_id`.
+     * `prev` and `next` are resolved structurally as `chunk_seq - 1` / `chunk_seq + 1` within the same `doc_id`.
+   * Adjacency resolution MUST be deterministic and order-preserving.
+
+2. **Expose adjacency metadata at retrieval time**
+
+   * Retrieved candidates MUST include sufficient metadata to allow lookup of neighboring chunks.
+   * This metadata MUST be available without additional semantic inference.
+   * At minimum, retrieved snippets MUST carry `doc_id` and `chunk_seq` (or equivalent fields sufficient to deterministically derive previous/next within the source document).
+
+3. **Return full chunks, not match slices**
+
+   * When a chunk is retrieved due to a similarity match, the system SHALL return the **entire chunk**.
+   * Retrieval MUST NOT return text starting at the match offset or ending early.
+   * Partial reads based on match position are prohibited.
+
+4. **Allow assembly-time expansion to neighboring chunks**
+
+   * Given a retrieved chunk and its adjacency metadata, the system MUST be able to fetch:
+
+     * The previous chunk
+     * The next chunk
+   * Expansion MUST NOT cross a `doc_id` boundary (no cross-file expansion; for PDFs, no cross-page expansion).
+   * Expansion is optional and deferred to later stages (A.4.4.2+).
+
+5. **Preserve original chunk text verbatim**
+
+   * Chunk text MUST be returned exactly as stored.
+   * No rewriting, trimming, summarization, or deduplication occurs in A.4.4.1.
+
+6. **Support structured snippet representation**
+
+   * The system MAY reformat retrieved chunk content into a structured representation (for example, JSON) containing:
+
+     * Chunk ID
+     * Chunk text
+     * Adjacency references
+     * Source metadata
+   * Formatting MUST NOT alter semantic content.
+
+---
+
+#### Explicit Non-Goals
+
+A.4.4.1 MUST NOT:
+
+* Decide how many neighboring chunks to include
+* Remove overlap or deduplicate text
+* Enforce token budgets
+* Perform relevance scoring or reranking
+* Perform semantic merging or summarization
+
+---
+
+#### New Invariants
+
+* A retrieved chunk is always consumed as a whole.
+* Match position within a chunk never affects returned text.
+* Adjacency lookup is purely structural, not semantic.
+* Any loss of adjacency metadata MUST result in less expansion, never partial context.
+
+---
+
+#### Rationale
+
+Most boundary-related retrieval failures come from returning only the locally matched portion of a chunk, which discards setup and assumptions that precede the match.
+
+By guaranteeing whole-chunk retrieval and deterministic adjacency lookup, A.4.4.1 establishes a safe foundation for later expansion and optimization without risking semantic loss.
+
+---
+
+#### Implementation Notes
+
+* Chunk adjacency metadata SHOULD be stored alongside embeddings.
+* Adjacency lookup SHOULD be O(1).
+* Chunk text SHOULD be treated as immutable once written.
+* Any structured (JSON) representation SHOULD be generated at retrieval or assembly time, not stored as canonical memory.
+* Adjacency metadata MUST be rebuilt when any of the following change:
+
+  * uploads added/removed/modified for a project
+  * `chunk_size` or `chunk_overlap`
+  * adjacency metadata is missing or corrupt **for an index that claims A.4.4.1+ compliance**
+* `embedding_model` changes do **not** invalidate adjacency (though embeddings/vectors may still require rebuild for retrieval correctness).
+* Legacy compatibility:
+
+  * Indexes that are explicitly marked as **legacy** may omit adjacency fields; absence is treated as expected and MUST NOT auto-trigger rebuild.
+  * If an index is marked A.4.4.1+ and adjacency is missing/invalid at query time, the system MUST degrade to full-chunk-only retrieval for that request and trigger a background rebuild (no in-request retry/blocking).
+
+---
+
+#### Completion Criteria
+
+A.4.4.1 is complete when:
+
+* Any retrieved chunk is returned in full.
+* Neighboring chunks can be deterministically identified.
+* Retrieved snippets include sufficient metadata to enable later expansion.
+* No semantic content is dropped due to match offsets or chunk boundaries.

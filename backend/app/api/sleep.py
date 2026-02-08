@@ -283,6 +283,12 @@ def _sleep_cycle_worker():
                 except Exception as de:
                     logger.error("[SLEEP][DREAM][ERROR] project=%s: %s", pid, de, exc_info=True)
 
+                # Filesystem-safe timestamp for per-cycle upload artifacts (no ':' in name).
+                cycle_ts = time.strftime("%Y-%m-%dT%H-%M-%S", time.localtime())
+                sleep_upload_text: Optional[str] = None
+                dream_upload_text: Optional[str] = None
+                dream_summary_path = os.path.join(base_dir, "dream_summary.txt")
+
                 # 3.3 Merge and RAG rebuild (uses the possibly cleaned sleep_summary.txt)
                 try:
                     # Validate summary presence and non-empty (beyond just boundary tags)
@@ -300,77 +306,15 @@ def _sleep_cycle_worker():
                         logger.warning("[SLEEP][MERGE] Skipped (empty) project=%s", pid)
                         continue
                     logger.info("[SLEEP][MERGE] Initiating RAG update for %s", pid)
-                    uploads_dir = os.path.join("memory", pid, "uploads")
-                    os.makedirs(uploads_dir, exist_ok=True)
-                    cumulative_path = os.path.join(uploads_dir, "sleep_summary_all.txt")
-                    merge_lock = os.path.join("memory", pid, "merge.lock")
-                    with FileLock(merge_lock):
-                        # Create file with one-time header if missing
-                        created = False
-                        if not os.path.exists(cumulative_path):
-                            with open(cumulative_path, "w", encoding="utf-8", newline="\n") as cf:
-                                cf.write(_nl("#source: sleep_summary\n\n"))
-                            created = True
-                        # Append two newlines and then the entire summary verbatim
-                        with open(cumulative_path, "a", encoding="utf-8", newline="\n") as cf:
-                            cf.write("\n\n")
-                            cf.write(_nl(sum_text))
-                        logger.info("[SLEEP][MERGE] Appended summary to uploads/sleep_summary_all.txt (created=%s)", created)
-                        # Rebuild full uploads index
-                        rebuild_faiss_index(pid)
-                        logger.info("[MERGE] RAG rebuild complete for %s", pid)
-                        # Optional verification
-                        ok = True
-                        if get_settings().verify_rag:
-                            ok = load_faiss_index(pid) is not None
-                            if ok:
-                                logger.info("[VERIFY] OK %s", pid)
-                            else:
-                                logger.error("[VERIFY][ERROR] %s", pid)
-                        # Cleanup only if all succeeded
-                        if ok:
-                            try:
-                                # os.remove(summary_path)
-                                logger.info("[SLEEP][CLEANUP] Removed individual summary for %s", pid)
-                            except Exception as ce:
-                                logger.warning("[SLEEP][CLEANUP] Failed removing summary for %s: %s", pid, ce)
-                            # Also remove pruned.txt and daily.txt per finalized cleanup policy
-                            try:
-                                if os.path.exists(pruned_path):
-                                    os.remove(pruned_path)
-                                logger.info("[SLEEP][CLEANUP] Removed pruned.txt for %s", pid)
-                            except Exception as pe:
-                                logger.warning("[SLEEP][CLEANUP] Failed removing pruned.txt for %s: %s", pid, pe)
-                            # DELTA-A.1: Clear in-memory daily cache and remove daily.json so daily memory moves into main RAG
-                            try:
-                                meta_path, lock_path, txt_path = _project_daily_paths(pid)
-                                with FileLock(lock_path):
-                                    # remove daily.json
-                                    if os.path.exists(meta_path):
-                                        try:
-                                            os.remove(meta_path)
-                                        except Exception:
-                                            pass
-                                    # remove daily.txt
-                                    if os.path.exists(txt_path):
-                                        try:
-                                            os.remove(txt_path)
-                                            logger.info("[SLEEP][CLEANUP] Removed daily.txt for %s", pid)
-                                        except Exception as te:
-                                            logger.warning("[SLEEP][CLEANUP] Failed removing daily.txt for %s: %s", pid, te)
-                                try:
-                                    clear_daily_cache(pid)
-                                except Exception:
-                                    pass
-                                logger.info("[SLEEP][MERGE] Cleared in-memory daily cache and removed daily.json for %s", pid)
-                            except Exception as de:
-                                logger.warning("[SLEEP][MERGE] Post-merge daily cleanup error for %s: %s", pid, de)
+                    # New behavior: do not append to uploads/sleep_summary_all.txt.
+                    # Instead, write per-cycle artifacts into uploads/sleep/ and uploads/dream/
+                    # and rebuild the index once after both writes.
+                    sleep_upload_text = sum_text
                 except Exception as me:
                     logger.error("[SLEEP][MERGE][ERROR] project=%s: %s", pid, me, exc_info=True)
 
                 # 4.5.4 Dream summary post-sleep consolidation (prune + dream-format + append)
                 try:
-                    dream_summary_path = os.path.join(base_dir, "dream_summary.txt")
                     if os.path.isfile(dream_summary_path) and os.path.getsize(dream_summary_path) > 0:
                         with open(dream_summary_path, "r", encoding="utf-8") as ds:
                             dream_raw = ds.read()
@@ -391,40 +335,111 @@ def _sleep_cycle_worker():
                                 write_debug_file(pid, "debug_dream_summary.txt", formatted_dream)
                             except Exception:
                                 logger.warning("[SLEEP][DREAM_SUMMARY] Failed writing debug file for %s", pid)
-                        uploads_dir = os.path.join(base_dir, "uploads")
-                        os.makedirs(uploads_dir, exist_ok=True)
-                        cumulative_path = os.path.join(uploads_dir, "sleep_summary_all.txt")
-                        merge_lock = os.path.join("memory", pid, "merge.lock")
-                        with FileLock(merge_lock):
-                            created = False
-                            if not os.path.exists(cumulative_path):
-                                with open(cumulative_path, "w", encoding="utf-8", newline="\n") as cf:
-                                    cf.write(_nl("#source: sleep_summary\n\n"))
-                                created = True
-                            with open(cumulative_path, "a", encoding="utf-8", newline="\n") as cf:
-                                cf.write("\n\n")  # one blank line before appended block
-                                cf.write(_nl(formatted_dream))
-                            logger.info(
-                                "[SLEEP][DREAM_SUMMARY] Appended dream summary to uploads/sleep_summary_all.txt (created=%s)",
-                                created,
-                            )
-                            try:
-                                rebuild_faiss_index(pid)
-                                logger.info("[MERGE] RAG rebuild complete (dream summary) for %s", pid)
-                                if get_settings().verify_rag:
-                                    ok2 = load_faiss_index(pid) is not None
-                                    if ok2:
-                                        logger.info("[VERIFY] OK %s", pid)
-                                    else:
-                                        logger.error("[VERIFY][ERROR] %s", pid)
-                            except Exception as re:
-                                logger.error("[SLEEP][DREAM_SUMMARY][MERGE] RAG rebuild failed for %s: %s", pid, re, exc_info=True)
-                        try:
-                            os.remove(dream_summary_path)
-                        except Exception as de:
-                            logger.warning("[SLEEP][DREAM_SUMMARY] Failed removing dream_summary.txt for %s: %s", pid, de)
+                        dream_upload_text = formatted_dream
                 except Exception as de:
                     logger.warning("[SLEEP][DREAM_SUMMARY][WARN] project=%s: %s", pid, de)
+
+                # Write per-cycle artifacts and rebuild FAISS once (after both sleep + optional dream writes).
+                try:
+                    if (sleep_upload_text or "").strip() or (dream_upload_text or "").strip():
+                        uploads_dir = os.path.join("memory", pid, "uploads")
+                        merge_lock = os.path.join("memory", pid, "merge.lock")
+                        with FileLock(merge_lock):
+                            os.makedirs(uploads_dir, exist_ok=True)
+
+                            if (sleep_upload_text or "").strip():
+                                sleep_dir = os.path.join(uploads_dir, "sleep")
+                                os.makedirs(sleep_dir, exist_ok=True)
+                                sleep_name = f"sleep_{cycle_ts}.txt"
+                                sleep_path = os.path.join(sleep_dir, sleep_name)
+                                if os.path.exists(sleep_path):
+                                    # Extremely unlikely, but avoid clobbering if a file already exists.
+                                    sleep_path = os.path.join(sleep_dir, f"sleep_{cycle_ts}_{time.time_ns()}.txt")
+                                with open(sleep_path, "w", encoding="utf-8", newline="\n") as sf:
+                                    sf.write(_nl(sleep_upload_text or ""))
+                                logger.info("[SLEEP][MERGE] Wrote uploads/sleep/%s", os.path.basename(sleep_path))
+
+                            if (dream_upload_text or "").strip():
+                                dream_dir = os.path.join(uploads_dir, "dream")
+                                os.makedirs(dream_dir, exist_ok=True)
+                                dream_name = f"dream_{cycle_ts}.txt"
+                                dream_path = os.path.join(dream_dir, dream_name)
+                                if os.path.exists(dream_path):
+                                    # Extremely unlikely, but avoid clobbering if a file already exists.
+                                    dream_path = os.path.join(dream_dir, f"dream_{cycle_ts}_{time.time_ns()}.txt")
+                                with open(dream_path, "w", encoding="utf-8", newline="\n") as df:
+                                    df.write(_nl(dream_upload_text or ""))
+                                logger.info("[SLEEP][DREAM_SUMMARY] Wrote uploads/dream/%s", os.path.basename(dream_path))
+
+                            rebuild_faiss_index(pid)
+                            logger.info("[MERGE] RAG rebuild complete for %s", pid)
+
+                            ok = True
+                            if get_settings().verify_rag:
+                                ok = load_faiss_index(pid) is not None
+                                if ok:
+                                    logger.info("[VERIFY] OK %s", pid)
+                                else:
+                                    logger.error("[VERIFY][ERROR] %s", pid)
+
+                            # Cleanup only if all succeeded
+                            if ok:
+                                try:
+                                    # os.remove(summary_path)
+                                    logger.info("[SLEEP][CLEANUP] Removed individual summary for %s", pid)
+                                except Exception as ce:
+                                    logger.warning("[SLEEP][CLEANUP] Failed removing summary for %s: %s", pid, ce)
+
+                                # Remove dream_summary.txt only after successful consolidation into uploads/dream/
+                                if (dream_upload_text or "").strip() and os.path.isfile(dream_summary_path):
+                                    try:
+                                        os.remove(dream_summary_path)
+                                    except Exception as de:
+                                        logger.warning(
+                                            "[SLEEP][DREAM_SUMMARY] Failed removing dream_summary.txt for %s: %s",
+                                            pid,
+                                            de,
+                                        )
+
+                                # Also remove pruned.txt and daily.txt per finalized cleanup policy
+                                try:
+                                    if os.path.exists(pruned_path):
+                                        os.remove(pruned_path)
+                                    logger.info("[SLEEP][CLEANUP] Removed pruned.txt for %s", pid)
+                                except Exception as pe:
+                                    logger.warning("[SLEEP][CLEANUP] Failed removing pruned.txt for %s: %s", pid, pe)
+
+                                # DELTA-A.1: Clear in-memory daily cache and remove daily.json so daily memory moves into main RAG
+                                try:
+                                    meta_path, lock_path, txt_path = _project_daily_paths(pid)
+                                    with FileLock(lock_path):
+                                        # remove daily.json
+                                        if os.path.exists(meta_path):
+                                            try:
+                                                os.remove(meta_path)
+                                            except Exception:
+                                                pass
+                                        # remove daily.txt
+                                        if os.path.exists(txt_path):
+                                            try:
+                                                os.remove(txt_path)
+                                                logger.info("[SLEEP][CLEANUP] Removed daily.txt for %s", pid)
+                                            except Exception as te:
+                                                logger.warning(
+                                                    "[SLEEP][CLEANUP] Failed removing daily.txt for %s: %s", pid, te
+                                                )
+                                    try:
+                                        clear_daily_cache(pid)
+                                    except Exception:
+                                        pass
+                                    logger.info(
+                                        "[SLEEP][MERGE] Cleared in-memory daily cache and removed daily.json for %s",
+                                        pid,
+                                    )
+                                except Exception as de:
+                                    logger.warning("[SLEEP][MERGE] Post-merge daily cleanup error for %s: %s", pid, de)
+                except Exception as re:
+                    logger.error("[SLEEP][MERGE][ERROR] project=%s: %s", pid, re, exc_info=True)
             except Exception as e:
                 logger.error("[SLEEP][ERROR] Formatting failed project=%s: %s", pid, e, exc_info=True)
                 continue

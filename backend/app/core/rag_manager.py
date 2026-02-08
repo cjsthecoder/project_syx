@@ -1075,11 +1075,13 @@ def merge_daily_and_main(
 
         # Candidate header (keeps ordering explicit; show cos + score for troubleshooting).
         if src == "ltm":
+            chunk_index = md.get("chunk_index") if isinstance(md, dict) else None
             header = (
-                f"Snippet {idx+1} (source=ltm, cos={cos:.4f}, score={score01:.4f}, file={md.get('filename')}, page={md.get('page_number')})\n"
+                f"Snippet {idx+1} (source=ltm, cos={cos:.4f}, score={score01:.4f}, file={md.get('filename')}, page={md.get('page_number')}, chunk_index={chunk_index})\n"
             )
         else:
-            header = f"Snippet {idx+1} (source=daily, cos={cos:.4f}, score={score01:.4f}, route={md.get('route')})\n"
+            chunk_index = md.get("chunk_index") if isinstance(md, dict) else None
+            header = f"Snippet {idx+1} (source=daily, cos={cos:.4f}, score={score01:.4f}, route={md.get('route')}, chunk_index={chunk_index})\n"
         pieces.append(header + txt)
 
     context_text = ("Context:\n---\n" + "\n\n---\n".join(pieces)) if pieces else ""

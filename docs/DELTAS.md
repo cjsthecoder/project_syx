@@ -733,3 +733,421 @@ A.4.4.1 is complete when:
 * Neighboring chunks can be deterministically identified.
 * Retrieved snippets include sufficient metadata to enable later expansion.
 * No semantic content is dropped due to match offsets or chunk boundaries.
+
+
+#### A.4.4.2 — Rank-Weighted Adjacency Expansion
+
+##### Status
+
+Accepted
+
+##### Intent
+
+Determine which adjacent chunks should be requested for each retained retrieval candidate by applying a deterministic, rank-weighted expansion policy. This stage expresses **expansion intent only** and does not assemble text, deduplicate content, or enforce token budgets.
+
+A.4.4.2 consumes the ordered, pruned candidate list produced by A.4.3 (i.e. `kept_candidates`) and emits an ordered list of requested chunk identifiers, with per-candidate identifiers generated in **before…central…after** order. Identifiers may repeat across candidates; consolidation and deduplication occur in later stages.
+
+Implementations MAY materialize the requested identifiers immediately into a single expanded string per candidate, as long as:
+
+* no relevance scoring/reranking is introduced
+* no deduplication occurs (A.4.4.3)
+* no token-budget enforcement occurs (A.4.4.4)
+
+##### Scope
+
+This sub-delta applies only to adjacency expansion decisions within a single source document. Retrieval, scoring, ranking, selection, deduplication, and trimming behavior are unchanged.
+
+##### Inputs
+
+* Ordered list of retained retrieval candidates from A.4.3
+* Per-candidate metadata including:
+
+  * `source_document_id`
+  * `chunk_index` (0-based within the document)
+* Route-derived expansion parameters
+
+This stage applies to both `ltm` and `daily` candidates. For `daily`, the document boundary is the synthetic `source_document_id = "daily"` stream and `chunk_index` corresponds to `day_sequence`.
+
+##### Expansion Parameters (Route Policy)
+
+Each route defines maximum adjacency depth via:
+
+```json
+"expansion": {
+  "max_before": <int>,
+  "max_after": <int>
+}
+```
+
+These values represent upper bounds for the highest-ranked candidate. Lower-ranked candidates receive proportionally reduced expansion.
+
+##### Expansion Algorithm
+
+Given an ordered candidate list of size `K`, candidates are partitioned into three rank tiers:
+
+* **Tier 1 (top third)**: ranks `i < ceil(K / 3)`
+* **Tier 2 (middle third)**: `ceil(K / 3) ≤ i < ceil(2K / 3)`
+* **Tier 3 (bottom third)**: `i ≥ ceil(2K / 3)`
+
+`K` MUST be the actual runtime length of the retained candidate list (i.e. `K = len(kept_candidates)`), and tiering is computed over that list.
+
+For each retained candidate, requested adjacency counts are computed based on its tier:
+
+* **Tier 1**:
+
+  * `before_count = max_before`
+  * `after_count  = max_after`
+
+* **Tier 2**:
+
+  * `before_count = ceil(max_before / 2)`
+  * `after_count  = ceil(max_after / 2)`
+
+* **Tier 3**:
+
+  * `before_count = min(1, max_before)`
+  * `after_count  = min(1, max_after)`
+
+Requested chunk identifiers are then generated:
+
+* Central chunk: `(source_document_id, chunk_index)`
+* Preceding chunks: `(source_document_id, chunk_index - n)` for `n` in `1..before_count`
+* Following chunks: `(source_document_id, chunk_index + n)` for `n` in `1..after_count`
+
+Any out-of-range indices are skipped. Expansion does not cross document boundaries.
+
+##### Output
+
+The output of A.4.4.2 is an ordered list of requested chunk identifiers, expressed as:
+
+* `(source_document_id, chunk_index)`
+
+For each candidate, identifiers MUST be generated in **before…central…after** order. Identifiers may appear multiple times across candidates; consolidation and deduplication occur in later stages.
+
+##### Invariants
+
+* Higher-ranked candidates always request equal or greater adjacency than lower-ranked candidates.
+* Expansion intent is deterministic for identical inputs and configuration.
+* Absence of adjacency metadata results in fewer requested chunks, never partial content.
+
+Behavior on missing/invalid adjacency:
+
+* If adjacency is unavailable for a given candidate, A.4.4.2 MUST degrade to requesting the central chunk only (no neighbors).
+* For LTM indexes that claim A.4.4.1+ compliance, missing/corrupt adjacency metadata SHOULD trigger a best-effort background rebuild (no in-request blocking/retry).
+* For legacy indexes (pre-A.4.4.1), absence is expected; expansion is treated as disabled (central-only) and MUST NOT auto-trigger rebuild.
+* If a requested neighbor cannot be fetched/materialized, it is a non-fatal skip-neighbor event.
+* If the daily cache is cold/unavailable, skip daily neighbors for that request (no rebuild trigger).
+
+---
+
+##### Route Policy Extension (A.4.4.2)
+
+Each route in `route_policy.json` SHALL define maximum adjacency values used by A.4.4.2:
+
+```
+"expansion": {
+  "max_before": <int>,
+  "max_after": <int>
+}
+```
+
+Example defaults:
+
+* DIRECT: `{ "max_before": 0, "max_after": 2 }`
+* PROCEDURAL: `{ "max_before": 1, "max_after": 3 }`
+* EXPLORATORY: `{ "max_before": 1, "max_after": 4 }`
+* SYNTHESIS: `{ "max_before": 2, "max_after": 5 }`
+* OTHER: `{ "max_before": 1, "max_after": 2 }`
+
+CHITCHAT MUST omit expansion entirely by virtue of `retrieval_multiplier = 0`.
+
+These values express intent only; actual materialization is subject to later deduplication and token-budget enforcement.
+
+Route policy validation: routes MUST include `expansion.max_before` and `expansion.max_after` (validated at startup alongside existing route policy fields).
+
+#### Status
+
+Accepted
+
+#### Affected Requirements
+
+* FR-2.3.1.7 — Retrieval Order and Context Assembly
+
+#### Intent
+
+Rehydrate selected retrieval candidates into semantically complete context by expanding from matched chunks to adjacent chunks while preserving meaning across chunk boundaries.
+
+This delta introduces controlled chunk expansion and context assembly rules that guarantee semantic completeness without introducing retrieval-stage intelligence or ambiguity.
+
+A.4.4 explicitly separates:
+
+* **Retrieval and selection** (A.4.1–A.4.3)
+* **Context reconstruction** (A.4.4)
+
+No relevance scoring, ranking, or pruning decisions are introduced in this delta.
+
+
+#### A.4.4.3 — Structural Deduplication and Assembly (Staged)
+
+##### Intent
+
+Collapse redundant context produced by adjacency expansion into a single, coherent, non-repeating sequence of chunks while preserving all semantic content and narrative order.
+
+A.4.4.3 is explicitly staged to reduce risk and to keep each transformation easy to reason about and debug.
+
+---
+
+##### A.4.4.3.1 — Structured Expansion Materialization (First Pass)
+
+###### Goal
+
+Establish a canonical, chunk-structured handoff artifact between adjacency expansion and deduplication so downstream stages operate on explicit chunk identities rather than flattened text blobs.
+
+This step is a structural normalization pass only. It does not deduplicate, reorder across candidates, trim text, or enforce token budgets.
+
+###### Inputs
+
+* Ordered list of retained candidates (`kept_candidates`) from A.4.3
+* Per-candidate expansion intent from A.4.4.2
+* Source-owned adjacency lookup/materialization mechanisms
+
+###### Procedure
+
+1. Iterate retained candidates in the same order as `kept_candidates`.
+2. For each candidate, materialize an ordered list of chunk objects in **before…central…after** order (consistent with A.4.4.2).
+3. Emit each chunk object using canonical fields:
+
+   * `source_document_id`
+   * `chunk_index`
+   * `text`
+4. Preserve candidate-level ordering and per-candidate chunk ordering exactly as materialized.
+5. Do not deduplicate repeated chunk identities in this step.
+6. Do not modify chunk text.
+
+###### Error and Degrade Behavior
+
+* If adjacency is unavailable for a candidate, emit central chunk only (no neighbors), consistent with A.4.4.2.
+* Missing neighbors are non-fatal skip-neighbor events.
+* Rebuild/repair remains source-owned; this step does not introduce in-request retries.
+
+###### Output
+
+* A list of expanded results, one per retained candidate, where each expanded result contains an ordered list of chunk objects with:
+
+  * `source_document_id`
+  * `chunk_index`
+  * `text`
+* Candidate order matches `kept_candidates`.
+* No deduplication has been applied yet.
+
+###### Invariants
+
+* Expansion output is structured and identity-addressable.
+* Per-candidate chunk order is deterministic and preserved.
+* No chunk text is altered.
+* No chunk identity is dropped by this stage except through existing A.4.4.2 degrade/skip-neighbor behavior.
+
+###### Rationale
+
+A.4.4.2 may be implemented as immediate text materialization, but A.4.4.3 requires identity-level operations. This pass creates a stable, explicit data contract so chunk-identity deduplication can be implemented deterministically and debugged safely.
+
+##### A.4.4.3.2 — Chunk Identity Deduplication (Second Pass)
+
+###### Goal
+
+Eliminate duplicate chunks arising from overlapping expansions across multiple retained candidates. This step operates strictly at the **chunk identity level** and makes no modifications to chunk text.
+
+The output of this step guarantees that each `(source_document_id, chunk_index)` pair appears at most once in the working set.
+
+###### Inputs
+
+* List of expanded results produced by iterating over `kept_candidates`
+* Each expanded result contains an ordered list of chunks with:
+
+  * `source_document_id`
+  * `chunk_index`
+  * `text`
+
+###### Procedure
+
+1. Initialize an empty ordered mapping:
+
+   * Key: `(source_document_id, chunk_index)`
+   * Value: chunk object
+
+2. Iterate expanded results **in the same order as `kept_candidates`**.
+
+3. For each chunk encountered:
+
+   * If the key is not present in the mapping, insert it.
+   * If the key is already present, skip the chunk.
+
+4. Do not merge, trim, or modify chunk text.
+
+First-seen chunks win by construction, preserving relevance priority without requiring score comparisons.
+
+###### Output
+
+* A collection of unique chunks keyed by `(source_document_id, chunk_index)`
+* Chunk text remains unmodified
+* Ordering across documents is not yet enforced
+
+###### Invariants
+
+* No chunk identity appears more than once
+* No chunk text is altered
+* No overlap trimming occurs
+* No token counting or budgeting occurs
+
+###### Rationale
+
+This step removes the largest source of redundancy introduced by adjacency expansion while remaining completely lossless and reversible. It intentionally avoids narrative concerns, which are addressed in later stages.
+
+##### A.4.4.3.3 — Source-Document Ordering and Narrative Coherence (Third Pass)
+
+###### Goal
+
+Organize the unique chunk set from A.4.4.3.2 into a structured, ordered result where each source document forms an independent timeline and chunks within a source are in narrative order. The output remains chunk-based and identity-addressable while becoming narratively coherent.
+
+###### Inputs
+
+* Collection of unique chunks from A.4.4.3.2 (keyed by `(source_document_id, chunk_index)`; chunk text unmodified)
+* No cross-document ordering is defined by A.4.4.3.2; this pass introduces it.
+
+###### Procedure
+
+1. **Extract the set of source documents**
+
+   * From the unique chunk collection, determine the distinct set of `source_document_id` values.
+   * Chunks with missing or null `source_document_id` (sparse/legacy) are handled per compatibility policy (e.g., grouped under a synthetic source or appended in first-seen order).
+
+2. **Treat each source_document_id as an independent timeline**
+
+   * Each source document has its own linear sequence of chunks, ordered by `chunk_index` within that source only.
+   * No ordering constraint is imposed between different source documents; implementation may use a deterministic rule (e.g., first-seen source, alphabetical, or stable sort by source_document_id).
+
+3. **For each source**
+
+   * Collect all chunks belonging to that source.
+   * Sort them by `chunk_index` ascending.
+   * Emit them in that order as a contiguous segment of the result.
+
+4. **Emit a structured, ordered result**
+
+   * The result is an ordered sequence of chunks (or of per-source ordered segments).
+   * Chunk shape is unchanged: each item remains identity-addressable (`source_document_id`, `chunk_index`, `text`) and no chunk text is merged, trimmed, or altered.
+
+###### Output
+
+* A structured, ordered list of chunks (or equivalent representation, e.g., ordered segments per source).
+* Within each source, chunks are in ascending `chunk_index` order (narratively coherent within document).
+* Across sources, order is deterministic and implementation-defined.
+* Output remains chunk-based and identity-addressable; no token budgeting or trimming in this step.
+
+###### Invariants
+
+* Every unique chunk from A.4.4.3.2 appears exactly once in the output.
+* Within a given `source_document_id`, chunks are sorted by `chunk_index` ascending.
+* No chunk text is altered.
+* No token counting or budgeting occurs in this step.
+
+###### Rationale
+
+A.4.4.3.2 produces a flat unique set with no document-level ordering. This pass adds narrative coherence within each source timeline so that downstream prompt assembly or formatting receives chunks in document order, improving readability and semantic continuity without changing the chunk identity contract.
+
+##### A.4.4.3.4 — Adjacent Chunk Overlap Trimming (Fourth Pass)
+
+###### Goal
+
+Remove redundant overlap text at boundaries between adjacent chunks within the same document. This is the first stage that modifies chunk text; it is safe because order, uniqueness, and adjacency are already established. Overlap is provably redundant and may be trimmed without removing meaning.
+
+###### Inputs
+
+* Ordered, unique, chunk-structured list from A.4.4.3.3 (narratively coherent within each source)
+* Configuration: `chunk_overlap` (and optionally `chunk_size`) as used by the encoder/splitter when the index was built
+
+###### Scope
+
+* Operates **only within a document**: consider only consecutive pairs of chunks that share the same `source_document_id`.
+* Operates **only on adjacent chunks**: for each such pair (A, B), at most the **prefix of B** is trimmed (the suffix of A is kept; the duplicate prefix of B is removed).
+* Chunk identity and order are **never** changed.
+* Only **exact duplicate** text at the boundary is removed; no fuzzy or semantic trimming.
+
+###### Procedure
+
+1. Walk the ordered chunk list in sequence.
+2. For each consecutive pair (A, B) where `source_document_id` of A equals that of B (and both are valid):
+   * Let `max_overlap = min(chunk_overlap, len(A.text), len(B.text))` (cap using config and chunk lengths).
+   * Find the **longest** length `k` in `1 .. max_overlap` such that `A.text[-k:] == B.text[:k]` (exact string match).
+   * If `k > 0`: set `B.text = B.text[k:]`. If `k == len(B.text)` (B would become empty), do not trim (leave B unchanged or use a minimal placeholder per implementation policy).
+3. Chunks with missing or invalid `source_document_id` (sparse/legacy) are skipped for adjacency: do not trim them based on neighbors; do not use them to trim a neighbor.
+4. Single-chunk documents and the last chunk in a document require no trim (no following same-doc chunk).
+
+###### Output
+
+* Same list of chunks, same order, same identities.
+* Zero or more chunks have had their `text` field shortened by removal of a duplicate prefix (the overlapping suffix of the previous chunk).
+* No chunk is reduced to empty by this step.
+
+###### Invariants
+
+* Chunk identity (`source_document_id`, `chunk_index`) and list order are unchanged.
+* Only exact duplicate boundary text is removed; no non-redundant content is removed.
+* Trimming is deterministic for identical inputs and configuration.
+* No token counting or budgeting occurs in this step.
+
+###### Edge Handling
+
+* **End of file / last chunk**: No following chunk; nothing to trim. When the last chunk is B, overlap may be shorter than `chunk_overlap`; the longest exact match within the cap is used.
+* **Chunk shorter than overlap**: Cap `max_overlap` by `min(chunk_overlap, len(A), len(B))` so short chunks are handled correctly.
+* **No match**: If no exact suffix-of-A equals prefix-of-B in the window, trim length is 0; leave B unchanged.
+* **Overlap smaller than configured**: Splitter may use sentence or paragraph boundaries; longest exact match within the cap yields the true boundary.
+
+###### Rationale
+
+Chunking with overlap produces redundant text at boundaries. Once order and adjacency are known, that redundancy is safe to remove: it reduces token usage and avoids double-weighting the same phrase. Using `chunk_overlap` as a cap and detecting the actual overlap by exact match keeps behavior correct for end-of-file, short chunks, and variable splitter boundaries.
+
+##### A.4.4.3.5 — Snippet-Group Collapse (Fifth Pass)
+
+###### Goal
+
+Collapse the ordered, trimmed chunk list from A.4.4.3.4 into a list of **snippet groups**: consecutive chunks from the same document (same `source_document_id` and same `source`) become a single entry with concatenated text. Downstream prompt assembly and debug dumps then see one entry per adjacent set, so one "Snippet N" header and one separator per group instead of per chunk.
+
+###### Inputs
+
+* Ordered, unique, chunk list from A.4.4.3.4 (each item: `source`, `score`, `text`, `metadata` with `source_document_id`, `chunk_index`; overlap already trimmed).
+
+###### Procedure
+
+1. Walk the chunk list in order.
+2. **Group** consecutive chunks that share the same `(source_document_id, source)`:
+   * Chunks with missing or invalid `source_document_id` (sparse/legacy) do not merge with neighbors; each forms its own single-chunk group.
+   * Different `source` (e.g. ltm vs daily) never merge.
+3. **For each group**, produce one entry:
+   * `source`, `score`: from the first chunk in the group (all chunks in an expanded set share the same score).
+   * `text`: concatenation of all chunk texts in the group (single newline `\n` between chunks; no extra spacing).
+   * `metadata`: from the first chunk in the group; may include a display-friendly range for `chunk_index` when the group has more than one chunk (e.g. `"199..201"` or equivalent) so debug and logs show the span.
+4. **Output** is the list of these group entries; this list replaces the per-chunk list as the value of `kept_candidates` (or equivalent) for all downstream consumers (prompt formatting, debug file dumps).
+
+###### Output
+
+* A list of snippet-group entries (one per adjacent same-document run).
+* Each entry has the same shape as a single chunk (`source`, `score`, `text`, `metadata`) but `text` is the concatenated content of the group.
+* Prompt assembly emits one "Snippet N" and one separator per entry; token counting uses the concatenated text once per group.
+
+###### Invariants
+
+* No chunk content is dropped; concatenation preserves order within each group.
+* Group boundaries are determined only by consecutive same `(source_document_id, source)`; no token budgeting or trimming in this step.
+* Deterministic for identical input order and grouping rules.
+
+###### Edge Handling
+
+* **Single-chunk document or run**: Group has one chunk; output entry is that chunk with unchanged text.
+* **Sparse/legacy chunk**: Forms a one-chunk group; does not merge with preceding or following chunk even if same file (per 4.4.3.4 policy).
+
+###### Rationale
+
+Expanded retrieval produces multiple adjacent chunks per hit; showing a separate "Snippet N" header for each chunk duplicates the same label and adds visual noise. Collapsing at this stage keeps a single contract: one kept_candidates entry per logical snippet (one per adjacent set from a file), so prompt and debug both treat "one big concatenated chunk" per group without special-case formatting logic later.
+
+

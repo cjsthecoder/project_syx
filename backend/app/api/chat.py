@@ -422,6 +422,7 @@ class _ChatPipeline:
             query=primary_query,
             daily_enabled=bool(daily_enabled),
             max_keep=int(max_keep),
+            route=(route or "OTHER"),
             per_source_k_override=int(per_source_k),
         )
 

@@ -491,7 +491,7 @@ Selection behavior is controlled by the following parameters:
   Route-specific scalar applied to BASE_TOP_K
 
 * MAX_KEEP
-  Route-specific absolute cap on the number of candidates retained
+  Route-specific absolute cap on the number of candidates retained. This is the **initial** effective keep limit; it may be increased during selection when the adjacent-chunk rule applies (see Selection Process).
 
 Derived value:
 
@@ -506,11 +506,13 @@ Note: MAX_KEEP exists as a per-route policy input and is enforced by A.4.3 selec
 ### Selection Process
 
 1. Candidates are processed in the order produced by A.4.2, from highest to lowest similarity score.
-2. Candidates are appended to the retained list sequentially.
-3. Selection stops when either:
-
-   * MAX_KEEP candidates have been retained, or
-   * The ordered candidate list is exhausted.
+2. An **effective keep limit** is maintained, initially equal to MAX_KEEP.
+3. For each candidate in order:
+   * If the number of candidates already retained is at least the effective keep limit, selection stops.
+   * If the ordered candidate list is exhausted, selection stops.
+   * Otherwise, append the candidate to the retained list.
+   * **Adjacent-chunk rule:** If the candidate just retained is **directly adjacent** to the previously retained candidate (same `source_document_id`, and `chunk_index` differs by exactly 1), add 1 to the effective keep limit. This compensates for the fact that adjacent chunks from the same document are largely deduplicated in A.4.4.3, so retaining an extra slot when we see adjacency increases breadth (more distinct sources or regions) without unbounded growth.
+4. Selection stops when either the retained count reaches the current effective limit or the list is exhausted.
 
 No reordering, skipping, thresholding, boosting, or deduplication occurs during this step.
 
@@ -552,7 +554,8 @@ No new metadata is introduced during this step.
 
 * Selection is positional and deterministic.
 * Higher-ranked candidates are always retained before lower-ranked candidates.
-* Context size is bounded before prompt assembly.
+* The number of retained candidates is at least 0 and at most the length of the ordered list; it is at least MAX_KEEP when the list is long enough and no adjacent-chunk bonuses apply, and may exceed MAX_KEEP when the adjacent-chunk rule applies.
+* Context size is bounded before prompt assembly (expansion and deduplication in A.4.4 further reduce effective size when many retained candidates are adjacent).
 * Identical inputs and configuration produce identical outputs.
 
 ---

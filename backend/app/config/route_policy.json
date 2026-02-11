@@ -10,37 +10,43 @@
   "CHITCHAT": {
     "_comment": "Purely social, conversational, or meta commentary. No real-world task, question, or information need.",
     "retrieval_multiplier": 0,
-    "max_keep": 0
+    "max_keep": 0,
+    "expansion": { "max_before": 0, "max_after": 0 }
   },
 
   "DIRECT": {
     "_comment": "A clear, specific question with a narrow target. The user likely expects a precise response.",
     "retrieval_multiplier": 1.5,
-    "max_keep": 12
+    "max_keep": 12,
+    "expansion": { "max_before": 0, "max_after": 2 }
   },
 
   "PROCEDURAL": {
     "_comment": "How-to questions, step-by-step guidance, implementation, configuration, or execution details.",
     "retrieval_multiplier": 2.0,
-    "max_keep": 16
+    "max_keep": 16,
+    "expansion": { "max_before": 1, "max_after": 3 }
   },
 
   "EXPLORATORY": {
     "_comment": "Open-ended questions focused on understanding, comparison, or investigation.",
-    "retrieval_multiplier": 3.0,
-    "max_keep": 20
+    "retrieval_multiplier": 2.5,
+    "max_keep": 20,
+    "expansion": { "max_before": 1, "max_after": 4 }
   },
 
   "SYNTHESIS": {
     "_comment": "Design, planning, tradeoff analysis, or 'help me think' requests.",
-    "retrieval_multiplier": 3.5,
-    "max_keep": 24
+    "retrieval_multiplier": 3.0,
+    "max_keep": 24,
+    "expansion": { "max_before": 2, "max_after": 5 }
   },
 
   "OTHER": {
     "_comment": "Fallback route for unknown/unexpected classifications. Stable compat default.",
     "retrieval_multiplier": 1.75,
-    "max_keep": 10
+    "max_keep": 10,
+    "expansion": { "max_before": 1, "max_after": 2 }
   }
 }
 

@@ -47,7 +47,7 @@ except Exception:
     tiktoken = None  # token counting optional until installed
 
 
-_A441_SCHEMA_VERSION = "A.4.4.1"
+_ADJACENCY_SCHEMA_VERSION = "A.4.4.1"
 _LTM_MANIFEST_NAME = "index_manifest.json"
 _LTM_ADJACENCY_INDEX_NAME = "adjacency_index.json"
 _LTM_DOCSTORE_NAME = "docstore.json"
@@ -114,6 +114,107 @@ def _split_text_simple(text: str, *, chunk_size: int, chunk_overlap: int) -> Lis
         if ch and ch.strip():
             out.append(ch)
         i += step
+    return out
+
+
+def _trim_adjacent_chunk_overlap(
+    chunks: List[Dict[str, Any]],
+    chunk_overlap: int,
+) -> None:
+    """
+    DELTA-A.4.4.3.4: Adjacent Chunk Overlap Trimming (Fourth Pass).
+
+    In-place: for each consecutive pair (A, B) with the same valid source_document_id,
+    find the longest exact overlap of A's suffix and B's prefix (capped by chunk_overlap)
+    and remove that prefix from B. Skips sparse/legacy chunks (missing or invalid
+    source_document_id). Never empties B; if full overlap would empty B, leave B unchanged.
+    """
+    if not chunks or chunk_overlap <= 0:
+        return
+    n = len(chunks)
+    for i in range(n - 1):
+        a = chunks[i]
+        b = chunks[i + 1]
+        if not isinstance(a, dict) or not isinstance(b, dict):
+            continue
+        md_a = a.get("metadata") if isinstance(a.get("metadata"), dict) else {}
+        md_b = b.get("metadata") if isinstance(b.get("metadata"), dict) else {}
+        sid_a = md_a.get("source_document_id")
+        sid_b = md_b.get("source_document_id")
+        if not isinstance(sid_a, str) or not isinstance(sid_b, str) or sid_a != sid_b:
+            continue
+        a_text = str(a.get("text") or "")
+        b_text = str(b.get("text") or "")
+        max_overlap = min(chunk_overlap, len(a_text), len(b_text))
+        if max_overlap <= 0:
+            continue
+        k = 0
+        for length in range(max_overlap, 0, -1):
+            if a_text[-length:] == b_text[:length]:
+                k = length
+                break
+        if k > 0 and k < len(b_text):
+            b["text"] = b_text[k:]
+
+
+def _collapse_snippet_groups(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    DELTA-A.4.4.3.5: Snippet-Group Collapse (Fifth Pass).
+
+    Groups consecutive chunks that share the same (source_document_id, source)
+    into one entry per group. Each group entry has: source, score from first chunk;
+    text = concatenation of chunk texts with "\\n" between; metadata from first chunk,
+    with chunk_index as "first..last" when the group has more than one chunk.
+    Sparse/legacy chunks (invalid or missing source_document_id) do not merge.
+    """
+    if not chunks:
+        return []
+    out: List[Dict[str, Any]] = []
+    group: List[Dict[str, Any]] = []
+
+    def _flush() -> None:
+        if not group:
+            return
+        first = group[0]
+        md = dict(first.get("metadata") or {}) if isinstance(first.get("metadata"), dict) else {}
+        if len(group) > 1:
+            indices = []
+            for c in group:
+                m = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
+                ci = m.get("chunk_index") if m.get("chunk_index") is not None else m.get("chunk_seq")
+                if isinstance(ci, int):
+                    indices.append(ci)
+            if indices:
+                md["chunk_index"] = f"{min(indices)}..{max(indices)}"
+        texts = [str(c.get("text") or "") for c in group]
+        out.append({
+            "source": first.get("source"),
+            "score": first.get("score"),
+            "text": "\n".join(texts),
+            "metadata": md,
+        })
+        group.clear()
+
+    for c in chunks:
+        if not isinstance(c, dict):
+            _flush()
+            continue
+        md = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
+        sid = md.get("source_document_id")
+        src = c.get("source")
+        if not isinstance(sid, str) or src is None:
+            _flush()
+            group.append(c)
+            _flush()
+            continue
+        if group:
+            first_md = group[0].get("metadata") if isinstance(group[0].get("metadata"), dict) else {}
+            first_sid = first_md.get("source_document_id")
+            first_src = group[0].get("source")
+            if first_sid != sid or first_src != src:
+                _flush()
+        group.append(c)
+    _flush()
     return out
 
 
@@ -215,7 +316,7 @@ def _write_ltm_manifest_and_adjacency(
         _atomic_write_json(
             adj_path,
             {
-                "schema_version": _A441_SCHEMA_VERSION,
+                "schema_version": _ADJACENCY_SCHEMA_VERSION,
                 "project_id": project_id,
                 "built_at": datetime.utcnow().isoformat(),
                 "by_doc_id": adj_list,
@@ -225,7 +326,7 @@ def _write_ltm_manifest_and_adjacency(
         _atomic_write_json(
             manifest_path,
             {
-                "schema_version": _A441_SCHEMA_VERSION,
+                "schema_version": _ADJACENCY_SCHEMA_VERSION,
                 "index_kind": "ltm",
                 "project_id": project_id,
                 "built_at": datetime.utcnow().isoformat(),
@@ -523,8 +624,10 @@ def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
         try:
             manifest_path = os.path.join(faiss_dir, _LTM_MANIFEST_NAME)
             manifest = _safe_load_json(manifest_path)
-            claims_a441 = bool(isinstance(manifest, dict) and manifest.get("schema_version") == _A441_SCHEMA_VERSION)
-            if claims_a441:
+            claims_adjacency_schema = bool(
+                isinstance(manifest, dict) and manifest.get("schema_version") == _ADJACENCY_SCHEMA_VERSION
+            )
+            if claims_adjacency_schema:
                 # Invalidate adjacency (trigger background rebuild) if chunking params changed since build.
                 try:
                     built_cs = int(manifest.get("chunk_size")) if manifest.get("chunk_size") is not None else None
@@ -538,7 +641,7 @@ def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
                     adj_path = os.path.join(faiss_dir, str(adj_name))
                     adj_obj = _safe_load_json(adj_path)
                     # If missing/invalid, rebuild (A.4.4.1+ only). Legacy absence is expected.
-                    if not isinstance(adj_obj, dict) or adj_obj.get("schema_version") != _A441_SCHEMA_VERSION:
+                    if not isinstance(adj_obj, dict) or adj_obj.get("schema_version") != _ADJACENCY_SCHEMA_VERSION:
                         _schedule_ltm_rebuild(project_id, reason="a441_adjacency_missing_or_invalid")
         except Exception:
             # Best-effort only; never block retrieval.
@@ -580,13 +683,15 @@ def ltm_lookup_adjacent_docstore_ids(
     """
     faiss_dir = os.path.join("memory", project_id, "faiss")
     manifest = _safe_load_json(os.path.join(faiss_dir, _LTM_MANIFEST_NAME))
-    claims_a441 = bool(isinstance(manifest, dict) and manifest.get("schema_version") == _A441_SCHEMA_VERSION)
-    if not claims_a441:
+    claims_adjacency_schema = bool(
+        isinstance(manifest, dict) and manifest.get("schema_version") == _ADJACENCY_SCHEMA_VERSION
+    )
+    if not claims_adjacency_schema:
         return {"prev_docstore_id": None, "next_docstore_id": None}
 
     adj_name = (manifest.get("adjacency_index") if isinstance(manifest, dict) else None) or _LTM_ADJACENCY_INDEX_NAME
     adj = _safe_load_json(os.path.join(faiss_dir, str(adj_name)))
-    if not isinstance(adj, dict) or adj.get("schema_version") != _A441_SCHEMA_VERSION:
+    if not isinstance(adj, dict) or adj.get("schema_version") != _ADJACENCY_SCHEMA_VERSION:
         # A.4.4.1+ but adjacency missing/invalid: degrade (no expansion) and schedule rebuild
         _schedule_ltm_rebuild(project_id, reason="a441_lookup_missing_or_invalid")
         return {"prev_docstore_id": None, "next_docstore_id": None}
@@ -952,6 +1057,7 @@ def merge_daily_and_main(
     query: str,
     daily_enabled: bool,
     max_keep: int,
+    route: Optional[str] = None,
     per_source_k_override: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Retrieve from daily and main, then apply A.4.3 positional truncation.
@@ -999,6 +1105,322 @@ def merge_daily_and_main(
 
     # DELTA-A.4.3: positional truncation only.
     kept_candidates = list(ordered[: int(max_keep)]) if ordered else []
+    selected_candidates = list(kept_candidates)
+
+    # DELTA-A.4.4.2: rank-weighted adjacency expansion (materialized per-candidate; no dedupe, no token pruning).
+    # This stage preserves kept candidate order and expands within the same source document only.
+    try:
+        from .route_policy import get_route_policy
+        from .daily_rag import get_daily_source
+    except Exception:
+        get_route_policy = None  # type: ignore
+        get_daily_source = None  # type: ignore
+
+    # Route-derived expansion parameters (validated at startup).
+    max_before = 0
+    max_after = 0
+    try:
+        if get_route_policy is not None:
+            pol = get_route_policy(route or "OTHER")
+            max_before = int(getattr(pol, "expansion_max_before", 0) or 0)
+            max_after = int(getattr(pol, "expansion_max_after", 0) or 0)
+    except Exception:
+        max_before, max_after = 0, 0
+
+    # Best-effort check: LTM expansion is only allowed when index claims A.4.4.1+ and adjacency sidecar is valid.
+    ltm_expand_ok = False
+    try:
+        faiss_dir = os.path.join("memory", project_id, "faiss")
+        manifest = _safe_load_json(os.path.join(faiss_dir, _LTM_MANIFEST_NAME))
+        claims_adjacency_schema = bool(
+            isinstance(manifest, dict) and manifest.get("schema_version") == _ADJACENCY_SCHEMA_VERSION
+        )
+        if claims_adjacency_schema:
+            adj_name = manifest.get("adjacency_index") or _LTM_ADJACENCY_INDEX_NAME
+            adj = _safe_load_json(os.path.join(faiss_dir, str(adj_name)))
+            if isinstance(adj, dict) and adj.get("schema_version") == _ADJACENCY_SCHEMA_VERSION:
+                ltm_expand_ok = True
+            else:
+                _schedule_ltm_rebuild(project_id, reason="a442_adjacency_missing_or_invalid")
+                ltm_expand_ok = False
+        else:
+            # Legacy (pre-A.4.4.1): expansion treated as disabled.
+            ltm_expand_ok = False
+    except Exception:
+        ltm_expand_ok = False
+
+    ltm_index = None
+    try:
+        if ltm_expand_ok and int(max_before) + int(max_after) > 0:
+            ltm_index = load_faiss_index(project_id)
+    except Exception:
+        ltm_index = None
+
+    daily_src = None
+    try:
+        if get_daily_source is not None and bool(daily_enabled) and int(max_before) + int(max_after) > 0:
+            daily_src = get_daily_source(project_id)
+    except Exception:
+        daily_src = None
+
+    def _tier_counts(i: int, k: int) -> tuple[int, int]:
+        # Tiering per DELTA-A.4.4.2 (K is actual runtime len(kept_candidates)).
+        if k <= 0:
+            return 0, 0
+        import math
+
+        t1_end = int(math.ceil(k / 3.0))
+        t2_end = int(math.ceil((2.0 * k) / 3.0))
+        if i < t1_end:
+            return int(max_before), int(max_after)
+        if i < t2_end:
+            return int(math.ceil(int(max_before) / 2.0)), int(math.ceil(int(max_after) / 2.0))
+        return min(1, int(max_before)), min(1, int(max_after))
+
+    def _materialize_candidate_chunks(i: int, k: int, c: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        DELTA-A.4.4.3.1 structured expansion materialization.
+
+        Returns ordered chunk objects in before…central…after order, with fields:
+          - source_document_id
+          - chunk_index
+          - text
+
+        This stage does not dedupe or mutate chunk text.
+        """
+        txt0 = (c.get("text") or "") if isinstance(c, dict) else ""
+        src0 = (c.get("source") or "") if isinstance(c, dict) else ""
+        md0 = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
+        doc_id_raw = md0.get("source_document_id") or md0.get("doc_id")
+        source_document_id = str(doc_id_raw) if isinstance(doc_id_raw, str) else None
+        chunk_idx_raw = md0.get("chunk_index") if md0.get("chunk_index") is not None else md0.get("chunk_seq")
+        try:
+            ci: Optional[int] = int(chunk_idx_raw)
+        except Exception:
+            ci = None
+
+        central_chunk = {
+            "source_document_id": source_document_id,
+            "chunk_index": ci,
+            "text": str(txt0 or ""),
+        }
+
+        # If identity/adjacency is unavailable, degrade to central-only.
+        if ci is None:
+            return [central_chunk]
+
+        before_n, after_n = _tier_counts(int(i), int(k))
+        if int(before_n) <= 0 and int(after_n) <= 0:
+            return [central_chunk]
+
+        # LTM: expand only when A.4.4.1+ adjacency is available and doc_id is valid.
+        if str(src0).lower() == "ltm":
+            if not ltm_expand_ok or ltm_index is None or source_document_id is None:
+                return [central_chunk]
+            chunks_local: List[Dict[str, Any]] = []
+            for seq in range(int(ci) - int(before_n), int(ci) + int(after_n) + 1):
+                if int(seq) == int(ci):
+                    chunks_local.append(central_chunk)
+                    continue
+                item_id = f"{source_document_id}::chunk={int(seq)}"
+                ve = None
+                try:
+                    ve = ltm_index.get_by_id(str(item_id))  # type: ignore[union-attr]
+                except Exception:
+                    ve = None
+                if ve is None:
+                    # Non-fatal skip-neighbor event.
+                    continue
+                chunks_local.append(
+                    {
+                        "source_document_id": source_document_id,
+                        "chunk_index": int(seq),
+                        "text": str(ve.text or ""),
+                    }
+                )
+            return chunks_local
+
+        # Daily: expand only when daily cache/source is available.
+        if str(src0).lower() == "daily":
+            if daily_src is None:
+                return [central_chunk]
+            chunks_local: List[Dict[str, Any]] = []
+            for seq in range(int(ci) - int(before_n), int(ci) + int(after_n) + 1):
+                if int(seq) == int(ci):
+                    chunks_local.append(central_chunk)
+                    continue
+                try:
+                    eid = daily_src.id_by_seq.get(int(seq))  # type: ignore[union-attr]
+                except Exception:
+                    eid = None
+                if not isinstance(eid, str) or not eid:
+                    # Non-fatal skip-neighbor event.
+                    continue
+                try:
+                    ve = daily_src.vs.get_by_id(str(eid))  # type: ignore[union-attr]
+                except Exception:
+                    ve = None
+                if ve is None:
+                    continue
+                chunks_local.append(
+                    {
+                        "source_document_id": source_document_id,
+                        "chunk_index": int(seq),
+                        "text": str(ve.text or ""),
+                    }
+                )
+            return chunks_local
+
+        # Unknown source: central-only degrade.
+        return [central_chunk]
+
+    try:
+        k_actual = int(len(kept_candidates or []))
+        if k_actual > 0:
+            for i, c in enumerate(list(kept_candidates)):
+                if not isinstance(c, dict):
+                    continue
+                # A.4.4.3.1 output artifact: per-candidate ordered chunk objects.
+                chunks = _materialize_candidate_chunks(int(i), int(k_actual), c)
+                c["expanded_chunks"] = chunks
+                # Keep downstream prompt assembly compatible by materializing candidate text from chunks.
+                c["text"] = "\n".join(str(ch.get("text") or "") for ch in chunks if isinstance(ch, dict))
+    except Exception:
+        # Best-effort: never block retrieval/prompt assembly.
+        pass
+
+    # DELTA-A.4.4.3.2: chunk identity dedupe (first-seen wins) over structured expansion output.
+    # Operates in kept_candidates order, then per-candidate chunk order.
+    dedupe_input_chunk_count = 0
+    dedupe_unique_keyed_count = 0
+    dedupe_duplicate_skipped_count = 0
+    dedupe_sparse_preserved_count = 0
+    dedupe_key_first_pos: Dict[Tuple[str, int], int] = {}
+    dedupe_duplicate_events: List[Dict[str, Any]] = []
+    dedupe_stream_pos = 0
+    try:
+        deduped_chunks: List[Dict[str, Any]] = []
+        seen_keys: Set[Tuple[str, int]] = set()
+        for c in list(kept_candidates or []):
+            if not isinstance(c, dict):
+                continue
+            src = c.get("source")
+            score = c.get("score")
+            base_md = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
+            expanded = c.get("expanded_chunks")
+            chunks_list = expanded if isinstance(expanded, list) else []
+            if not chunks_list:
+                continue
+            for ch in chunks_list:
+                if not isinstance(ch, dict):
+                    continue
+                dedupe_stream_pos += 1
+                dedupe_input_chunk_count += 1
+                source_document_id = ch.get("source_document_id")
+                chunk_index = ch.get("chunk_index")
+                text = str(ch.get("text") or "")
+
+                # Compatibility behavior: preserve sparse/legacy entries in-order.
+                if not isinstance(source_document_id, str) or not isinstance(chunk_index, int):
+                    dedupe_sparse_preserved_count += 1
+                    md = dict(base_md)
+                    md["source_document_id"] = source_document_id
+                    md["chunk_index"] = chunk_index
+                    deduped_chunks.append(
+                        {
+                            "source": src,
+                            "score": score,
+                            "text": text,
+                            "metadata": md,
+                        }
+                    )
+                    continue
+
+                key = (str(source_document_id), int(chunk_index))
+                if key in seen_keys:
+                    dedupe_duplicate_skipped_count += 1
+                    dedupe_duplicate_events.append(
+                        {
+                            "source_document_id": key[0],
+                            "chunk_index": key[1],
+                            "first_seen_pos": dedupe_key_first_pos.get(key),
+                            "duplicate_pos": dedupe_stream_pos,
+                        }
+                    )
+                    continue
+                seen_keys.add(key)
+                dedupe_key_first_pos[key] = dedupe_stream_pos
+                dedupe_unique_keyed_count += 1
+                md = dict(base_md)
+                md["source_document_id"] = str(source_document_id)
+                md["chunk_index"] = int(chunk_index)
+                deduped_chunks.append(
+                    {
+                        "source": src,
+                        "score": score,
+                        "text": text,
+                        "metadata": md,
+                    }
+                )
+        kept_candidates = deduped_chunks
+    except Exception:
+        # Best-effort: never block retrieval/prompt assembly.
+        pass
+
+    # A.4.4.3.3: source-document ordering and narrative coherence.
+    # Extract sources (first-seen order); per source sort by chunk_index ascending; sparse chunks in first-seen order at end.
+    try:
+        by_source: Dict[str, List[Dict[str, Any]]] = {}
+        source_order: List[str] = []
+        sparse_chunks: List[Dict[str, Any]] = []
+        for c in list(kept_candidates or []):
+            if not isinstance(c, dict):
+                continue
+            md = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
+            doc_id = md.get("source_document_id")
+            chunk_idx = md.get("chunk_index")
+            if isinstance(doc_id, str) and isinstance(chunk_idx, int):
+                if doc_id not in by_source:
+                    source_order.append(doc_id)
+                    by_source[doc_id] = []
+                by_source[doc_id].append(c)
+            else:
+                sparse_chunks.append(c)
+        ordered_chunks_list: List[Dict[str, Any]] = []
+        for doc_id in source_order:
+            chunks = by_source.get(doc_id) or []
+            def _chunk_index(c: Dict[str, Any]) -> int:
+                try:
+                    ci = (c.get("metadata") or {}).get("chunk_index")
+                    return int(ci) if ci is not None else 0
+                except (TypeError, ValueError):
+                    return 0
+
+            chunks = sorted(chunks, key=_chunk_index)
+            ordered_chunks_list.extend(chunks)
+        ordered_chunks_list.extend(sparse_chunks)
+        kept_candidates = ordered_chunks_list
+    except Exception:
+        # Best-effort: never block retrieval/prompt assembly.
+        pass
+
+    # A.4.4.3.4: adjacent chunk overlap trimming (in-place; same-doc consecutive pairs only).
+    try:
+        settings = get_settings()
+        _trim_adjacent_chunk_overlap(
+            kept_candidates or [],
+            int(settings.chunk_overlap),
+        )
+    except Exception:
+        # Best-effort: never block retrieval/prompt assembly.
+        pass
+
+    # A.4.4.3.5: snippet-group collapse (one entry per adjacent same-document run).
+    try:
+        kept_candidates = _collapse_snippet_groups(kept_candidates or [])
+    except Exception:
+        # Best-effort: never block retrieval/prompt assembly.
+        pass
 
     # Debug dumps (human-readable .txt) for A.4.2 ordering and A.4.3 selection.
     try:
@@ -1031,6 +1453,125 @@ def merge_daily_and_main(
                 lines.append("")
                 return "\n".join(lines)
 
+            def _fmt_expansion_plan(items: List[Dict[str, Any]]) -> str:
+                """
+                Human-readable A.4.4.2 plan dump:
+                shows per-candidate requested ranges and which neighbors were materialized.
+                """
+                k_actual = int(len(items or []))
+                lines = [
+                    f"# timestamp: {ts}",
+                    f"# project_id: {project_id}",
+                    f"# route: {(route or 'OTHER')}",
+                    f"# query_preview: {qprev}",
+                    f"# per_source_k: {int(per_source_k)}",
+                    f"# max_keep: {int(max_keep)}",
+                    f"# kept_candidates(K_actual): {k_actual}",
+                    f"# daily_enabled: {str(bool(daily_enabled)).lower()}",
+                    f"# expansion.max_before: {int(max_before)}",
+                    f"# expansion.max_after: {int(max_after)}",
+                    f"# ltm_expand_ok: {str(bool(ltm_expand_ok)).lower()}",
+                    f"# daily_cache_available: {str(bool(daily_src is not None)).lower()}",
+                    "",
+                    "====== EXPANSION_PLAN (A.4.4.2) ======",
+                    "",
+                ]
+                for rank, c in enumerate(items, start=1):
+                    md = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
+                    src = str(c.get("source") or "unknown").lower()
+                    score = c.get("score")
+                    doc_id = md.get("source_document_id") or md.get("doc_id")
+                    chunk_idx = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_seq")
+                    fname = md.get("filename")
+                    try:
+                        ci = int(chunk_idx)
+                    except Exception:
+                        ci = None
+
+                    before_n, after_n = _tier_counts(int(rank - 1), int(k_actual))
+                    if ci is None or not isinstance(doc_id, str) or (before_n <= 0 and after_n <= 0):
+                        lines.append(
+                            f"{rank:>3}. source={src} score={score} source_document_id={doc_id} chunk_index={chunk_idx} file={fname} tier_before={before_n} tier_after={after_n}"
+                        )
+                        lines.append("     materialized: central_only_or_unavailable")
+                        continue
+
+                    seqs = list(range(int(ci) - int(before_n), int(ci) + int(after_n) + 1))
+                    mat: List[str] = []
+                    missing: List[str] = []
+
+                    if src == "ltm" and ltm_index is not None and bool(ltm_expand_ok):
+                        for s in seqs:
+                            if int(s) == int(ci):
+                                mat.append(f"{s}(central)")
+                                continue
+                            item_id = f"{doc_id}::chunk={int(s)}"
+                            try:
+                                ve = ltm_index.get_by_id(str(item_id))  # type: ignore[union-attr]
+                            except Exception:
+                                ve = None
+                            if ve is None:
+                                missing.append(str(s))
+                            else:
+                                mat.append(str(s))
+                    elif src == "daily" and daily_src is not None:
+                        for s in seqs:
+                            if int(s) == int(ci):
+                                mat.append(f"{s}(central)")
+                                continue
+                            try:
+                                eid = daily_src.id_by_seq.get(int(s))  # type: ignore[union-attr]
+                            except Exception:
+                                eid = None
+                            if not isinstance(eid, str) or not eid:
+                                missing.append(str(s))
+                                continue
+                            try:
+                                ve = daily_src.vs.get_by_id(str(eid))  # type: ignore[union-attr]
+                            except Exception:
+                                ve = None
+                            if ve is None:
+                                missing.append(str(s))
+                            else:
+                                mat.append(str(s))
+                    else:
+                        mat.append(f"{int(ci)}(central)")
+
+                    lines.append(
+                        f"{rank:>3}. source={src} score={score} source_document_id={doc_id} chunk_index={ci} file={fname} tier_before={before_n} tier_after={after_n} requested_range=[{seqs[0]}..{seqs[-1]}]"
+                    )
+                    lines.append(f"     materialized_seqs: {', '.join(mat) if mat else '(none)'}")
+                    if missing:
+                        lines.append(f"     missing_seqs: {', '.join(missing)}")
+                lines.append("")
+                return "\n".join(lines)
+
+            def _fmt_deduped_chunks_with_audit(items: List[Dict[str, Any]]) -> str:
+                """Chunk list plus audit summary and duplicate_events (same file)."""
+                chunk_section = _fmt_list("DEDUPED_CHUNKS (A.4.4.3.2)", items)
+                audit_lines = [
+                    "",
+                    "====== DEDUPE_AUDIT ======",
+                    "",
+                    f"input_chunks: {int(dedupe_input_chunk_count)}",
+                    f"unique_keyed_chunks_kept: {int(dedupe_unique_keyed_count)}",
+                    f"duplicate_keyed_chunks_skipped: {int(dedupe_duplicate_skipped_count)}",
+                    f"sparse_or_legacy_chunks_preserved: {int(dedupe_sparse_preserved_count)}",
+                    f"final_output_chunks: {int(len(items or []))}",
+                    "",
+                    "---- duplicate_events (first-seen wins) ----",
+                ]
+                if not dedupe_duplicate_events:
+                    audit_lines.append("(none)")
+                else:
+                    for i, ev in enumerate(dedupe_duplicate_events, start=1):
+                        audit_lines.append(
+                            f"{i:>3}. source_document_id={ev.get('source_document_id')} chunk_index={ev.get('chunk_index')} "
+                            f"first_seen_pos={ev.get('first_seen_pos')} duplicate_pos={ev.get('duplicate_pos')}"
+                        )
+                audit_lines.append("")
+                return chunk_section + "\n".join(audit_lines)
+
             write_debug_file(
                 project_id,
                 f"rag/retrieval/{ts}_ordered_candidates.txt",
@@ -1039,7 +1580,17 @@ def merge_daily_and_main(
             write_debug_file(
                 project_id,
                 f"rag/retrieval/{ts}_kept_candidates.txt",
-                _fmt_list("KEPT_CANDIDATES (A.4.3)", kept_candidates),
+                _fmt_list("KEPT_CANDIDATES (A.4.3)", selected_candidates),
+            )
+            write_debug_file(
+                project_id,
+                f"rag/retrieval/{ts}_expansion_plan.txt",
+                _fmt_expansion_plan(selected_candidates),
+            )
+            write_debug_file(
+                project_id,
+                f"rag/retrieval/{ts}_deduped_chunks.txt",
+                _fmt_deduped_chunks_with_audit(kept_candidates),
             )
     except Exception:
         pass

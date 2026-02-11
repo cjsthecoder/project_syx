@@ -1103,8 +1103,30 @@ def merge_daily_and_main(
     # DELTA-A.4.2: global ordering by raw similarity score (stable; ties preserve pre-sort order).
     ordered = order_candidates_by_similarity_score(list(cands or []))
 
-    # DELTA-A.4.3: positional truncation only.
-    kept_candidates = list(ordered[: int(max_keep)]) if ordered else []
+    # DELTA-A.4.3: policy-driven selection with adjacent-chunk rule (effective limit can grow when we retain adjacent same-doc chunks).
+    adjacent_bonus = 0
+    kept_candidates = []
+    effective_limit = int(max_keep)
+    for c in list(ordered or []):
+        if len(kept_candidates) >= effective_limit:
+            break
+        kept_candidates.append(c)
+        if len(kept_candidates) >= 2:
+            prev = kept_candidates[-2]
+            md_prev = (prev.get("metadata") or {}) if isinstance(prev.get("metadata"), dict) else {}
+            md_cur = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
+            sid_prev = md_prev.get("source_document_id")
+            sid_cur = md_cur.get("source_document_id")
+            if isinstance(sid_prev, str) and sid_prev == sid_cur:
+                ci_prev = md_prev.get("chunk_index") if md_prev.get("chunk_index") is not None else md_prev.get("chunk_seq")
+                ci_cur = md_cur.get("chunk_index") if md_cur.get("chunk_index") is not None else md_cur.get("chunk_seq")
+                try:
+                    a, b = int(ci_prev), int(ci_cur)
+                    if abs(a - b) == 1:
+                        effective_limit += 1
+                        adjacent_bonus += 1
+                except (TypeError, ValueError):
+                    pass
     selected_candidates = list(kept_candidates)
 
     # DELTA-A.4.4.2: rank-weighted adjacency expansion (materialized per-candidate; no dedupe, no token pruning).
@@ -1466,7 +1488,7 @@ def merge_daily_and_main(
                     f"# query_preview: {qprev}",
                     f"# per_source_k: {int(per_source_k)}",
                     f"# max_keep: {int(max_keep)}",
-                    f"# kept_candidates(K_actual): {k_actual}",
+                    f"# kept: {k_actual}  adjacent_bonus: {int(adjacent_bonus)}",
                     f"# daily_enabled: {str(bool(daily_enabled)).lower()}",
                     f"# expansion.max_before: {int(max_before)}",
                     f"# expansion.max_after: {int(max_after)}",

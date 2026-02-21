@@ -28,14 +28,16 @@ from ..core.database import get_session
 from ..core.db_models import Project, ChatMessage
 from sqlmodel import select
 from ..core.daily_rag import backfill_daily_txt_from_meta, append_pair_text_only
+from ..core.tagger import tag_pair as tag_pair_tagger
 from ..core.dream import dream
 import time
 from ..utils.logging import RequestLogger
 from ..utils.errors import handle_memory_error, log_error_context
 import threading
 import os
-from ..core.state import release_lock
+import json
 import re
+from ..core.state import release_lock
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -69,11 +71,16 @@ def _sleep_cycle_worker():
         engage_lock()
         logger.debug("[SLEEP] Lock engaged")
         logger.info("[SLEEP] Thread started t=%s", start_iso)
-        # Flush active pairs from DB into daily.txt (text-only) for each project
+        # Flush active pairs from DB into daily.txt only (tagger + append_pair_text_only); only delete on success.
         try:
-            from collections import deque  # for clearing in-memory cache
             from ..core.memory import get_memory_manager
             mem = get_memory_manager()
+            settings = get_settings()
+            pair_limit = int(getattr(settings, "chat_history_limit_pairs", 10) or 10)
+            logger.info(
+                "[SLEEP][FLUSH] Starting: flushing active pairs to daily.txt only (tagger + text-only append) per project (chat_history_limit_pairs=%s).",
+                pair_limit,
+            )
             with get_session() as session:
                 projects = session.exec(select(Project)).all()
             for p in projects or []:
@@ -90,33 +97,83 @@ def _sleep_cycle_worker():
                     i = 0
                     flushed = 0
                     n = len(msgs or [])
-                    while i + 1 < n:
+                    previous_pair_text = None
+                    while i + 1 < n and flushed < pair_limit:
                         u = msgs[i]
                         a = msgs[i + 1]
                         if (getattr(u, "role", "") == "user") and (getattr(a, "role", "") == "assistant"):
-                            # Respect forget flag on assistant
-                            if not bool(getattr(a, "forget", False)):
-                                append_pair_text_only(
+                            if bool(getattr(a, "forget", False)):
+                                # Delete both rows for forgotten pair (no daily append)
+                                try:
+                                    with get_session() as session:
+                                        urow = session.get(ChatMessage, getattr(u, "id", None))
+                                        arow = session.get(ChatMessage, getattr(a, "id", None))
+                                        if urow:
+                                            session.delete(urow)
+                                        if arow:
+                                            session.delete(arow)
+                                        session.commit()
+                                except Exception as de:
+                                    logger.warning("[SLEEP][FLUSH] DB delete failed project=%s: %s", pid, de)
+                                i += 2
+                                continue
+                            user_text = getattr(u, "content", "") or ""
+                            asst_text = getattr(a, "content", "") or ""
+                            tags_meta = None
+                            tags_meta_json = getattr(a, "tags_meta_json", None)
+                            if isinstance(tags_meta_json, str) and (tags_meta_json or "").strip():
+                                try:
+                                    parsed = json.loads(tags_meta_json)
+                                    if isinstance(parsed, dict):
+                                        tags_meta = parsed
+                                except Exception:
+                                    tags_meta = None
+                            if tags_meta is None:
+                                tags_meta = tag_pair_tagger(
+                                    user_text,
+                                    asst_text,
+                                    previous_pair_text=previous_pair_text,
                                     project_id=pid,
-                                    user_text=getattr(u, "content", "") or "",
-                                    assistant_text=getattr(a, "content", "") or "",
-                                    created_at_iso_utc=(getattr(a, "created_at", None).strftime("%Y-%m-%dT%H:%M:%S") if getattr(a, "created_at", None) else None),
-                                    namespace=getattr(a, "namespace", None),
-                                    keep=bool(getattr(a, "keep", False)),
                                 )
-                                flushed += 1
-                            # Delete both rows
-                            try:
-                                with get_session() as session:
-                                    urow = session.get(ChatMessage, getattr(u, "id", None))
-                                    arow = session.get(ChatMessage, getattr(a, "id", None))
-                                    if urow:
-                                        session.delete(urow)
-                                    if arow:
-                                        session.delete(arow)
-                                    session.commit()
-                            except Exception as de:
-                                logger.warning("[SLEEP][FLUSH] DB delete failed project=%s: %s", pid, de)
+                            created_at = getattr(u, "created_at", None) or getattr(a, "created_at", None)
+                            created_at_iso = (
+                                created_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+                                if created_at and hasattr(created_at, "strftime")
+                                else None
+                            )
+                            ns = (getattr(a, "namespace", None) or "general")
+                            ns = ns.lower() if isinstance(ns, str) else "general"
+                            keep = bool(getattr(a, "keep", False))
+                            ok = append_pair_text_only(
+                                pid,
+                                user_text,
+                                asst_text,
+                                created_at_iso,
+                                ns,
+                                keep,
+                                tags_meta=tags_meta,
+                            )
+                            if ok:
+                                try:
+                                    with get_session() as session:
+                                        urow = session.get(ChatMessage, getattr(u, "id", None))
+                                        arow = session.get(ChatMessage, getattr(a, "id", None))
+                                        if urow:
+                                            session.delete(urow)
+                                        if arow:
+                                            session.delete(arow)
+                                        session.commit()
+                                    flushed += 1
+                                    previous_pair_text = f"User: {user_text}\nAssistant: {asst_text}"
+                                except Exception as de:
+                                    logger.warning("[SLEEP][FLUSH] DB delete failed project=%s: %s", pid, de)
+                            else:
+                                logger.warning(
+                                    "[SLEEP][FLUSH] append_pair_text_only failed for project=%s user_id=%s assistant_id=%s; pair not deleted.",
+                                    pid,
+                                    getattr(u, "id", None),
+                                    getattr(a, "id", None),
+                                )
                             i += 2
                         else:
                             # Orphan/misaligned – delete the single row and continue
@@ -133,7 +190,6 @@ def _sleep_cycle_worker():
                     try:
                         if pid in mem.project_deques:
                             mem.project_deques.pop(pid, None)
-                        # DELTA-A.3: clear previous rolled-off pair pointer on sleep flush
                         mem.clear_last_rolled_off_pair(pid)
                     except Exception:
                         pass
@@ -141,6 +197,7 @@ def _sleep_cycle_worker():
                         logger.info("[SLEEP][FLUSH] flushed_pairs=%s project=%s", flushed, pid)
                 except Exception as fe:
                     logger.warning("[SLEEP][FLUSH][WARN] project=%s %s", pid, fe)
+            logger.info("[SLEEP][FLUSH] Active pairs flush complete.")
         except Exception as e:
             logger.warning("[SLEEP][FLUSH][WARN] global flush step failed: %s", e)
         # Backfill daily.txt if missing (current V2.x behavior)

@@ -503,9 +503,11 @@ def append_pair(
     embed_override: Optional[str] = None,
     tags_meta: Optional[Dict[str, Any]] = None,
     write_daily_txt: bool = True,
+    update_cache: bool = True,
 ) -> bool:
     """Append a single embedded pair to the daily index and metadata.
     Note: We don't persist raw FAISS via langchain here; for V2.3 we only track metadata and rely on embeddings at retrieval-time for simplicity.
+    When update_cache is False, only daily.json (and optionally daily.txt) are updated; caller is responsible for rebuilding the in-memory RAG once (e.g. dream batch).
     """
     settings = get_settings()
     meta_path, lock_path, txt_path = _project_daily_paths(project_id)
@@ -583,6 +585,8 @@ def append_pair(
                 logger.debug("[DAILYTXT] project=%s wrote %s bytes", project_id, len(block.encode('utf-8')))
             except Exception as te:
                 logger.error("DailyRAG: failed writing daily.txt: %s", te)
+    if not update_cache:
+        return True
     # Update in-memory cache
     try:
         lock = _get_project_lock(project_id)
@@ -671,10 +675,12 @@ def append_pair_text_only(
     created_at_iso_utc: Optional[str],
     namespace: Optional[str],
     keep: bool,
+    tags_meta: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """
     Append a single pair to daily.txt only (no FAISS, no daily.json).
     Used by Sleep flush to move active DB pairs into daily text at start of cycle.
+    When tags_meta is provided, writes #topics, #intent, #type, #semantic_handle (same format as roll-off).
     """
     _meta_path, lock_path, txt_path = _project_daily_paths(project_id)
     ns = (namespace or "general").lower()
@@ -695,11 +701,13 @@ def append_pair_text_only(
                 ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime(time.mktime(tstruct)))
             except Exception:
                 ts_local = ts
+            tags_block = _format_tags_block(tags_meta)
             block = (
                 f"{_BEGIN_DAILY_PAIR}\n"
                 f"#timestamp: {ts_local}\n"
                 f"#route: {ns}\n"
                 f"#keep: {str(bool(keep)).lower()}\n"
+                f"{tags_block}"
                 f"\n"
                 f"--- USER (data-message-author-role: user) ---\n"
                 f"{user_text or ''}\n"

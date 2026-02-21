@@ -180,6 +180,54 @@ Appendices must appear BEFORE the END MEMORY wrapper, in this exact order:
 - Only include explicit decisions stated in the content.
 - Do NOT infer or invent decisions.
 
+Rules for Open Questions (UNRESOLVED ONLY):
+Goal: include ONLY questions that remain unresolved AFTER reading the entire memory container.
+Do NOT include questions that were answered in the same DAILY PAIR or later in the file.
+
+Selection criteria:
+- Include a question only if at least one of these is true:
+  1) The user explicitly indicates it is still open (examples: "I still don't know...", "we haven't decided", "open question", "TODO", "come back to this").
+  2) The assistant explicitly defers or cannot answer (examples: "I don't know", "requires research", "need more info", "can't determine").
+  3) The conversation ends without providing a substantive answer, decision, or next-step assignment that resolves it.
+
+Resolution test (required):
+- For each candidate question, scan:
+  a) the remainder of the same DAILY PAIR, and
+  b) all subsequent DAILY PAIRs in this memory container.
+- If a substantive answer or decision exists, classify as "ignore" and EXCLUDE it from JSON.
+
+What counts as "answered":
+- A direct answer, a clear decision, or a concrete next action that resolves the question’s intent.
+- If the assistant provides options AND the user chooses one, it is answered.
+- If the assistant asks a clarifying question and the user provides the needed info AND the assistant then answers, it is answered.
+- If the content contains enough information to fully resolve it locally, it is answered (exclude it).
+
+What counts as "still open":
+- The assistant provides partial info but leaves a key dependency unfilled (missing parameter, missing user preference, missing data).
+- A decision is presented but no selection is made.
+- A research task is identified but no findings are provided yet.
+
+Extraction scope:
+- Extract explicit user questions (ending with '?') ONLY if they pass the Resolution test above.
+- ALSO extract implicit open questions using these patterns, but ONLY if unresolved:
+  • Statements of uncertainty
+  • Unresolved design choices
+  • Pending decisions or tasks
+  • Assistant-raised forks or dependencies
+
+Output rules:
+- Deduplicate questions (normalize minor wording differences).
+- Group by originating TOPIC.
+- "ignore" questions MUST NOT appear in the JSON.
+- If no open questions exist, return {{ "questions": [] }}.
+- Return ONLY the JSON object. No extra text.
+
+Resolution test (mechanical):
+- A question is OPEN only if there is NO later message in the same DAILY PAIR or any later DAILY PAIR that directly answers it, selects an option, or marks it decided.
+- If any later message does answer/decide it, EXCLUDE it.
+
+When uncertain whether a question was answered, default to EXCLUDE it (do not include in JSON).
+
 [Open Questions]
 Return a single JSON object with this structure:
 
@@ -192,32 +240,6 @@ Return a single JSON object with this structure:
     }}
   ]
 }}
-
-Rules for Open Questions:
-- Deduplicate questions.
-- Group by originating TOPIC.
-- Extract explicit user questions (ending with '?').
-- ALSO extract implicit open questions using these patterns:
-  • Statements of uncertainty
-  • Unresolved design choices
-  • Pending decisions or tasks
-  • Assistant-raised forks or dependencies
-
-- Convert implicit statements into natural questions without changing meaning.
-- Classification rules:
-  • "ignore": rhetorical, obsolete, duplicates, or already fully answered
-    (ignored questions MUST NOT appear in the JSON)
-  • "remind_user": subjective or preference-based
-  • "answer_local": answerable from existing memory or project RAG
-  • "answer_remote": requires external research
-
-- If no open questions exist, return {{ "questions": [] }}.
-- Return ONLY the JSON object. No extra text.
-
-7) OUTPUT REQUIREMENTS
-- Return ONLY the formatted output.
-- Do NOT include explanations or commentary.
-- Do NOT add or remove content beyond the rules above.
 
 Here is the pruned memory content:
 {content}

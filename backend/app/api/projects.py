@@ -34,7 +34,7 @@ import uuid
 import os
 from ..core.memory import get_memory_manager, get_last_context_tokens
 from ..core.tagger import tag_pair
-from ..core.daily_rag import append_pair, daily_stats, start_daily_cache_rebuild
+from ..core.daily_rag import append_pair, daily_stats, rebuild_daily_cache, start_daily_cache_rebuild
 from filelock import FileLock
 from ..core.personality import (
     load_project_system_prompt,
@@ -149,7 +149,9 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
             return JSONResponse(status_code=400, content={"error": "items must be a list"})
 
         entries: List[Dict[str, Any]] = [it for it in items if isinstance(it, dict)]
-        if not entries:
+        # Only tag and persist items where the user checked Remember
+        to_process: List[Dict[str, Any]] = [it for it in entries if it.get("remember")]
+        if not to_process:
             return JSONResponse(status_code=200, content={"project_id": project_id, "processed": 0, "kept": 0, "deleted_dream": False})
 
         successes = 0
@@ -161,11 +163,13 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
         summary_path = os.path.join(base_dir, "dream_summary.txt")
         summary_lock_path = os.path.join(base_dir, "dream_summary.lock")
 
-        for it in entries:
+        # Pass 1: tag all items (and build pair text, tokens, tags_block, embed_text)
+        tagged: List[Dict[str, Any]] = []
+        previous_pair_text: Optional[str] = None
+        for it in to_process:
             origin_text = (it.get("origin_text") or "").strip()
             assistant_resp = (it.get("assistant_response") or "").strip()
 
-            # Fold research into assistant response, if present
             research_entries = []
             research_list = it.get("research") if isinstance(it.get("research"), list) else []
             for r in research_list:
@@ -180,8 +184,6 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                 assistant_resp_full = assistant_resp
 
             pair_text = f"User: {origin_text}\nAssistant: {assistant_resp_full}"
-
-            # Token approx
             try:
                 import tiktoken  # type: ignore
                 enc = tiktoken.get_encoding("cl100k_base")
@@ -189,10 +191,9 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
             except Exception:
                 tokens = len((pair_text or "").split())
 
-            # Tagging (V3.x: includes semantic_handle)
             tags_meta = None
             try:
-                tags_meta = tag_pair(origin_text, assistant_resp_full, previous_pair_text=None, project_id=project_id)
+                tags_meta = tag_pair(origin_text, assistant_resp_full, previous_pair_text=previous_pair_text, project_id=project_id)
             except Exception:
                 tags_meta = None
 
@@ -211,9 +212,31 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                 tags_block = ""
 
             embed_text = (tags_block + pair_text) if tags_block else pair_text
+            tagged.append({
+                "it": it,
+                "origin_text": origin_text,
+                "assistant_resp_full": assistant_resp_full,
+                "pair_text": pair_text,
+                "tokens": tokens,
+                "tags_meta": tags_meta,
+                "tags_block": tags_block,
+                "embed_text": embed_text,
+            })
+            previous_pair_text = pair_text
 
+        # Pass 2: append each to daily.json only (no cache update), write dream_summary blocks
+        _BEGIN_DREAM_PAIR = "=== BEGIN DREAM PAIR ==="
+        _END_DREAM_PAIR = "=== END DREAM PAIR ==="
+        for rec in tagged:
+            it = rec["it"]
+            origin_text = rec["origin_text"]
+            assistant_resp_full = rec["assistant_resp_full"]
+            pair_text = rec["pair_text"]
+            tokens = rec["tokens"]
+            tags_meta = rec["tags_meta"]
+            tags_block = rec["tags_block"]
+            embed_text = rec["embed_text"]
             try:
-                # Append to daily RAG (FAISS + daily.txt + daily.json metadata)
                 append_pair(
                     project_id,
                     pair_text,
@@ -225,11 +248,8 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                     embed_override=embed_text,
                     tags_meta=tags_meta,
                     write_daily_txt=False,
+                    update_cache=False,
                 )
-
-                # Append to dream_summary.txt using daily.txt-like format
-                _BEGIN_DREAM_PAIR = "=== BEGIN DREAM PAIR ==="
-                _END_DREAM_PAIR = "=== END DREAM PAIR ==="
                 ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())
                 keep_flag = bool(it.get("keep"))
                 block = (
@@ -250,20 +270,26 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                 )
                 with FileLock(summary_lock_path):
                     with open(summary_path, "a", encoding="utf-8", newline="\n") as sf:
-                        # Write BEGIN header if file is empty/nonexistent
                         need_begin = (not os.path.isfile(summary_path)) or os.path.getsize(summary_path) == 0
                         if need_begin:
                             begin_date = time.strftime("%m/%d/%Y", time.localtime())
                             sf.write(f"=== BEGIN DREAM MEMORY: {begin_date} ===\n\n")
                         sf.write(block)
-
                 successes += 1
             except Exception as e:
                 failures.append(str(e))
 
+        # Rebuild in-memory daily RAG once after all pairs are in daily.json
+        if successes > 0:
+            try:
+                rebuild_daily_cache(project_id, reason="dream_batch")
+            except Exception as rb:
+                logger.warning("[PROJECT][DREAM][KEEP] Rebuild daily cache failed project=%s: %s", project_id, rb)
+                failures.append(f"rebuild_cache: {rb}")
+
         deleted = False
         dream_path = os.path.join("memory", project_id, "dream.json")
-        if successes == len(entries) and not failures:
+        if successes == len(to_process) and not failures:
             try:
                 # Append END footer on successful completion before deleting dream.json
                 with FileLock(summary_lock_path):
@@ -285,7 +311,7 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
             status_code=status,
             content={
                 "project_id": project_id,
-                "processed": len(entries),
+                "processed": len(to_process),
                 "kept": successes,
                 "failed": len(failures),
                 "deleted_dream": deleted,

@@ -8,7 +8,7 @@
  * Use of this software requires explicit written permission from the copyright holder.
  */
 import * as React from 'react'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils.ts'
 
 export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
 

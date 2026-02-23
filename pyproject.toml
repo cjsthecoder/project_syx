@@ -1,0 +1,13 @@
+[project]
+name = "morpheus"
+version = "0.1.0"
+description = "Morpheus AGI Chatbot Framework"
+requires-python = ">=3.13,<3.14"
+
+[tool.black]
+target-version = ["py313"]
+line-length = 100
+
+[tool.isort]
+profile = "black"
+line_length = 100

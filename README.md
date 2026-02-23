@@ -50,6 +50,26 @@ Or add it to your `.env` file alongside other settings (see `.env.example`).
 - RAG_ON_CHAT, BASE_TOP_K, RETRIEVAL_MULTIPLIER, RAG_SCORE_THRESHOLD, DAILY_RAG_SCORE_THRESHOLD, DAILY_RAG_WEIGHT
 - AVAILABLE_MODELS (optional JSON array)
 
+## Docker (Ubuntu, Python 3.13.3)
+
+Run Morpheus in a container with bind-mounted data and a mounted `.env` (no secrets in the image).
+
+1. **Create host directories** for persistence (run once):
+   ```bash
+   make docker-data-dirs
+   ```
+   Optionally set permissions: `make docker-data-permissions`, or run the full prep: `make docker-setup`.
+
+2. **Ensure `.env` exists** at repo root with at least `OPENAI_API_KEY` and any other settings (see Key environment variables above). The container mounts this file at `/app/.env` read-only.
+
+3. **Build and run**:
+   ```bash
+   docker-compose up -d
+   ```
+   App: http://localhost:8000 — API docs: http://localhost:8000/api/docs — Health: http://localhost:8000/health.
+
+4. **Bind mounts**: Data is stored on the host under `./data/memory`, `./data/db`, and `./data/logs`, so it survives container rebuilds and is easy to back up. If you use a different host or port, set `CORS_ORIGINS` in `.env` to include that origin.
+
 # Organization Verification Required for Streaming
 
 Some OpenAI models require your organization to be verified before streaming responses is allowed.

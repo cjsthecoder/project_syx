@@ -1,0 +1,21 @@
+# Morpheus AGI Chatbot Framework - Docker Compose
+# Run: make docker-data-dirs (once), then docker-compose up -d
+# Config: mount .env at /app/.env (Option B); no secrets in image.
+
+services:
+  morpheus:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: morpheus:latest
+    container_name: morpheus
+    ports:
+      - "8000:8000"
+    volumes:
+      # Option B: mount .env into container (read-only)
+      - ./.env:/app/.env:ro
+      # Bind mounts for persistence (create dirs with: make docker-data-dirs)
+      - ./data/memory:/app/backend/memory
+      - ./data/db:/app/backend/app/data
+      - ./data/logs:/app/backend/logs
+    restart: unless-stopped

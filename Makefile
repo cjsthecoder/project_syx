@@ -1,7 +1,7 @@
 # Morpheus AGI Chatbot Framework - Build Automation
 # Make targets for development and deployment
 
-.PHONY: help install build run clean test lint format generate-docs
+.PHONY: help install build run clean test lint format generate-docs docker-data-dirs docker-data-permissions docker-setup docker-rebuild
 
 # Resolve Python interpreter once (prefer local venv, then system python/python3)
 PYTHON := $(shell if [ -x venv/bin/python ]; then printf "%s" "$(CURDIR)/venv/bin/python"; else command -v python || command -v python3; fi)
@@ -46,6 +46,12 @@ help:
 	@echo ""
 	@echo "Docs:"
 	@echo "  make generate-docs        - Generate architecture diagram"
+	@echo ""
+	@echo "Docker:"
+	@echo "  make docker-data-dirs     - Create host dirs for bind mounts (data/memory, data/db, data/logs)"
+	@echo "  make docker-data-permissions - Set permissions on data dirs for container read/write"
+	@echo "  make docker-setup         - Create data dirs and set permissions (run before first docker-compose up)"
+	@echo "  make docker-rebuild      - Git pull, rebuild image, and restart containers (for code updates)"
 	@echo ""
 
 # Install all dependencies
@@ -424,6 +430,29 @@ setup-env:
 unlock-sleep:
 	@rm -f backend/runtime/sleep.lock backend/app/runtime/sleep.lock 2>/dev/null || true
 	@echo "✅ Sleep lock cleared (if it existed)"
+
+# Docker: create host directories for bind mounts (run before first docker-compose up)
+docker-data-dirs:
+	@echo "📁 Creating host directories for Docker bind mounts..."
+	@mkdir -p data/memory data/db data/logs data/runtime
+	@echo "✅ Created data/memory data/db data/logs data/runtime"
+
+# Docker: set permissions so container process can read/write (container typically runs as root)
+docker-data-permissions:
+	@chmod -R 755 data 2>/dev/null || true
+	@echo "✅ Set permissions on data/ (755)"
+
+# Docker: full host prep for first run (dirs + permissions)
+docker-setup: docker-data-dirs docker-data-permissions
+	@echo "✅ Docker host setup complete. Run: docker-compose up -d"
+
+# Docker: pull latest code, rebuild image, and restart (for frequent code deploys)
+docker-rebuild:
+	@echo "📥 Pulling latest code..."
+	@git pull
+	@echo "🔨 Rebuilding and starting containers..."
+	@docker-compose up -d --build
+	@echo "✅ docker-rebuild complete"
 
 # Full setup from scratch
 setup: setup-env install build

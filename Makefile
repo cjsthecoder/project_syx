@@ -1,7 +1,7 @@
 # Morpheus AGI Chatbot Framework - Build Automation
 # Make targets for development and deployment
 
-.PHONY: help install build run clean test lint format generate-docs docker-data-dirs docker-data-permissions docker-setup run-docker restart-docker docker-rebuild
+.PHONY: help install build run clean test lint format generate-docs docker-data-dirs docker-data-permissions docker-setup run-docker restart-docker stop-docker docker-rebuild
 
 # Resolve Python interpreter once (prefer local venv, then system python/python3)
 PYTHON := $(shell if [ -x venv/bin/python ]; then printf "%s" "$(CURDIR)/venv/bin/python"; else command -v python || command -v python3; fi)
@@ -53,6 +53,7 @@ help:
 	@echo "  make docker-setup         - Create data dirs and set permissions (run before first docker-compose up)"
 	@echo "  make run-docker           - Prepare host dirs and start docker compose stack"
 	@echo "  make restart-docker       - Restart docker compose stack cleanly"
+	@echo "  make stop-docker          - Stop and remove docker compose stack"
 	@echo "  make docker-rebuild      - Git pull, rebuild image, and restart containers (for code updates)"
 	@echo ""
 
@@ -460,6 +461,12 @@ restart-docker: docker-setup
 	@docker compose down --remove-orphans
 	@docker compose up -d
 	@echo "✅ Docker stack restarted"
+
+# Docker: stop and remove compose stack
+stop-docker:
+	@echo "🛑 Stopping Docker stack..."
+	@docker compose down --remove-orphans
+	@echo "✅ Docker stack stopped"
 
 # Docker: pull latest code, rebuild image, and restart (for frequent code deploys)
 docker-rebuild:

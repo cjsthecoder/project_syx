@@ -64,7 +64,7 @@ Run Morpheus in a container with bind-mounted data and a mounted `.env` (no secr
 
 3. **Build and run**:
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
    App: http://localhost:8000 — API docs: http://localhost:8000/api/docs — Health: http://localhost:8000/health.
 

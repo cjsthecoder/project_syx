@@ -389,10 +389,10 @@ setup-env:
 		echo "ENABLE_SCHEDULER=true"; \
 		echo "# V3.1: Enable daily sleep scheduler"; \
 		echo ""; \
-		echo "SLEEP_CYCLE_HOUR=15"; \
+		echo "SLEEP_CYCLE_HOUR=3"; \
 		echo "# V3.1: Local hour of day (0-23) to run sleep cycle"; \
 		echo ""; \
-		echo "SLEEP_CYCLE_MINUTE=17"; \
+		echo "SLEEP_CYCLE_MINUTE=0"; \
 		echo "# V3.1: Local minute of day (0-59) to run sleep cycle"; \
 		echo ""; \
 		echo "VERIFY_RAG=true"; \

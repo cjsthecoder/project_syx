@@ -41,6 +41,7 @@ from .core.database import get_session
 from .core.db_models import Project
 from .core.rag_manager import rebuild_faiss_index
 from .core.route_policy import load_and_validate_route_policy
+from .core.tracking import init_instrumentation, get_instrumentation
 import shutil
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -66,6 +67,22 @@ except Exception as e:
 async def lifespan(app: FastAPI):
     logger.info("FastAPI startup")
     init_db()
+    # V5.0: initialize instrumentation facade and start process run if enabled.
+    try:
+        instr = init_instrumentation(get_settings())
+        run_cfg = {
+            "instrumentation_enabled": bool(get_settings().instrumentation_enabled),
+            "instrumentation_mode": str(get_settings().instrumentation_mode),
+            "instrumentation_run_id": get_settings().instrumentation_run_id,
+            "instrumentation_runs_dir": str(get_settings().instrumentation_runs_dir),
+            "enable_scheduler": bool(get_settings().enable_scheduler),
+            "enable_dream": bool(get_settings().enable_dream),
+        }
+        run_id = instr.start_run(config=run_cfg)
+        if run_id:
+            logger.info("[TRACKING] Initialized run_id=%s mode=%s", run_id, get_settings().instrumentation_mode)
+    except Exception as e:
+        logger.warning("[TRACKING] Failed to initialize instrumentation: %s", e, exc_info=True)
     # Clear any leftover lock on startup to avoid stuck sleep state
     try:
         from .core.state import release_lock
@@ -149,6 +166,10 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        try:
+            get_instrumentation().end_run(summary={"reason": "lifespan_shutdown"})
+        except Exception as e:
+            logger.warning("[TRACKING] Failed to finalize instrumentation run: %s", e, exc_info=True)
         logger.info("FastAPI shutdown: cleaning up resources...")
 
 # Initialize FastAPI app with lifespan

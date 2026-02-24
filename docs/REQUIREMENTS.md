@@ -2927,3 +2927,280 @@ Populate the Dream analysis modal with dream entries from `dream.json`, rendered
 - Debug: when `GENERATE_DEBUG_FILES` is enabled, reuse `write_debug_file` to emit `debug_dream_summary.txt` (no extra formatting beyond the produced text).
 - Cleanup: delete `dream_summary.txt` only after prune + format + append (and debug write, if enabled) all succeed. If any step fails, leave `dream_summary.txt` in place and log a warning with the reason.
 - Non-goal: does not change the daily roll-off process; daily.txt/FAISS behavior remains unchanged.
+
+
+# 5 Instrumentation Overview
+## Instrumentation High Level Description
+
+Version 5.0 introduces **Instrumentation** as a first-class telemetry layer for Morpheus. Instrumentation collects structured, end to end metrics across the multi-module pipeline, including interactive chat turns, internal helper model calls, and Sleep maintenance jobs. Its purpose is to generate defensible evidence for token usage and latency behavior over time, and to support profiling and optimization without changing core routing, retrieval, or memory logic.
+
+Instrumentation is designed to run with minimal overhead, remain disabled by default, and avoid logging raw content unless explicitly enabled for research and evaluation.
+
+Goals of Version 5.0:
+
+* Provide a unified Instrumentation component accessible across modules, similar in usage style to the logger.
+* Track tokens by type from day one, including main model tokens, mini model tokens, and maintenance tokens (Sleep).
+* Track latency per invocation and per turn, including TTFB and TTLT for the main model.
+* Record retrieval and context assembly counters needed to explain token spikes and to tune prompt budgeting.
+* Persist results in a run folder with JSON and JSONL artifacts suitable for offline plotting and report generation.
+* Default to metrics-only logging (hashes, lengths, counters) with an opt-in research mode for saving prompt and response artifacts.
+
+**Note on Retrieval Embeddings:** Instrumentation does not track embedding token usage for retrieval. Retrieval cost is represented indirectly via what is retrieved and injected into the final prompt, and therefore appears in the main prompt token totals and prompt composition estimates.
+
+## 5.1 Goals and Scope
+
+### 5.1.1 Purpose
+Add a unified `Instrumentation` component that works like the logger: all modules can contribute structured metrics for evaluation runs. The goal is to produce defensible data for token and latency charts comparing Morpheus to external baselines.
+
+### 5.1.2 Primary Outputs
+Instrumentation MUST enable generation of:
+- Tokens per turn vs turn index
+- Cumulative tokens processed vs turn index
+- Latency per turn vs turn index (TTFB and TTLT)
+- Optional stacked bar breakdown for Morpheus: main model vs mini model vs amortized maintenance
+
+### 5.1.3 In Scope
+- Per run, per turn, per invocation, and per maintenance job metrics capture
+- Token totals by type from day one
+- Latency capture (TTFB and TTLT) for Morpheus
+- In memory collection with flush at end of run
+
+### 5.1.4 Out of Scope
+- ChatGPT website instrumentation (captured via separate tooling)
+- Logging or storing retrieval embeddings usage
+- Changing model behavior, routing behavior, or RAG logic
+- Quality judging pipeline (judging JSONL is separate work; instrumentation only stores artifacts when enabled)
+- Dream cycle instrumentation (temporarily out of scope for this phase)
+
+---
+
+## 5.2 Modes and Safety
+
+### 5.2.1 Enable Flag
+- Instrumentation MUST be disabled by default.
+- When disabled, it MUST impose near-zero overhead and MUST NOT write any files.
+- Enable flag: `INSTRUMENTATION_ENABLED=true|false`.
+- `RUN_ID` MAY be provided via env. If set, it MUST override per-conversation run ids and force a single run id for all turns in the process.
+
+### 5.2.2 Metrics Mode vs Research Mode
+Instrumentation MUST support two modes:
+- Metrics mode (default when enabled): record counts, tokens, timings, and hashes only.
+- Research mode (explicit opt-in): additionally persist prompt and response text artifacts to disk for offline judging.
+
+### 5.2.3 Content Logging Rules
+- Metrics mode MUST NOT store raw user prompts, assistant responses, retrieved text, or any other content-bearing strings.
+- Research mode MAY store raw prompts/responses only as separate files referenced by ids in JSONL, not embedded inline in JSONL records.
+
+### 5.2.4 Lifecycle and Segregation (Internal-Only)
+- Instrumentation lifecycle is internal-only (no control endpoints required in this phase).
+- Default run segregation is **one run per conversation**.
+- If a request has no `conversation_id`, the system MUST auto-generate one and proceed.
+- On clean shutdown (including Ctrl-C in dev), if instrumentation is enabled, the process MUST flush and finalize active run files.
+
+---
+
+## 5.3 Storage and File Formats
+
+### 5.3.1 Run Folder Layout
+When enabled, each run MUST write under:
+- `runs/{run_id}/`
+
+Deployment note:
+- The `runs/` directory MUST be persisted outside ephemeral container layers (bind-mounted in Docker deployments), similar to logs/memory persistence expectations.
+
+### 5.3.2 Canonical Files
+At minimum, Instrumentation MUST produce:
+- `run.json` (single JSON object)
+- `turns.jsonl` (one JSON record per turn)
+- `invocations.jsonl` (one JSON record per model call)
+- `maintenance.jsonl` (one JSON record per maintenance job)
+
+### 5.3.3 Flush Strategy
+- Instrumentation MAY collect in memory and flush only at end of run.
+- Instrumentation MUST flush when `end_run()` is called.
+- Instrumentation SHOULD flush when the process exits cleanly, if feasible.
+- In the current runtime assumptions (single worker), no cross-process file locking is required.
+
+---
+
+## 5.4 Core API (Python)
+
+### 5.4.1 Minimal Lifecycle API
+Implement the instrumentation API under:
+- `backend/app/core/tracking/`
+
+The primary implementation module SHOULD be:
+- `backend/app/core/tracking/instrumentation.py`
+
+It MUST expose at least the following lifecycle surface:
+
+- `start_run(config: dict) -> str`
+- `end_run(summary: dict | None = None) -> None`
+
+- `start_turn(turn_id: int, user_meta: dict | None = None) -> None`
+- `end_turn(output_meta: dict | None = None) -> None`
+
+- `start_invocation(purpose: str, model: str, meta: dict | None = None) -> str`
+- `end_invocation(invocation_id: str, usage: dict | None = None, timing: dict | None = None) -> None`
+
+- `record_stage(name: str, data: dict) -> None`
+
+- `record_maintenance(job_type: str, meta: dict) -> None`
+
+Implementation pattern requirement (Option B):
+- Use a strategy/facade pattern with a shared interface and two concrete implementations:
+  - `NoopInstrumentation` (disabled mode; no-op methods)
+  - `RealInstrumentation` (enabled mode; full metrics behavior)
+- A single factory/bootstrap function MUST select one implementation at startup based on `INSTRUMENTATION_ENABLED`.
+- Call sites in application code MUST call the instrumentation facade directly and MUST NOT require per-call `if instrumentation_enabled` branching.
+- Disabled behavior and checks MUST be centralized inside the tracking module, not duplicated across chat/sleep/retrieval code paths.
+
+### 5.4.2 Multi-Module Integration Requirement
+All modules that can:
+- call an LLM
+- assemble the final prompt
+- perform retrieval selection/expansion
+- run sleep maintenance
+MUST be able to call into the same Instrumentation instance.
+
+Instrumentation SHOULD be passed via a shared context object or imported singleton, but the mechanism MUST be consistent across the codebase.
+
+---
+
+## 5.5 Token Accounting Requirements (Mandatory)
+
+### 5.5.1 Invocation Token Fields
+Every LLM call recorded as an invocation MUST log:
+- `purpose` (enum string; see 5.5.3)
+- `model`
+- `prompt_tokens_reported` (int, if available)
+- `completion_tokens_reported` (int, if available)
+- `total_tokens_reported` (int, if available)
+- `usage_is_estimate` (bool)
+
+If reported usage is not available, estimates MAY be used, but `usage_is_estimate=true` MUST be set.
+
+Streaming policy:
+- For streaming calls, use provider-reported usage when available.
+- Otherwise, compute estimates and set `usage_is_estimate=true`.
+
+### 5.5.2 Turn Level Token Rollups
+Each turn record MUST include:
+- `main_total_tokens_reported`
+- `mini_total_tokens_reported_sum`
+- `turn_total_tokens_reported` = main + mini
+
+### 5.5.3 Purpose Taxonomy (Token Types)
+Invocations MUST use a stable `purpose` value from:
+- `main`
+- `router`
+- `tagger`
+- `retrieval_summarizer`
+- `formatter`
+- `guard`
+- `sleep`
+- `other`
+
+A codebase MAY add additional values later, but MUST NOT rename or repurpose existing values.
+
+Purpose classification rule:
+- `purpose` MUST be determined by pipeline context (chat/router/sleep/etc.), not by model identity.  
+  Example: a sleep-stage LLM call using the same underlying model as chat main is still classified as `sleep`.
+
+### 5.5.4 Prompt Composition Estimates (For Tuning and Stacked Bars)
+For the main model prompt, the turn record MUST include estimated token breakdown fields:
+- `prompt_system_tokens_est`
+- `prompt_history_tokens_est`
+- `prompt_rag_tokens_est`
+- `prompt_profile_tokens_est`
+- `prompt_other_tokens_est`
+
+These are estimates used for analysis. Reported token usage remains the authoritative total.
+
+---
+
+## 5.6 Latency Requirements (Mandatory)
+
+### 5.6.1 Invocation Timing Fields
+Each invocation record MUST include:
+- `start_ts` (timestamp)
+- `end_ts` (timestamp)
+- `first_token_ts` (timestamp or null)
+- Derived:
+  - `ttfb_ms`
+  - `ttlt_ms`
+
+### 5.6.2 Turn Latency Fields
+Each turn record MUST include:
+- `ttfb_ms_main`
+- `ttlt_ms_main`
+
+Streaming TTFB rule:
+- For streaming chat, `ttfb_ms_main` MUST be measured at first token yielded to the client.
+
+Optionally, the implementation MAY also record:
+- `ttlt_ms_turn_total` (includes mini calls and retrieval)
+
+---
+
+## 5.7 Retrieval and Context Assembly Metrics (Minimum Required)
+
+Each turn record MUST include enough fields to explain token growth or spikes:
+
+- `route` (string)
+- `rag_enabled` (bool)
+- `retrieved_count` (int)
+- `kept_count` (int)
+- `expanded_unique_chunks_after_merge` (int)
+- `rag_tokens_injected_est` (int)
+- `final_context_tokens_est` (int)
+- `final_context_clipped` (bool)
+
+---
+
+## 5.8 Maintenance Metrics and Amortization Support
+
+### 5.8.1 Maintenance Job Records
+Each sleep maintenance job MUST record:
+- `job_type` (`sleep`)
+- `after_turn` (int, if applicable)
+- `prompt_tokens_reported`, `completion_tokens_reported`, `total_tokens_reported`
+- `duration_ms`
+- `items_in` (int, optional)
+- `items_out` (int, optional)
+
+### 5.8.2 Amortization
+- Instrumentation MUST log enough data to compute amortized maintenance tokens per turn offline.
+- Instrumentation SHOULD NOT permanently bake amortization into core metrics; amortization SHOULD be performed in reporting scripts so the formula can change without reruns.
+
+---
+
+## 5.9 Accounting Validation (Required)
+
+At `end_turn()`, Instrumentation MUST compute and store:
+- `token_accounting_ok` (bool)
+- `token_accounting_errors` (array of strings, possibly empty)
+
+Validation MUST include:
+- The turn main totals match the `main` invocation totals.
+- The mini totals match the sum of all non-main interactive invocations in that turn.
+- The prompt composition estimate sum approximately matches `main_prompt_tokens_reported` within a configurable tolerance (if both are present).
+
+---
+
+## 5.10 Configuration Snapshot (Run Reproducibility)
+
+`run.json` MUST capture a config snapshot including:
+- Model names for main and mini calls
+- Max context budgets and caps used in prompt assembly
+- Retrieval parameters (k, thresholds, chunk sizing policy)
+- Sleep enable flag and cadence
+- Instrumentation mode and enabled state
+
+---
+
+## 5.11 Non-Goals (Clarifications)
+- Instrumentation does not change routing, retrieval, pruning, or prompt policy logic.
+- Instrumentation does not attempt to infer external system prompts or hidden context from other platforms.
+- Instrumentation is an evidence collection layer only.
+- Dream cycle instrumentation is excluded in this phase (even if Dream execution is enabled).

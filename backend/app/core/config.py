@@ -154,6 +154,11 @@ class Settings(BaseSettings):
         default=False,
         description="Force rebuilding all project FAISS indexes during server startup",
     )
+    # V5.0: Instrumentation
+    instrumentation_enabled: bool = Field(default=False, description="Enable instrumentation telemetry")
+    instrumentation_mode: str = Field(default="metrics", description="Instrumentation mode: metrics or research")
+    instrumentation_run_id: Optional[str] = Field(default=None, description="Optional run id override")
+    instrumentation_runs_dir: str = Field(default="runs", description="Root directory for instrumentation run artifacts")
     # V3.5: Streaming
     streaming_enabled: bool = Field(default=True, description="Enable streaming chat endpoint")
     stream_flush_ms: int = Field(default=50, gt=0, description="Flush cadence for streaming chunks in milliseconds")

@@ -401,6 +401,19 @@ setup-env:
 		echo "FORCE_RAG_REBUILD_ON_STARTUP=true"; \
 		echo "# Optional startup sweep: rebuild all project RAG indexes from uploads"; \
 		echo ""; \
+		echo "# === Instrumentation (V5.0) ==="; \
+		echo "INSTRUMENTATION_ENABLED=false"; \
+		echo "# Enable run/turn/invocation telemetry collection"; \
+		echo ""; \
+		echo "INSTRUMENTATION_MODE=metrics"; \
+		echo "# metrics|research (research permits artifact capture)"; \
+		echo ""; \
+		echo "INSTRUMENTATION_RUN_ID="; \
+		echo "# Optional run id override; when set, all turns use this run id"; \
+		echo ""; \
+		echo "INSTRUMENTATION_RUNS_DIR=runs"; \
+		echo "# Root folder for instrumentation outputs"; \
+		echo ""; \
 		echo "# === Streaming Chat ==="; \
 		echo "STREAMING_ENABLED=true"; \
 		echo "# V3.5: Enable streaming chat endpoint"; \

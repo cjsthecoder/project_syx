@@ -150,6 +150,10 @@ class Settings(BaseSettings):
     sleep_cycle_hour: int = Field(default=3, ge=0, le=23, description="Local hour (0-23) to run sleep cycle")
     sleep_cycle_minute: int = Field(default=0, ge=0, le=59, description="Local minute (0-59) to run sleep cycle")
     verify_rag: bool = Field(default=True, description="V3.3: enable post-rebuild verification step")
+    force_rag_rebuild_on_startup: bool = Field(
+        default=False,
+        description="Force rebuilding all project FAISS indexes during server startup",
+    )
     # V3.5: Streaming
     streaming_enabled: bool = Field(default=True, description="Enable streaming chat endpoint")
     stream_flush_ms: int = Field(default=50, gt=0, description="Flush cadence for streaming chunks in milliseconds")

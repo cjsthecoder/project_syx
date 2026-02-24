@@ -398,6 +398,9 @@ setup-env:
 		echo "VERIFY_RAG=true"; \
 		echo "# V3.3: Enable post-rebuild verification"; \
 		echo ""; \
+		echo "FORCE_RAG_REBUILD_ON_STARTUP=true"; \
+		echo "# Optional startup sweep: rebuild all project RAG indexes from uploads"; \
+		echo ""; \
 		echo "# === Streaming Chat ==="; \
 		echo "STREAMING_ENABLED=true"; \
 		echo "# V3.5: Enable streaming chat endpoint"; \

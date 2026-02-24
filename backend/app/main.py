@@ -107,6 +107,27 @@ async def lifespan(app: FastAPI):
                 logger.warning("[WARN] DEFAULT_RAG.txt not found; Continuum created without baseline knowledge.")
     except Exception as e:
         logger.warning("[INIT] Continuum seed failed: %s", e, exc_info=True)
+    # Optional startup sweep to rebuild all project RAG indexes from uploads.
+    try:
+        if bool(get_settings().force_rag_rebuild_on_startup):
+            from sqlmodel import select
+            with get_session() as session:
+                project_ids = [p.id for p in session.exec(select(Project)).all()]
+
+            logger.info(
+                "[INIT] FORCE_RAG_REBUILD_ON_STARTUP enabled; rebuilding RAG for %s project(s).",
+                len(project_ids),
+            )
+            for pid in project_ids:
+                try:
+                    rebuild_faiss_index(pid)
+                    logger.info("[INIT] RAG rebuilt at startup for project %s", pid)
+                except Exception as re:
+                    logger.warning("[INIT] Startup RAG rebuild failed for project %s: %s", pid, re)
+        else:
+            logger.info("[INIT] FORCE_RAG_REBUILD_ON_STARTUP disabled; skipping full RAG rebuild.")
+    except Exception as e:
+        logger.warning("[INIT] Startup RAG rebuild sweep failed: %s", e, exc_info=True)
     # V3.1: Start daily scheduler if enabled
     try:
         if get_settings().enable_scheduler:

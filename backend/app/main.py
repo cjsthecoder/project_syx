@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
     init_db()
     # V5.0: initialize instrumentation facade and start process run if enabled.
     try:
-        instr = init_instrumentation(get_settings())
+        instr = init_instrumentation(get_settings(), has_lifespan_hook=True)
         run_cfg = {
             "instrumentation_enabled": bool(get_settings().instrumentation_enabled),
             "instrumentation_mode": str(get_settings().instrumentation_mode),

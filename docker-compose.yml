@@ -18,4 +18,5 @@ services:
       - ./data/memory:/app/backend/memory
       - ./data/db:/app/backend/app/data
       - ./data/logs:/app/backend/logs
+      - ./data/runs:/app/backend/runs
     restart: unless-stopped

@@ -33,7 +33,7 @@ COPY backend ./backend
 COPY --from=frontend-builder /app/backend/app/static ./backend/app/static
 
 # Directories the app writes to (bind mounts override these at runtime)
-RUN mkdir -p backend/memory backend/app/data backend/logs backend/runtime
+RUN mkdir -p backend/memory backend/app/data backend/logs backend/runtime backend/runs
 
 # Build tools + Rust (numpy needs gcc; tiktoken needs Rust when no wheel for platform/python)
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential curl \

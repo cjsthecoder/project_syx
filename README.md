@@ -68,7 +68,7 @@ Run Morpheus in a container with bind-mounted data and a mounted `.env` (no secr
    ```
    App: http://localhost:8000 — API docs: http://localhost:8000/api/docs — Health: http://localhost:8000/health.
 
-4. **Bind mounts**: Data is stored on the host under `./data/memory`, `./data/db`, and `./data/logs`, so it survives container rebuilds and is easy to back up. If you use a different host or port, set `CORS_ORIGINS` in `.env` to include that origin.
+4. **Bind mounts**: Data is stored on the host under `./data/memory`, `./data/db`, `./data/logs`, and `./data/runs`, so it survives container rebuilds and is easy to back up. If you use a different host or port, set `CORS_ORIGINS` in `.env` to include that origin.
 
 # Organization Verification Required for Streaming
 

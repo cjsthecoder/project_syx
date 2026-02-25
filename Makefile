@@ -48,7 +48,7 @@ help:
 	@echo "  make generate-docs        - Generate architecture diagram"
 	@echo ""
 	@echo "Docker:"
-	@echo "  make docker-data-dirs     - Create host dirs for bind mounts (data/memory, data/db, data/logs)"
+	@echo "  make docker-data-dirs     - Create host dirs for bind mounts (data/memory, data/db, data/logs, data/runs)"
 	@echo "  make docker-data-permissions - Set permissions on data dirs for container read/write"
 	@echo "  make docker-setup         - Create data dirs and set permissions (run before first docker-compose up)"
 	@echo "  make run-docker           - Prepare host dirs and start docker compose stack"
@@ -453,8 +453,8 @@ unlock-sleep:
 # Docker: create host directories for bind mounts (run before first docker-compose up)
 docker-data-dirs:
 	@echo "📁 Creating host directories for Docker bind mounts..."
-	@mkdir -p data/memory data/db data/logs data/runtime
-	@echo "✅ Created data/memory data/db data/logs data/runtime"
+	@mkdir -p data/memory data/db data/logs data/runtime data/runs
+	@echo "✅ Created data/memory data/db data/logs data/runtime data/runs"
 
 # Docker: set permissions so container process can read/write (container typically runs as root)
 docker-data-permissions:

@@ -14,14 +14,26 @@ This module provides the LLM abstraction layer using LangChain ChatOpenAI.
 """
 
 import logging
+import time
 from typing import Optional, Dict, Any, List
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 
 from .config import get_settings, validate_openai_key, get_model_config
+from .tracking import get_instrumentation
 
 # Set up module-level logger
 logger = logging.getLogger(__name__)
+
+
+def _estimate_tokens(text: str) -> int:
+    try:
+        import tiktoken  # type: ignore
+
+        enc = tiktoken.get_encoding("cl100k_base")
+        return int(len(enc.encode(text or "")))
+    except Exception:
+        return int(len((text or "").split()))
 
 
 class LLMProvider:
@@ -121,6 +133,25 @@ class LLMProvider:
             
             # Add current user message
             messages.append(HumanMessage(content=message))
+            instr = get_instrumentation()
+            system_tokens = _estimate_tokens((base_system_prompt or "") + "\n" + (rag_system_prompt or ""))
+            history_tokens = _estimate_tokens(
+                "\n".join(str((msg.get("content") or "")) for msg in (conversation_history or []))
+            )
+            profile_tokens = _estimate_tokens(assistant_hint or "")
+            user_tokens = _estimate_tokens(message or "")
+            instr.record_stage(
+                "prompt_assembly",
+                {
+                    "module": "llm",
+                    "prompt_system_tokens_est": int(system_tokens),
+                    "prompt_history_tokens_est": int(history_tokens),
+                    "prompt_rag_tokens_est": int(_estimate_tokens(rag_system_prompt or "")),
+                    "prompt_profile_tokens_est": int(profile_tokens),
+                    "prompt_other_tokens_est": int(user_tokens),
+                    "message_count": int(len(messages)),
+                },
+            )
 
             # Debug: show roles and content lengths of messages being sent
             try:
@@ -157,6 +188,13 @@ class LLMProvider:
 
             used_model = self.settings.model_name
             model_to_use = override_model or self.settings.model_name
+            invocation_id = ""
+            invoke_start = time.perf_counter()
+            invocation_id = instr.start_invocation(
+                purpose="main",
+                model=model_to_use,
+                meta={"streaming": False},
+            )
             include_temp = model_to_use not in self._temp_param_rejected
             requested_temp = (
                 float(temperature_override)
@@ -212,6 +250,39 @@ class LLMProvider:
             input_tok = token_usage.get("prompt_tokens") or token_usage.get("input_tokens")
             output_tok = token_usage.get("completion_tokens") or token_usage.get("output_tokens")
             total_tok = token_usage.get("total_tokens")
+            invoke_end = time.perf_counter()
+            prompt_tokens_est = _estimate_tokens(
+                (base_system_prompt or "")
+                + "\n"
+                + (assistant_hint or "")
+                + "\n"
+                + (rag_system_prompt or "")
+                + "\n"
+                + "\n".join(str((msg.get("content") or "")) for msg in (conversation_history or []))
+                + "\n"
+                + (message or "")
+            )
+            completion_tokens_est = _estimate_tokens(response_content)
+            usage_is_estimate = not isinstance(total_tok, int)
+            if not isinstance(total_tok, int):
+                total_tok = int(prompt_tokens_est + completion_tokens_est)
+            if not isinstance(input_tok, int):
+                input_tok = int(prompt_tokens_est)
+            if not isinstance(output_tok, int):
+                output_tok = int(completion_tokens_est)
+            if invocation_id:
+                instr.end_invocation(
+                    invocation_id,
+                    usage={
+                        "purpose": "main",
+                        "model": used_model,
+                        "prompt_tokens_reported": int(input_tok),
+                        "completion_tokens_reported": int(output_tok),
+                        "total_tokens_reported": int(total_tok),
+                        "usage_is_estimate": bool(usage_is_estimate),
+                    },
+                    timing={"ttlt_ms": int((invoke_end - invoke_start) * 1000.0)},
+                )
             
             return {
                 "response": response_content,
@@ -223,6 +294,22 @@ class LLMProvider:
             }
             
         except Exception as e:
+            try:
+                if "invocation_id" in locals() and invocation_id:
+                    get_instrumentation().end_invocation(
+                        invocation_id,
+                        usage={
+                            "purpose": "main",
+                            "model": self.settings.model_name,
+                            "prompt_tokens_reported": 0,
+                            "completion_tokens_reported": 0,
+                            "total_tokens_reported": 0,
+                            "usage_is_estimate": True,
+                        },
+                        timing={"ttlt_ms": int((time.perf_counter() - invoke_start) * 1000.0)},
+                    )
+            except Exception:
+                pass
             logger.error(f"Error generating response: {str(e)}")
             return {
                 "response": f"I apologize, but I encountered an error: {str(e)}",

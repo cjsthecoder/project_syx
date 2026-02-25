@@ -58,6 +58,7 @@ from ..core.rag_manager import rebuild_faiss_index, load_faiss_index
 from filelock import FileLock
 from ..core.config import get_settings
 from ..core.daily_rag import _project_daily_paths, clear_daily_cache
+from ..core.tracking import get_instrumentation
 from ..core.dream import dream
 from ..utils.debug_utils import write_debug_file
 def _nl(s: str) -> str:
@@ -65,9 +66,17 @@ def _nl(s: str) -> str:
     return s.replace("\r\n", "\n").replace("\r", "\n")
 
 def _sleep_cycle_worker():
+    instr = get_instrumentation()
+    start_iso = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime())
+    t0 = time.monotonic()
+    instr.record_maintenance(
+        "sleep",
+        {
+            "event": "start",
+            "started_at_local": start_iso,
+        },
+    )
     try:
-        t0 = time.monotonic()
-        start_iso = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime())
         engage_lock()
         logger.debug("[SLEEP] Lock engaged")
         logger.info("[SLEEP] Thread started t=%s", start_iso)
@@ -502,8 +511,26 @@ def _sleep_cycle_worker():
                 continue
         logger.info("[SLEEP] Completed (updated_projects=%s, projects_processed=%s, pruned=%s, formatted=%s, skipped_no_daily=%s)",
                     updated, projects_processed, pruned_count, formatted_count, skipped_no_daily)
+        instr.record_maintenance(
+            "sleep",
+            {
+                "event": "completed",
+                "updated_projects": int(updated),
+                "projects_processed": int(projects_processed),
+                "pruned_count": int(pruned_count),
+                "formatted_count": int(formatted_count),
+                "skipped_no_daily": int(skipped_no_daily),
+            },
+        )
     except Exception as e:
         logger.error("[SLEEP][ERROR] %s", e, exc_info=True)
+        instr.record_maintenance(
+            "sleep",
+            {
+                "event": "error",
+                "error": str(e),
+            },
+        )
     finally:
         try:
             # Duration logging (even on errors)
@@ -514,6 +541,14 @@ def _sleep_cycle_worker():
                 s = int(elapsed % 60)
                 logger.info("[SLEEP] Duration elapsed=%.2fs (%02d:%02d:%02d) since=%s",
                             elapsed, h, m, s, start_iso)
+                instr.record_maintenance(
+                    "sleep",
+                    {
+                        "event": "finalize",
+                        "elapsed_s": float(elapsed),
+                        "duration_hms": f"{h:02d}:{m:02d}:{s:02d}",
+                    },
+                )
             except Exception:
                 pass
             release_lock()

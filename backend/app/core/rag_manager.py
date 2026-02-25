@@ -37,6 +37,7 @@ from sqlmodel import select
 
 logger = logging.getLogger(__name__)
 from .retrieval_ordering import order_candidates_by_similarity_score
+from .tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
 from ..llm_model.llm_client import get_llm_client
 from .vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
@@ -1669,6 +1670,27 @@ def merge_daily_and_main(
         int(len(pieces)),
         int(len(ordered)),
     )
+    try:
+        get_instrumentation().record_stage(
+            "retrieval_selection_expansion",
+            {
+                "project_id": project_id,
+                "route": route or "OTHER",
+                "daily_enabled": bool(daily_enabled),
+                "per_source_k": int(per_source_k),
+                "max_keep": int(max_keep),
+                "ordered_candidates": int(len(ordered)),
+                "selected_candidates": int(len(selected_candidates)),
+                "kept_candidates": int(len(pieces)),
+                "adjacent_bonus": int(adjacent_bonus),
+                "main_hits": int(main_hits),
+                "daily_hits": int(daily_hits),
+                "total_hits": int(main_hits + daily_hits),
+                "tokens_used": int(tokens_used_total),
+            },
+        )
+    except Exception:
+        pass
 
     return {
         "context_text": context_text,

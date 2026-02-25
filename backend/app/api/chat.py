@@ -15,6 +15,7 @@ This module provides the main chat functionality with LangChain integration.
 
 import logging
 import time
+import threading
 import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
@@ -35,6 +36,7 @@ from ..core.daily_rag import start_daily_cache_rebuild
 from ..core.database import get_session
 from ..core.db_models import Project
 from ..core.query_builder import build_query, format_contextual_turn
+from ..core.tracking import get_instrumentation
 import os
 import json
 from itertools import islice
@@ -55,6 +57,8 @@ router = APIRouter()
 # Initialize loggers
 request_logger = RequestLogger("chat")
 llm_logger = LLMLogger()
+_TURN_SEQ = 0
+_TURN_SEQ_LOCK = threading.Lock()
 
 RAG_SYSTEM_PROMPT = """Each retrieved snippet includes a similarity score in the range [0.0–1.0].
 The similarity score reflects semantic closeness to the query, not factual correctness.
@@ -83,6 +87,13 @@ def _estimate_tokens(text: str) -> int:
         return int(len(enc.encode(text or "")))
     except Exception:
         return int(len((text or "").split()))
+
+
+def _next_turn_id() -> int:
+    global _TURN_SEQ
+    with _TURN_SEQ_LOCK:
+        _TURN_SEQ += 1
+        return int(_TURN_SEQ)
 
 def _dump_prompt_debug(
     *,
@@ -494,6 +505,23 @@ class _ChatPipeline:
                 elif (m.get("role") or "").lower() == "assistant":
                     msgs.append(AIMessage(content=m.get("content") or ""))
         msgs.append(HumanMessage(content=user_message or ""))
+        try:
+            get_instrumentation().record_stage(
+                "prompt_assembly",
+                {
+                    "module": "chat_stream",
+                    "prompt_system_tokens_est": int(_estimate_tokens((base_system_prompt or "") + "\n" + (rag_system_prompt or ""))),
+                    "prompt_history_tokens_est": int(
+                        _estimate_tokens("\n".join(str((m.get("content") or "")) for m in (conversation_history or [])))
+                    ),
+                    "prompt_rag_tokens_est": int(_estimate_tokens(rag_system_prompt or "")),
+                    "prompt_profile_tokens_est": int(_estimate_tokens(assistant_hint or "")),
+                    "prompt_other_tokens_est": int(_estimate_tokens(user_message or "")),
+                    "message_count": int(len(msgs)),
+                },
+            )
+        except Exception:
+            pass
         return msgs
 
     def persist_user(self, project_id: Optional[str], message: str) -> None:
@@ -537,9 +565,22 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
     """
     try:
         t0 = time.time()
+        instr = get_instrumentation()
+        turn_id = _next_turn_id()
+        turn_started = False
         msg_id = str(uuid.uuid4())
         set_message_id(msg_id)
         proj = request.project_id or "Continuum"
+        instr.start_turn(
+            turn_id=turn_id,
+            user_meta={
+                "project_id": request.project_id,
+                "conversation_id": request.conversation_id,
+                "message_len": len(request.message or ""),
+                "streaming": False,
+            },
+        )
+        turn_started = True
         # (Telemetry removed)
         # Log the incoming request
         request_logger.log_request(endpoint="/chat", method="POST", user_id=request.conversation_id)
@@ -730,6 +771,17 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 }
             )
     finally:
+        try:
+            if "turn_started" in locals() and turn_started:
+                get_instrumentation().end_turn(
+                    output_meta={
+                        "project_id": request.project_id,
+                        "conversation_id": request.conversation_id,
+                        "streaming": False,
+                    }
+                )
+        except Exception:
+            pass
         clear_message_id()
         try:
             clear_namespace()
@@ -744,10 +796,24 @@ async def chat_stream(request: ChatRequest):
     Streams model tokens to the client as they arrive.
     """
     settings = get_settings()
+    instr = get_instrumentation()
+    turn_id = _next_turn_id()
+    turn_started = False
+    turn_closed = False
     try:
         t0 = time.time()
         msg_id = str(uuid.uuid4())
         set_message_id(msg_id)
+        instr.start_turn(
+            turn_id=turn_id,
+            user_meta={
+                "project_id": request.project_id,
+                "conversation_id": request.conversation_id,
+                "message_len": len(request.message or ""),
+                "streaming": True,
+            },
+        )
+        turn_started = True
         request_logger.log_request(endpoint="/chat/stream", method="POST", user_id=request.conversation_id)
         proj = request.project_id or "Continuum"
 
@@ -822,6 +888,9 @@ async def chat_stream(request: ChatRequest):
         # Token stream using astream (yields AIMessageChunk with incremental content)
         async def token_stream():
             collected = []
+            invocation_id = ""
+            t_invoke0 = time.perf_counter()
+            first_token_ms = None
             try:
                 # Initialize streaming LLM client (LangChain 0.2.x native astream)
                 # Try with temperature=1.0, but some models reject the temperature parameter entirely.
@@ -833,6 +902,11 @@ async def chat_stream(request: ChatRequest):
                     model_kwargs={"max_completion_tokens": settings.model_max_tokens},
                     streaming=True,
                 )
+                invocation_id = instr.start_invocation(
+                    purpose="main",
+                    model=model_name,
+                    meta={"streaming": True},
+                )
                 yielded_any = False
                 try:
                     async for chunk in llm.astream(msgs):
@@ -842,6 +916,8 @@ async def chat_stream(request: ChatRequest):
                             piece = getattr(chunk, "delta", None)
                         if isinstance(piece, str) and piece:
                             yielded_any = True
+                            if first_token_ms is None:
+                                first_token_ms = int((time.perf_counter() - t_invoke0) * 1000.0)
                             collected.append(piece)
                             yield piece
                 except Exception as e:
@@ -858,6 +934,8 @@ async def chat_stream(request: ChatRequest):
                             if not piece:
                                 piece = getattr(chunk, "delta", None)
                             if isinstance(piece, str) and piece:
+                                if first_token_ms is None:
+                                    first_token_ms = int((time.perf_counter() - t_invoke0) * 1000.0)
                                 collected.append(piece)
                                 yield piece
                     else:
@@ -866,6 +944,29 @@ async def chat_stream(request: ChatRequest):
                 # Signal end of stream
                 yield "\n::event: done\n"
             finally:
+                try:
+                    full_text = "".join(collected)
+                    total_tokens_est = int(_estimate_tokens((request.message or "") + "\n" + full_text))
+                    completion_tokens_est = int(_estimate_tokens(full_text))
+                    prompt_tokens_est = max(0, total_tokens_est - completion_tokens_est)
+                    if invocation_id:
+                        instr.end_invocation(
+                            invocation_id,
+                            usage={
+                                "purpose": "main",
+                                "model": (request.model or settings.model_name),
+                                "prompt_tokens_reported": int(prompt_tokens_est),
+                                "completion_tokens_reported": int(completion_tokens_est),
+                                "total_tokens_reported": int(total_tokens_est),
+                                "usage_is_estimate": True,
+                            },
+                            timing={
+                                "ttfb_ms": int(first_token_ms or 0),
+                                "ttlt_ms": int((time.perf_counter() - t_invoke0) * 1000.0),
+                            },
+                        )
+                except Exception:
+                    pass
                 # Persist assistant once complete
                 try:
                     if request.project_id:
@@ -879,9 +980,36 @@ async def chat_stream(request: ChatRequest):
                         )
                 except Exception:
                     pass
+                try:
+                    nonlocal turn_closed
+                    if turn_started and not turn_closed:
+                        instr.end_turn(
+                            output_meta={
+                                "project_id": request.project_id,
+                                "conversation_id": request.conversation_id,
+                                "streaming": True,
+                                "response_len": len("".join(collected)),
+                            }
+                        )
+                        turn_closed = True
+                except Exception:
+                    pass
 
         return StreamingResponse(token_stream(), media_type="text/plain; charset=utf-8")
     except Exception as e:
+        try:
+            if turn_started and not turn_closed:
+                instr.end_turn(
+                    output_meta={
+                        "project_id": request.project_id,
+                        "conversation_id": request.conversation_id,
+                        "streaming": True,
+                        "error": str(e),
+                    }
+                )
+                turn_closed = True
+        except Exception:
+            pass
         return JSONResponse(status_code=500, content={"error": str(e)})
     finally:
         clear_message_id()

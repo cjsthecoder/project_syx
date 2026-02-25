@@ -2981,6 +2981,8 @@ Instrumentation MUST enable generation of:
 - When disabled, it MUST impose near-zero overhead and MUST NOT write any files.
 - Enable flag: `INSTRUMENTATION_ENABLED=true|false`.
 - `RUN_ID` MAY be provided via env. If set, it MUST override per-conversation run ids and force a single run id for all turns in the process.
+- When `RUN_ID` is provided, the effective run id MUST be `RUN_ID_<timestamp>` so each process startup creates a new run folder.
+- Timestamp format MUST match logger timestamp format: `%Y%m%d_%H%M%S`.
 
 ### 5.2.2 Metrics Mode vs Research Mode
 Instrumentation MUST support two modes:
@@ -3047,7 +3049,7 @@ It MUST expose at least the following lifecycle surface:
 
 - `record_maintenance(job_type: str, meta: dict) -> None`
 
-Implementation pattern requirement (Option B):
+Implementation pattern requirement:
 - Use a strategy/facade pattern with a shared interface and two concrete implementations:
   - `NoopInstrumentation` (disabled mode; no-op methods)
   - `RealInstrumentation` (enabled mode; full metrics behavior)
@@ -3064,6 +3066,11 @@ All modules that can:
 MUST be able to call into the same Instrumentation instance.
 
 Instrumentation SHOULD be passed via a shared context object or imported singleton, but the mechanism MUST be consistent across the codebase.
+
+Tagger integration requirement:
+- The tagger call (mini-model classification of user/assistant pair metadata) MUST be instrumented as an invocation.
+- Tagger invocations MUST be emitted with `purpose="tagger"` and include reported or estimated token usage fields per 5.5.1.
+- Tagger token usage MUST be attributed to the same interactive turn that produced the assistant response being tagged.
 
 ---
 
@@ -3089,6 +3096,10 @@ Each turn record MUST include:
 - `main_total_tokens_reported`
 - `mini_total_tokens_reported_sum`
 - `turn_total_tokens_reported` = main + mini
+
+Rollup inclusion rule:
+- `mini_total_tokens_reported_sum` MUST include all non-main interactive mini calls for that turn, including at minimum `router` and `tagger` invocations.
+- If tagging occurs in post-response persistence for the same request path, its tokens still belong to that originating turn and MUST be included in that turn rollup.
 
 ### 5.5.3 Purpose Taxonomy (Token Types)
 Invocations MUST use a stable `purpose` value from:

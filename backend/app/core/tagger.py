@@ -200,6 +200,15 @@ def tag_pair(
             prompt_tok = int(getattr(u, "input_tokens", 0) or 0) if u is not None else 0
             completion_tok = int(getattr(u, "output_tokens", 0) or 0) if u is not None else 0
             total_tok = int(getattr(u, "total_tokens", 0) or (prompt_tok + completion_tok))
+            extra_usage: Dict[str, Any] = {}
+            if u is not None:
+                for k in ("input_token_details", "output_token_details", "reasoning_tokens", "cached_tokens"):
+                    try:
+                        v = getattr(u, k, None)
+                        if v is not None:
+                            extra_usage[k] = v
+                    except Exception:
+                        pass
             if total_tok > 0:
                 usage = {
                     "purpose": "tagger",
@@ -209,6 +218,8 @@ def tag_pair(
                     "total_tokens_reported": total_tok,
                     "usage_is_estimate": False,
                 }
+                if extra_usage:
+                    usage["extra_usage"] = extra_usage
         except Exception:
             pass
         raw = _responses_text(resp)

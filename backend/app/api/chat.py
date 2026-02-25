@@ -89,6 +89,58 @@ def _estimate_tokens(text: str) -> int:
         return int(len((text or "").split()))
 
 
+def _estimate_message_tokens(messages: list) -> int:
+    """Best-effort token estimate over structured message list."""
+    try:
+        text = "\n".join(str(getattr(m, "content", "") or "") for m in (messages or []))
+        return int(_estimate_tokens(text))
+    except Exception:
+        return 0
+
+
+def _extract_stream_usage(chunk: Any) -> tuple[Optional[dict], Optional[dict]]:
+    """Extract provider-reported stream usage and extra details when available."""
+    try:
+        usage_meta = getattr(chunk, "usage_metadata", None)
+        if isinstance(usage_meta, dict):
+            prompt_tok = usage_meta.get("input_tokens")
+            completion_tok = usage_meta.get("output_tokens")
+            total_tok = usage_meta.get("total_tokens")
+            if isinstance(total_tok, int) or isinstance(prompt_tok, int) or isinstance(completion_tok, int):
+                usage = {
+                    "prompt_tokens_reported": int(prompt_tok or 0),
+                    "completion_tokens_reported": int(completion_tok or 0),
+                    "total_tokens_reported": int(total_tok or ((prompt_tok or 0) + (completion_tok or 0))),
+                    "usage_is_estimate": False,
+                }
+                extras = {
+                    "input_token_details": usage_meta.get("input_token_details"),
+                    "output_token_details": usage_meta.get("output_token_details"),
+                }
+                return usage, {k: v for k, v in extras.items() if v is not None}
+    except Exception:
+        pass
+    try:
+        md = getattr(chunk, "response_metadata", None) or {}
+        token_usage = md.get("token_usage", {}) if isinstance(md, dict) else {}
+        if isinstance(token_usage, dict):
+            prompt_tok = token_usage.get("prompt_tokens") or token_usage.get("input_tokens")
+            completion_tok = token_usage.get("completion_tokens") or token_usage.get("output_tokens")
+            total_tok = token_usage.get("total_tokens")
+            if isinstance(total_tok, int) or isinstance(prompt_tok, int) or isinstance(completion_tok, int):
+                usage = {
+                    "prompt_tokens_reported": int(prompt_tok or 0),
+                    "completion_tokens_reported": int(completion_tok or 0),
+                    "total_tokens_reported": int(total_tok or ((prompt_tok or 0) + (completion_tok or 0))),
+                    "usage_is_estimate": False,
+                }
+                extras = dict(token_usage)
+                return usage, extras
+    except Exception:
+        pass
+    return None, None
+
+
 def _next_turn_id() -> int:
     global _TURN_SEQ
     with _TURN_SEQ_LOCK:
@@ -775,6 +827,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             if "turn_started" in locals() and turn_started:
                 get_instrumentation().end_turn(
                     output_meta={
+                        "turn_id": turn_id,
                         "project_id": request.project_id,
                         "conversation_id": request.conversation_id,
                         "streaming": False,
@@ -891,17 +944,26 @@ async def chat_stream(request: ChatRequest):
             invocation_id = ""
             t_invoke0 = time.perf_counter()
             first_token_ms = None
+            provider_usage: Optional[dict] = None
+            provider_extra_usage: Optional[dict] = None
             try:
                 # Initialize streaming LLM client (LangChain 0.2.x native astream)
                 # Try with temperature=1.0, but some models reject the temperature parameter entirely.
                 model_name = (request.model or settings.model_name)
-                llm = ChatOpenAI(
-                    api_key=settings.openai_api_key,
-                    model=model_name,
-                    temperature=1.0,
-                    model_kwargs={"max_completion_tokens": settings.model_max_tokens},
-                    streaming=True,
-                )
+                def _new_stream_llm(*, include_temperature: bool) -> ChatOpenAI:
+                    kwargs: Dict[str, Any] = {
+                        "api_key": settings.openai_api_key,
+                        "model": model_name,
+                        "model_kwargs": {
+                            "max_completion_tokens": settings.model_max_tokens,
+                        },
+                        "streaming": True,
+                    }
+                    if include_temperature:
+                        kwargs["temperature"] = 1.0
+                    return ChatOpenAI(**kwargs)
+
+                llm = _new_stream_llm(include_temperature=True)
                 invocation_id = instr.start_invocation(
                     purpose="main",
                     model=model_name,
@@ -910,6 +972,10 @@ async def chat_stream(request: ChatRequest):
                 yielded_any = False
                 try:
                     async for chunk in llm.astream(msgs):
+                        u, extra = _extract_stream_usage(chunk)
+                        if u:
+                            provider_usage = u
+                            provider_extra_usage = extra
                         # Only emit actual text content; skip metadata/header chunks
                         piece = getattr(chunk, "content", None)
                         if not piece:
@@ -923,13 +989,12 @@ async def chat_stream(request: ChatRequest):
                 except Exception as e:
                     msg = str(e).lower()
                     if (not yielded_any) and ("temperature" in msg or "unsupported_value" in msg or "invalid_request_error" in msg):
-                        llm2 = ChatOpenAI(
-                            api_key=settings.openai_api_key,
-                            model=model_name,
-                            model_kwargs={"max_completion_tokens": settings.model_max_tokens},
-                            streaming=True,
-                        )
+                        llm2 = _new_stream_llm(include_temperature=False)
                         async for chunk in llm2.astream(msgs):
+                            u, extra = _extract_stream_usage(chunk)
+                            if u:
+                                provider_usage = u
+                                provider_extra_usage = extra
                             piece = getattr(chunk, "content", None)
                             if not piece:
                                 piece = getattr(chunk, "delta", None)
@@ -946,20 +1011,34 @@ async def chat_stream(request: ChatRequest):
             finally:
                 try:
                     full_text = "".join(collected)
-                    total_tokens_est = int(_estimate_tokens((request.message or "") + "\n" + full_text))
+                    prompt_tokens_est = int(_estimate_message_tokens(msgs))
                     completion_tokens_est = int(_estimate_tokens(full_text))
-                    prompt_tokens_est = max(0, total_tokens_est - completion_tokens_est)
+                    total_tokens_est = int(prompt_tokens_est + completion_tokens_est)
+                    usage_payload = provider_usage or {
+                        "prompt_tokens_reported": int(prompt_tokens_est),
+                        "completion_tokens_reported": int(completion_tokens_est),
+                        "total_tokens_reported": int(total_tokens_est),
+                        "usage_is_estimate": True,
+                    }
+                    if (
+                        not provider_usage
+                        and (
+                            not isinstance(usage_payload.get("total_tokens_reported"), int)
+                            or int(usage_payload.get("total_tokens_reported", 0)) <= 0
+                        )
+                    ):
+                        usage_payload = {
+                            "prompt_tokens_reported": 0,
+                            "completion_tokens_reported": 0,
+                            "total_tokens_reported": 0,
+                            "usage_is_estimate": True,
+                        }
+                    if provider_extra_usage:
+                        usage_payload["extra_usage"] = provider_extra_usage
                     if invocation_id:
                         instr.end_invocation(
                             invocation_id,
-                            usage={
-                                "purpose": "main",
-                                "model": (request.model or settings.model_name),
-                                "prompt_tokens_reported": int(prompt_tokens_est),
-                                "completion_tokens_reported": int(completion_tokens_est),
-                                "total_tokens_reported": int(total_tokens_est),
-                                "usage_is_estimate": True,
-                            },
+                            usage={"purpose": "main", "model": (request.model or settings.model_name), **usage_payload},
                             timing={
                                 "ttfb_ms": int(first_token_ms or 0),
                                 "ttlt_ms": int((time.perf_counter() - t_invoke0) * 1000.0),
@@ -985,6 +1064,7 @@ async def chat_stream(request: ChatRequest):
                     if turn_started and not turn_closed:
                         instr.end_turn(
                             output_meta={
+                                "turn_id": turn_id,
                                 "project_id": request.project_id,
                                 "conversation_id": request.conversation_id,
                                 "streaming": True,
@@ -1001,6 +1081,7 @@ async def chat_stream(request: ChatRequest):
             if turn_started and not turn_closed:
                 instr.end_turn(
                     output_meta={
+                        "turn_id": turn_id,
                         "project_id": request.project_id,
                         "conversation_id": request.conversation_id,
                         "streaming": True,

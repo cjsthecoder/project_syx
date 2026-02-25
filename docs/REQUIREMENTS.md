@@ -3089,7 +3089,11 @@ If reported usage is not available, estimates MAY be used, but `usage_is_estimat
 
 Streaming policy:
 - For streaming calls, use provider-reported usage when available.
-- Otherwise, compute estimates and set `usage_is_estimate=true`.
+- If provider-reported usage is unavailable, compute estimates using `tiktoken` and set `usage_is_estimate=true`.
+- If estimation fails, write zeros for usage fields and keep `usage_is_estimate=true`.
+- Streaming invocation usage MAY be finalized in the stream completion/finalization path (for example `finally`) when usage is only available at stream end.
+- If the client disconnects early and provider usage is unavailable, the system MUST still emit `end_invocation` using estimate-or-zero fallback and MUST NOT mark the turn invalid solely for missing provider usage.
+- If the provider returns additional token categories (for example cached/reasoning token fields), implementations MAY persist those extras under invocation `meta` for diagnostics while still populating canonical `prompt/completion/total` fields.
 
 ### 5.5.2 Turn Level Token Rollups
 Each turn record MUST include:

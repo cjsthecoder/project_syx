@@ -9,10 +9,12 @@ Use of this software requires explicit written permission from the copyright hol
 """
 import logging
 import json
+import time
 from typing import Dict, Optional, Any
 from datetime import datetime
 
 from .config import get_settings
+from .tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
 from openai import OpenAI
 
@@ -152,6 +154,21 @@ def tag_pair(
     """
     try:
         settings = get_settings()
+        instr = get_instrumentation()
+        invocation_id = instr.start_invocation(
+            purpose="tagger",
+            model=settings.builder_model,
+            meta={"project_id": project_id or ""},
+        )
+        t0 = time.perf_counter()
+        usage: Dict[str, Any] = {
+            "purpose": "tagger",
+            "model": settings.builder_model,
+            "prompt_tokens_reported": 0,
+            "completion_tokens_reported": 0,
+            "total_tokens_reported": 0,
+            "usage_is_estimate": True,
+        }
         context = (previous_pair_text + "\n\n") if previous_pair_text else ""
         user_prompt = f"{context}USER: {user_text}\nASSISTANT: {assistant_text}\n"
 
@@ -178,6 +195,22 @@ def tag_pair(
                 reasoning={"effort": "low"},
                 max_output_tokens=int(settings.builder_max_tokens),
             )
+        try:
+            u = getattr(resp, "usage", None)
+            prompt_tok = int(getattr(u, "input_tokens", 0) or 0) if u is not None else 0
+            completion_tok = int(getattr(u, "output_tokens", 0) or 0) if u is not None else 0
+            total_tok = int(getattr(u, "total_tokens", 0) or (prompt_tok + completion_tok))
+            if total_tok > 0:
+                usage = {
+                    "purpose": "tagger",
+                    "model": settings.builder_model,
+                    "prompt_tokens_reported": prompt_tok,
+                    "completion_tokens_reported": completion_tok,
+                    "total_tokens_reported": total_tok,
+                    "usage_is_estimate": False,
+                }
+        except Exception:
+            pass
         raw = _responses_text(resp)
         clean = raw
         if clean.startswith("```"):
@@ -245,6 +278,11 @@ def tag_pair(
             )
         except Exception:
             pass
+        instr.end_invocation(
+            invocation_id,
+            usage=usage,
+            timing={"ttlt_ms": int((time.perf_counter() - t0) * 1000.0)},
+        )
 
         return {
             "topics": topics,
@@ -254,6 +292,22 @@ def tag_pair(
         }
     except Exception as e:
         logger.warning("[TAGGER][WARN] %s", e)
+        try:
+            if "invocation_id" in locals() and invocation_id:
+                get_instrumentation().end_invocation(
+                    invocation_id,
+                    usage=usage if "usage" in locals() else {
+                        "purpose": "tagger",
+                        "model": get_settings().builder_model,
+                        "prompt_tokens_reported": 0,
+                        "completion_tokens_reported": 0,
+                        "total_tokens_reported": 0,
+                        "usage_is_estimate": True,
+                    },
+                    timing={"ttlt_ms": int((time.perf_counter() - t0) * 1000.0)} if "t0" in locals() else {},
+                )
+        except Exception:
+            pass
         # Debug dump on failure (best-effort)
         try:
             settings = get_settings()

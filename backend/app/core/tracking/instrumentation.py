@@ -8,6 +8,7 @@ Enabled/disabled behavior is centralized here via Noop vs Real implementations.
 from __future__ import annotations
 
 import atexit
+import contextvars
 import json
 import logging
 import os
@@ -17,6 +18,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Protocol
 
 logger = logging.getLogger(__name__)
+_ACTIVE_TURN_ID: contextvars.ContextVar[Optional[int]] = contextvars.ContextVar(
+    "instrumentation_active_turn_id",
+    default=None,
+)
 
 
 def _utc_iso() -> str:
@@ -65,9 +70,11 @@ class NoopInstrumentation:
 
     def start_turn(self, turn_id: int, user_meta: Optional[dict] = None) -> None:
         _ = (turn_id, user_meta)
+        _ACTIVE_TURN_ID.set(int(turn_id))
 
     def end_turn(self, output_meta: Optional[dict] = None) -> None:
         _ = output_meta
+        _ACTIVE_TURN_ID.set(None)
 
     def start_invocation(self, purpose: str, model: str, meta: Optional[dict] = None) -> str:
         _ = (purpose, model, meta)
@@ -182,6 +189,7 @@ class RealInstrumentation:
             try:
                 if not self.run_id or self._ended:
                     return
+                _ACTIVE_TURN_ID.set(int(turn_id))
                 payload = {
                     "ts": _utc_iso(),
                     "event": "start_turn",
@@ -203,6 +211,7 @@ class RealInstrumentation:
                     "output_meta": output_meta or {},
                 }
                 self._append_jsonl("turns.jsonl", payload)
+                _ACTIVE_TURN_ID.set(None)
             except Exception as e:
                 logger.warning("tracking.end_turn failed: %s", e, exc_info=True)
 
@@ -218,6 +227,7 @@ class RealInstrumentation:
                     "ts": _utc_iso(),
                     "event": "start_invocation",
                     "invocation_id": invocation_id,
+                    "turn_id": _ACTIVE_TURN_ID.get(),
                     "purpose": purpose,
                     "model": model,
                     "meta": meta or {},

@@ -23,6 +23,7 @@ from datetime import datetime
 from openai import OpenAI
 
 from .config import get_settings
+from .tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
 
 logger = logging.getLogger(__name__)
@@ -266,6 +267,21 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
     user = format_contextual_turn(user_text, history_summary)
     raw = ""
     data: Optional[Dict[str, Any]] = None
+    instr = get_instrumentation()
+    invocation_id = instr.start_invocation(
+        purpose="router",
+        model=settings.builder_model,
+        meta={"project_id": project_id},
+    )
+    t0 = time.perf_counter()
+    usage: Dict[str, Any] = {
+        "purpose": "router",
+        "model": settings.builder_model,
+        "prompt_tokens_reported": 0,
+        "completion_tokens_reported": 0,
+        "total_tokens_reported": 0,
+        "usage_is_estimate": True,
+    }
 
     try:
         client = OpenAI(api_key=settings.openai_api_key)
@@ -301,6 +317,22 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
                 reasoning={"effort": "low"},
                 max_output_tokens=int(settings.builder_max_tokens),
             )
+        try:
+            u = getattr(resp, "usage", None)
+            prompt_tok = int(getattr(u, "input_tokens", 0) or 0) if u is not None else 0
+            completion_tok = int(getattr(u, "output_tokens", 0) or 0) if u is not None else 0
+            total_tok = int(getattr(u, "total_tokens", 0) or (prompt_tok + completion_tok))
+            if total_tok > 0:
+                usage = {
+                    "purpose": "router",
+                    "model": settings.builder_model,
+                    "prompt_tokens_reported": prompt_tok,
+                    "completion_tokens_reported": completion_tok,
+                    "total_tokens_reported": total_tok,
+                    "usage_is_estimate": False,
+                }
+        except Exception:
+            pass
         raw = _responses_text(resp)
         logger.debug("builder raw=%s", (raw[:cap] + ("…" if len(raw) > cap else "")))
         # Clean output to ensure strict JSON parsing
@@ -345,6 +377,12 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
         if settings.builder_cache:
             _CACHE[key] = (time.time(), data2)
         logger.info("builder route=%s", data2.get("route"))
+        if invocation_id:
+            instr.end_invocation(
+                invocation_id,
+                usage=usage,
+                timing={"ttlt_ms": int((time.perf_counter() - t0) * 1000.0)},
+            )
         return data2
     except Exception as e:
         # Debug dump failure case (best-effort)
@@ -361,6 +399,12 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
         except Exception:
             pass
         logger.warning(f"builder failed: {e}")
+        if invocation_id:
+            instr.end_invocation(
+                invocation_id,
+                usage=usage,
+                timing={"ttlt_ms": int((time.perf_counter() - t0) * 1000.0)},
+            )
         return None
 
 

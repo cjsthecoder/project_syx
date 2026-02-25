@@ -107,7 +107,18 @@ class RealInstrumentation:
         self._run_meta: Dict[str, Any] = {}
         self._ended = False
         self._invocation_seq = 0
+        self._turn_state: Dict[int, Dict[str, Any]] = {}
+        self._invocation_state: Dict[str, Dict[str, Any]] = {}
         self._lock = threading.RLock()
+
+    @staticmethod
+    def _as_int(v: Any, default: Optional[int] = 0) -> Optional[int]:
+        try:
+            if v is None:
+                return int(default) if default is not None else None
+            return int(v)
+        except Exception:
+            return int(default) if default is not None else None
 
     def _ensure_dir(self) -> None:
         os.makedirs(self.runs_dir, exist_ok=True)
@@ -189,11 +200,21 @@ class RealInstrumentation:
             try:
                 if not self.run_id or self._ended:
                     return
-                _ACTIVE_TURN_ID.set(int(turn_id))
+                tid = int(turn_id)
+                _ACTIVE_TURN_ID.set(tid)
+                self._turn_state[tid] = {
+                    "prompt_system_tokens_est": 0,
+                    "prompt_history_tokens_est": 0,
+                    "prompt_rag_tokens_est": 0,
+                    "prompt_profile_tokens_est": 0,
+                    "prompt_other_tokens_est": 0,
+                    "main_total_tokens_reported": 0,
+                    "mini_total_tokens_reported_sum": 0,
+                }
                 payload = {
                     "ts": _utc_iso(),
                     "event": "start_turn",
-                    "turn_id": int(turn_id),
+                    "turn_id": tid,
                     "user_meta": user_meta or {},
                 }
                 self._append_jsonl("turns.jsonl", payload)
@@ -205,13 +226,30 @@ class RealInstrumentation:
             try:
                 if not self.run_id or self._ended:
                     return
+                tid = _ACTIVE_TURN_ID.get()
+                if tid is None and isinstance(output_meta, dict):
+                    tid = self._as_int(output_meta.get("turn_id"), None)  # type: ignore[arg-type]
+                turn_rollup = self._turn_state.get(int(tid)) if tid is not None else None
+                main_total = int((turn_rollup or {}).get("main_total_tokens_reported", 0))
+                mini_total = int((turn_rollup or {}).get("mini_total_tokens_reported_sum", 0))
                 payload = {
                     "ts": _utc_iso(),
                     "event": "end_turn",
+                    "turn_id": int(tid) if tid is not None else None,
+                    "prompt_system_tokens_est": int((turn_rollup or {}).get("prompt_system_tokens_est", 0)),
+                    "prompt_history_tokens_est": int((turn_rollup or {}).get("prompt_history_tokens_est", 0)),
+                    "prompt_rag_tokens_est": int((turn_rollup or {}).get("prompt_rag_tokens_est", 0)),
+                    "prompt_profile_tokens_est": int((turn_rollup or {}).get("prompt_profile_tokens_est", 0)),
+                    "prompt_other_tokens_est": int((turn_rollup or {}).get("prompt_other_tokens_est", 0)),
+                    "main_total_tokens_reported": main_total,
+                    "mini_total_tokens_reported_sum": mini_total,
+                    "turn_total_tokens_reported": int(main_total + mini_total),
                     "output_meta": output_meta or {},
                 }
                 self._append_jsonl("turns.jsonl", payload)
                 _ACTIVE_TURN_ID.set(None)
+                if tid is not None:
+                    self._turn_state.pop(int(tid), None)
             except Exception as e:
                 logger.warning("tracking.end_turn failed: %s", e, exc_info=True)
 
@@ -223,11 +261,20 @@ class RealInstrumentation:
                 self._invocation_seq += 1
                 # Unique within a run by construction (monotonic sequence).
                 invocation_id = f"inv_{self._invocation_seq:08d}"
+                start_ts = _utc_iso()
+                turn_id = _ACTIVE_TURN_ID.get()
+                self._invocation_state[invocation_id] = {
+                    "turn_id": int(turn_id) if turn_id is not None else None,
+                    "purpose": purpose,
+                    "model": model,
+                    "meta": meta or {},
+                    "start_ts": start_ts,
+                }
                 payload = {
-                    "ts": _utc_iso(),
+                    "ts": start_ts,
                     "event": "start_invocation",
                     "invocation_id": invocation_id,
-                    "turn_id": _ACTIVE_TURN_ID.get(),
+                    "turn_id": turn_id,
                     "purpose": purpose,
                     "model": model,
                     "meta": meta or {},
@@ -248,12 +295,59 @@ class RealInstrumentation:
             try:
                 if not self.run_id or self._ended:
                     return
+                state = self._invocation_state.pop(invocation_id, {})
+                turn_id = state.get("turn_id")
+                purpose = str((usage or {}).get("purpose") or state.get("purpose") or "other")
+                model = str((usage or {}).get("model") or state.get("model") or "")
+                prompt_tok = self._as_int((usage or {}).get("prompt_tokens_reported"), 0)
+                completion_tok = self._as_int((usage or {}).get("completion_tokens_reported"), 0)
+                total_tok = self._as_int((usage or {}).get("total_tokens_reported"), prompt_tok + completion_tok)
+                usage_is_estimate = bool((usage or {}).get("usage_is_estimate", True))
+                if total_tok <= 0:
+                    total_tok = int(prompt_tok + completion_tok)
+
+                # Keep canonical fields stable and permit optional extra usage fields in meta diagnostics.
+                meta_diag: Dict[str, Any] = {}
+                if isinstance(state.get("meta"), dict):
+                    meta_diag.update(state.get("meta", {}))
+                extra_usage = (usage or {}).get("extra_usage")
+                if isinstance(extra_usage, dict):
+                    meta_diag["extra_usage"] = extra_usage
+
+                # 5.5.2 rollups: main contributes to main_total, non-main contributes to mini_total.
+                if isinstance(turn_id, int):
+                    ts = self._turn_state.setdefault(
+                        int(turn_id),
+                        {
+                            "prompt_system_tokens_est": 0,
+                            "prompt_history_tokens_est": 0,
+                            "prompt_rag_tokens_est": 0,
+                            "prompt_profile_tokens_est": 0,
+                            "prompt_other_tokens_est": 0,
+                            "main_total_tokens_reported": 0,
+                            "mini_total_tokens_reported_sum": 0,
+                        },
+                    )
+                    if purpose == "main":
+                        ts["main_total_tokens_reported"] = int(ts.get("main_total_tokens_reported", 0)) + int(total_tok)
+                    else:
+                        ts["mini_total_tokens_reported_sum"] = int(ts.get("mini_total_tokens_reported_sum", 0)) + int(total_tok)
+
                 payload = {
                     "ts": _utc_iso(),
                     "event": "end_invocation",
                     "invocation_id": invocation_id,
-                    "usage": usage or {},
+                    "turn_id": turn_id,
+                    "purpose": purpose,
+                    "model": model,
+                    "prompt_tokens_reported": int(prompt_tok),
+                    "completion_tokens_reported": int(completion_tok),
+                    "total_tokens_reported": int(total_tok),
+                    "usage_is_estimate": bool(usage_is_estimate),
+                    "meta": meta_diag,
                     "timing": timing or {},
+                    "start_ts": state.get("start_ts"),
+                    "end_ts": _utc_iso(),
                 }
                 self._append_jsonl("invocations.jsonl", payload)
             except Exception as e:
@@ -264,10 +358,30 @@ class RealInstrumentation:
             try:
                 if not self.run_id or self._ended:
                     return
+                tid = _ACTIVE_TURN_ID.get()
+                if isinstance(tid, int) and str(name) == "prompt_assembly":
+                    ts = self._turn_state.setdefault(
+                        int(tid),
+                        {
+                            "prompt_system_tokens_est": 0,
+                            "prompt_history_tokens_est": 0,
+                            "prompt_rag_tokens_est": 0,
+                            "prompt_profile_tokens_est": 0,
+                            "prompt_other_tokens_est": 0,
+                            "main_total_tokens_reported": 0,
+                            "mini_total_tokens_reported_sum": 0,
+                        },
+                    )
+                    ts["prompt_system_tokens_est"] = self._as_int((data or {}).get("prompt_system_tokens_est"), 0)
+                    ts["prompt_history_tokens_est"] = self._as_int((data or {}).get("prompt_history_tokens_est"), 0)
+                    ts["prompt_rag_tokens_est"] = self._as_int((data or {}).get("prompt_rag_tokens_est"), 0)
+                    ts["prompt_profile_tokens_est"] = self._as_int((data or {}).get("prompt_profile_tokens_est"), 0)
+                    ts["prompt_other_tokens_est"] = self._as_int((data or {}).get("prompt_other_tokens_est"), 0)
                 payload = {
                     "ts": _utc_iso(),
                     "event": "stage",
                     "name": name,
+                    "turn_id": int(tid) if isinstance(tid, int) else None,
                     "data": data or {},
                 }
                 self._append_jsonl("turns.jsonl", payload)

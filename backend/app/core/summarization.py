@@ -71,7 +71,8 @@ def run_llm(prompt: str, retries: int = 2) -> str:
                 model=str(provider.settings.model_name),
                 meta={"attempt": int(attempt + 1), "retries": int(retries)},
             )
-            resp = provider.generate_response(message=prompt)
+            # Avoid duplicate sleep/main invocation records; sleep owns instrumentation here.
+            resp = provider.generate_response(message=prompt, instrument=False)
             if resp.get("success"):
                 total_tokens = resp.get("tokens_used")
                 prompt_tokens = resp.get("input_tokens")

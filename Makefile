@@ -402,13 +402,13 @@ setup-env:
 		echo "# Optional startup sweep: rebuild all project RAG indexes from uploads"; \
 		echo ""; \
 		echo "# === Instrumentation (V5.0) ==="; \
-		echo "INSTRUMENTATION_ENABLED=false"; \
+		echo "INSTRUMENTATION_ENABLED=true"; \
 		echo "# Enable run/turn/invocation telemetry collection"; \
 		echo ""; \
 		echo "INSTRUMENTATION_MODE=metrics"; \
 		echo "# metrics|research (research permits artifact capture)"; \
 		echo ""; \
-		echo "INSTRUMENTATION_RUN_ID="; \
+		echo "INSTRUMENTATION_RUN_ID=test_run"; \
 		echo "# Optional run id override; when set, all turns use this run id"; \
 		echo ""; \
 		echo "INSTRUMENTATION_RUNS_DIR=runs"; \

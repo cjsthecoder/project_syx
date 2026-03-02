@@ -227,6 +227,11 @@ class RealInstrumentation:
                     "ttfb_ms_main": 0,
                     "ttlt_ms_main": 0,
                     "_has_main_latency": False,
+                    "route": "OTHER",
+                    "rag_enabled": False,
+                    "retrieved_count": 0,
+                    "kept_count": 0,
+                    "expanded_unique_chunks_after_merge": 0,
                 }
                 payload = {
                     "ts": _utc_iso(),
@@ -257,6 +262,32 @@ class RealInstrumentation:
                         "tracking.turn missing main latency turn_id=%s; forcing 0 values",
                         str(tid),
                     )
+                out = output_meta or {}
+                prompt_system = int((turn_rollup or {}).get("prompt_system_tokens_est", 0))
+                prompt_history = int((turn_rollup or {}).get("prompt_history_tokens_est", 0))
+                prompt_rag = int((turn_rollup or {}).get("prompt_rag_tokens_est", 0))
+                prompt_profile = int((turn_rollup or {}).get("prompt_profile_tokens_est", 0))
+                prompt_other = int((turn_rollup or {}).get("prompt_other_tokens_est", 0))
+                route = str((out or {}).get("route") or (turn_rollup or {}).get("route") or "OTHER")
+                rag_enabled = bool((out or {}).get("rag_enabled", (turn_rollup or {}).get("rag_enabled", False)))
+                retrieved_count = int((out or {}).get("retrieved_count", (turn_rollup or {}).get("retrieved_count", 0)) or 0)
+                kept_count = int((out or {}).get("kept_count", (turn_rollup or {}).get("kept_count", 0)) or 0)
+                expanded_unique_chunks_after_merge = int(
+                    (out or {}).get(
+                        "expanded_unique_chunks_after_merge",
+                        (turn_rollup or {}).get("expanded_unique_chunks_after_merge", 0),
+                    )
+                    or 0
+                )
+                rag_tokens_injected_est = int((out or {}).get("rag_tokens_injected_est", prompt_rag) or 0)
+                final_context_tokens_est = int(
+                    (out or {}).get(
+                        "final_context_tokens_est",
+                        prompt_system + prompt_history + prompt_rag + prompt_profile + prompt_other,
+                    )
+                    or 0
+                )
+                final_context_clipped = bool((out or {}).get("final_context_clipped", False))
                 turn_started_mono = (turn_rollup or {}).get("_turn_started_monotonic", None)
                 ttlt_turn_total = 0
                 try:
@@ -268,11 +299,19 @@ class RealInstrumentation:
                     "ts": _utc_iso(),
                     "event": "end_turn",
                     "turn_id": int(tid) if tid is not None else None,
-                    "prompt_system_tokens_est": int((turn_rollup or {}).get("prompt_system_tokens_est", 0)),
-                    "prompt_history_tokens_est": int((turn_rollup or {}).get("prompt_history_tokens_est", 0)),
-                    "prompt_rag_tokens_est": int((turn_rollup or {}).get("prompt_rag_tokens_est", 0)),
-                    "prompt_profile_tokens_est": int((turn_rollup or {}).get("prompt_profile_tokens_est", 0)),
-                    "prompt_other_tokens_est": int((turn_rollup or {}).get("prompt_other_tokens_est", 0)),
+                    "prompt_system_tokens_est": int(prompt_system),
+                    "prompt_history_tokens_est": int(prompt_history),
+                    "prompt_rag_tokens_est": int(prompt_rag),
+                    "prompt_profile_tokens_est": int(prompt_profile),
+                    "prompt_other_tokens_est": int(prompt_other),
+                    "route": route,
+                    "rag_enabled": bool(rag_enabled),
+                    "retrieved_count": int(retrieved_count),
+                    "kept_count": int(kept_count),
+                    "expanded_unique_chunks_after_merge": int(expanded_unique_chunks_after_merge),
+                    "rag_tokens_injected_est": int(rag_tokens_injected_est),
+                    "final_context_tokens_est": int(final_context_tokens_est),
+                    "final_context_clipped": bool(final_context_clipped),
                     "main_total_tokens_reported": main_total,
                     "mini_total_tokens_reported_sum": mini_total,
                     "turn_total_tokens_reported": int(main_total + mini_total),
@@ -379,6 +418,11 @@ class RealInstrumentation:
                             "prompt_other_tokens_est": 0,
                             "main_total_tokens_reported": 0,
                             "mini_total_tokens_reported_sum": 0,
+                            "route": "OTHER",
+                            "rag_enabled": False,
+                            "retrieved_count": 0,
+                            "kept_count": 0,
+                            "expanded_unique_chunks_after_merge": 0,
                         },
                     )
                     if purpose == "main":
@@ -432,6 +476,11 @@ class RealInstrumentation:
                             "prompt_other_tokens_est": 0,
                             "main_total_tokens_reported": 0,
                             "mini_total_tokens_reported_sum": 0,
+                            "route": "OTHER",
+                            "rag_enabled": False,
+                            "retrieved_count": 0,
+                            "kept_count": 0,
+                            "expanded_unique_chunks_after_merge": 0,
                         },
                     )
                     ts["prompt_system_tokens_est"] = self._as_int((data or {}).get("prompt_system_tokens_est"), 0)
@@ -439,6 +488,32 @@ class RealInstrumentation:
                     ts["prompt_rag_tokens_est"] = self._as_int((data or {}).get("prompt_rag_tokens_est"), 0)
                     ts["prompt_profile_tokens_est"] = self._as_int((data or {}).get("prompt_profile_tokens_est"), 0)
                     ts["prompt_other_tokens_est"] = self._as_int((data or {}).get("prompt_other_tokens_est"), 0)
+                if isinstance(tid, int) and str(name) == "retrieval_selection_expansion":
+                    ts = self._turn_state.setdefault(
+                        int(tid),
+                        {
+                            "prompt_system_tokens_est": 0,
+                            "prompt_history_tokens_est": 0,
+                            "prompt_rag_tokens_est": 0,
+                            "prompt_profile_tokens_est": 0,
+                            "prompt_other_tokens_est": 0,
+                            "main_total_tokens_reported": 0,
+                            "mini_total_tokens_reported_sum": 0,
+                            "route": "OTHER",
+                            "rag_enabled": False,
+                            "retrieved_count": 0,
+                            "kept_count": 0,
+                            "expanded_unique_chunks_after_merge": 0,
+                        },
+                    )
+                    ts["route"] = str((data or {}).get("route") or ts.get("route") or "OTHER")
+                    ts["rag_enabled"] = True
+                    ts["retrieved_count"] = self._as_int((data or {}).get("ordered_candidates"), 0)
+                    ts["kept_count"] = self._as_int((data or {}).get("selected_candidates"), 0)
+                    ts["expanded_unique_chunks_after_merge"] = self._as_int(
+                        (data or {}).get("expanded_unique_chunks_after_merge"),
+                        self._as_int((data or {}).get("kept_candidates"), 0),
+                    )
                 payload = {
                     "ts": _utc_iso(),
                     "event": "stage",

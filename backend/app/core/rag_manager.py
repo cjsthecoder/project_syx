@@ -1089,7 +1089,9 @@ def merge_daily_and_main(
             "daily_avg": 0.0,
             "total_hits": 0,
             "ordered_candidates": 0,
+            "selected_candidates": 0,
             "kept_candidates": 0,
+            "expanded_unique_chunks_after_merge": 0,
         }
     logger.debug(
         "DailyRAG: starting merged retrieval project=%s per_source_k=%s daily_enabled=%s max_keep=%s",
@@ -1682,6 +1684,7 @@ def merge_daily_and_main(
                 "ordered_candidates": int(len(ordered)),
                 "selected_candidates": int(len(selected_candidates)),
                 "kept_candidates": int(len(pieces)),
+                "expanded_unique_chunks_after_merge": int(dedupe_unique_keyed_count),
                 "adjacent_bonus": int(adjacent_bonus),
                 "main_hits": int(main_hits),
                 "daily_hits": int(daily_hits),
@@ -1703,7 +1706,9 @@ def merge_daily_and_main(
         "daily_avg": float(daily_avg),
         "total_hits": int(main_hits + daily_hits),
         "ordered_candidates": int(len(ordered)),
+        "selected_candidates": int(len(selected_candidates)),
         "kept_candidates": int(len(pieces)),
+        "expanded_unique_chunks_after_merge": int(dedupe_unique_keyed_count),
     }
 
 

@@ -135,6 +135,7 @@ class RealInstrumentation:
         self._turn_state: Dict[int, Dict[str, Any]] = {}
         self._invocation_state: Dict[str, Dict[str, Any]] = {}
         self._maintenance_usage: Dict[str, Dict[str, int]] = {}
+        self._models_observed: Dict[str, set] = {}
         self._lock = threading.RLock()
 
     @staticmethod
@@ -219,13 +220,27 @@ class RealInstrumentation:
                 self.run_id = self._new_run_id()
                 self.run_dir = os.path.join(self.runs_dir, self.run_id)
                 os.makedirs(self.run_dir, exist_ok=True)
+                self._models_observed = {}
+
+                cfg_in = config or {}
+                if isinstance(cfg_in, dict) and isinstance(cfg_in.get("config_snapshot"), dict):
+                    cfg_snapshot = dict(cfg_in.get("config_snapshot") or {})
+                elif isinstance(cfg_in, dict):
+                    cfg_snapshot = dict(cfg_in)
+                else:
+                    cfg_snapshot = {}
 
                 self._run_meta = {
                     "run_id": self.run_id,
                     "mode": self.mode,
                     "started_at": _utc_iso(),
                     "ended_at": None,
-                    "config": config or {},
+                    # 5.10: immutable startup snapshot (authoritative)
+                    "config_snapshot": cfg_snapshot,
+                    # Back-compat alias for existing readers.
+                    "config": cfg_snapshot,
+                    # Runtime-observed values are not part of immutable snapshot.
+                    "models_observed": {},
                     "summary": {},
                 }
                 self._write_run_json()
@@ -253,7 +268,13 @@ class RealInstrumentation:
                 if self._ended:
                     logger.error("tracking.end_run called more than once; ignoring duplicate call.")
                     return
+                observed: Dict[str, Any] = {}
+                for purpose, models in self._models_observed.items():
+                    vals = sorted([str(m) for m in models if str(m).strip()])
+                    if vals:
+                        observed[str(purpose)] = vals
                 self._run_meta["ended_at"] = _utc_iso()
+                self._run_meta["models_observed"] = observed
                 self._run_meta["summary"] = summary or {}
                 self._write_run_json()
                 self._ended = True
@@ -456,6 +477,8 @@ class RealInstrumentation:
                 turn_id = state.get("turn_id")
                 purpose = str((usage or {}).get("purpose") or state.get("purpose") or "other")
                 model = str((usage or {}).get("model") or state.get("model") or "")
+                if purpose and model:
+                    self._models_observed.setdefault(purpose, set()).add(model)
                 streaming = bool((state.get("meta") or {}).get("streaming", False)) if isinstance(state.get("meta"), dict) else False
                 prompt_tok = self._as_int((usage or {}).get("prompt_tokens_reported"), 0)
                 completion_tok = self._as_int((usage or {}).get("completion_tokens_reported"), 0)

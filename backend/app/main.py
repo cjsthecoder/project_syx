@@ -75,6 +75,8 @@ async def lifespan(app: FastAPI):
             "instrumentation_mode": str(get_settings().instrumentation_mode),
             "instrumentation_run_id": get_settings().instrumentation_run_id,
             "instrumentation_runs_dir": str(get_settings().instrumentation_runs_dir),
+            "instrumentation_prompt_tol_abs_tokens": int(get_settings().instrumentation_prompt_tol_abs_tokens),
+            "instrumentation_prompt_tol_pct": float(get_settings().instrumentation_prompt_tol_pct),
             "enable_scheduler": bool(get_settings().enable_scheduler),
             "enable_dream": bool(get_settings().enable_dream),
         }

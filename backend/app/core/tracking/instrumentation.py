@@ -110,10 +110,23 @@ class NoopInstrumentation:
 class RealInstrumentation:
     """Minimal file-backed instrumentation implementation for lifecycle scaffolding."""
 
-    def __init__(self, *, runs_dir: str, mode: str, run_id_override: Optional[str] = None):
+    def __init__(
+        self,
+        *,
+        runs_dir: str,
+        mode: str,
+        run_id_override: Optional[str] = None,
+        prompt_tol_abs_tokens: int = 25,
+        prompt_tol_pct: float = 0.02,
+    ):
         self.runs_dir = runs_dir or "runs"
         self.mode = (mode or "metrics").strip().lower()
         self.run_id_override = run_id_override.strip() if isinstance(run_id_override, str) and run_id_override.strip() else None
+        self.prompt_tol_abs_tokens = max(0, int(prompt_tol_abs_tokens))
+        try:
+            self.prompt_tol_pct = max(0.0, float(prompt_tol_pct))
+        except Exception:
+            self.prompt_tol_pct = 0.02
         self.run_id: Optional[str] = None
         self.run_dir: Optional[str] = None
         self._run_meta: Dict[str, Any] = {}
@@ -123,6 +136,33 @@ class RealInstrumentation:
         self._invocation_state: Dict[str, Dict[str, Any]] = {}
         self._maintenance_usage: Dict[str, Dict[str, int]] = {}
         self._lock = threading.RLock()
+
+    @staticmethod
+    def _purpose_is_maintenance(purpose: str) -> bool:
+        p = str(purpose or "").strip().lower()
+        return p in {"sleep", "dream"}
+
+    @staticmethod
+    def _turn_state_defaults() -> Dict[str, Any]:
+        return {
+            "prompt_system_tokens_est": 0,
+            "prompt_history_tokens_est": 0,
+            "prompt_rag_tokens_est": 0,
+            "prompt_profile_tokens_est": 0,
+            "prompt_other_tokens_est": 0,
+            "main_total_tokens_reported": 0,
+            "mini_total_tokens_reported_sum": 0,
+            "route": "OTHER",
+            "rag_enabled": False,
+            "retrieved_count": 0,
+            "kept_count": 0,
+            "expanded_unique_chunks_after_merge": 0,
+            "main_invocation_count": 0,
+            "main_invocation_total_tokens_reported": 0,
+            "main_prompt_tokens_reported": 0,
+            "main_usage_is_estimate": True,
+            "interactive_non_main_total_tokens_reported": 0,
+        }
 
     @staticmethod
     def _as_int(v: Any, default: Optional[int] = 0) -> Optional[int]:
@@ -229,21 +269,10 @@ class RealInstrumentation:
                 _ACTIVE_TURN_ID.set(tid)
                 self._turn_state[tid] = {
                     "_turn_started_monotonic": time.perf_counter(),
-                    "prompt_system_tokens_est": 0,
-                    "prompt_history_tokens_est": 0,
-                    "prompt_rag_tokens_est": 0,
-                    "prompt_profile_tokens_est": 0,
-                    "prompt_other_tokens_est": 0,
-                    "main_total_tokens_reported": 0,
-                    "mini_total_tokens_reported_sum": 0,
                     "ttfb_ms_main": 0,
                     "ttlt_ms_main": 0,
                     "_has_main_latency": False,
-                    "route": "OTHER",
-                    "rag_enabled": False,
-                    "retrieved_count": 0,
-                    "kept_count": 0,
-                    "expanded_unique_chunks_after_merge": 0,
+                    **self._turn_state_defaults(),
                 }
                 payload = {
                     "ts": _utc_iso(),
@@ -300,6 +329,46 @@ class RealInstrumentation:
                     or 0
                 )
                 final_context_clipped = bool((out or {}).get("final_context_clipped", False))
+                token_accounting_errors: list[str] = []
+
+                # 5.9: main accounting requires exactly one main invocation.
+                main_invocation_count = int((turn_rollup or {}).get("main_invocation_count", 0))
+                main_inv_total = int((turn_rollup or {}).get("main_invocation_total_tokens_reported", 0))
+                if main_invocation_count == 0:
+                    token_accounting_errors.append("missing_main_invocation")
+                    token_accounting_errors.append("main_total_mismatch")
+                elif main_invocation_count > 1:
+                    token_accounting_errors.append("multiple_main_invocations")
+                    token_accounting_errors.append("main_total_mismatch")
+                else:
+                    if int(main_total) != int(main_inv_total):
+                        token_accounting_errors.append("main_total_mismatch")
+
+                # 5.9: mini accounting uses interactive non-main purposes only.
+                interactive_non_main_total = int((turn_rollup or {}).get("interactive_non_main_total_tokens_reported", 0))
+                if int(mini_total) != int(interactive_non_main_total):
+                    token_accounting_errors.append("mini_total_mismatch")
+
+                # 5.9: prompt estimate validation against main prompt usage with configurable tolerance.
+                main_prompt_tokens_reported = int((turn_rollup or {}).get("main_prompt_tokens_reported", 0))
+                main_usage_is_estimate = bool((turn_rollup or {}).get("main_usage_is_estimate", True))
+                prompt_estimate_sum = int(prompt_system + prompt_history + prompt_rag + prompt_profile + prompt_other)
+                if main_usage_is_estimate or main_prompt_tokens_reported <= 0:
+                    # Non-failing visibility code when provider prompt usage is missing/unreliable.
+                    token_accounting_errors.append("prompt_usage_missing_skipped")
+                else:
+                    delta_abs = abs(int(prompt_estimate_sum) - int(main_prompt_tokens_reported))
+                    delta_pct = float(delta_abs) / float(max(1, int(main_prompt_tokens_reported)))
+                    within_abs = delta_abs <= int(self.prompt_tol_abs_tokens)
+                    within_pct = delta_pct <= float(self.prompt_tol_pct)
+                    if not (within_abs or within_pct):
+                        token_accounting_errors.append("prompt_estimate_out_of_tolerance")
+
+                token_accounting_ok = True
+                for code in token_accounting_errors:
+                    if code != "prompt_usage_missing_skipped":
+                        token_accounting_ok = False
+                        break
                 turn_started_mono = (turn_rollup or {}).get("_turn_started_monotonic", None)
                 ttlt_turn_total = 0
                 try:
@@ -324,6 +393,8 @@ class RealInstrumentation:
                     "rag_tokens_injected_est": int(rag_tokens_injected_est),
                     "final_context_tokens_est": int(final_context_tokens_est),
                     "final_context_clipped": bool(final_context_clipped),
+                    "token_accounting_ok": bool(token_accounting_ok),
+                    "token_accounting_errors": list(token_accounting_errors),
                     "main_total_tokens_reported": main_total,
                     "mini_total_tokens_reported_sum": mini_total,
                     "turn_total_tokens_reported": int(main_total + mini_total),
@@ -422,28 +493,25 @@ class RealInstrumentation:
                 if isinstance(turn_id, int):
                     ts = self._turn_state.setdefault(
                         int(turn_id),
-                        {
-                            "prompt_system_tokens_est": 0,
-                            "prompt_history_tokens_est": 0,
-                            "prompt_rag_tokens_est": 0,
-                            "prompt_profile_tokens_est": 0,
-                            "prompt_other_tokens_est": 0,
-                            "main_total_tokens_reported": 0,
-                            "mini_total_tokens_reported_sum": 0,
-                            "route": "OTHER",
-                            "rag_enabled": False,
-                            "retrieved_count": 0,
-                            "kept_count": 0,
-                            "expanded_unique_chunks_after_merge": 0,
-                        },
+                        self._turn_state_defaults(),
                     )
                     if purpose == "main":
+                        ts["main_invocation_count"] = int(ts.get("main_invocation_count", 0)) + 1
+                        ts["main_invocation_total_tokens_reported"] = int(
+                            ts.get("main_invocation_total_tokens_reported", 0)
+                        ) + int(total_tok)
+                        ts["main_prompt_tokens_reported"] = int(prompt_tok)
+                        ts["main_usage_is_estimate"] = bool(usage_is_estimate)
                         ts["main_total_tokens_reported"] = int(ts.get("main_total_tokens_reported", 0)) + int(total_tok)
                         ts["ttfb_ms_main"] = int(ttfb_ms)
                         ts["ttlt_ms_main"] = int(ttlt_ms)
                         ts["_has_main_latency"] = True
                     else:
                         ts["mini_total_tokens_reported_sum"] = int(ts.get("mini_total_tokens_reported_sum", 0)) + int(total_tok)
+                        if not self._purpose_is_maintenance(purpose):
+                            ts["interactive_non_main_total_tokens_reported"] = int(
+                                ts.get("interactive_non_main_total_tokens_reported", 0)
+                            ) + int(total_tok)
 
                 payload = {
                     "ts": _utc_iso(),
@@ -506,20 +574,7 @@ class RealInstrumentation:
                 if isinstance(tid, int) and str(name) == "prompt_assembly":
                     ts = self._turn_state.setdefault(
                         int(tid),
-                        {
-                            "prompt_system_tokens_est": 0,
-                            "prompt_history_tokens_est": 0,
-                            "prompt_rag_tokens_est": 0,
-                            "prompt_profile_tokens_est": 0,
-                            "prompt_other_tokens_est": 0,
-                            "main_total_tokens_reported": 0,
-                            "mini_total_tokens_reported_sum": 0,
-                            "route": "OTHER",
-                            "rag_enabled": False,
-                            "retrieved_count": 0,
-                            "kept_count": 0,
-                            "expanded_unique_chunks_after_merge": 0,
-                        },
+                        self._turn_state_defaults(),
                     )
                     ts["prompt_system_tokens_est"] = self._as_int((data or {}).get("prompt_system_tokens_est"), 0)
                     ts["prompt_history_tokens_est"] = self._as_int((data or {}).get("prompt_history_tokens_est"), 0)
@@ -529,20 +584,7 @@ class RealInstrumentation:
                 if isinstance(tid, int) and str(name) == "retrieval_selection_expansion":
                     ts = self._turn_state.setdefault(
                         int(tid),
-                        {
-                            "prompt_system_tokens_est": 0,
-                            "prompt_history_tokens_est": 0,
-                            "prompt_rag_tokens_est": 0,
-                            "prompt_profile_tokens_est": 0,
-                            "prompt_other_tokens_est": 0,
-                            "main_total_tokens_reported": 0,
-                            "mini_total_tokens_reported_sum": 0,
-                            "route": "OTHER",
-                            "rag_enabled": False,
-                            "retrieved_count": 0,
-                            "kept_count": 0,
-                            "expanded_unique_chunks_after_merge": 0,
-                        },
+                        self._turn_state_defaults(),
                     )
                     ts["route"] = str((data or {}).get("route") or ts.get("route") or "OTHER")
                     ts["rag_enabled"] = True
@@ -626,8 +668,16 @@ def init_instrumentation(settings: Any, *, has_lifespan_hook: bool = False) -> I
         mode = str(getattr(settings, "instrumentation_mode", "metrics") or "metrics")
         runs_dir = str(getattr(settings, "instrumentation_runs_dir", "runs") or "runs")
         run_id = getattr(settings, "instrumentation_run_id", None)
+        prompt_tol_abs = int(getattr(settings, "instrumentation_prompt_tol_abs_tokens", 25) or 25)
+        prompt_tol_pct = float(getattr(settings, "instrumentation_prompt_tol_pct", 0.02) or 0.02)
 
-        real = RealInstrumentation(runs_dir=runs_dir, mode=mode, run_id_override=run_id)
+        real = RealInstrumentation(
+            runs_dir=runs_dir,
+            mode=mode,
+            run_id_override=run_id,
+            prompt_tol_abs_tokens=prompt_tol_abs,
+            prompt_tol_pct=prompt_tol_pct,
+        )
         _INSTRUMENTATION = real
 
         # Register process-exit fallback only when lifecycle hooks are unavailable.

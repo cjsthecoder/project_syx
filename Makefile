@@ -414,6 +414,12 @@ setup-env:
 		echo "INSTRUMENTATION_RUNS_DIR=runs"; \
 		echo "# Root folder for instrumentation outputs"; \
 		echo ""; \
+		echo "INSTRUMENTATION_PROMPT_TOL_ABS_TOKENS=25"; \
+		echo "# V5.9: Absolute prompt token tolerance for accounting validation"; \
+		echo ""; \
+		echo "INSTRUMENTATION_PROMPT_TOL_PCT=0.02"; \
+		echo "# V5.9: Relative prompt token tolerance (fraction)"; \
+		echo ""; \
 		echo "# === Streaming Chat ==="; \
 		echo "STREAMING_ENABLED=true"; \
 		echo "# V3.5: Enable streaming chat endpoint"; \

@@ -3246,6 +3246,44 @@ Validation MUST include:
 - The mini totals match the sum of all non-main interactive invocations in that turn.
 - The prompt composition estimate sum approximately matches `main_prompt_tokens_reported` within a configurable tolerance (if both are present).
 
+Validation semantics:
+- `token_accounting_ok` MUST be `true` only when all enabled validation checks pass.
+- If any enabled check fails, `token_accounting_ok` MUST be `false`.
+- Checks that are explicitly skipped due to missing/unreliable required fields MUST NOT by themselves force `token_accounting_ok=false`.
+
+Error representation:
+- `token_accounting_errors` MUST use stable machine-readable codes.
+- Implementations MAY include additional human-readable messages/details, but stable codes are required for automated analysis.
+- Standardized codes:
+  - `main_total_mismatch`
+  - `mini_total_mismatch`
+  - `multiple_main_invocations`
+  - `missing_main_invocation`
+  - `prompt_estimate_out_of_tolerance`
+  - `prompt_usage_missing_skipped` (optional non-failing visibility code)
+
+Main invocation validation:
+- Each interactive turn MUST have exactly one `purpose="main"` invocation.
+- If zero `main` invocations exist, validation MUST emit `missing_main_invocation`.
+- If more than one `main` invocation exists, validation MUST emit `multiple_main_invocations` and MUST NOT silently pass by summing mains.
+
+Mini invocation scope:
+- Mini-total validation MUST include only interactive non-main invocations for the turn.
+- Maintenance invocations MUST be excluded from mini validation (for example `sleep`, and `dream` if introduced later).
+
+Prompt estimate tolerance:
+- Prompt estimate validation MUST pass if either condition is true:
+  - absolute delta <= `abs_tolerance_tokens`
+  - relative delta <= `pct_tolerance`
+- Default values:
+  - `abs_tolerance_tokens = 25`
+  - `pct_tolerance = 0.02` (2%)
+- Both tolerance values MUST be configurable via settings/environment.
+
+Prompt-usage missing/unreliable handling:
+- If `main_prompt_tokens_reported` is missing or known unreliable (for example estimate/zero fallback), prompt-estimate validation SHOULD be marked skipped and SHOULD NOT fail token accounting by default.
+- Implementations MAY emit non-failing visibility code `prompt_usage_missing_skipped`.
+
 ---
 
 ## 5.10 Configuration Snapshot (Run Reproducibility)

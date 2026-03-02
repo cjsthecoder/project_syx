@@ -159,6 +159,16 @@ class Settings(BaseSettings):
     instrumentation_mode: str = Field(default="metrics", description="Instrumentation mode: metrics or research")
     instrumentation_run_id: Optional[str] = Field(default=None, description="Optional run id override")
     instrumentation_runs_dir: str = Field(default="runs", description="Root directory for instrumentation run artifacts")
+    instrumentation_prompt_tol_abs_tokens: int = Field(
+        default=25,
+        ge=0,
+        description="Absolute token tolerance for 5.9 prompt estimate validation",
+    )
+    instrumentation_prompt_tol_pct: float = Field(
+        default=0.02,
+        ge=0.0,
+        description="Relative tolerance for 5.9 prompt estimate validation",
+    )
     # V3.5: Streaming
     streaming_enabled: bool = Field(default=True, description="Enable streaming chat endpoint")
     stream_flush_ms: int = Field(default=50, gt=0, description="Flush cadence for streaming chunks in milliseconds")

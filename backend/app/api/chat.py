@@ -347,15 +347,24 @@ class _ChatPipeline:
         preview: str,
         msg_id: str,
         conversation_history: Optional[list[dict]],
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
         """
         Run builder + merged retrieval when enabled.
-        Returns (rag_system_prompt, primary_ns).
+        Returns (rag_system_prompt, primary_ns, rag_metrics).
         """
         rag_system_prompt: Optional[str] = None
         primary_ns: Optional[str] = None
+        rag_metrics: Dict[str, Any] = {
+            "route": "OTHER",
+            "rag_enabled": False,
+            "retrieved_count": 0,
+            "kept_count": 0,
+            "expanded_unique_chunks_after_merge": 0,
+            "rag_tokens_injected_est": 0,
+            "final_context_clipped": False,
+        }
         if (not self.settings.rag_on_chat) or (not project_id):
-            return None, None
+            return None, None, rag_metrics
 
         summary = self._build_builder_summary(project_id, conversation_history)
         b = build_query(project_id, summary, message)
@@ -382,7 +391,7 @@ class _ChatPipeline:
             except Exception:
                 pass
             logger.debug("builder unavailable; skipping RAG for this turn")
-            return None, None
+            return None, None, rag_metrics
 
         route = (b.get("route") or "").upper()
         # Route-only classifier: no rag/confidence/topics required.
@@ -428,6 +437,7 @@ class _ChatPipeline:
         except Exception:
             primary_ns = "general"
         set_namespace(primary_ns)
+        rag_metrics["route"] = str(route or "OTHER")
 
         # DELTA-A.4.3: route_policy.json is validated at startup and cached for process lifetime.
         pol = get_route_policy(route or "OTHER")
@@ -436,7 +446,7 @@ class _ChatPipeline:
         per_source_k = compute_per_source_k(int(self.settings.base_top_k), float(mult_val))
         if per_source_k <= 0:
             logger.info("Chat: skipping RAG due to route=%s per_source_k=%s", route, per_source_k)
-            return None, primary_ns
+            return None, primary_ns, rag_metrics
 
         daily_enabled = self._daily_enabled(project_id)
 
@@ -515,7 +525,17 @@ class _ChatPipeline:
         else:
             logger.debug("Chat: no merged RAG context injected (empty)")
 
-        return rag_system_prompt, primary_ns
+        rag_metrics.update(
+            {
+                "route": str(route or "OTHER"),
+                "rag_enabled": True,
+                "retrieved_count": int(rc.get("ordered_candidates", 0) or 0),
+                "kept_count": int(rc.get("selected_candidates", 0) or 0),
+                "expanded_unique_chunks_after_merge": int(rc.get("expanded_unique_chunks_after_merge", 0) or 0),
+                "rag_tokens_injected_est": int(rc.get("tokens_used", 0) or 0),
+            }
+        )
+        return rag_system_prompt, primary_ns, rag_metrics
 
     def apply_rag_guidance(self, base_system_prompt: Optional[str], rag_system_prompt: Optional[str]) -> Optional[str]:
         """Append guidance to system prompt only when RAG context exists."""
@@ -620,6 +640,15 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         instr = get_instrumentation()
         turn_id = _next_turn_id()
         turn_started = False
+        rag_turn_metrics: Dict[str, Any] = {
+            "route": "OTHER",
+            "rag_enabled": False,
+            "retrieved_count": 0,
+            "kept_count": 0,
+            "expanded_unique_chunks_after_merge": 0,
+            "rag_tokens_injected_est": 0,
+            "final_context_clipped": False,
+        }
         msg_id = str(uuid.uuid4())
         set_message_id(msg_id)
         proj = request.project_id or "Continuum"
@@ -650,7 +679,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         memory_manager = get_memory_manager() if request.project_id else None
         conversation_history = pipeline.build_conversation_history(request.project_id)
         base_system_prompt, assistant_hint, personality_creativity = pipeline.load_project_prompts(request.project_id)
-        rag_system_prompt, primary_ns = pipeline.compute_rag_context(
+        rag_system_prompt, primary_ns, rag_turn_metrics = pipeline.compute_rag_context(
             project_id=request.project_id,
             message=request.message,
             preview=preview,
@@ -831,6 +860,17 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                         "project_id": request.project_id,
                         "conversation_id": request.conversation_id,
                         "streaming": False,
+                        "route": str((rag_turn_metrics or {}).get("route", "OTHER")),
+                        "rag_enabled": bool((rag_turn_metrics or {}).get("rag_enabled", False)),
+                        "retrieved_count": int((rag_turn_metrics or {}).get("retrieved_count", 0) or 0),
+                        "kept_count": int((rag_turn_metrics or {}).get("kept_count", 0) or 0),
+                        "expanded_unique_chunks_after_merge": int(
+                            (rag_turn_metrics or {}).get("expanded_unique_chunks_after_merge", 0) or 0
+                        ),
+                        "rag_tokens_injected_est": int(
+                            (rag_turn_metrics or {}).get("rag_tokens_injected_est", 0) or 0
+                        ),
+                        "final_context_clipped": bool((rag_turn_metrics or {}).get("final_context_clipped", False)),
                     }
                 )
         except Exception:
@@ -853,6 +893,15 @@ async def chat_stream(request: ChatRequest):
     turn_id = _next_turn_id()
     turn_started = False
     turn_closed = False
+    rag_turn_metrics: Dict[str, Any] = {
+        "route": "OTHER",
+        "rag_enabled": False,
+        "retrieved_count": 0,
+        "kept_count": 0,
+        "expanded_unique_chunks_after_merge": 0,
+        "rag_tokens_injected_est": 0,
+        "final_context_clipped": False,
+    }
     try:
         t0 = time.time()
         msg_id = str(uuid.uuid4())
@@ -873,7 +922,7 @@ async def chat_stream(request: ChatRequest):
         pipeline = _ChatPipeline(settings)
         conversation_history = pipeline.build_conversation_history(request.project_id)
         base_system_prompt, assistant_hint, personality_creativity = pipeline.load_project_prompts(request.project_id)
-        rag_system_prompt, primary_ns = pipeline.compute_rag_context(
+        rag_system_prompt, primary_ns, rag_turn_metrics = pipeline.compute_rag_context(
             project_id=request.project_id,
             message=(request.message or ""),
             preview=(request.message or "")[:settings.log_preview_max_chars],
@@ -1076,6 +1125,19 @@ async def chat_stream(request: ChatRequest):
                                 "conversation_id": request.conversation_id,
                                 "streaming": True,
                                 "response_len": len("".join(collected)),
+                                "route": str((rag_turn_metrics or {}).get("route", "OTHER")),
+                                "rag_enabled": bool((rag_turn_metrics or {}).get("rag_enabled", False)),
+                                "retrieved_count": int((rag_turn_metrics or {}).get("retrieved_count", 0) or 0),
+                                "kept_count": int((rag_turn_metrics or {}).get("kept_count", 0) or 0),
+                                "expanded_unique_chunks_after_merge": int(
+                                    (rag_turn_metrics or {}).get("expanded_unique_chunks_after_merge", 0) or 0
+                                ),
+                                "rag_tokens_injected_est": int(
+                                    (rag_turn_metrics or {}).get("rag_tokens_injected_est", 0) or 0
+                                ),
+                                "final_context_clipped": bool(
+                                    (rag_turn_metrics or {}).get("final_context_clipped", False)
+                                ),
                             }
                         )
                         turn_closed = True
@@ -1093,6 +1155,19 @@ async def chat_stream(request: ChatRequest):
                         "conversation_id": request.conversation_id,
                         "streaming": True,
                         "error": str(e),
+                        "route": str((rag_turn_metrics or {}).get("route", "OTHER")),
+                        "rag_enabled": bool((rag_turn_metrics or {}).get("rag_enabled", False)),
+                        "retrieved_count": int((rag_turn_metrics or {}).get("retrieved_count", 0) or 0),
+                        "kept_count": int((rag_turn_metrics or {}).get("kept_count", 0) or 0),
+                        "expanded_unique_chunks_after_merge": int(
+                            (rag_turn_metrics or {}).get("expanded_unique_chunks_after_merge", 0) or 0
+                        ),
+                        "rag_tokens_injected_est": int(
+                            (rag_turn_metrics or {}).get("rag_tokens_injected_est", 0) or 0
+                        ),
+                        "final_context_clipped": bool(
+                            (rag_turn_metrics or {}).get("final_context_clipped", False)
+                        ),
                     }
                 )
                 turn_closed = True

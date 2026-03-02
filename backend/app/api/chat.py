@@ -17,7 +17,7 @@ import logging
 import time
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Tuple
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -1034,7 +1034,7 @@ async def chat_stream(request: ChatRequest):
                             yielded_any = True
                             if first_token_ms is None:
                                 first_token_ms = int((time.perf_counter() - t_invoke0) * 1000.0)
-                                first_token_ts = datetime.now().astimezone().isoformat()
+                                first_token_ts = datetime.now(timezone.utc).isoformat()
                             collected.append(piece)
                             yield piece
                 except Exception as e:
@@ -1053,7 +1053,7 @@ async def chat_stream(request: ChatRequest):
                                 yielded_any = True
                                 if first_token_ms is None:
                                     first_token_ms = int((time.perf_counter() - t_invoke0) * 1000.0)
-                                    first_token_ts = datetime.now().astimezone().isoformat()
+                                    first_token_ts = datetime.now(timezone.utc).isoformat()
                                 collected.append(piece)
                                 yield piece
                     else:

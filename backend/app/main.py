@@ -70,15 +70,68 @@ async def lifespan(app: FastAPI):
     # V5.0: initialize instrumentation facade and start process run if enabled.
     try:
         instr = init_instrumentation(get_settings(), has_lifespan_hook=True)
+        s = get_settings()
+        pol = load_and_validate_route_policy()
+        route_policy_snapshot = {}
+        for route_name, route_pol in pol.items():
+            route_policy_snapshot[str(route_name)] = {
+                "retrieval_multiplier": float(route_pol.retrieval_multiplier),
+                "max_keep": int(route_pol.max_keep),
+                "expansion": {
+                    "max_before": int(route_pol.expansion_max_before),
+                    "max_after": int(route_pol.expansion_max_after),
+                },
+            }
         run_cfg = {
-            "instrumentation_enabled": bool(get_settings().instrumentation_enabled),
-            "instrumentation_mode": str(get_settings().instrumentation_mode),
-            "instrumentation_run_id": get_settings().instrumentation_run_id,
-            "instrumentation_runs_dir": str(get_settings().instrumentation_runs_dir),
-            "instrumentation_prompt_tol_abs_tokens": int(get_settings().instrumentation_prompt_tol_abs_tokens),
-            "instrumentation_prompt_tol_pct": float(get_settings().instrumentation_prompt_tol_pct),
-            "enable_scheduler": bool(get_settings().enable_scheduler),
-            "enable_dream": bool(get_settings().enable_dream),
+            "config_snapshot": {
+                "models_configured": {
+                    "main_model": str(s.model_name),
+                    "builder_model": str(s.builder_model),
+                    # Tagger currently uses builder_model in this implementation.
+                    "tagger_model": str(s.builder_model),
+                },
+                "prompt_budgeting": {
+                    "model_context_window_tokens": None,
+                    "max_output_tokens": int(s.model_max_tokens),
+                    "target_max_prompt_tokens": None,
+                    "history_max_tokens": None,
+                    "rag_max_tokens": None,
+                    "profile_max_tokens": None,
+                    "system_max_tokens": None,
+                },
+                "retrieval_static": {
+                    "base_top_k": int(s.base_top_k),
+                    "retrieval_multiplier_default": float(s.retrieval_multiplier),
+                    "embedding_model": str(s.embedding_model),
+                    "chunk_size": int(s.chunk_size),
+                    "chunk_overlap": int(s.chunk_overlap),
+                },
+                "route_policy": route_policy_snapshot,
+                "deprecated_or_ignored": {
+                    "rag_score_threshold": float(s.rag_score_threshold),
+                    "daily_rag_score_threshold": float(s.daily_rag_score_threshold),
+                    "note": "not enforced in A.4.1-A.4.3",
+                },
+                "maintenance": {
+                    "sleep_enabled": True,
+                    "enable_scheduler": bool(s.enable_scheduler),
+                    "sleep_cycle_hour": int(s.sleep_cycle_hour),
+                    "sleep_cycle_minute": int(s.sleep_cycle_minute),
+                    "verify_rag": bool(s.verify_rag),
+                    "force_rag_rebuild_on_startup": bool(s.force_rag_rebuild_on_startup),
+                    "dream_enabled": bool(s.enable_dream),
+                },
+                "instrumentation": {
+                    "enabled": bool(s.instrumentation_enabled),
+                    "mode": str(s.instrumentation_mode),
+                    "run_id_override": s.instrumentation_run_id,
+                    "runs_dir": str(s.instrumentation_runs_dir),
+                    "validation": {
+                        "prompt_tol_abs_tokens": int(s.instrumentation_prompt_tol_abs_tokens),
+                        "prompt_tol_pct": float(s.instrumentation_prompt_tol_pct),
+                    },
+                },
+            },
         }
         run_id = instr.start_run(config=run_cfg)
         if run_id:

@@ -3288,12 +3288,45 @@ Prompt-usage missing/unreliable handling:
 
 ## 5.10 Configuration Snapshot (Run Reproducibility)
 
-`run.json` MUST capture a config snapshot including:
-- Model names for main and mini calls
-- Max context budgets and caps used in prompt assembly
-- Retrieval parameters (k, thresholds, chunk sizing policy)
-- Sleep enable flag and cadence
-- Instrumentation mode and enabled state
+`run.json` MUST capture an immutable startup `config_snapshot` for reproducibility.
+
+Snapshot immutability and runtime changes:
+- `config_snapshot` MUST represent startup configuration only and MUST NOT be mutated mid-run.
+- Runtime config changes (if any) MUST be logged as events (for example `config_change` stage events or a dedicated config events stream) rather than rewriting `config_snapshot`.
+- Implementations MAY include an end-of-run summary field (for example `config_overrides_observed`) in addition to immutable startup snapshot data.
+
+`config_snapshot` MUST include:
+
+- `models_configured`:
+  - configured defaults for main and mini-model paths at run start (for example main model, builder model, tagger model).
+- `models_observed` (or equivalent):
+  - per-purpose set of model IDs actually observed during the run from invocation records.
+
+- `prompt_budgeting`:
+  - `model_context_window_tokens`
+  - `max_output_tokens`
+  - `target_max_prompt_tokens`
+  - `history_max_tokens`
+  - `rag_max_tokens` (if enforced)
+  - `profile_max_tokens` (if enforced)
+  - `system_max_tokens` (if enforced)
+  - If a listed cap is not enforced in current code, implementations MAY write `null` or omit that specific field, but enforced caps MUST be present.
+
+- retrieval configuration split by scope:
+  - `retrieval_static` for global/static settings (for example base K, chunk sizing, embedding model, similarity policy).
+  - `route_policy` snapshot for route-derived behavior that affects retrieval/assembly (for example per-route multipliers, max_keep, expansion params).
+
+- thresholds and deprecated settings policy:
+  - Retrieval/selection thresholds MUST be recorded under active config sections only when enforced in the run's code path.
+  - Settings present in config but not enforced SHOULD be captured under an explicitly non-enforced section (for example `deprecated_or_ignored`) to preserve evidence without implying active behavior.
+
+- `maintenance`:
+  - sleep enable/trigger/cadence settings used by the run (for example scheduler enablement and scheduler time).
+  - operational maintenance flags that affect workload/outputs (for example `verify_rag`, `force_rag_rebuild_on_startup`, dream enablement).
+
+- `instrumentation`:
+  - instrumentation mode and enabled state.
+  - validation parameters that affect accounting outcomes (for example `prompt_tol_abs_tokens`, `prompt_tol_pct`).
 
 ---
 

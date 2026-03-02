@@ -944,6 +944,7 @@ async def chat_stream(request: ChatRequest):
             invocation_id = ""
             t_invoke0 = time.perf_counter()
             first_token_ms = None
+            first_token_ts = None
             provider_usage: Optional[dict] = None
             provider_extra_usage: Optional[dict] = None
             try:
@@ -984,6 +985,7 @@ async def chat_stream(request: ChatRequest):
                             yielded_any = True
                             if first_token_ms is None:
                                 first_token_ms = int((time.perf_counter() - t_invoke0) * 1000.0)
+                                first_token_ts = datetime.now().astimezone().isoformat()
                             collected.append(piece)
                             yield piece
                 except Exception as e:
@@ -999,8 +1001,10 @@ async def chat_stream(request: ChatRequest):
                             if not piece:
                                 piece = getattr(chunk, "delta", None)
                             if isinstance(piece, str) and piece:
+                                yielded_any = True
                                 if first_token_ms is None:
                                     first_token_ms = int((time.perf_counter() - t_invoke0) * 1000.0)
+                                    first_token_ts = datetime.now().astimezone().isoformat()
                                 collected.append(piece)
                                 yield piece
                     else:
@@ -1036,12 +1040,15 @@ async def chat_stream(request: ChatRequest):
                     if provider_extra_usage:
                         usage_payload["extra_usage"] = provider_extra_usage
                     if invocation_id:
+                        if first_token_ms is None:
+                            logger.warning("chat.stream produced no first token timing; forcing ttfb_ms=0")
                         instr.end_invocation(
                             invocation_id,
                             usage={"purpose": "main", "model": (request.model or settings.model_name), **usage_payload},
                             timing={
                                 "ttfb_ms": int(first_token_ms or 0),
                                 "ttlt_ms": int((time.perf_counter() - t_invoke0) * 1000.0),
+                                "first_token_ts": first_token_ts,
                             },
                         )
                 except Exception:

@@ -11,6 +11,7 @@ import atexit
 import contextvars
 import json
 import logging
+import time
 import os
 import threading
 import uuid
@@ -120,6 +121,18 @@ class RealInstrumentation:
         except Exception:
             return int(default) if default is not None else None
 
+    @staticmethod
+    def _normalize_ms(value: Any, *, field: str, invocation_id: str) -> int:
+        try:
+            ms = int(value)
+        except Exception:
+            logger.warning("tracking.%s missing/invalid for invocation_id=%s; forcing 0", field, invocation_id)
+            return 0
+        if ms < 0:
+            logger.warning("tracking.%s negative for invocation_id=%s; forcing 0", field, invocation_id)
+            return 0
+        return int(ms)
+
     def _ensure_dir(self) -> None:
         os.makedirs(self.runs_dir, exist_ok=True)
 
@@ -203,6 +216,7 @@ class RealInstrumentation:
                 tid = int(turn_id)
                 _ACTIVE_TURN_ID.set(tid)
                 self._turn_state[tid] = {
+                    "_turn_started_monotonic": time.perf_counter(),
                     "prompt_system_tokens_est": 0,
                     "prompt_history_tokens_est": 0,
                     "prompt_rag_tokens_est": 0,
@@ -210,6 +224,9 @@ class RealInstrumentation:
                     "prompt_other_tokens_est": 0,
                     "main_total_tokens_reported": 0,
                     "mini_total_tokens_reported_sum": 0,
+                    "ttfb_ms_main": 0,
+                    "ttlt_ms_main": 0,
+                    "_has_main_latency": False,
                 }
                 payload = {
                     "ts": _utc_iso(),
@@ -232,6 +249,21 @@ class RealInstrumentation:
                 turn_rollup = self._turn_state.get(int(tid)) if tid is not None else None
                 main_total = int((turn_rollup or {}).get("main_total_tokens_reported", 0))
                 mini_total = int((turn_rollup or {}).get("mini_total_tokens_reported_sum", 0))
+                ttfb_main = int((turn_rollup or {}).get("ttfb_ms_main", 0))
+                ttlt_main = int((turn_rollup or {}).get("ttlt_ms_main", 0))
+                has_main_latency = bool((turn_rollup or {}).get("_has_main_latency", False))
+                if not has_main_latency:
+                    logger.warning(
+                        "tracking.turn missing main latency turn_id=%s; forcing 0 values",
+                        str(tid),
+                    )
+                turn_started_mono = (turn_rollup or {}).get("_turn_started_monotonic", None)
+                ttlt_turn_total = 0
+                try:
+                    if turn_started_mono is not None:
+                        ttlt_turn_total = max(0, int((time.perf_counter() - float(turn_started_mono)) * 1000.0))
+                except Exception:
+                    ttlt_turn_total = 0
                 payload = {
                     "ts": _utc_iso(),
                     "event": "end_turn",
@@ -244,6 +276,9 @@ class RealInstrumentation:
                     "main_total_tokens_reported": main_total,
                     "mini_total_tokens_reported_sum": mini_total,
                     "turn_total_tokens_reported": int(main_total + mini_total),
+                    "ttfb_ms_main": int(ttfb_main),
+                    "ttlt_ms_main": int(ttlt_main),
+                    "ttlt_ms_turn_total": int(ttlt_turn_total),
                     "output_meta": output_meta or {},
                 }
                 self._append_jsonl("turns.jsonl", payload)
@@ -299,6 +334,7 @@ class RealInstrumentation:
                 turn_id = state.get("turn_id")
                 purpose = str((usage or {}).get("purpose") or state.get("purpose") or "other")
                 model = str((usage or {}).get("model") or state.get("model") or "")
+                streaming = bool((state.get("meta") or {}).get("streaming", False)) if isinstance(state.get("meta"), dict) else False
                 prompt_tok = self._as_int((usage or {}).get("prompt_tokens_reported"), 0)
                 completion_tok = self._as_int((usage or {}).get("completion_tokens_reported"), 0)
                 total_tok = self._as_int((usage or {}).get("total_tokens_reported"), prompt_tok + completion_tok)
@@ -313,6 +349,23 @@ class RealInstrumentation:
                 extra_usage = (usage or {}).get("extra_usage")
                 if isinstance(extra_usage, dict):
                     meta_diag["extra_usage"] = extra_usage
+
+                end_ts = _utc_iso()
+                ttlt_ms = self._normalize_ms((timing or {}).get("ttlt_ms"), field="ttlt_ms", invocation_id=invocation_id)
+                first_token_ts = (timing or {}).get("first_token_ts")
+                if streaming:
+                    ttfb_ms = self._normalize_ms((timing or {}).get("ttfb_ms"), field="ttfb_ms", invocation_id=invocation_id)
+                    if ttfb_ms == 0:
+                        logger.warning(
+                            "tracking.streaming invocation had no yielded token timing invocation_id=%s; ttfb_ms forced to 0",
+                            invocation_id,
+                        )
+                    if not first_token_ts:
+                        first_token_ts = None
+                else:
+                    # Non-streaming: first token is effectively available at completion.
+                    first_token_ts = end_ts
+                    ttfb_ms = int(ttlt_ms)
 
                 # 5.5.2 rollups: main contributes to main_total, non-main contributes to mini_total.
                 if isinstance(turn_id, int):
@@ -330,6 +383,9 @@ class RealInstrumentation:
                     )
                     if purpose == "main":
                         ts["main_total_tokens_reported"] = int(ts.get("main_total_tokens_reported", 0)) + int(total_tok)
+                        ts["ttfb_ms_main"] = int(ttfb_ms)
+                        ts["ttlt_ms_main"] = int(ttlt_ms)
+                        ts["_has_main_latency"] = True
                     else:
                         ts["mini_total_tokens_reported_sum"] = int(ts.get("mini_total_tokens_reported_sum", 0)) + int(total_tok)
 
@@ -345,9 +401,15 @@ class RealInstrumentation:
                     "total_tokens_reported": int(total_tok),
                     "usage_is_estimate": bool(usage_is_estimate),
                     "meta": meta_diag,
-                    "timing": timing or {},
+                    "timing": {
+                        "ttfb_ms": int(ttfb_ms),
+                        "ttlt_ms": int(ttlt_ms),
+                    },
                     "start_ts": state.get("start_ts"),
-                    "end_ts": _utc_iso(),
+                    "end_ts": end_ts,
+                    "first_token_ts": first_token_ts,
+                    "ttfb_ms": int(ttfb_ms),
+                    "ttlt_ms": int(ttlt_ms),
                 }
                 self._append_jsonl("invocations.jsonl", payload)
             except Exception as e:

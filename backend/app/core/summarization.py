@@ -58,7 +58,7 @@ def chunk_by_tokens(text: str, max_tokens: int, overlap: int = 0) -> List[str]:
     return chunks
 
 
-def run_llm(prompt: str, retries: int = 2) -> str:
+def run_llm(prompt: str, retries: int = 2, maintenance_job_id: str = "") -> str:
     provider = get_llm_provider()
     last_err = None
     instr = get_instrumentation()
@@ -69,7 +69,11 @@ def run_llm(prompt: str, retries: int = 2) -> str:
             invocation_id = instr.start_invocation(
                 purpose="sleep",
                 model=str(provider.settings.model_name),
-                meta={"attempt": int(attempt + 1), "retries": int(retries)},
+                meta={
+                    "attempt": int(attempt + 1),
+                    "retries": int(retries),
+                    "job_id": str(maintenance_job_id or ""),
+                },
             )
             # Avoid duplicate sleep/main invocation records; sleep owns instrumentation here.
             resp = provider.generate_response(message=prompt, instrument=False)
@@ -136,16 +140,23 @@ def run_llm(prompt: str, retries: int = 2) -> str:
     raise RuntimeError(last_err or "LLM failed")
 
 
-def execute_prompt(prompt: str) -> str:
-    return run_llm(prompt)
+def execute_prompt(prompt: str, *, maintenance_job_id: str = "") -> str:
+    return run_llm(prompt, maintenance_job_id=maintenance_job_id)
 
 
-def execute_prompt_chunked(prompt_builder, content: str, max_tokens: int, overlap: int = 0) -> str:
+def execute_prompt_chunked(
+    prompt_builder,
+    content: str,
+    max_tokens: int,
+    overlap: int = 0,
+    *,
+    maintenance_job_id: str = "",
+) -> str:
     chunks = chunk_by_tokens(content, max_tokens=max_tokens, overlap=overlap)
     outputs: List[str] = []
     for idx, ch in enumerate(chunks):
         prompt = prompt_builder(ch)
-        out = run_llm(prompt)
+        out = run_llm(prompt, maintenance_job_id=maintenance_job_id)
         outputs.append(out)
     return "\n\n".join(outputs)
 

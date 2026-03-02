@@ -37,6 +37,8 @@ import threading
 import os
 import json
 import re
+import uuid
+from datetime import datetime, timezone
 from ..core.state import release_lock
 
 logger = logging.getLogger(__name__)
@@ -68,18 +70,23 @@ def _nl(s: str) -> str:
 def _sleep_cycle_worker():
     instr = get_instrumentation()
     start_iso = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime())
+    start_ts = datetime.now(timezone.utc).isoformat()
     t0 = time.monotonic()
-    instr.record_maintenance(
-        "sleep",
-        {
-            "event": "start",
-            "started_at_local": start_iso,
-        },
-    )
+    job_id = f"sleep_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    status = "success"
+    errors = []
+    projects_failed_count = 0
+    items_in = 0
+    items_out = 0
+    updated = 0
+    projects_processed = 0
+    pruned_count = 0
+    formatted_count = 0
+    skipped_no_daily = 0
     try:
         engage_lock()
         logger.debug("[SLEEP] Lock engaged")
-        logger.info("[SLEEP] Thread started t=%s", start_iso)
+        logger.info("[SLEEP] Thread started t=%s job_id=%s", start_iso, job_id)
         # Flush active pairs from DB into daily.txt only (tagger + append_pair_text_only); only delete on success.
         try:
             from ..core.memory import get_memory_manager
@@ -111,6 +118,7 @@ def _sleep_cycle_worker():
                         u = msgs[i]
                         a = msgs[i + 1]
                         if (getattr(u, "role", "") == "user") and (getattr(a, "role", "") == "assistant"):
+                            items_in += 1
                             if bool(getattr(a, "forget", False)):
                                 # Delete both rows for forgotten pair (no daily append)
                                 try:
@@ -173,6 +181,7 @@ def _sleep_cycle_worker():
                                             session.delete(arow)
                                         session.commit()
                                     flushed += 1
+                                    items_out += 1
                                     previous_pair_text = f"User: {user_text}\nAssistant: {asst_text}"
                                 except Exception as de:
                                     logger.warning("[SLEEP][FLUSH] DB delete failed project=%s: %s", pid, de)
@@ -205,12 +214,16 @@ def _sleep_cycle_worker():
                     if flushed:
                         logger.info("[SLEEP][FLUSH] flushed_pairs=%s project=%s", flushed, pid)
                 except Exception as fe:
+                    projects_failed_count += 1
+                    status = "partial"
+                    errors.append(f"flush:{pid}")
                     logger.warning("[SLEEP][FLUSH][WARN] project=%s %s", pid, fe)
             logger.info("[SLEEP][FLUSH] Active pairs flush complete.")
         except Exception as e:
+            status = "partial"
+            errors.append("flush:global")
             logger.warning("[SLEEP][FLUSH][WARN] global flush step failed: %s", e)
         # Backfill daily.txt if missing (current V2.x behavior)
-        updated = 0
         try:
             with get_session() as session:
                 rows = session.exec(select(Project)).all()
@@ -221,12 +234,11 @@ def _sleep_cycle_worker():
                 if backfill_daily_txt_from_meta(p.id):
                     updated += 1
             except Exception as e:
+                projects_failed_count += 1
+                status = "partial"
+                errors.append(f"backfill:{p.id}")
                 logger.warning("[SLEEP] Backfill failed for project=%s: %s", p.id, e)
         # V3.2: Summarization pipeline (per project with non-empty daily.txt)
-        projects_processed = 0
-        pruned_count = 0
-        formatted_count = 0
-        skipped_no_daily = 0
         for p in rows or []:
             pid = p.id
             base_dir = os.path.join("memory", pid)
@@ -250,9 +262,15 @@ def _sleep_cycle_worker():
             try:
                 max_tokens = 96000  # expanded chunk threshold to leverage 128k context
                 if _count_tokens(source_text) > max_tokens:
-                    pruned = execute_prompt_chunked(generate_pruning_prompt, source_text, max_tokens=max_tokens, overlap=200)
+                    pruned = execute_prompt_chunked(
+                        generate_pruning_prompt,
+                        source_text,
+                        max_tokens=max_tokens,
+                        overlap=200,
+                        maintenance_job_id=job_id,
+                    )
                 else:
-                    pruned = execute_prompt(generate_pruning_prompt(source_text))
+                    pruned = execute_prompt(generate_pruning_prompt(source_text), maintenance_job_id=job_id)
                 with open(pruned_path, "w", encoding="utf-8", newline="\n") as pf:
                     pf.write(_nl(pruned))
                 pruned_count += 1
@@ -280,7 +298,7 @@ def _sleep_cycle_worker():
                     openqs = set()
                     main_parts = []
                     for ch in chunks:
-                        out = execute_prompt(generate_formatting_prompt(ch))
+                        out = execute_prompt(generate_formatting_prompt(ch), maintenance_job_id=job_id)
                         # crude split to extract appendices
                         part = out
                         decs = []
@@ -337,7 +355,7 @@ def _sleep_cycle_worker():
                         final_parts.append("\n" + end_line)
                     final = "\n\n".join(part for part in final_parts if part is not None)
                 else:
-                    final = execute_prompt(generate_formatting_prompt(pruned))
+                    final = execute_prompt(generate_formatting_prompt(pruned), maintenance_job_id=job_id)
                 with open(summary_path, "w", encoding="utf-8", newline="\n") as sf:
                     sf.write(_nl(final))
                 formatted_count += 1
@@ -386,16 +404,19 @@ def _sleep_cycle_worker():
                             dream_raw = ds.read()
                         max_tokens = 96000  # align with daily handling
                         if _count_tokens(dream_raw) > max_tokens:
-                            pruned_dream = execute_prompt(generate_pruning_prompt(dream_raw))
+                            pruned_dream = execute_prompt(generate_pruning_prompt(dream_raw), maintenance_job_id=job_id)
                             from ..core.summarization import chunk_by_tokens
                             chunks = chunk_by_tokens(pruned_dream, max_tokens=max_tokens, overlap=200)
                             formatted_chunks = [
-                                execute_prompt(generate_dream_formatting_prompt(ch)) for ch in chunks
+                                execute_prompt(generate_dream_formatting_prompt(ch), maintenance_job_id=job_id) for ch in chunks
                             ]
                             formatted_dream = "\n\n".join(fc.strip() for fc in formatted_chunks if fc)
                         else:
-                            pruned_dream = execute_prompt(generate_pruning_prompt(dream_raw))
-                            formatted_dream = execute_prompt(generate_dream_formatting_prompt(pruned_dream))
+                            pruned_dream = execute_prompt(generate_pruning_prompt(dream_raw), maintenance_job_id=job_id)
+                            formatted_dream = execute_prompt(
+                                generate_dream_formatting_prompt(pruned_dream),
+                                maintenance_job_id=job_id,
+                            )
                         if get_settings().generate_debug_files:
                             try:
                                 write_debug_file(pid, "debug_dream_summary.txt", formatted_dream)
@@ -505,37 +526,29 @@ def _sleep_cycle_worker():
                                 except Exception as de:
                                     logger.warning("[SLEEP][MERGE] Post-merge daily cleanup error for %s: %s", pid, de)
                 except Exception as re:
+                    projects_failed_count += 1
+                    status = "partial"
+                    errors.append(f"merge:{pid}")
                     logger.error("[SLEEP][MERGE][ERROR] project=%s: %s", pid, re, exc_info=True)
             except Exception as e:
+                projects_failed_count += 1
+                status = "partial"
+                errors.append(f"format:{pid}")
                 logger.error("[SLEEP][ERROR] Formatting failed project=%s: %s", pid, e, exc_info=True)
                 continue
         logger.info("[SLEEP] Completed (updated_projects=%s, projects_processed=%s, pruned=%s, formatted=%s, skipped_no_daily=%s)",
                     updated, projects_processed, pruned_count, formatted_count, skipped_no_daily)
-        instr.record_maintenance(
-            "sleep",
-            {
-                "event": "completed",
-                "updated_projects": int(updated),
-                "projects_processed": int(projects_processed),
-                "pruned_count": int(pruned_count),
-                "formatted_count": int(formatted_count),
-                "skipped_no_daily": int(skipped_no_daily),
-            },
-        )
     except Exception as e:
+        status = "failed"
+        errors.append("worker:fatal")
         logger.error("[SLEEP][ERROR] %s", e, exc_info=True)
-        instr.record_maintenance(
-            "sleep",
-            {
-                "event": "error",
-                "error": str(e),
-            },
-        )
     finally:
         try:
             # Duration logging (even on errors)
             try:
                 elapsed = time.monotonic() - t0  # type: ignore[name-defined]
+                end_ts = datetime.now(timezone.utc).isoformat()
+                usage = instr.get_maintenance_usage(job_id)
                 h = int(elapsed // 3600)
                 m = int((elapsed % 3600) // 60)
                 s = int(elapsed % 60)
@@ -544,17 +557,34 @@ def _sleep_cycle_worker():
                 instr.record_maintenance(
                     "sleep",
                     {
-                        "event": "finalize",
-                        "elapsed_s": float(elapsed),
-                        "duration_hms": f"{h:02d}:{m:02d}:{s:02d}",
+                        "job_id": job_id,
+                        "job_type": "sleep",
+                        "status": status,
+                        "start_ts": start_ts,
+                        "end_ts": end_ts,
+                        "after_turn": None,
+                        "prompt_tokens_reported": int(usage.get("prompt_tokens_reported", 0)),
+                        "completion_tokens_reported": int(usage.get("completion_tokens_reported", 0)),
+                        "total_tokens_reported": int(usage.get("total_tokens_reported", 0)),
+                        "duration_ms": int(max(0, elapsed * 1000.0)),
+                        "items_in": int(items_in),
+                        "items_out": int(items_out),
+                        "projects_processed_count": int(projects_processed),
+                        "projects_failed_count": int(projects_failed_count),
+                        "invocation_count_sleep": int(usage.get("invocation_count", 0)),
+                        "updated_projects": int(updated),
+                        "pruned_count": int(pruned_count),
+                        "formatted_count": int(formatted_count),
+                        "skipped_no_daily": int(skipped_no_daily),
+                        "errors": [str(x) for x in errors[:50]],
                     },
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[SLEEP] Failed to emit maintenance record: %s", e)
             release_lock()
             logger.debug("[SLEEP] Lock released")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[SLEEP] finalize failed: %s", e)
 
 def start_sleep_cycle_async() -> bool:
     """Start sleep cycle in background if not already sleeping. Returns True if started."""

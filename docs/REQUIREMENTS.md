@@ -3145,6 +3145,13 @@ Each invocation record MUST include:
   - `ttfb_ms`
   - `ttlt_ms`
 
+Timing normalization and fallback rules:
+- `start_ts` and `end_ts` MUST use UTC ISO-8601 with timezone offset.
+- For non-streaming invocations, `first_token_ts` MUST equal `end_ts`.
+- For streaming invocations where no first token is yielded, `ttfb_ms` MUST be `0` and the system MUST emit a warning.
+- `ttfb_ms` and `ttlt_ms` MUST be integer milliseconds.
+- If `ttfb_ms` or `ttlt_ms` is missing, invalid, or negative, the value MUST be forced to `0` and the system MUST emit a warning.
+
 ### 5.6.2 Turn Latency Fields
 Each turn record MUST include:
 - `ttfb_ms_main`
@@ -3155,6 +3162,12 @@ Streaming TTFB rule:
 
 Optionally, the implementation MAY also record:
 - `ttlt_ms_turn_total` (includes mini calls and retrieval)
+
+Turn latency derivation rules:
+- `ttfb_ms_main` MUST be copied from the `main` invocation `ttfb_ms` for the turn.
+- `ttlt_ms_main` MUST be copied from the `main` invocation `ttlt_ms` for the turn.
+- If no `main` invocation exists for a turn, both `ttfb_ms_main` and `ttlt_ms_main` MUST be `0` and the system MUST emit a warning.
+- `ttlt_ms_turn_total` (when recorded) MUST span request-path completion from `start_turn` to `end_turn` and MUST NOT include deferred post-response async work.
 
 ---
 
@@ -3171,6 +3184,20 @@ Each turn record MUST include enough fields to explain token growth or spikes:
 - `final_context_tokens_est` (int)
 - `final_context_clipped` (bool)
 
+Field definitions and boundaries:
+- `route` MUST record the builder route exactly as returned; if builder fails/unavailable, it MUST default to `OTHER`.
+- `rag_enabled` indicates retrieval path enabled/attempted for the turn and MAY be `true` even when counts resolve to zero.
+- `retrieved_count` MUST be the total candidate count produced by canonical retrieval output (A.4.1), summed across attempted sources, before selection.
+- `kept_count` MUST be the retained candidate count after A.4.3 selection (including adjacent-chunk effective-limit bonuses), before A.4.4 expansion/dedup.
+- `expanded_unique_chunks_after_merge` MUST be computed immediately after A.4.4.3.2 identity dedup as the unique `(source_document_id, chunk_index)` count.
+- `rag_tokens_injected_est` MUST represent only retrieved-context tokens actually injected into the final prompt (post-clip), excluding system/history/profile/user/template blocks.
+- `final_context_tokens_est` MUST represent total final prompt context estimate actually sent to the main model (system + history + RAG + profile + other).
+- `final_context_clipped` MUST be `true` only when clipping/truncation occurred due to context/token budget enforcement; otherwise `false`.
+
+Zero/null policy:
+- For turns where RAG is disabled/skipped, required numeric fields in this section MUST be `0` (not `null`).
+- On partial retrieval/source failures, retrieval remains best-effort and counts MUST reflect what was actually returned/retained.
+
 ---
 
 ## 5.8 Maintenance Metrics and Amortization Support
@@ -3184,9 +3211,27 @@ Each sleep maintenance job MUST record:
 - `items_in` (int, optional)
 - `items_out` (int, optional)
 
+Canonical maintenance record format:
+- Each sleep cycle MUST emit one canonical completion maintenance record.
+- The canonical record MUST include a stable `job_id`.
+- `after_turn` MUST be `null`/omitted for scheduler-triggered runs that are not directly tied to an interactive turn (MUST NOT use `0`).
+
+Token and duration definitions:
+- Maintenance token totals MUST represent only sleep-pipeline LLM usage and MUST be aggregated from invocations with `purpose="sleep"` for the same `job_id`.
+- Maintenance token totals MUST use provider-reported usage when available for those invocations.
+- `duration_ms` MUST represent wall-clock elapsed time from worker start to worker finalize for the sleep job (including setup/IO/merge/rebuild/cleanup).
+
+Operational status guidance:
+- Partial project-level failures within a sleep cycle MUST still produce a valid canonical maintenance record with best-effort aggregates.
+- Implementations SHOULD include status metadata such as `status` (`success|partial|failed`) and optional failure counters/error summaries.
+
 ### 5.8.2 Amortization
 - Instrumentation MUST log enough data to compute amortized maintenance tokens per turn offline.
 - Instrumentation SHOULD NOT permanently bake amortization into core metrics; amortization SHOULD be performed in reporting scripts so the formula can change without reruns.
+
+Amortization clarification:
+- The denominator convention for amortization is intentionally unspecified in core requirements.
+- Implementations MUST log sufficient fields to support multiple offline denominator choices (for example turn-window or time-window amortization), including maintenance `job_id`, maintenance timing bounds, and maintenance token totals.
 
 ---
 

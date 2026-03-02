@@ -58,6 +58,8 @@ class Instrumentation(Protocol):
 
     def record_maintenance(self, job_type: str, meta: dict) -> None: ...
 
+    def get_maintenance_usage(self, job_id: str) -> Dict[str, int]: ...
+
 
 class NoopInstrumentation:
     """No-op implementation used when instrumentation is disabled."""
@@ -95,6 +97,15 @@ class NoopInstrumentation:
     def record_maintenance(self, job_type: str, meta: dict) -> None:
         _ = (job_type, meta)
 
+    def get_maintenance_usage(self, job_id: str) -> Dict[str, int]:
+        _ = job_id
+        return {
+            "prompt_tokens_reported": 0,
+            "completion_tokens_reported": 0,
+            "total_tokens_reported": 0,
+            "invocation_count": 0,
+        }
+
 
 class RealInstrumentation:
     """Minimal file-backed instrumentation implementation for lifecycle scaffolding."""
@@ -110,6 +121,7 @@ class RealInstrumentation:
         self._invocation_seq = 0
         self._turn_state: Dict[int, Dict[str, Any]] = {}
         self._invocation_state: Dict[str, Dict[str, Any]] = {}
+        self._maintenance_usage: Dict[str, Dict[str, int]] = {}
         self._lock = threading.RLock()
 
     @staticmethod
@@ -456,6 +468,32 @@ class RealInstrumentation:
                     "ttlt_ms": int(ttlt_ms),
                 }
                 self._append_jsonl("invocations.jsonl", payload)
+
+                # 5.8 support: aggregate provider-reported sleep usage by maintenance job_id.
+                if purpose == "sleep":
+                    job_id = None
+                    try:
+                        jid = meta_diag.get("job_id")
+                        if isinstance(jid, str) and jid.strip():
+                            job_id = jid.strip()
+                    except Exception:
+                        job_id = None
+                    if job_id:
+                        agg = self._maintenance_usage.setdefault(
+                            job_id,
+                            {
+                                "prompt_tokens_reported": 0,
+                                "completion_tokens_reported": 0,
+                                "total_tokens_reported": 0,
+                                "invocation_count": 0,
+                            },
+                        )
+                        agg["invocation_count"] = int(agg.get("invocation_count", 0)) + 1
+                        # Per spec answers: maintenance totals should use provider-reported usage only.
+                        if not bool(usage_is_estimate):
+                            agg["prompt_tokens_reported"] = int(agg.get("prompt_tokens_reported", 0)) + int(prompt_tok)
+                            agg["completion_tokens_reported"] = int(agg.get("completion_tokens_reported", 0)) + int(completion_tok)
+                            agg["total_tokens_reported"] = int(agg.get("total_tokens_reported", 0)) + int(total_tok)
             except Exception as e:
                 logger.warning("tracking.end_invocation failed: %s", e, exc_info=True)
 
@@ -539,6 +577,32 @@ class RealInstrumentation:
                 self._append_jsonl("maintenance.jsonl", payload)
             except Exception as e:
                 logger.warning("tracking.record_maintenance failed: %s", e, exc_info=True)
+
+    def get_maintenance_usage(self, job_id: str) -> Dict[str, int]:
+        with self._lock:
+            try:
+                jid = str(job_id or "").strip()
+                if not jid:
+                    return {
+                        "prompt_tokens_reported": 0,
+                        "completion_tokens_reported": 0,
+                        "total_tokens_reported": 0,
+                        "invocation_count": 0,
+                    }
+                agg = self._maintenance_usage.get(jid) or {}
+                return {
+                    "prompt_tokens_reported": int(agg.get("prompt_tokens_reported", 0)),
+                    "completion_tokens_reported": int(agg.get("completion_tokens_reported", 0)),
+                    "total_tokens_reported": int(agg.get("total_tokens_reported", 0)),
+                    "invocation_count": int(agg.get("invocation_count", 0)),
+                }
+            except Exception:
+                return {
+                    "prompt_tokens_reported": 0,
+                    "completion_tokens_reported": 0,
+                    "total_tokens_reported": 0,
+                    "invocation_count": 0,
+                }
 
 
 _INSTRUMENTATION: Instrumentation = NoopInstrumentation()

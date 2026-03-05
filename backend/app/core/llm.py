@@ -135,7 +135,8 @@ class LLMProvider:
             # Add current user message
             messages.append(HumanMessage(content=message))
             instr = get_instrumentation()
-            system_tokens = _estimate_tokens((base_system_prompt or "") + "\n" + (rag_system_prompt or ""))
+            # Keep prompt buckets disjoint: system excludes RAG, which has its own bucket.
+            system_tokens = _estimate_tokens(base_system_prompt or "")
             history_tokens = _estimate_tokens(
                 "\n".join(str((msg.get("content") or "")) for msg in (conversation_history or []))
             )

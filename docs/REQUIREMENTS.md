@@ -3254,7 +3254,9 @@ Optionally, the implementation MAY also record:
 Turn latency derivation rules:
 - `ttfb_ms_main` MUST be copied from the `main` invocation `ttfb_ms` for the turn.
 - `ttlt_ms_main` MUST be copied from the `main` invocation `ttlt_ms` for the turn.
-- If no `main` invocation exists for a turn, both `ttfb_ms_main` and `ttlt_ms_main` MUST be `0` and the system MUST emit a warning.
+- If `main` invocation is missing for a turn, the system MUST emit a warning and MUST skip writing the `end_turn` record.
+- For non-streaming main invocations, `ttfb_ms_main` MUST be `null` and `ttlt_ms_main` SHOULD be populated when derivable.
+- If latency is unknown due to error/corruption, the system MUST emit a warning and MUST skip writing the `end_turn` record.
 - `ttlt_ms_turn_total` (when recorded) MUST span request-path completion from `start_turn` to `end_turn` and MUST NOT include deferred post-response async work.
 
 ---
@@ -3268,7 +3270,6 @@ Each turn record MUST include enough fields to explain token growth or spikes:
 - `retrieved_count` (int)
 - `kept_count` (int)
 - `expanded_unique_chunks_after_merge` (int)
-- `rag_tokens_injected_est` (int)
 - `final_context_tokens_est` (int)
 - `final_context_clipped` (bool)
 
@@ -3278,13 +3279,32 @@ Field definitions and boundaries:
 - `retrieved_count` MUST be the total candidate count produced by canonical retrieval output (A.4.1), summed across attempted sources, before selection.
 - `kept_count` MUST be the retained candidate count after A.4.3 selection (including adjacent-chunk effective-limit bonuses), before A.4.4 expansion/dedup.
 - `expanded_unique_chunks_after_merge` MUST be computed immediately after A.4.4.3.2 identity dedup as the unique `(source_document_id, chunk_index)` count.
-- `rag_tokens_injected_est` MUST represent only retrieved-context tokens actually injected into the final prompt (post-clip), excluding system/history/profile/user/template blocks.
 - `final_context_tokens_est` MUST represent total final prompt context estimate actually sent to the main model (system + history + RAG + profile + other).
 - `final_context_clipped` MUST be `true` only when clipping/truncation occurred due to context/token budget enforcement; otherwise `false`.
+- `final_context_tokens_est` SHOULD equal the exact sum of:
+  - `prompt_system_tokens_est`
+  - `prompt_history_tokens_est`
+  - `prompt_rag_tokens_est`
+  - `prompt_profile_tokens_est`
+  - `prompt_other_tokens_est`
 
 Zero/null policy:
 - For turns where RAG is disabled/skipped, required numeric fields in this section MUST be `0` (not `null`).
 - On partial retrieval/source failures, retrieval remains best-effort and counts MUST reflect what was actually returned/retained.
+- If `rag_enabled=false`, `rag_skip_reason` MUST be present and MUST be one of:
+  - `disabled_by_route`
+  - `budget_zero`
+  - `retrieval_error`
+  - `no_candidates`
+- If `rag_enabled=true`, `rag_skip_reason` MUST be omitted.
+
+Stage-event requirements for turns stream:
+- `turns.jsonl` stage records MUST include top-level `run_id`, `turn_id`, `name`, and `data`.
+- Stage names are allowlisted in v1:
+  - `retrieval_selection_expansion`
+  - `prompt_assembly`
+- Unknown stage names MUST be warned and dropped (no write).
+- Stage `data` MUST NOT duplicate top-level envelope keys (`run_id`, `turn_id`, `ts`, `event`).
 
 ---
 
@@ -3380,9 +3400,7 @@ Amortization clarification:
 
 ## 5.9 Accounting Validation (Required)
 
-At `end_turn()`, Instrumentation MUST compute and store:
-- `token_accounting_ok` (bool)
-- `token_accounting_errors` (array of strings, possibly empty)
+At `end_turn()`, Instrumentation MUST compute validation checks in-memory before writing records.
 
 Validation MUST include:
 - The turn main totals match the `main` invocation totals.
@@ -3390,13 +3408,12 @@ Validation MUST include:
 - The prompt composition estimate sum approximately matches `main_prompt_tokens_reported` within a configurable tolerance (if both are present).
 
 Validation semantics:
-- `token_accounting_ok` MUST be `true` only when all enabled validation checks pass.
-- If any enabled check fails, `token_accounting_ok` MUST be `false`.
-- Checks that are explicitly skipped due to missing/unreliable required fields MUST NOT by themselves force `token_accounting_ok=false`.
+- If required turn validations fail, the system MUST emit warnings and MUST skip writing the `end_turn` record.
+- Validation failure details MUST be logged, not persisted as per-record error arrays in `turns.jsonl`.
 
 Error representation:
-- `token_accounting_errors` MUST use stable machine-readable codes.
-- Implementations MAY include additional human-readable messages/details, but stable codes are required for automated analysis.
+- Per-record arrays such as `token_accounting_errors` and `schema_errors` are out of scope for `turns.jsonl` v1.
+- Implementations MAY keep optional in-memory booleans for control flow, but SHOULD NOT persist turn error collections.
 - Standardized codes:
   - `main_total_mismatch`
   - `mini_total_mismatch`
@@ -3426,6 +3443,44 @@ Prompt estimate tolerance:
 Prompt-usage missing/unreliable handling:
 - If `main_prompt_tokens_reported` is missing or known unreliable (for example estimate/zero fallback), prompt-estimate validation SHOULD be marked skipped and SHOULD NOT fail token accounting by default.
 - Implementations MAY emit non-failing visibility code `prompt_usage_missing_skipped`.
+
+Turn record contract additions (v1):
+- `start_turn` records MUST include top-level:
+  - `ts`
+  - `event="start_turn"`
+  - `run_id`
+  - `turn_id`
+- `turn_id` MUST be monotonic within a run; duplicates/non-monotonic IDs MUST be warned and dropped.
+
+- `end_turn` records MUST include top-level:
+  - `ts`
+  - `event="end_turn"`
+  - `run_id`
+  - `turn_id`
+  - canonical turn metrics fields from 5.6.2/5.7
+
+Turn rollup/provenance fields:
+- `turn_total_tokens_reported` MUST equal:
+  - `main_total_tokens_reported + mini_total_tokens_reported_sum`
+- `turn_usage_source` MUST use enum:
+  - `provider` | `estimate` | `zero_fallback`
+- `turn_usage_is_estimate` MUST be true whenever `turn_usage_source != "provider"`.
+- Turn usage/provenance aggregation scope is only invocations where:
+  - `invocation.turn_id == end_turn.turn_id`
+  - `purpose != "sleep"`
+  - `turn_id` is not null
+
+Invocation reconciliation counters:
+- `invocations_count_total`
+- `main_invocations_count`
+- `mini_invocations_count`
+- Required invariant:
+  - `invocations_count_total == main_invocations_count + mini_invocations_count`
+
+Fields removed/restricted in `end_turn`:
+- `rag_tokens_injected_est` MUST NOT be emitted in `turns.jsonl` v1.
+- `output_meta` MUST NOT be emitted in `turns.jsonl` v1.
+- If needed, response summary fields (for example `response_len`, `finish_reason`) SHOULD be top-level and non-duplicative.
 
 ---
 

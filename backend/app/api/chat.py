@@ -156,6 +156,7 @@ def _dump_prompt_debug(
     conversation_history: Optional[list[dict]],
     user_prompt: Optional[str],
     model: Optional[str],
+    msgs: Optional[list] = None,
 ) -> None:
     """
     Write a prompt debug snapshot to memory/{project_id}/debug/prompts/.
@@ -171,6 +172,7 @@ def _dump_prompt_debug(
     except Exception:
         route = None
     rag_used = bool(rag_system_prompt)
+    _ = msgs  # Reserved for future exact-payload debug variants.
 
     # Build conversation history section
     hist_lines: list[str] = []
@@ -199,7 +201,7 @@ def _dump_prompt_debug(
         + f"# rag: {str(bool(rag_used)).lower()}\n"
         + (f"# model: {model}\n" if model else "")
     )
-    # Estimate tokens over the whole formatted dump (best-effort)
+    # Estimate tokens over the whole formatted dump (best-effort).
     payload_preview = (
         "====== SYSTEM ======\n"
         + (base_system_prompt or "")
@@ -582,7 +584,7 @@ class _ChatPipeline:
                 "prompt_assembly",
                 {
                     "module": "chat_stream",
-                    "prompt_system_tokens_est": int(_estimate_tokens((base_system_prompt or "") + "\n" + (rag_system_prompt or ""))),
+                    "prompt_system_tokens_est": int(_estimate_tokens(base_system_prompt or "")),
                     "prompt_history_tokens_est": int(
                         _estimate_tokens("\n".join(str((m.get("content") or "")) for m in (conversation_history or [])))
                     ),
@@ -983,6 +985,7 @@ async def chat_stream(request: ChatRequest):
                 conversation_history=conversation_history,
                 user_prompt=(request.message or ""),
                 model=(request.model or settings.model_name),
+                msgs=msgs,
             )
         except Exception:
             pass

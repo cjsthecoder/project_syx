@@ -175,16 +175,51 @@ class RealInstrumentation:
             return int(default) if default is not None else None
 
     @staticmethod
-    def _normalize_ms(value: Any, *, field: str, invocation_id: str) -> int:
+    def _to_non_negative_int_or_none(value: Any) -> Optional[int]:
         try:
+            if value is None:
+                return None
             ms = int(value)
+            if ms < 0:
+                return None
+            return int(ms)
         except Exception:
-            logger.warning("tracking.%s missing/invalid for invocation_id=%s; forcing 0", field, invocation_id)
-            return 0
-        if ms < 0:
-            logger.warning("tracking.%s negative for invocation_id=%s; forcing 0", field, invocation_id)
-            return 0
-        return int(ms)
+            return None
+
+    @staticmethod
+    def _schema_error(
+        *,
+        code: str,
+        field: str,
+        expected: Any,
+        actual: Any,
+        message: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "code": str(code),
+            "field": str(field),
+            "expected": expected,
+            "actual": actual,
+        }
+        if message:
+            payload["message"] = str(message)
+        if isinstance(details, dict) and details:
+            payload["details"] = details
+        return payload
+
+    @staticmethod
+    def _epoch_ms_from_iso(value: Any) -> Optional[int]:
+        if not isinstance(value, str):
+            return None
+        raw = value.strip()
+        if not raw:
+            return None
+        try:
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            return int(dt.timestamp() * 1000.0)
+        except Exception:
+            return None
 
     def _ensure_dir(self) -> None:
         os.makedirs(self.runs_dir, exist_ok=True)
@@ -441,11 +476,38 @@ class RealInstrumentation:
                 invocation_id = f"inv_{self._invocation_seq:08d}"
                 start_ts = _utc_iso()
                 turn_id = _ACTIVE_TURN_ID.get()
+                schema_errors: list[Dict[str, Any]] = []
+                purpose_value = str(purpose or "").strip()
+                if not purpose_value:
+                    schema_errors.append(
+                        self._schema_error(
+                            code="missing_required_key",
+                            field="purpose",
+                            expected="non-empty string",
+                            actual=purpose,
+                        )
+                    )
+                    purpose_value = "other"
+                model_value = str(model or "").strip()
+                meta_value: Dict[str, Any] = {}
+                if meta is None:
+                    meta_value = {}
+                elif isinstance(meta, dict):
+                    meta_value = dict(meta)
+                else:
+                    schema_errors.append(
+                        self._schema_error(
+                            code="type_mismatch",
+                            field="meta",
+                            expected="object",
+                            actual=meta,
+                        )
+                    )
                 self._invocation_state[invocation_id] = {
                     "turn_id": int(turn_id) if turn_id is not None else None,
-                    "purpose": purpose,
-                    "model": model,
-                    "meta": meta or {},
+                    "purpose": purpose_value,
+                    "model": model_value,
+                    "meta": meta_value,
                     "start_ts": start_ts,
                 }
                 payload = {
@@ -453,10 +515,14 @@ class RealInstrumentation:
                     "event": "start_invocation",
                     "invocation_id": invocation_id,
                     "turn_id": turn_id,
-                    "purpose": purpose,
-                    "model": model,
-                    "meta": meta or {},
+                    "purpose": purpose_value,
+                    "model": model_value,
+                    "meta": meta_value,
                 }
+                if self.run_id:
+                    payload["run_id"] = self.run_id
+                if schema_errors:
+                    payload["schema_errors"] = schema_errors
                 self._append_jsonl("invocations.jsonl", payload)
                 return invocation_id
             except Exception as e:
@@ -473,44 +539,185 @@ class RealInstrumentation:
             try:
                 if not self.run_id or self._ended:
                     return
-                state = self._invocation_state.pop(invocation_id, {})
+                state = self._invocation_state.get(invocation_id, {})
+                schema_errors: list[Dict[str, Any]] = []
+                if not state:
+                    schema_errors.append(
+                        self._schema_error(
+                            code="invariant_violation",
+                            field="invocation_id",
+                            expected="known invocation_id from start_invocation",
+                            actual=invocation_id,
+                        )
+                    )
+
                 turn_id = state.get("turn_id")
-                purpose = str((usage or {}).get("purpose") or state.get("purpose") or "other")
-                model = str((usage or {}).get("model") or state.get("model") or "")
+                state_purpose = str(state.get("purpose") or "").strip()
+                usage_purpose = str((usage or {}).get("purpose") or "").strip()
+                if usage_purpose and state_purpose and usage_purpose != state_purpose:
+                    schema_errors.append(
+                        self._schema_error(
+                            code="purpose_mismatch",
+                            field="purpose",
+                            expected=state_purpose,
+                            actual=usage_purpose,
+                        )
+                    )
+                if not state_purpose:
+                    schema_errors.append(
+                        self._schema_error(
+                            code="missing_required_key",
+                            field="purpose",
+                            expected="non-empty string",
+                            actual=state.get("purpose"),
+                        )
+                    )
+                    state_purpose = "other"
+                purpose = state_purpose
+
+                state_model = str(state.get("model") or "").strip()
+                usage_model = str((usage or {}).get("model") or "").strip()
+                if not state_model and usage_model:
+                    state_model = usage_model
+                    if invocation_id in self._invocation_state:
+                        self._invocation_state[invocation_id]["model"] = state_model
+                elif state_model and usage_model and usage_model != state_model:
+                    schema_errors.append(
+                        self._schema_error(
+                            code="model_mismatch",
+                            field="model",
+                            expected=state_model,
+                            actual=usage_model,
+                        )
+                    )
+                model = state_model
+                if not model:
+                    schema_errors.append(
+                        self._schema_error(
+                            code="missing_required_key",
+                            field="model",
+                            expected="non-empty string",
+                            actual=state.get("model"),
+                        )
+                    )
+
                 if purpose and model:
                     self._models_observed.setdefault(purpose, set()).add(model)
                 streaming = bool((state.get("meta") or {}).get("streaming", False)) if isinstance(state.get("meta"), dict) else False
                 prompt_tok = self._as_int((usage or {}).get("prompt_tokens_reported"), 0)
                 completion_tok = self._as_int((usage or {}).get("completion_tokens_reported"), 0)
                 total_tok = self._as_int((usage or {}).get("total_tokens_reported"), prompt_tok + completion_tok)
-                usage_is_estimate = bool((usage or {}).get("usage_is_estimate", True))
+                usage_is_estimate_in = bool((usage or {}).get("usage_is_estimate", True))
                 if total_tok <= 0:
                     total_tok = int(prompt_tok + completion_tok)
+
+                usage_source_raw = str((usage or {}).get("usage_source") or "").strip()
+                allowed_usage_sources = {"provider", "estimate", "zero_fallback"}
+                if usage_source_raw and usage_source_raw not in allowed_usage_sources:
+                    schema_errors.append(
+                        self._schema_error(
+                            code="enum_mismatch",
+                            field="usage_source",
+                            expected=["provider", "estimate", "zero_fallback"],
+                            actual=usage_source_raw,
+                        )
+                    )
+                    usage_source_raw = ""
+                usage_source = usage_source_raw
+                if not usage_source:
+                    if usage_is_estimate_in:
+                        usage_source = "estimate" if int(total_tok) > 0 else "zero_fallback"
+                    else:
+                        usage_source = "provider"
+                usage_is_estimate = usage_source != "provider"
+                if usage_is_estimate_in != usage_is_estimate:
+                    schema_errors.append(
+                        self._schema_error(
+                            code="invariant_violation",
+                            field="usage_is_estimate",
+                            expected=usage_is_estimate,
+                            actual=usage_is_estimate_in,
+                            message="usage_is_estimate normalized to match usage_source",
+                        )
+                    )
+
+                usage_estimate_method_raw = (usage or {}).get("usage_estimate_method")
+                usage_estimate_method: Optional[str] = None
+                if usage_estimate_method_raw is None:
+                    usage_estimate_method = None
+                elif isinstance(usage_estimate_method_raw, str):
+                    usage_estimate_method = usage_estimate_method_raw.strip() or None
+                else:
+                    schema_errors.append(
+                        self._schema_error(
+                            code="type_mismatch",
+                            field="usage_estimate_method",
+                            expected="string|null",
+                            actual=usage_estimate_method_raw,
+                        )
+                    )
+                    usage_estimate_method = str(usage_estimate_method_raw)
 
                 # Keep canonical fields stable and permit optional extra usage fields in meta diagnostics.
                 meta_diag: Dict[str, Any] = {}
                 if isinstance(state.get("meta"), dict):
                     meta_diag.update(state.get("meta", {}))
+                else:
+                    schema_errors.append(
+                        self._schema_error(
+                            code="type_mismatch",
+                            field="meta",
+                            expected="object",
+                            actual=state.get("meta"),
+                        )
+                    )
                 extra_usage = (usage or {}).get("extra_usage")
                 if isinstance(extra_usage, dict):
                     meta_diag["extra_usage"] = extra_usage
 
                 end_ts = _utc_iso()
-                ttlt_ms = self._normalize_ms((timing or {}).get("ttlt_ms"), field="ttlt_ms", invocation_id=invocation_id)
+                start_ts = state.get("start_ts")
+                if not isinstance(start_ts, str) or not start_ts.strip():
+                    schema_errors.append(
+                        self._schema_error(
+                            code="missing_required_key",
+                            field="start_ts",
+                            expected="utc-iso timestamp string",
+                            actual=start_ts,
+                        )
+                    )
+                    start_ts = end_ts
+                ttlt_ms = self._to_non_negative_int_or_none((timing or {}).get("ttlt_ms"))
+                if ttlt_ms is None:
+                    start_ms = self._epoch_ms_from_iso(start_ts)
+                    end_ms = self._epoch_ms_from_iso(end_ts)
+                    if (start_ms is not None) and (end_ms is not None) and (end_ms >= start_ms):
+                        ttlt_ms = int(end_ms - start_ms)
+                    else:
+                        logger.warning("tracking.ttlt_ms missing/invalid for invocation_id=%s; forcing 0", invocation_id)
+                        ttlt_ms = 0
                 first_token_ts = (timing or {}).get("first_token_ts")
+                ttfb_ms: Optional[int]
                 if streaming:
-                    ttfb_ms = self._normalize_ms((timing or {}).get("ttfb_ms"), field="ttfb_ms", invocation_id=invocation_id)
-                    if ttfb_ms == 0:
+                    ttfb_ms = self._to_non_negative_int_or_none((timing or {}).get("ttfb_ms"))
+                    if ttfb_ms is None:
                         logger.warning(
-                            "tracking.streaming invocation had no yielded token timing invocation_id=%s; ttfb_ms forced to 0",
+                            "tracking.streaming invocation missing/invalid ttfb_ms invocation_id=%s; setting null",
                             invocation_id,
                         )
-                    if not first_token_ts:
+                    if not isinstance(first_token_ts, str) or not first_token_ts.strip():
                         first_token_ts = None
+                        ttfb_ms = None
+                        logger.warning(
+                            "tracking.streaming invocation had no first_token_ts invocation_id=%s; setting null",
+                            invocation_id,
+                        )
+                    else:
+                        first_token_ts = first_token_ts.strip()
                 else:
-                    # Non-streaming: first token is effectively available at completion.
-                    first_token_ts = end_ts
-                    ttfb_ms = int(ttlt_ms)
+                    # Non-streaming: first token and TTFB are not measured.
+                    first_token_ts = None
+                    ttfb_ms = None
 
                 # 5.5.2 rollups: main contributes to main_total, non-main contributes to mini_total.
                 if isinstance(turn_id, int):
@@ -526,7 +733,7 @@ class RealInstrumentation:
                         ts["main_prompt_tokens_reported"] = int(prompt_tok)
                         ts["main_usage_is_estimate"] = bool(usage_is_estimate)
                         ts["main_total_tokens_reported"] = int(ts.get("main_total_tokens_reported", 0)) + int(total_tok)
-                        ts["ttfb_ms_main"] = int(ttfb_ms)
+                        ts["ttfb_ms_main"] = int(ttfb_ms) if ttfb_ms is not None else 0
                         ts["ttlt_ms_main"] = int(ttlt_ms)
                         ts["_has_main_latency"] = True
                     else:
@@ -547,18 +754,23 @@ class RealInstrumentation:
                     "completion_tokens_reported": int(completion_tok),
                     "total_tokens_reported": int(total_tok),
                     "usage_is_estimate": bool(usage_is_estimate),
+                    "usage_source": usage_source,
+                    "usage_estimate_method": usage_estimate_method,
                     "meta": meta_diag,
                     "timing": {
-                        "ttfb_ms": int(ttfb_ms),
+                        "ttfb_ms": ttfb_ms,
                         "ttlt_ms": int(ttlt_ms),
                     },
-                    "start_ts": state.get("start_ts"),
+                    "start_ts": start_ts,
                     "end_ts": end_ts,
                     "first_token_ts": first_token_ts,
-                    "ttfb_ms": int(ttfb_ms),
-                    "ttlt_ms": int(ttlt_ms),
                 }
+                if self.run_id:
+                    payload["run_id"] = self.run_id
+                if schema_errors:
+                    payload["schema_errors"] = schema_errors
                 self._append_jsonl("invocations.jsonl", payload)
+                self._invocation_state.pop(invocation_id, None)
 
                 # 5.8 support: aggregate provider-reported sleep usage by maintenance job_id.
                 if purpose == "sleep":

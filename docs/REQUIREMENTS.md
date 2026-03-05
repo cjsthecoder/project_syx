@@ -3291,27 +3291,82 @@ Zero/null policy:
 ## 5.8 Maintenance Metrics and Amortization Support
 
 ### 5.8.1 Maintenance Job Records
-Each sleep maintenance job MUST record:
-- `job_type` (`sleep`)
-- `after_turn` (int, if applicable)
-- `prompt_tokens_reported`, `completion_tokens_reported`, `total_tokens_reported`
-- `duration_ms`
+Scope:
+- This section is scoped to `job_type="sleep"` only in this phase.
+- Additional maintenance job types are out of scope until introduced by a future delta.
+
+Canonical maintenance event shape:
+- `maintenance.jsonl` records MUST use top-level canonical fields for schema data.
+- Canonical fields MUST NOT be duplicated inside `meta`.
+- `meta` is reserved for non-canonical diagnostics and pipeline counters.
+
+Each sleep maintenance completion record MUST include:
+- `ts` (UTC ISO timestamp string)
+- `event` = `"maintenance"`
+- `run_id` (string)
+- `job_id` (string, stable per maintenance job)
+- `job_type` = `"sleep"`
+- `status` (`"success"` | `"partial"` | `"failed"`)
+- `start_ts` (UTC ISO timestamp string)
+- `end_ts` (UTC ISO timestamp string)
+- `after_turn` (int or null; scheduler-triggered jobs MUST use null/omitted, not `0`)
+- `prompt_tokens_reported` (int)
+- `completion_tokens_reported` (int)
+- `total_tokens_reported` (int)
+- `usage_source` (`"provider"` | `"estimate"` | `"zero_fallback"`)
+- `usage_estimate_method` (string or null)
+- `usage_is_estimate` (bool)
+- `duration_ms` (int)
 - `items_in` (int, optional)
 - `items_out` (int, optional)
+- `invocations_query` object with at minimum:
+  - `job_id` (string)
+  - `purpose` = `"sleep"`
 
-Canonical maintenance record format:
-- Each sleep cycle MUST emit one canonical completion maintenance record.
-- The canonical record MUST include a stable `job_id`.
-- `after_turn` MUST be `null`/omitted for scheduler-triggered runs that are not directly tied to an interactive turn (MUST NOT use `0`).
+Optional diagnostic fields:
+- `provider_tokens_total` (int)
+- `estimated_tokens_total` (int)
+- `zero_fallback_tokens_total` (int)
+- `invocation_count_sleep` (int)
+- `invocation_ids_sample` (array of strings)
+- `schema_errors` (array of structured schema error objects; see below)
 
-Token and duration definitions:
-- Maintenance token totals MUST represent only sleep-pipeline LLM usage and MUST be aggregated from invocations with `purpose="sleep"` for the same `job_id`.
-- Maintenance token totals MUST use provider-reported usage when available for those invocations.
+Token, provenance, and reconciliation rules:
+- Maintenance token totals MUST represent sleep-pipeline LLM usage aggregated from invocations where `purpose="sleep"` for the same `job_id`.
+- Aggregated totals MUST include provider-reported values when available and estimate/zero fallback where provider usage is unavailable (best available total).
+- `usage_source="provider"` is allowed only when all included usage is provider-reported.
+- `usage_source="estimate"` MUST be used when any estimated component exists (including mixed provider+estimate jobs).
+- `usage_source="zero_fallback"` MUST be used only when zero-fallback is used and no estimate path is available for those portions.
+- `usage_is_estimate` MUST be `true` whenever any estimated or zero-fallback component exists (that is, not purely provider-derived).
+- `invocations_query` is the canonical reconciliation pointer for v1; readers SHOULD use it to recompute totals/counts from invocation records.
 - `duration_ms` MUST represent wall-clock elapsed time from worker start to worker finalize for the sleep job (including setup/IO/merge/rebuild/cleanup).
+
+Schema validation behavior:
+- Maintenance schema validation MUST be best-effort and MUST NOT block writes.
+- Validation issues MUST be emitted on the maintenance record in `schema_errors`.
+- `schema_errors` entries MUST use structured objects with:
+  - `code` (string)
+  - `field` (string)
+  - `expected` (any JSON value)
+  - `actual` (any JSON value)
+- Implementations MAY include optional `message` and `details`.
+- Standardized starter codes:
+  - `missing_required_key`
+  - `type_mismatch`
+  - `enum_mismatch`
+  - `token_total_mismatch`
+  - `timestamp_order_violation`
+  - `duration_mismatch`
+  - `counts_invariant_violation`
+  - `invocation_reconciliation_mismatch`
+  - `usage_provenance_missing`
 
 Operational status guidance:
 - Partial project-level failures within a sleep cycle MUST still produce a valid canonical maintenance record with best-effort aggregates.
-- Implementations SHOULD include status metadata such as `status` (`success|partial|failed`) and optional failure counters/error summaries.
+- `status` values are:
+  - `success`: all intended work completed and invariants met.
+  - `partial`: some intended work completed but some failed/skipped; best-effort outputs exist.
+  - `failed`: job aborted or did not complete meaningful work.
 
 ### 5.8.2 Amortization
 - Instrumentation MUST log enough data to compute amortized maintenance tokens per turn offline.
@@ -3319,7 +3374,7 @@ Operational status guidance:
 
 Amortization clarification:
 - The denominator convention for amortization is intentionally unspecified in core requirements.
-- Implementations MUST log sufficient fields to support multiple offline denominator choices (for example turn-window or time-window amortization), including maintenance `job_id`, maintenance timing bounds, and maintenance token totals.
+- Implementations MUST log sufficient fields to support multiple offline denominator choices (for example turn-window or time-window amortization), including maintenance `run_id`, `job_id`, maintenance timing bounds, and maintenance token totals.
 
 ---
 

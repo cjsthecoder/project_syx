@@ -3072,6 +3072,74 @@ Tagger integration requirement:
 - Tagger invocations MUST be emitted with `purpose="tagger"` and include reported or estimated token usage fields per 5.5.1.
 - Tagger token usage MUST be attributed to the same interactive turn that produced the assistant response being tagged.
 
+### 5.4.3 Invocation Event Schema Contract
+`invocations.jsonl` MUST use a stable two-event schema:
+- `start_invocation`
+- `end_invocation`
+
+Schema publication requirement:
+- The tracking module MUST maintain an explicit invocation schema document (for example markdown or code constant) defining required fields, optional fields, and field types.
+- This schema is authoritative for instrumentation event shape and MUST be kept in sync with emitted records.
+
+`start_invocation` required keys:
+- `ts` (UTC ISO timestamp string)
+- `event` = `"start_invocation"`
+- `invocation_id` (string)
+- `turn_id` (int or null)
+- `purpose` (string enum; see 5.5.3)
+- `model` (string; MAY be empty if unknown at start)
+- `meta` (object, at least `{}`)
+
+`start_invocation` optional keys:
+- `run_id` (string)
+- `schema_errors` (array; see schema validation behavior below)
+
+`end_invocation` required keys:
+- `ts` (UTC ISO timestamp string)
+- `event` = `"end_invocation"`
+- `invocation_id` (string)
+- `turn_id` (int or null)
+- `purpose` (string enum; see 5.5.3)
+- `model` (string)
+- `prompt_tokens_reported` (int)
+- `completion_tokens_reported` (int)
+- `total_tokens_reported` (int)
+- `usage_is_estimate` (bool)
+- `usage_source` (enum; see 5.5.1)
+- `timing.ttlt_ms` (int)
+- `timing.ttfb_ms` (int or null)
+- `start_ts` (UTC ISO timestamp string)
+- `end_ts` (UTC ISO timestamp string)
+- `first_token_ts` (UTC ISO timestamp string or null)
+- `meta` (object, at least `{}`)
+
+`end_invocation` optional keys:
+- `run_id` (string)
+- `usage_estimate_method` (string or null; see 5.5.1)
+- `schema_errors` (array; see schema validation behavior below)
+
+Invocation state consistency requirements:
+- `purpose` MUST come from invocation state established at `start_invocation`; `end_invocation` inputs MUST NOT override `purpose`.
+- `model` MAY be backfilled once at `end_invocation` only when the start value is empty/unknown.
+- After a non-empty model value is established for an invocation, conflicting model values MUST be recorded as schema errors.
+
+Schema validation behavior:
+- Validation MUST be best-effort and MUST NOT block writes.
+- When validation errors occur, records MUST still be written and include `schema_errors`.
+- `schema_errors` entries MUST be structured objects with:
+  - `code` (string)
+  - `field` (string)
+  - `expected` (any JSON value)
+  - `actual` (any JSON value)
+- Implementations MAY include optional `message` and `details`.
+- Standardized schema error codes SHOULD include at minimum:
+  - `missing_required_key`
+  - `type_mismatch`
+  - `enum_mismatch`
+  - `purpose_mismatch`
+  - `model_mismatch`
+  - `invariant_violation`
+
 ---
 
 ## 5.5 Token Accounting Requirements (Mandatory)
@@ -3084,16 +3152,28 @@ Every LLM call recorded as an invocation MUST log:
 - `completion_tokens_reported` (int, if available)
 - `total_tokens_reported` (int, if available)
 - `usage_is_estimate` (bool)
+- `usage_source` (`provider` | `estimate` | `zero_fallback`)
+- `usage_estimate_method` (string or null)
 
 If reported usage is not available, estimates MAY be used, but `usage_is_estimate=true` MUST be set.
 
 Streaming policy:
 - For streaming calls, use provider-reported usage when available.
-- If provider-reported usage is unavailable, compute estimates using `tiktoken` and set `usage_is_estimate=true`.
-- If estimation fails, write zeros for usage fields and keep `usage_is_estimate=true`.
+- If provider-reported usage is unavailable, compute estimates using `tiktoken` and set:
+  - `usage_source="estimate"`
+  - `usage_is_estimate=true`
+  - `usage_estimate_method` to the method identifier used.
+- If estimation fails, write zeros for usage fields and set:
+  - `usage_source="zero_fallback"`
+  - `usage_is_estimate=true`
+  - `usage_estimate_method=null` (or method attempted, if known)
 - Streaming invocation usage MAY be finalized in the stream completion/finalization path (for example `finally`) when usage is only available at stream end.
 - If the client disconnects early and provider usage is unavailable, the system MUST still emit `end_invocation` using estimate-or-zero fallback and MUST NOT mark the turn invalid solely for missing provider usage.
 - If the provider returns additional token categories (for example cached/reasoning token fields), implementations MAY persist those extras under invocation `meta` for diagnostics while still populating canonical `prompt/completion/total` fields.
+
+Usage provenance consistency:
+- `usage_source="provider"` MUST imply `usage_is_estimate=false`.
+- `usage_source="estimate"` and `usage_source="zero_fallback"` MUST imply `usage_is_estimate=true`.
 
 ### 5.5.2 Turn Level Token Rollups
 Each turn record MUST include:
@@ -3142,15 +3222,23 @@ Each invocation record MUST include:
 - `end_ts` (timestamp)
 - `first_token_ts` (timestamp or null)
 - Derived:
-  - `ttfb_ms`
-  - `ttlt_ms`
+  - `timing.ttfb_ms`
+  - `timing.ttlt_ms`
 
 Timing normalization and fallback rules:
 - `start_ts` and `end_ts` MUST use UTC ISO-8601 with timezone offset.
-- For non-streaming invocations, `first_token_ts` MUST equal `end_ts`.
-- For streaming invocations where no first token is yielded, `ttfb_ms` MUST be `0` and the system MUST emit a warning.
-- `ttfb_ms` and `ttlt_ms` MUST be integer milliseconds.
-- If `ttfb_ms` or `ttlt_ms` is missing, invalid, or negative, the value MUST be forced to `0` and the system MUST emit a warning.
+- For non-streaming invocations:
+  - `first_token_ts` MUST be `null`.
+  - `timing.ttfb_ms` MUST be `null`.
+  - `timing.ttlt_ms` MUST represent end-to-end latency and SHOULD be computed from `end_ts - start_ts` when not provided.
+- For streaming invocations:
+  - `timing.ttfb_ms` SHOULD be measured at first token yield when available.
+  - If no first token is yielded or measurable, `first_token_ts` and `timing.ttfb_ms` MUST be `null` and the system MUST emit a warning.
+- `timing.ttlt_ms` MUST be integer milliseconds.
+- `timing.ttfb_ms` MUST be integer milliseconds or `null`.
+- If `timing.ttlt_ms` is missing, invalid, or negative, implementation MUST fallback to computing from timestamps (`end_ts - start_ts`) when possible; if still unavailable, force `0` and emit a warning.
+- If `timing.ttfb_ms` is invalid or negative for a streaming invocation, force `null` and emit a warning.
+- `timing` is the canonical location for invocation latency fields; top-level `ttfb_ms` and `ttlt_ms` MUST NOT be emitted.
 
 ### 5.6.2 Turn Latency Fields
 Each turn record MUST include:
@@ -3329,9 +3417,3 @@ Snapshot immutability and runtime changes:
   - validation parameters that affect accounting outcomes (for example `prompt_tol_abs_tokens`, `prompt_tol_pct`).
 
 ---
-
-## 5.11 Non-Goals (Clarifications)
-- Instrumentation does not change routing, retrieval, pruning, or prompt policy logic.
-- Instrumentation does not attempt to infer external system prompts or hidden context from other platforms.
-- Instrumentation is an evidence collection layer only.
-- Dream cycle instrumentation is excluded in this phase (even if Dream execution is enabled).

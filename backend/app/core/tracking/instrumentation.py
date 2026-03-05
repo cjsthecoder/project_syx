@@ -13,6 +13,7 @@ import json
 import logging
 import time
 import os
+import subprocess
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -227,6 +228,97 @@ class RealInstrumentation:
         except Exception:
             return None
 
+    @staticmethod
+    def _resolve_repo_root() -> str:
+        # .../backend/app/core/tracking/instrumentation.py -> repo root
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+
+    @classmethod
+    def _detect_git_metadata(cls) -> Dict[str, Any]:
+        repo_root = cls._resolve_repo_root()
+        git_commit = "unknown"
+        git_dirty = False
+        try:
+            rev = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo_root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if rev.returncode == 0:
+                parsed = str(rev.stdout or "").strip()
+                if parsed:
+                    git_commit = parsed
+            dirty = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=repo_root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if dirty.returncode == 0:
+                git_dirty = bool(str(dirty.stdout or "").strip())
+        except Exception:
+            pass
+        return {"git_commit": git_commit, "git_dirty": bool(git_dirty)}
+
+    @classmethod
+    def _normalize_config_snapshot(cls, cfg_snapshot: Dict[str, Any]) -> Dict[str, Any]:
+        out = dict(cfg_snapshot or {})
+        prompt_budgeting = out.get("prompt_budgeting")
+        if isinstance(prompt_budgeting, dict):
+            pb = dict(prompt_budgeting)
+            requested = pb.get("max_output_tokens_requested")
+            effective = pb.get("max_output_tokens_effective")
+            legacy = pb.get("max_output_tokens")
+            if requested is None and legacy is not None:
+                requested = legacy
+            if effective is None and requested is not None:
+                effective = requested
+            pb["max_output_tokens_requested"] = requested
+            pb["max_output_tokens_effective"] = effective
+            pb.pop("max_output_tokens", None)
+            known = bool(
+                pb.get("model_context_window_tokens") is not None
+                and pb.get("max_output_tokens_requested") is not None
+                and pb.get("max_output_tokens_effective") is not None
+                and pb.get("target_max_prompt_tokens") is not None
+                and pb.get("history_max_tokens") is not None
+                and pb.get("rag_max_tokens") is not None
+                and pb.get("profile_max_tokens") is not None
+                and pb.get("system_max_tokens") is not None
+            )
+            pb["prompt_budgeting_known"] = bool(pb.get("prompt_budgeting_known", known))
+            out["prompt_budgeting"] = pb
+        elif "prompt_budgeting" not in out:
+            out["prompt_budgeting"] = {
+                "model_context_window_tokens": None,
+                "max_output_tokens_requested": None,
+                "max_output_tokens_effective": None,
+                "target_max_prompt_tokens": None,
+                "history_max_tokens": None,
+                "rag_max_tokens": None,
+                "profile_max_tokens": None,
+                "system_max_tokens": None,
+                "prompt_budgeting_known": False,
+            }
+
+        maintenance = out.get("maintenance")
+        if isinstance(maintenance, dict):
+            m = dict(maintenance)
+            m.setdefault("reporting_scope", "sleep_only")
+            out["maintenance"] = m
+        else:
+            out["maintenance"] = {"reporting_scope": "sleep_only"}
+
+        if "git_commit" not in out or "git_dirty" not in out:
+            out.update(cls._detect_git_metadata())
+        else:
+            out["git_commit"] = str(out.get("git_commit") or "unknown")
+            out["git_dirty"] = bool(out.get("git_dirty"))
+        return out
+
     def _ensure_dir(self) -> None:
         os.makedirs(self.runs_dir, exist_ok=True)
 
@@ -270,6 +362,7 @@ class RealInstrumentation:
                     cfg_snapshot = dict(cfg_in)
                 else:
                     cfg_snapshot = {}
+                cfg_snapshot = self._normalize_config_snapshot(cfg_snapshot)
 
                 self._run_meta = {
                     "run_id": self.run_id,
@@ -278,8 +371,6 @@ class RealInstrumentation:
                     "ended_at": None,
                     # 5.10: immutable startup snapshot (authoritative)
                     "config_snapshot": cfg_snapshot,
-                    # Back-compat alias for existing readers.
-                    "config": cfg_snapshot,
                     # Runtime-observed values are not part of immutable snapshot.
                     "models_observed": {},
                     "summary": {},

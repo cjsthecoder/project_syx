@@ -22,6 +22,8 @@ from fastapi.responses import FileResponse
 from typing import Optional
 import os
 import logging
+import subprocess
+import sys
 
 # Set up module-level logger
 logger = logging.getLogger(__name__)
@@ -69,6 +71,32 @@ async def lifespan(app: FastAPI):
     init_db()
     # V5.0: initialize instrumentation facade and start process run if enabled.
     try:
+        git_commit = "unknown"
+        git_dirty = False
+        try:
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            rev = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo_root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if rev.returncode == 0:
+                parsed = str(rev.stdout or "").strip()
+                if parsed:
+                    git_commit = parsed
+            dirty = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=repo_root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if dirty.returncode == 0:
+                git_dirty = bool(str(dirty.stdout or "").strip())
+        except Exception:
+            pass
         instr = init_instrumentation(get_settings(), has_lifespan_hook=True)
         s = get_settings()
         pol = load_and_validate_route_policy()
@@ -92,12 +120,14 @@ async def lifespan(app: FastAPI):
                 },
                 "prompt_budgeting": {
                     "model_context_window_tokens": None,
-                    "max_output_tokens": int(s.model_max_tokens),
+                    "max_output_tokens_requested": int(s.model_max_tokens),
+                    "max_output_tokens_effective": int(s.model_max_tokens),
                     "target_max_prompt_tokens": None,
                     "history_max_tokens": None,
                     "rag_max_tokens": None,
                     "profile_max_tokens": None,
                     "system_max_tokens": None,
+                    "prompt_budgeting_known": False,
                 },
                 "retrieval_static": {
                     "base_top_k": int(s.base_top_k),
@@ -120,6 +150,7 @@ async def lifespan(app: FastAPI):
                     "verify_rag": bool(s.verify_rag),
                     "force_rag_rebuild_on_startup": bool(s.force_rag_rebuild_on_startup),
                     "dream_enabled": bool(s.enable_dream),
+                    "reporting_scope": "sleep_only",
                 },
                 "instrumentation": {
                     "enabled": bool(s.instrumentation_enabled),
@@ -131,6 +162,9 @@ async def lifespan(app: FastAPI):
                         "prompt_tol_pct": float(s.instrumentation_prompt_tol_pct),
                     },
                 },
+                "git_commit": str(git_commit),
+                "git_dirty": bool(git_dirty),
+                "python_version": str(sys.version.split()[0]),
             },
         }
         run_id = instr.start_run(config=run_cfg)

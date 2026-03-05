@@ -3433,6 +3433,10 @@ Prompt-usage missing/unreliable handling:
 
 `run.json` MUST capture an immutable startup `config_snapshot` for reproducibility.
 
+Canonical top-level shape:
+- `config_snapshot` is the only canonical startup configuration object.
+- Top-level duplicate aliases such as `config` MUST NOT be emitted.
+
 Snapshot immutability and runtime changes:
 - `config_snapshot` MUST represent startup configuration only and MUST NOT be mutated mid-run.
 - Runtime config changes (if any) MUST be logged as events (for example `config_change` stage events or a dedicated config events stream) rather than rewriting `config_snapshot`.
@@ -3444,16 +3448,23 @@ Snapshot immutability and runtime changes:
   - configured defaults for main and mini-model paths at run start (for example main model, builder model, tagger model).
 - `models_observed` (or equivalent):
   - per-purpose set of model IDs actually observed during the run from invocation records.
+  - purpose keys MUST remain purpose-native (for example `router`, `main`, `tagger`, `sleep`) and MUST NOT be renamed to configured-model key names.
+  - implementations MAY add an optional helper mapping (for example `models_configured_by_purpose`) for analysis convenience.
 
 - `prompt_budgeting`:
   - `model_context_window_tokens`
-  - `max_output_tokens`
+  - `max_output_tokens_requested`
+  - `max_output_tokens_effective`
   - `target_max_prompt_tokens`
   - `history_max_tokens`
   - `rag_max_tokens` (if enforced)
   - `profile_max_tokens` (if enforced)
   - `system_max_tokens` (if enforced)
+  - `prompt_budgeting_known` (bool)
   - If a listed cap is not enforced in current code, implementations MAY write `null` or omit that specific field, but enforced caps MUST be present.
+  - `prompt_budgeting_known=true` only when all key budgeting fields are populated with meaningful effective values.
+  - If any key budget value is unknown/not captured, `prompt_budgeting_known=false` and unknown fields SHOULD be `null`.
+  - If no clamp/adjustment exists in the code path, `max_output_tokens_effective` MUST equal `max_output_tokens_requested`.
 
 - retrieval configuration split by scope:
   - `retrieval_static` for global/static settings (for example base K, chunk sizing, embedding model, similarity policy).
@@ -3466,9 +3477,17 @@ Snapshot immutability and runtime changes:
 - `maintenance`:
   - sleep enable/trigger/cadence settings used by the run (for example scheduler enablement and scheduler time).
   - operational maintenance flags that affect workload/outputs (for example `verify_rag`, `force_rag_rebuild_on_startup`, dream enablement).
+  - reporting scope marker:
+    - `reporting_scope` with enum value `"sleep_only"` in this phase.
 
 - `instrumentation`:
   - instrumentation mode and enabled state.
   - validation parameters that affect accounting outcomes (for example `prompt_tol_abs_tokens`, `prompt_tol_pct`).
+
+- reproducibility metadata:
+  - `git_commit` (string SHA) is required in v1.
+  - `git_dirty` (bool) is required in v1 and indicates uncommitted workspace changes at snapshot time.
+  - if `git_dirty=true`, `git_commit` MUST still be recorded (MUST NOT be nulled).
+  - optional metadata MAY include `python_version` and sanitized build/runtime identity fields.
 
 ---

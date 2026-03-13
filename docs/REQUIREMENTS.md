@@ -3546,3 +3546,74 @@ Snapshot immutability and runtime changes:
   - optional metadata MAY include `python_version` and sanitized build/runtime identity fields.
 
 ---
+
+## 5.11 Benchmark Evaluation Artifacts (Turn Capture)
+
+To support repeatable quality-vs-cost comparisons across systems (for example Morpheus, ChatGPT, and additional baselines), instrumentation-adjacent benchmark artifacts SHALL be produced in structured JSONL form.
+
+### 5.11.1 Primary Benchmark Turn Artifact
+
+A benchmark turn artifact file SHALL be supported:
+- `benchmark_results.jsonl`
+
+Each record represents one evaluated turn/case candidate output.
+
+Required fields (minimum):
+- `case_id` (string; stable unique id for the benchmark case)
+- `system` (string; for example `morpheus`, `chatgpt`, `baseline_x`)
+- `model_id` (string)
+- `timestamp` (UTC ISO timestamp string)
+- `prompt_text` (string; exact prompt content used for that candidate)
+- `response_text` (string; exact candidate output)
+
+Turn/run linkage fields:
+- `run_id` (string or null)
+- `turn_id` (int or null)
+
+Token/latency comparison fields:
+- `main_total_tokens_reported` (int or null)
+- `turn_total_tokens_reported` (int or null)
+- `latency_ms` (int or null)
+
+Alignment and completeness fields:
+- `metrics_source` (string; for example `morpheus_instrumentation`, `html_extracted`)
+- `completeness` (enum: `full` | `partial`)
+- `missing_fields` (array of strings; MAY be empty)
+
+### 5.11.2 Turn ID Alignment Rules
+
+For records where `system="morpheus"`:
+- `turn_id` MUST match the corresponding `turns.jsonl` turn id exactly.
+- `run_id` MUST match the corresponding instrumentation run directory id.
+- `turn_id`/`run_id` mismatches MUST be treated as alignment errors by benchmark tooling.
+
+For external/manual sources (for example HTML-extracted ChatGPT turns):
+- `turn_id` MAY be null when no native instrumentation turn id exists.
+- Tooling SHOULD include an explicit alignment key (for example `aligned_turn_id` or equivalent) to map external turns to Morpheus benchmark turns.
+
+### 5.11.3 Secondary Scoring Artifact
+
+A second artifact SHOULD be used for judge/scorer outputs:
+- `benchmark_scores.jsonl`
+
+Recommended fields:
+- `case_id`
+- `scorer_model`
+- rubric subscores (structured object)
+- `overall_score`
+- `rationale`
+- optional judge metadata (for example prompt version, confidence, parsing status)
+
+Separation rule:
+- `benchmark_results.jsonl` stores candidate outputs and measured stats.
+- `benchmark_scores.jsonl` stores evaluator judgments.
+- Benchmark tooling MAY join on `case_id`.
+
+### 5.11.4 Nullability and Partial Data Policy
+
+Benchmark artifacts MUST permit partial metrics for non-instrumented sources:
+- Unknown/unavailable numeric metrics MUST be null (not fabricated).
+- Missing optional metrics MUST NOT block record creation.
+- `missing_fields` SHOULD enumerate intentionally absent metrics for analysis transparency.
+
+---

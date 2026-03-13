@@ -398,7 +398,7 @@ setup-env:
 		echo "VERIFY_RAG=true"; \
 		echo "# V3.3: Enable post-rebuild verification"; \
 		echo ""; \
-		echo "FORCE_RAG_REBUILD_ON_STARTUP=true"; \
+		echo "FORCE_RAG_REBUILD_ON_STARTUP=false"; \
 		echo "# Optional startup sweep: rebuild all project RAG indexes from uploads"; \
 		echo ""; \
 		echo "# === Instrumentation (V5.0) ==="; \

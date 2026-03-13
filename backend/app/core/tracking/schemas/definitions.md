@@ -8,6 +8,8 @@ This file is the canonical data dictionary for instrumentation fields emitted to
 - `turns.jsonl`
 - `maintenance.jsonl`
 - `run.json`
+- `benchmark_results.jsonl` / `web_benchmark_results.jsonl`
+- `web_turns.jsonl` (synthetic `end_turn` stream from web extractor)
 
 ## Field Dictionary (v1.0)
 
@@ -136,6 +138,61 @@ Optional diagnostics:
 - `meta`
 - `schema_errors`
 
+### `web_benchmark_results.jsonl` -> `benchmark_result` (web extractor)
+
+Required:
+- `case_id`
+- `system`
+- `model_id` (nullable)
+- `timestamp`
+- `prompt_text`
+- `response_text`
+- `run_id` (nullable)
+- `turn_id` (nullable)
+- `main_total_tokens_reported` (nullable)
+- `turn_total_tokens_reported` (nullable)
+- `latency_ms` (nullable)
+- `metrics_source`
+- `completeness`
+- `missing_fields`
+
+### `web_turns.jsonl` -> synthetic `end_turn` (web extractor)
+
+Required top-level:
+- `ts`
+- `event` = `end_turn`
+- `system` = `chatgpt_web`
+- `run_id`
+- `turn_id`
+- `prompt_system_tokens_est`
+- `prompt_history_tokens_est`
+- `prompt_rag_tokens_est`
+- `prompt_profile_tokens_est`
+- `prompt_other_tokens_est`
+- `route`
+- `rag_enabled`
+- `retrieved_count`
+- `kept_count`
+- `expanded_unique_chunks_after_merge`
+- `final_context_tokens_est`
+- `final_context_clipped`
+- `main_total_tokens_reported`
+- `mini_total_tokens_reported_sum`
+- `turn_total_tokens_reported`
+- `main_prompt_tokens_reported`
+- `main_completion_tokens_reported`
+- `turn_usage_source`
+- `turn_usage_is_estimate`
+- `provider_tokens_total`
+- `estimated_tokens_total`
+- `zero_fallback_tokens_total`
+- `ttfb_ms_main` (nullable)
+- `ttlt_ms_main`
+- `ttlt_ms_turn_total`
+- `invocations_count_total`
+- `main_invocations_count`
+- `mini_invocations_count`
+
 ### A) Core Envelope and IDs
 
 #### `run_id`
@@ -151,6 +208,13 @@ Optional diagnostics:
 - Where measured: `start_turn`, `record_stage`, `end_turn`; invocation start/end.
 - How computed: Provided by caller for turns; captured active turn for invocations.
 - Invariants / tolerance: Strictly increasing is required for `start_turn`; duplicates/regressions are detected against last seen turn id in instrumentation, warning-logged, and the duplicate/regressed `start_turn` write is dropped (non-silent data loss).
+
+#### `system`
+- Type and units: string enum-like
+- Exact meaning: Source system label for cross-system comparison streams.
+- Where measured: Benchmark/web extraction boundary (`benchmark_results.jsonl`, `web_benchmark_results.jsonl`, `web_turns.jsonl`).
+- How computed: Set by producer (`morpheus`, `chatgpt`, `chatgpt_web`, etc.).
+- Invariants / tolerance: Must be stable and explicit for a given stream to support joins/plot splits.
 
 #### `ts`
 - Type and units: string (UTC ISO timestamp)
@@ -421,7 +485,9 @@ Optional diagnostics:
 - Type and units: int (tokens)
 - Exact meaning: Estimated history contribution in final prompt.
 - Where measured: `prompt_assembly` stage, pre-send.
-- How computed: Estimate over serialized history content.
+- How computed:
+  - Morpheus: estimate over serialized conversation history included in the final prompt payload.
+  - Web synthetic (`web_turns.jsonl`): estimate over all prior visible extracted user prompts and assistant responses (`history_text_parts` replay), excluding current-turn prompt/response.
 - Invariants / tolerance: Non-negative; part of prompt-sum invariant.
 
 #### `prompt_rag_tokens_est`
@@ -505,15 +571,49 @@ Optional diagnostics:
 - Type and units: int or null (tokens)
 - Exact meaning: Main invocation prompt tokens copied to turn summary.
 - Where measured: `end_turn`, post main invocation.
-- How computed: From main invocation usage payload.
+- How computed:
+  - Morpheus: from main invocation usage payload.
+  - Web synthetic (`web_turns.jsonl`): set to `final_context_tokens_est`.
 - Invariants / tolerance: If both this and completion are present, their sum must equal `main_total_tokens_reported`.
 
 #### `main_completion_tokens_reported`
 - Type and units: int or null (tokens)
 - Exact meaning: Main invocation completion tokens copied to turn summary.
 - Where measured: `end_turn`, post main invocation.
-- How computed: From main invocation usage payload.
+- How computed:
+  - Morpheus: from main invocation usage payload.
+  - Web synthetic (`web_turns.jsonl`): estimated response tokens for the current turn.
 - Invariants / tolerance: If both this and prompt are present, their sum must equal `main_total_tokens_reported`.
+
+### H) Benchmark/Web Comparison Fields
+
+#### `case_id`
+- Type and units: string
+- Exact meaning: Stable identifier for a benchmark case/turn candidate.
+- Where measured: Benchmark extraction/capture boundary.
+- How computed: Producer-defined stable id (for web extractor: `<input_base>:turn:<n>`).
+- Invariants / tolerance: Must be unique within output file and stable for scorer joins.
+
+#### `metrics_source`
+- Type and units: string enum-like
+- Exact meaning: Provenance of usage/latency metrics in benchmark rows.
+- Where measured: Benchmark extraction/capture boundary.
+- How computed: Set by producer (`morpheus_instrumentation`, `html_extracted`, etc.).
+- Invariants / tolerance: Must reflect real provenance; do not fabricate provider metrics.
+
+#### `completeness`
+- Type and units: enum (`full` | `partial`)
+- Exact meaning: Whether all expected benchmark fields are present with non-null values.
+- Where measured: Benchmark extraction/capture boundary.
+- How computed: Derived from missing/nullability policy at record build time.
+- Invariants / tolerance: Must align with `missing_fields`.
+
+#### `missing_fields`
+- Type and units: array[string]
+- Exact meaning: Explicit list of intentionally unavailable fields in a benchmark record.
+- Where measured: Benchmark extraction/capture boundary.
+- How computed: Enumerated during record construction.
+- Invariants / tolerance: Empty when `completeness=full`; may be non-empty for external/manual sources.
 
 #### `turn_usage_source`
 - Type and units: enum (`provider` | `estimate` | `zero_fallback`)

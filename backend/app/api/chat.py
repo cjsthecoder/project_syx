@@ -856,6 +856,11 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
     finally:
         try:
             if "turn_started" in locals() and turn_started:
+                _resp_text = None
+                _model_id = (request.model or settings.model_name)
+                if isinstance(locals().get("llm_response"), dict):
+                    _resp_text = str(locals()["llm_response"].get("response") or "")
+                    _model_id = str(locals()["llm_response"].get("llm_model") or _model_id)
                 get_instrumentation().end_turn(
                     output_meta={
                         "turn_id": turn_id,
@@ -873,6 +878,9 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                             (rag_turn_metrics or {}).get("rag_tokens_injected_est", 0) or 0
                         ),
                         "final_context_clipped": bool((rag_turn_metrics or {}).get("final_context_clipped", False)),
+                        "prompt_text": str(request.message or ""),
+                        "response_text": _resp_text,
+                        "model_id": _model_id,
                     }
                 )
         except Exception:
@@ -1128,6 +1136,9 @@ async def chat_stream(request: ChatRequest):
                                 "conversation_id": request.conversation_id,
                                 "streaming": True,
                                 "response_len": len("".join(collected)),
+                                "prompt_text": str(request.message or ""),
+                                "response_text": "".join(collected),
+                                "model_id": str(request.model or settings.model_name),
                                 "route": str((rag_turn_metrics or {}).get("route", "OTHER")),
                                 "rag_enabled": bool((rag_turn_metrics or {}).get("rag_enabled", False)),
                                 "retrieved_count": int((rag_turn_metrics or {}).get("retrieved_count", 0) or 0),
@@ -1158,6 +1169,9 @@ async def chat_stream(request: ChatRequest):
                         "conversation_id": request.conversation_id,
                         "streaming": True,
                         "error": str(e),
+                        "prompt_text": str(request.message or ""),
+                        "response_text": None,
+                        "model_id": str(request.model or settings.model_name),
                         "route": str((rag_turn_metrics or {}).get("route", "OTHER")),
                         "rag_enabled": bool((rag_turn_metrics or {}).get("rag_enabled", False)),
                         "retrieved_count": int((rag_turn_metrics or {}).get("retrieved_count", 0) or 0),

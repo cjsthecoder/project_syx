@@ -351,6 +351,58 @@ class RealInstrumentation:
         with open(path, "w", encoding="utf-8", newline="\n") as f:
             json.dump(self._run_meta, f, ensure_ascii=False, indent=2)
 
+    def _record_benchmark_turn_result(
+        self,
+        *,
+        turn_id: int,
+        turn_payload: Dict[str, Any],
+        output_meta: Dict[str, Any],
+    ) -> None:
+        # 5.11 benchmark artifact emission when instrumentation is enabled.
+        if not self.run_id or not self.run_dir:
+            return
+
+        case_id = f"{self.run_id}:turn:{int(turn_id)}"
+        prompt_text_raw = output_meta.get("prompt_text")
+        response_text_raw = output_meta.get("response_text")
+        model_id_raw = output_meta.get("model_id")
+        model_id = str(model_id_raw).strip() if isinstance(model_id_raw, str) and model_id_raw.strip() else None
+
+        prompt_text = str(prompt_text_raw) if isinstance(prompt_text_raw, str) else None
+        response_text = str(response_text_raw) if isinstance(response_text_raw, str) else None
+        missing_fields = []
+        if not model_id:
+            missing_fields.append("model_id")
+        if prompt_text is None:
+            missing_fields.append("prompt_text")
+        if response_text is None:
+            missing_fields.append("response_text")
+        if turn_payload.get("main_total_tokens_reported") is None:
+            missing_fields.append("main_total_tokens_reported")
+        if turn_payload.get("turn_total_tokens_reported") is None:
+            missing_fields.append("turn_total_tokens_reported")
+        if turn_payload.get("ttlt_ms_turn_total") is None:
+            missing_fields.append("latency_ms")
+
+        record: Dict[str, Any] = {
+            "case_id": case_id,
+            "system": "morpheus",
+            "model_id": model_id,
+            "timestamp": turn_payload.get("ts"),
+            "run_id": self.run_id,
+            "turn_id": int(turn_id),
+            "main_total_tokens_reported": turn_payload.get("main_total_tokens_reported"),
+            "turn_total_tokens_reported": turn_payload.get("turn_total_tokens_reported"),
+            "latency_ms": turn_payload.get("ttlt_ms_turn_total"),
+            "metrics_source": "morpheus_instrumentation",
+            "completeness": ("full" if not missing_fields else "partial"),
+            "missing_fields": missing_fields,
+            "prompt_text": prompt_text,
+            "response_text": response_text,
+            "scorer_output_id": None,
+        }
+        self._append_jsonl("benchmark_results.jsonl", record)
+
     def start_run(self, config: Optional[dict] = None) -> str:
         with self._lock:
             try:
@@ -391,6 +443,12 @@ class RealInstrumentation:
                     self._append_jsonl(fname, {})
                 # Remove placeholder rows and keep empty files.
                 for fname in ("turns.jsonl", "invocations.jsonl", "maintenance.jsonl"):
+                    path = os.path.join(self.run_dir, fname)
+                    with open(path, "w", encoding="utf-8", newline="\n"):
+                        pass
+                for fname in ("benchmark_results.jsonl", "benchmark_scores.jsonl"):
+                    self._append_jsonl(fname, {})
+                for fname in ("benchmark_results.jsonl", "benchmark_scores.jsonl"):
                     path = os.path.join(self.run_dir, fname)
                     with open(path, "w", encoding="utf-8", newline="\n"):
                         pass
@@ -638,6 +696,11 @@ class RealInstrumentation:
                 if isinstance(finish_reason, str) and finish_reason.strip():
                     payload["finish_reason"] = finish_reason.strip()
                 self._append_jsonl("turns.jsonl", payload)
+                self._record_benchmark_turn_result(
+                    turn_id=int(tid),
+                    turn_payload=payload,
+                    output_meta=(out if isinstance(out, dict) else {}),
+                )
                 _ACTIVE_TURN_ID.set(None)
                 if tid is not None:
                     self._turn_state.pop(int(tid), None)

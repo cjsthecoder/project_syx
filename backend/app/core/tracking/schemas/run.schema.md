@@ -17,6 +17,7 @@ Required fields:
 - `ended_at` (string or null, UTC ISO timestamp)
 - `config_snapshot` (object)
 - `models_observed` (object)
+- `project_observed` (object)
 - `summary` (object)
 
 Rules:
@@ -60,11 +61,25 @@ Rules:
 - Purpose keys remain purpose-native (for example `main`, `router`, `tagger`, `sleep`).
 - Empty purpose buckets may be omitted.
 
+## `project_observed` (Top Level)
+
+- Runtime-observed project context for run reproducibility.
+- Fields:
+  - `project_id` (string or null): first project id observed in turn metadata for this run.
+  - `projects_seen` (array[string]): unique project ids observed in the run.
+  - `multi_project_run` (bool): true if the run observed more than one project id.
+  - `as_run_personality` (object or null): normalized personality snapshot captured when `project_id` is first observed.
+  - `as_run_personality_sha256` (string or null): stable SHA-256 digest of canonical personality JSON.
+  - `personality_captured_at` (string UTC ISO timestamp or null): capture timestamp for the snapshot.
+  - `personality_source` (string): one of `project_file`, `default_fallback`, `unavailable`.
+- `project_observed` is runtime metadata and MUST NOT be written under `config_snapshot`.
+
 ## Lifecycle Semantics
 
 - At run start:
   - `ended_at` is `null`
   - `models_observed` is empty
+  - `project_observed.project_id` is `null`
   - `summary` is empty object
 - At run end:
   - `ended_at` is populated

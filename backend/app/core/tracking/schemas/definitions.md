@@ -615,6 +615,15 @@ Required top-level:
 - How computed: Enumerated during record construction.
 - Invariants / tolerance: Empty when `completeness=full`; may be non-empty for external/manual sources.
 
+#### `prompts.json.system_prompt.known_component`
+- Type and units: string (prompt text)
+- Exact meaning: User-controlled system-instruction component used for benchmark runs.
+- Where measured: Benchmark input configuration (`prompts.json`) and web extractor synthesis boundary.
+- How computed:
+  - Morpheus: treated as system prompt content and counted within prompt/system token accounting.
+  - ChatGPT web synthetic: mapped to Custom Instructions text and counted as the visible system component only.
+- Invariants / tolerance: For ChatGPT web runs, this field represents only the known/visible portion of the effective system prompt; hidden platform/system layers are not observable and are intentionally excluded from token accounting.
+
 #### `turn_usage_source`
 - Type and units: enum (`provider` | `estimate` | `zero_fallback`)
 - Exact meaning: Provenance class for turn-level aggregated usage.
@@ -963,6 +972,62 @@ Note: v1 keeps shared canonical key names (`total_tokens_reported`, `usage_sourc
 - Where measured: `end_run`, post invocation scan.
 - How computed: Aggregated unique model ids from invocation records by purpose.
 - Invariants / tolerance: Keys remain purpose-native (`main`, `router`, `tagger`, `sleep`, ...).
+
+#### `project_observed`
+- Type and units: object
+- Exact meaning: Runtime-observed project context and personality snapshot for the run.
+- Where measured: `start_turn` (first/next observed project IDs for the run).
+- How computed: Captures first observed `project_id` from turn metadata and snapshots normalized personality once for reproducibility.
+- Invariants / tolerance: Runtime metadata only; not part of immutable startup snapshot.
+
+#### `project_observed.project_id`
+- Type and units: string or null
+- Exact meaning: First project id observed in run turn metadata.
+- Where measured: First `start_turn` with non-empty `user_meta.project_id`.
+- How computed: Value copied from incoming turn metadata.
+- Invariants / tolerance: Null until first project-scoped turn.
+
+#### `project_observed.projects_seen`
+- Type and units: array[string]
+- Exact meaning: Unique set of project ids observed during run.
+- Where measured: `start_turn`.
+- How computed: Append-only unique list from incoming `user_meta.project_id`.
+- Invariants / tolerance: Includes `project_id` and any additional project ids seen later.
+
+#### `project_observed.multi_project_run`
+- Type and units: boolean
+- Exact meaning: Whether more than one distinct project id was observed during the run.
+- Where measured: `start_turn`.
+- How computed: Set true when an observed project id differs from first `project_id`.
+- Invariants / tolerance: Monotonic false->true.
+
+#### `project_observed.as_run_personality`
+- Type and units: object or null
+- Exact meaning: Normalized personality snapshot used for the run project.
+- Where measured: First project capture in `start_turn`.
+- How computed: Loaded via project personality loader; falls back to default personality when project file is absent/unreadable.
+- Invariants / tolerance: Captured once per run for first observed project id.
+
+#### `project_observed.as_run_personality_sha256`
+- Type and units: string (hex) or null
+- Exact meaning: Stable SHA-256 digest of canonical personality JSON snapshot.
+- Where measured: First project capture in `start_turn`.
+- How computed: Hash over sorted/minified canonical JSON representation.
+- Invariants / tolerance: Null when snapshot unavailable.
+
+#### `project_observed.personality_captured_at`
+- Type and units: string (UTC ISO timestamp) or null
+- Exact meaning: Snapshot capture timestamp.
+- Where measured: First project capture in `start_turn`.
+- How computed: Current UTC timestamp at snapshot write.
+- Invariants / tolerance: Null when snapshot unavailable.
+
+#### `project_observed.personality_source`
+- Type and units: string enum
+- Exact meaning: Provenance of captured personality snapshot.
+- Where measured: First project capture in `start_turn`.
+- How computed: `project_file` when `memory/{project_id}/personality.json` exists, `default_fallback` when loader falls back to defaults, `unavailable` on snapshot failure.
+- Invariants / tolerance: One of `project_file`, `default_fallback`, `unavailable`.
 
 #### `config_snapshot`
 - Type and units: object

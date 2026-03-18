@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import atexit
 import contextvars
+import hashlib
 import json
 import logging
 import time
@@ -351,6 +352,66 @@ class RealInstrumentation:
         with open(path, "w", encoding="utf-8", newline="\n") as f:
             json.dump(self._run_meta, f, ensure_ascii=False, indent=2)
 
+    @staticmethod
+    def _snapshot_project_personality(project_id: str) -> Dict[str, Any]:
+        pid = str(project_id or "").strip()
+        out: Dict[str, Any] = {
+            "as_run_personality": None,
+            "as_run_personality_sha256": None,
+            "personality_captured_at": None,
+            "personality_source": "unavailable",
+        }
+        if not pid:
+            return out
+        personality_path = os.path.join("memory", pid, "personality.json")
+        source = "project_file" if os.path.isfile(personality_path) else "default_fallback"
+        try:
+            # Local import avoids adding a hard runtime dependency at module import time.
+            from ..personality import load_project_personality
+
+            personality = load_project_personality(pid)
+            if isinstance(personality, dict):
+                canonical = json.loads(json.dumps(personality, ensure_ascii=False))
+                digest_src = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                out["as_run_personality"] = canonical
+                out["as_run_personality_sha256"] = hashlib.sha256(digest_src.encode("utf-8")).hexdigest()
+                out["personality_captured_at"] = _utc_iso()
+                out["personality_source"] = source
+        except Exception as e:
+            logger.warning("tracking.project_observed personality snapshot failed project_id=%s: %s", pid, e)
+        return out
+
+    def _observe_project_for_run(self, user_meta: Optional[dict]) -> None:
+        if not isinstance(user_meta, dict):
+            return
+        project_id_raw = user_meta.get("project_id")
+        project_id = str(project_id_raw or "").strip()
+        if not project_id:
+            return
+        observed = self._run_meta.get("project_observed")
+        if not isinstance(observed, dict):
+            return
+        changed = False
+        seen = observed.get("projects_seen")
+        if not isinstance(seen, list):
+            seen = []
+        if project_id not in seen:
+            seen.append(project_id)
+            observed["projects_seen"] = seen
+            changed = True
+        run_project_id = str(observed.get("project_id") or "").strip()
+        if not run_project_id:
+            observed["project_id"] = project_id
+            observed.update(self._snapshot_project_personality(project_id))
+            changed = True
+        elif run_project_id != project_id:
+            if not bool(observed.get("multi_project_run", False)):
+                observed["multi_project_run"] = True
+                changed = True
+        if changed:
+            self._run_meta["project_observed"] = observed
+            self._write_run_json()
+
     def _record_benchmark_turn_result(
         self,
         *,
@@ -434,6 +495,15 @@ class RealInstrumentation:
                     "config_snapshot": cfg_snapshot,
                     # Runtime-observed values are not part of immutable snapshot.
                     "models_observed": {},
+                    "project_observed": {
+                        "project_id": None,
+                        "projects_seen": [],
+                        "multi_project_run": False,
+                        "as_run_personality": None,
+                        "as_run_personality_sha256": None,
+                        "personality_captured_at": None,
+                        "personality_source": "unavailable",
+                    },
                     "summary": {},
                 }
                 self._write_run_json()
@@ -516,6 +586,7 @@ class RealInstrumentation:
                     "user_meta": user_meta or {},
                 }
                 self._append_jsonl("turns.jsonl", payload)
+                self._observe_project_for_run(user_meta)
             except Exception as e:
                 logger.warning("tracking.start_turn failed: %s", e, exc_info=True)
 

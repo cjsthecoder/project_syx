@@ -431,7 +431,7 @@ setup-env:
 		echo "# V3.5: Overall stream timeout (ms)"; \
 		echo ""; \
 		echo "# === Dream Pipeline ==="; \
-		echo "ENABLE_DREAM=true"; \
+		echo "ENABLE_DREAM=false"; \
 		echo "# V4.1: Enable Dream orchestrator"; \
 		echo ""; \
 		echo "MAX_WORKERS=1"; \

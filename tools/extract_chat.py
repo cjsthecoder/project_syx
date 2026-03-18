@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -28,6 +29,28 @@ def _utc_iso() -> str:
 def estimate_tokens(text: str) -> int:
     enc = tiktoken.get_encoding("cl100k_base")
     return len(enc.encode(str(text or "")))
+
+
+def load_system_prompt_from_benchmark_json(prompts_json_path: str) -> tuple[str, int]:
+    """
+    Load benchmark system prompt text and its token estimate.
+    """
+    try:
+        with open(prompts_json_path, "r", encoding="utf-8") as fp:
+            payload = json.load(fp)
+    except Exception as exc:
+        raise ValueError(f"Failed to read prompts JSON '{prompts_json_path}': {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError("prompts JSON root must be an object")
+    sp = payload.get("system_prompt")
+    if not isinstance(sp, dict):
+        return "", 0
+    text = sp.get("known_component")
+    if not isinstance(text, str):
+        return "", 0
+    text_value = str(text)
+    return text_value, int(estimate_tokens(text_value))
 
 
 def parse_html_file(html_file: str) -> Optional[BeautifulSoup]:
@@ -253,7 +276,12 @@ def output_web_turns_path_for_run_dir(test_run_path: str) -> str:
     return os.path.join(run_dir, "web_turns.jsonl")
 
 
-def validate_inputs(input_file: str, test_run_path: str) -> None:
+def validate_inputs(prompts_json_path: str, input_file: str, test_run_path: str) -> None:
+    if not os.path.exists(prompts_json_path):
+        raise FileNotFoundError(f"prompts_json not found: {prompts_json_path}")
+    prompt_ext = os.path.splitext(prompts_json_path)[1].lower()
+    if prompt_ext != ".json":
+        raise ValueError(f"Unsupported prompts_json extension '{prompt_ext}'. Expected .json")
     if not os.path.exists(input_file):
         raise FileNotFoundError(f"File not found: {input_file}")
     ext = os.path.splitext(input_file)[1].lower()
@@ -265,11 +293,26 @@ def validate_inputs(input_file: str, test_run_path: str) -> None:
         raise ValueError(f"test_run_path is not a directory: {test_run_path}")
 
 
-def run(input_file: str, test_run_path: str) -> int:
+def run(prompts_json_path: str, input_file: str, test_run_path: str) -> int:
     try:
-        validate_inputs(input_file, test_run_path)
+        validate_inputs(prompts_json_path, input_file, test_run_path)
     except Exception as exc:
         logger.error("%s", exc)
+        return 1
+
+    try:
+        system_prompt_text, system_prompt_tokens = load_system_prompt_from_benchmark_json(prompts_json_path)
+    except Exception as exc:
+        logger.error("%s", exc)
+        return 1
+
+    # Persist benchmark prompt definition as a run artifact.
+    try:
+        dst_path = os.path.join(os.path.abspath(test_run_path), os.path.basename(prompts_json_path))
+        shutil.copy2(prompts_json_path, dst_path)
+        logger.info("Copied prompts artifact to %s", dst_path)
+    except Exception as exc:
+        logger.error("Failed to copy prompts artifact: %s", exc, exc_info=True)
         return 1
 
     soup = parse_html_file(input_file)
@@ -301,7 +344,7 @@ def run(input_file: str, test_run_path: str) -> int:
         case_id = f"{base_name}:turn:{idx}"
         prompt_other_tokens_est = int(estimate_tokens(prompt_text))
         prompt_history_tokens_est = int(estimate_tokens("\n".join(history_text_parts))) if history_text_parts else 0
-        prompt_system_tokens_est = 0
+        prompt_system_tokens_est = int(system_prompt_tokens)
         prompt_profile_tokens_est = 0
         prompt_rag_tokens_est = 0
         final_context_tokens_est = int(
@@ -402,7 +445,7 @@ def run(input_file: str, test_run_path: str) -> int:
     logger.info("Wrote %s benchmark records to %s", len(records), out_path)
     logger.info("Wrote %s synthetic web_turn records to %s", len(web_turn_records), web_turns_out_path)
     logger.info(
-        "Extraction stats: messages=%s pairs=%s invalid_records=%s invalid_web_turn_records=%s orphan_assistant=%s replaced_unanswered_user=%s trailing_unanswered_user=%s total_context_tokens=%s total_main_tokens=%s",
+        "Extraction stats: messages=%s pairs=%s invalid_records=%s invalid_web_turn_records=%s orphan_assistant=%s replaced_unanswered_user=%s trailing_unanswered_user=%s system_prompt_tokens=%s total_context_tokens=%s total_main_tokens=%s",
         len(messages),
         len(pairs),
         invalid_count,
@@ -410,6 +453,7 @@ def run(input_file: str, test_run_path: str) -> int:
         pair_stats["orphan_assistant"],
         pair_stats["replaced_unanswered_user"],
         pair_stats["trailing_unanswered_user"],
+        system_prompt_tokens,
         sum_context_tokens,
         sum_main_total_tokens,
     )
@@ -417,10 +461,10 @@ def run(input_file: str, test_run_path: str) -> int:
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
-        logger.error("Usage: python3 extract_chat.py <chat_export.html> <test_run_path>")
+    if len(sys.argv) != 4:
+        logger.error("Usage: python3 extract_chat.py <prompts.json> <chat_export.html> <test_run_path>")
         return 1
-    return run(sys.argv[1], sys.argv[2])
+    return run(sys.argv[1], sys.argv[2], sys.argv[3])
 
 
 if __name__ == "__main__":

@@ -9,9 +9,8 @@ Use of this software requires explicit written permission from the copyright hol
 """
 import logging
 import time
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any
 import json
-import re
 import os
 
 from ..research import count_tokens, trim_to_tokens, fetch_remote_research
@@ -27,58 +26,24 @@ from .prompts.questions_prompts import (
 logger = logging.getLogger(__name__)
 
 
-def _extract_json_from_open_questions(summary_text: str) -> Optional[str]:
+def _load_consolidated_questions(project_id: str) -> Dict[str, Any]:
     """
-    Locate the [Open Questions] section and extract the first JSON object that follows.
-    Returns the JSON text or None if not found/invalid.
+    Load deterministic open-question consolidation artifact from sleep.
     """
-    try:
-        # Find the [Open Questions] marker
-        m = re.search(r"^\[Open Questions\][\s\S]*", summary_text, flags=re.MULTILINE)
-        start_idx = m.start() if m else -1
-        if start_idx < 0:
-            return None
-        # From marker onward, find first '{' and extract balanced braces
-        tail = summary_text[start_idx:]
-        brace_start = tail.find("{")
-        if brace_start < 0:
-            return None
-        i = brace_start
-        depth = 0
-        for j, ch in enumerate(tail[brace_start:], start=brace_start):
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    json_str = tail[brace_start:j + 1]
-                    # Validate it's JSON
-                    json.loads(json_str)
-                    return json_str
-        return None
-    except Exception:
-        return None
-
-
-def _open_questions_agent(project_id: str, summary_text: str) -> dict:
-    """
-    Parse JSON block from [Open Questions] section.
-    """
-    json_text = _extract_json_from_open_questions(summary_text or "")
-    if not json_text:
-        logger.warning("project=%s no valid JSON found in [Open Questions]", project_id)
+    path = os.path.join("memory", project_id, "open_questions_consolidated.json")
+    if not os.path.isfile(path):
         return {"questions": []}
     try:
-        obj = json.loads(json_text)
-        # Expect { "questions": [...] } per 4.1.1 format guidance
+        with open(path, "r", encoding="utf-8") as f:
+            obj = json.load(f)
+        if not isinstance(obj, dict):
+            return {"questions": []}
         lst = obj.get("questions")
         if not isinstance(lst, list):
-            logger.info("project=%s invalid JSON structure (no questions list)", project_id)
             return {"questions": []}
-        # Just return parsed object; filtering already handled by formatter prompt
-        return obj
+        return {"questions": lst}
     except Exception as e:
-        logger.warning("project=%s invalid JSON payload: %s", project_id, e)
+        logger.warning("project=%s failed reading open_questions_consolidated.json: %s", project_id, e)
         return {"questions": []}
 
 
@@ -162,24 +127,25 @@ def _run_open_question_pipeline(project_id: str, question: str, topic: str, reso
 
 def run_questions_agent(
     project_id: str,
-    summary_text: str,
+    summary_text: str = "",
 ) -> Dict[str, Any]:
     """
     Run the Open Questions agent for a project.
     
-    This function extracts questions from sleep_summary.txt, processes each question
-    through the RAG pipeline, and returns an in-memory data structure.
+    This function reads deterministic consolidated questions from
+    open_questions_consolidated.json, processes each question through the RAG
+    pipeline, and returns an in-memory data structure.
     
     Args:
         project_id: Project identifier
-        summary_text: The formatted sleep_summary.txt content (in-memory string)
+        summary_text: Backward-compatibility placeholder (unused).
     
     Returns:
         Dictionary with {"questions": [...]}
     """
     logger.info("[DREAM][QUESTIONS] Start project=%s", project_id)
     try:
-        parsed = _open_questions_agent(project_id, summary_text)
+        parsed = _load_consolidated_questions(project_id)
         questions = parsed.get("questions") if isinstance(parsed, dict) else []
         if not isinstance(questions, list):
             questions = []

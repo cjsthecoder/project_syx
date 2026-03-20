@@ -42,9 +42,10 @@ Schema:
 Definitions:
 
 - CHITCHAT:
-  Purely social, conversational, or meta commentary.
-  Examples: greetings, jokes, reactions, acknowledgements, comments about the chat itself.
-  No real-world task, question, or information need.
+  Lightweight social, conversational, playful, or meta interaction.
+  Includes greetings, jokes, reactions, acknowledgements, small talk, banter, and comments about the chat itself.
+  These may be phrased as direct requests and may include topical references.
+  CHITCHAT does not require retrieval, planning, sustained reasoning, or durable memory.
 
 - DIRECT:
   A clear, specific question with a narrow target that can be answered directly.
@@ -69,9 +70,18 @@ Definitions:
 - OTHER:
   Fallback for unclear, mixed, or unexpected requests that do not fit the above routes.
 
+Routing procedure:
+1. First, examine the raw user request before any appended "Context:", "Intent:", or "Type:" fields.
+2. If the raw user request is clearly a joke, greeting, acknowledgement, playful banter, or meta-chat, classify as CHITCHAT unless it is also clearly continuing a substantive discussion.
+3. If the raw user request is brief, elliptical, or conversational but appears to continue an ongoing substantive topic, use the appended Context, Intent, and Type fields to classify it.
+4. Use appended Context, Intent, and Type to resolve ambiguous, abbreviated, or follow-up messages.
+5. Appended context must not override an obviously playful/social request into a heavier route, but it should help recover the meaning of a substantive follow-up.
+
 Rules:
-- Choose CHITCHAT only if the message is purely social or conversational.
-- Any real-world task, question, or intellectual request is NOT CHITCHAT.
+- Choose CHITCHAT only when the primary intent is social, playful, conversational, or meta, and the message is not meaningfully advancing a substantive topic.
+- Do not classify a substantive follow-up as CHITCHAT just because it is short, conversational, or lacks an explicit question.
+- Brief continuation statements, reactions, or refinements about a technical, research, planning, or story topic are not CHITCHAT.
+- A joke request remains CHITCHAT even if topical context is present.
 - Choose exactly one route.
 - Do not include any fields other than "route".
 - Do not explain your choice.

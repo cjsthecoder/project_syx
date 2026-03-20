@@ -14,7 +14,7 @@ This module provides memory pruning and cleanup functionality (stubbed for Versi
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Any, Dict, List, Tuple
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -50,12 +50,6 @@ request_logger = RequestLogger("sleep")
 # V3.1: unified sleep runner (background thread)
 _runner_lock = threading.Lock()
 _runner_thread: Optional[threading.Thread] = None
-from ..core.sleep_prompts import (
-    generate_pruning_prompt,
-    generate_formatting_prompt,
-    generate_dream_formatting_prompt,
-)
-from ..core.summarization import execute_prompt, execute_prompt_chunked, _count_tokens
 from ..core.rag_manager import rebuild_faiss_index, load_faiss_index
 from filelock import FileLock
 from ..core.config import get_settings
@@ -66,6 +60,126 @@ from ..utils.debug_utils import write_debug_file
 def _nl(s: str) -> str:
     """Normalize line endings to LF to avoid mixed terminators."""
     return s.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _normalize_question_key(question: str, topic: str) -> str:
+    def _norm(text: str) -> str:
+        lowered = str(text or "").strip().lower()
+        lowered = re.sub(r"['\"`“”’]", "", lowered)
+        lowered = re.sub(r"[^a-z0-9]+", " ", lowered)
+        return lowered.strip()
+
+    return f"{_norm(question)}||{_norm(topic)}"
+
+
+def _consolidate_open_questions_artifact(project_id: str) -> Dict[str, Any]:
+    """
+    Deterministically consolidate open_questions.jsonl into canonical unresolved questions.
+
+    Consolidation rules:
+    - Stable dedupe key: normalized(question) + normalized(topic)
+    - Collision policy: keep latest record by (ts, line_no)
+    - Status resolution: drop records where final resolution == "ignore"
+    """
+    base_dir = os.path.join("memory", project_id)
+    src_path = os.path.join(base_dir, "open_questions.jsonl")
+    out_path = os.path.join(base_dir, "open_questions_consolidated.json")
+    lock_path = os.path.join(base_dir, "open_questions.lock")
+    consolidated: Dict[str, Any] = {"questions": []}
+    if not os.path.isfile(src_path):
+        try:
+            with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+                json.dump(consolidated, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        return consolidated
+
+    latest_by_key: Dict[str, Tuple[Tuple[str, int], Dict[str, Any]]] = {}
+    kept = 0
+    ignored = 0
+    parsed = 0
+
+    with FileLock(lock_path):
+        try:
+            with open(src_path, "r", encoding="utf-8") as f:
+                for line_no, raw in enumerate(f, start=1):
+                    raw = (raw or "").strip()
+                    if not raw:
+                        continue
+                    try:
+                        obj = json.loads(raw)
+                    except Exception:
+                        continue
+                    if not isinstance(obj, dict):
+                        continue
+                    question = str(obj.get("question", "") or "").strip()
+                    topic = str(obj.get("topic", "") or "").strip()
+                    resolution = str(obj.get("resolution", "") or "").strip().lower()
+                    if not question:
+                        continue
+                    if resolution not in {"ignore", "remind_user", "answer_local", "answer_remote"}:
+                        resolution = "ignore"
+                    key = _normalize_question_key(question, topic)
+                    if not key:
+                        continue
+                    parsed += 1
+                    ts = str(obj.get("ts", "") or "")
+                    rank = (ts, int(line_no))
+                    cur = latest_by_key.get(key)
+                    if (cur is None) or (rank >= cur[0]):
+                        latest_by_key[key] = (
+                            rank,
+                            {
+                                "question": question,
+                                "topic": topic,
+                                "resolution": resolution,
+                                "project_id": project_id,
+                                "namespace": str(obj.get("namespace", "") or ""),
+                                "semantic_handle": str(obj.get("semantic_handle", "") or ""),
+                                "pair_id": str(obj.get("pair_id", "") or ""),
+                                "assistant_message_id": obj.get("assistant_message_id"),
+                                "user_message_id": obj.get("user_message_id"),
+                                "source_ts": ts,
+                            },
+                        )
+        except Exception as e:
+            logger.warning("[SLEEP][QUESTIONS] Failed reading open_questions.jsonl project=%s: %s", project_id, e)
+            try:
+                with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+                    json.dump(consolidated, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+            return consolidated
+
+        rows: List[Dict[str, Any]] = []
+        for _key, (_rank, item) in latest_by_key.items():
+            if str(item.get("resolution", "")).lower() == "ignore":
+                ignored += 1
+                continue
+            kept += 1
+            rows.append(item)
+        rows.sort(
+            key=lambda r: (
+                str(r.get("source_ts", "") or ""),
+                str(r.get("question", "") or "").lower(),
+                str(r.get("topic", "") or "").lower(),
+            )
+        )
+        consolidated = {"questions": rows}
+        try:
+            with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+                json.dump(consolidated, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning("[SLEEP][QUESTIONS] Failed writing consolidated artifact project=%s: %s", project_id, e)
+    logger.info(
+        "[SLEEP][QUESTIONS] project=%s parsed=%s deduped=%s kept=%s ignored=%s",
+        project_id,
+        int(parsed),
+        int(len(latest_by_key)),
+        int(kept),
+        int(ignored),
+    )
+    return consolidated
 
 def _sleep_cycle_worker():
     instr = get_instrumentation()
@@ -158,8 +272,8 @@ def _sleep_cycle_worker():
                                 if created_at and hasattr(created_at, "strftime")
                                 else None
                             )
-                            ns = (getattr(a, "namespace", None) or "general")
-                            ns = ns.lower() if isinstance(ns, str) else "general"
+                            ns = (getattr(a, "namespace", None) or "other")
+                            ns = ns.lower() if isinstance(ns, str) else "other"
                             keep = bool(getattr(a, "keep", False))
                             ok = append_pair_text_only(
                                 pid,
@@ -242,6 +356,10 @@ def _sleep_cycle_worker():
         for p in rows or []:
             pid = p.id
             base_dir = os.path.join("memory", pid)
+            try:
+                _consolidate_open_questions_artifact(pid)
+            except Exception as qce:
+                logger.warning("[SLEEP][QUESTIONS][WARN] project=%s: %s", pid, qce)
             daily_path = os.path.join(base_dir, "daily.txt")
             if not os.path.isfile(daily_path) or os.path.getsize(daily_path) == 0:
                 skipped_no_daily += 1
@@ -257,113 +375,19 @@ def _sleep_cycle_worker():
             except Exception as e:
                 logger.warning("[SLEEP][ERROR] Failed reading daily.txt project=%s: %s", pid, e)
                 continue
-            # Pruning (chunked if needed)
-            pruned_path = os.path.join(base_dir, "pruned.txt")
-            try:
-                max_tokens = 96000  # expanded chunk threshold to leverage 128k context
-                if _count_tokens(source_text) > max_tokens:
-                    pruned = execute_prompt_chunked(
-                        generate_pruning_prompt,
-                        source_text,
-                        max_tokens=max_tokens,
-                        overlap=200,
-                        maintenance_job_id=job_id,
-                    )
-                else:
-                    pruned = execute_prompt(generate_pruning_prompt(source_text), maintenance_job_id=job_id)
-                with open(pruned_path, "w", encoding="utf-8", newline="\n") as pf:
-                    pf.write(_nl(pruned))
-                pruned_count += 1
-                try:
-                    lines = len(pruned.splitlines())
-                    size = len(pruned.encode("utf-8"))
-                    logger.info("[SLEEP][PRUNE] Completed project=%s (bytes=%s, lines=%s)", pid, size, lines)
-                except Exception:
-                    logger.info("[SLEEP][PRUNE] Completed project=%s", pid)
-            except Exception as e:
-                logger.error("[SLEEP][ERROR] Pruning failed project=%s: %s", pid, e, exc_info=True)
-                continue
-            # Formatting (chunk-format if needed, then aggregate)
+            # Deterministic consolidation (A.5.1.3): no sleep prompt calls.
             summary_path = os.path.join(base_dir, "sleep_summary.txt")
             try:
-                if _count_tokens(pruned) > max_tokens:
-                    formatted_chunks = []
-                    chunks = []
-                    # reuse chunker from summarization by calling chunk_by_tokens indirectly via execute_prompt_chunked
-                    # but we need chunks to aggregate appendices; simple split by sections to avoid nested calls
-                    # fallback: re-chunk pruned by tokens
-                    from ..core.summarization import chunk_by_tokens
-                    chunks = chunk_by_tokens(pruned, max_tokens=max_tokens, overlap=200)
-                    decisions = set()
-                    openqs = set()
-                    main_parts = []
-                    for ch in chunks:
-                        out = execute_prompt(generate_formatting_prompt(ch), maintenance_job_id=job_id)
-                        # crude split to extract appendices
-                        part = out
-                        decs = []
-                        oqs = []
-                        if "[Decisions Log]" in out:
-                            part, tail = out.split("[Decisions Log]", 1)
-                            decs_section = tail.split("[Open Questions]")[0] if "[Open Questions]" in tail else tail
-                            decs = [ln.strip("- ").strip() for ln in decs_section.splitlines() if ln.strip() and not ln.strip().startswith("[")]
-                            if "[Open Questions]" in tail:
-                                oqs_section = tail.split("[Open Questions]", 1)[1]
-                                oqs = [ln.strip("- ").strip() for ln in oqs_section.splitlines() if ln.strip() and not ln.strip().startswith("[")]
-                        main_parts.append(part.strip())
-                        for d in decs:
-                            if d:
-                                decisions.add(d)
-                        for q in oqs:
-                            if q:
-                                openqs.add(q)
-                    # Merge formatted chunks and normalize boundary tags (keep first BEGIN, last END)
-                    main_body = "\n\n".join(mp for mp in main_parts if mp)
-                    # Build appendices
-                    appx = "\n\n[Decisions Log]\n"
-                    for d in sorted(decisions):
-                        appx += f"- {d}\n"
-                    appx += "\n[Open Questions]\n"
-                    for q in sorted(openqs):
-                        appx += f"- {q}\n"
-                    # Find first BEGIN and last END markers
-                    lines = main_body.splitlines()
-                    begin_line = None
-                    end_line = None
-                    end_idxs = []
-                    for i, l in enumerate(lines):
-                        s = l.strip()
-                        if begin_line is None and s.startswith("=== BEGIN DAILY MEMORY:"):
-                            begin_line = l.strip()
-                        if s.startswith("=== END DAILY MEMORY:"):
-                            end_idxs.append(i)
-                    if end_idxs:
-                        end_line = lines[end_idxs[-1]].strip()
-                    # Remove all tag lines from the body
-                    body_wo_tags = "\n".join(
-                        l for l in lines
-                        if not l.strip().startswith("=== BEGIN DAILY MEMORY:")
-                        and not l.strip().startswith("=== END DAILY MEMORY:")
-                    ).rstrip()
-                    # Assemble final: first BEGIN, body, appendices, last END
-                    final_parts = []
-                    if begin_line:
-                        final_parts.append(begin_line + "\n")
-                    final_parts.append(body_wo_tags)
-                    final_parts.append(appx.rstrip())
-                    if end_line:
-                        final_parts.append("\n" + end_line)
-                    final = "\n\n".join(part for part in final_parts if part is not None)
-                else:
-                    final = execute_prompt(generate_formatting_prompt(pruned), maintenance_job_id=job_id)
+                final = _nl(source_text)
                 with open(summary_path, "w", encoding="utf-8", newline="\n") as sf:
                     sf.write(_nl(final))
+                pruned_count += 1
                 formatted_count += 1
-                logger.info("[SLEEP][FORMAT] Completed project=%s", pid)
+                logger.info("[SLEEP][FORMAT] Deterministic summary complete project=%s", pid)
 
                 # Run Dream cycle (questions, context, idea agent) BEFORE merge/RAG rebuild
                 try:
-                    dream(pid, final)
+                    dream(pid)
                 except Exception as de:
                     logger.error("[SLEEP][DREAM][ERROR] project=%s: %s", pid, de, exc_info=True)
 
@@ -397,26 +421,12 @@ def _sleep_cycle_worker():
                 except Exception as me:
                     logger.error("[SLEEP][MERGE][ERROR] project=%s: %s", pid, me, exc_info=True)
 
-                # 4.5.4 Dream summary post-sleep consolidation (prune + dream-format + append)
+                # 4.5.4 Dream summary post-sleep consolidation (deterministic pass-through)
                 try:
                     if os.path.isfile(dream_summary_path) and os.path.getsize(dream_summary_path) > 0:
                         with open(dream_summary_path, "r", encoding="utf-8") as ds:
                             dream_raw = ds.read()
-                        max_tokens = 96000  # align with daily handling
-                        if _count_tokens(dream_raw) > max_tokens:
-                            pruned_dream = execute_prompt(generate_pruning_prompt(dream_raw), maintenance_job_id=job_id)
-                            from ..core.summarization import chunk_by_tokens
-                            chunks = chunk_by_tokens(pruned_dream, max_tokens=max_tokens, overlap=200)
-                            formatted_chunks = [
-                                execute_prompt(generate_dream_formatting_prompt(ch), maintenance_job_id=job_id) for ch in chunks
-                            ]
-                            formatted_dream = "\n\n".join(fc.strip() for fc in formatted_chunks if fc)
-                        else:
-                            pruned_dream = execute_prompt(generate_pruning_prompt(dream_raw), maintenance_job_id=job_id)
-                            formatted_dream = execute_prompt(
-                                generate_dream_formatting_prompt(pruned_dream),
-                                maintenance_job_id=job_id,
-                            )
+                        formatted_dream = _nl(dream_raw)
                         if get_settings().generate_debug_files:
                             try:
                                 write_debug_file(pid, "debug_dream_summary.txt", formatted_dream)
@@ -487,14 +497,6 @@ def _sleep_cycle_worker():
                                             pid,
                                             de,
                                         )
-
-                                # Also remove pruned.txt and daily.txt per finalized cleanup policy
-                                try:
-                                    if os.path.exists(pruned_path):
-                                        os.remove(pruned_path)
-                                    logger.info("[SLEEP][CLEANUP] Removed pruned.txt for %s", pid)
-                                except Exception as pe:
-                                    logger.warning("[SLEEP][CLEANUP] Failed removing pruned.txt for %s: %s", pid, pe)
 
                                 # DELTA-A.1: Clear in-memory daily cache and remove daily.json so daily memory moves into main RAG
                                 try:

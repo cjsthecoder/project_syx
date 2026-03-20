@@ -43,6 +43,66 @@ class MemoryManager:
         self.limit = s.chat_history_limit
         self.pair_limit = s.chat_history_limit_pairs
         logger.info("Memory manager initialized (v2.2 persistent mode)")
+
+    @staticmethod
+    def _normalize_question_candidates(value: Any) -> List[Dict[str, str]]:
+        allowed = {"ignore", "remind_user", "answer_local", "answer_remote"}
+        out: List[Dict[str, str]] = []
+        if not isinstance(value, list):
+            return out
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            q_text = str(item.get("question", "") or "").strip()
+            q_topic = str(item.get("topic", "") or "").strip()
+            q_resolution = str(item.get("resolution", "") or "").strip().lower()
+            if not q_text:
+                continue
+            if q_resolution not in allowed:
+                q_resolution = "ignore"
+            out.append({"question": q_text, "topic": q_topic, "resolution": q_resolution})
+        return out
+
+    def _append_open_questions_artifact(
+        self,
+        *,
+        project_id: str,
+        assistant_message_id: Optional[int],
+        user_message_id: Optional[int],
+        namespace: str,
+        semantic_handle: Optional[str],
+        questions: List[Dict[str, str]],
+    ) -> None:
+        if not questions:
+            return
+        try:
+            base_dir = os.path.join("memory", project_id)
+            os.makedirs(base_dir, exist_ok=True)
+            artifact_path = os.path.join(base_dir, "open_questions.jsonl")
+            lock_path = os.path.join(base_dir, "open_questions.lock")
+            pair_id: Optional[str] = None
+            if isinstance(user_message_id, int) and isinstance(assistant_message_id, int):
+                pair_id = f"{user_message_id}:{assistant_message_id}"
+            with FileLock(lock_path):
+                with open(artifact_path, "a", encoding="utf-8", newline="\n") as f:
+                    for idx, q in enumerate(questions, start=1):
+                        payload: Dict[str, Any] = {
+                            "ts": datetime.utcnow().isoformat() + "Z",
+                            "source": "tagger_ingest",
+                            "project_id": project_id,
+                            "assistant_message_id": assistant_message_id,
+                            "user_message_id": user_message_id,
+                            "pair_id": pair_id,
+                            "namespace": (namespace or "other"),
+                            "semantic_handle": (semantic_handle or ""),
+                            "question_index": int(idx),
+                            "question": q.get("question", ""),
+                            "topic": q.get("topic", ""),
+                            "resolution": q.get("resolution", "ignore"),
+                        }
+                        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        except Exception as e:
+            logger.warning("[QUESTIONS][ARTIFACT] Failed writing open_questions.jsonl project=%s: %s", project_id, e)
     
     def _ensure_loaded(self, project_id: str) -> None:
         if project_id in self.project_deques:
@@ -108,18 +168,31 @@ class MemoryManager:
         *,
         user_text_for_tagging: Optional[str] = None,
         previous_pair_text_for_tagging: Optional[str] = None,
+        forget: bool = False,
+        skip_tagger: bool = False,
     ) -> None:
         if not project_id:
             return
         self._ensure_loaded(project_id)
         now = datetime.utcnow()
-        ns = (namespace or get_namespace() or "general").lower()
+        ns = (namespace or get_namespace() or "other").lower()
         tags_meta: Optional[Dict[str, Any]] = None
         tags_meta_json: Optional[str] = None
         semantic_handle: Optional[str] = None
+        question_candidates: List[Dict[str, str]] = []
+        source_user_message_id: Optional[int] = None
+        try:
+            dq = self.project_deques.get(project_id)
+            if dq:
+                last = dq[-1]
+                if isinstance(last, dict) and (last.get("role") == "user"):
+                    uid = last.get("id")
+                    source_user_message_id = int(uid) if isinstance(uid, int) else None
+        except Exception:
+            source_user_message_id = None
         # V3.x: tag immediately after assistant reply using the immediately previous active pair as context anchor.
         try:
-            if user_text_for_tagging is not None:
+            if (not bool(skip_tagger)) and (user_text_for_tagging is not None):
                 tagged = tag_pair(
                     user_text_for_tagging,
                     content,
@@ -134,6 +207,7 @@ class MemoryManager:
                         # semantic_handle is required but may be empty; store None only if missing.
                         "semantic_handle": tagged.get("semantic_handle", None),
                     }
+                    question_candidates = self._normalize_question_candidates(tagged.get("questions"))
                     semantic_handle = tags_meta.get("semantic_handle", None)  # type: ignore[assignment]
                     try:
                         tags_meta_json = json.dumps(tags_meta, ensure_ascii=False)
@@ -149,6 +223,7 @@ class MemoryManager:
                 role="assistant",
                 content=content,
                 created_at=now,
+                forget=bool(forget),
                 namespace=ns,
                 keep=False,
                 tags_meta_json=tags_meta_json,
@@ -171,12 +246,20 @@ class MemoryManager:
             "role": "assistant",
             "content": content,
             "created_at": now,
-            "forget": False,
+            "forget": bool(forget),
             "namespace": ns,
             "keep": False,
             "tags_meta_json": tags_meta_json,
             "semantic_handle": semantic_handle,
         })
+        self._append_open_questions_artifact(
+            project_id=project_id,
+            assistant_message_id=(int(msg.id) if isinstance(msg.id, int) else None),
+            user_message_id=source_user_message_id,
+            namespace=ns,
+            semantic_handle=semantic_handle if isinstance(semantic_handle, str) else None,
+            questions=question_candidates,
+        )
         self.prune_to_limit(project_id)
 
     def prune_to_limit(self, project_id: str) -> None:
@@ -248,7 +331,7 @@ class MemoryManager:
             if bool(asst_msg.get("forget")):
                 logger.info("[FORGET] Skipped pair (forget flag set) user_id=%s assistant_id=%s", str(user_msg.get("id")), str(asst_msg.get("id")))
             elif self._is_daily_enabled(project_id):
-                ns = (asst_msg.get("namespace") or get_namespace() or "general").lower()
+                ns = (asst_msg.get("namespace") or get_namespace() or "other").lower()
                 keep = bool(asst_msg.get("keep"))
                 # V3.x: roll-off does NOT call the tagger. It reuses metadata stored on the assistant row.
                 tags_meta = None

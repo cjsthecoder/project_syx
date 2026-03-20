@@ -435,9 +435,9 @@ class _ChatPipeline:
 
         set_route(route or "UNKNOWN")
         try:
-            primary_ns = (route or "general").lower() if route else "general"
+            primary_ns = (route or "other").lower() if route else "other"
         except Exception:
-            primary_ns = "general"
+            primary_ns = "other"
         set_namespace(primary_ns)
         rag_metrics["route"] = str(route or "OTHER")
 
@@ -614,16 +614,28 @@ class _ChatPipeline:
         *,
         user_text_for_tagging: Optional[str] = None,
         previous_pair_text_for_tagging: Optional[str] = None,
+        forget: bool = False,
+        skip_tagger: bool = False,
     ) -> None:
         if not project_id:
             return
         try:
+            if bool(forget) or bool(skip_tagger):
+                logger.debug(
+                    "[CHITCHAT] project_id=%s namespace=%s forget=%s skip_tagger=%s",
+                    project_id,
+                    str(namespace or "other").lower(),
+                    bool(forget),
+                    bool(skip_tagger),
+                )
             get_memory_manager().append_assistant_message(
                 project_id,
                 message,
-                namespace=(namespace or "general"),
+                namespace=(namespace or "other"),
                 user_text_for_tagging=user_text_for_tagging,
                 previous_pair_text_for_tagging=previous_pair_text_for_tagging,
+                forget=bool(forget),
+                skip_tagger=bool(skip_tagger),
             )
         except Exception:
             pass
@@ -750,14 +762,17 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         # Persist user and assistant messages (project-scoped working memory)
         try:
             if request.project_id and memory_manager is not None:
+                is_chitchat = str(primary_ns or "").strip().lower() == "chitchat"
                 prev_pair = pipeline.previous_pair_text(conversation_history)
                 memory_manager.append_user_message(request.project_id, request.message)
                 memory_manager.append_assistant_message(
                     request.project_id,
                     llm_response["response"],
-                    namespace=(primary_ns or "general"),
+                    namespace=(primary_ns or "other"),
                     user_text_for_tagging=request.message,
                     previous_pair_text_for_tagging=prev_pair,
+                    forget=is_chitchat,
+                    skip_tagger=is_chitchat,
                 )
         except Exception as e:
             logger.error(
@@ -944,6 +959,7 @@ async def chat_stream(request: ChatRequest):
         # Persist user immediately (streaming semantics)
         pipeline.persist_user(request.project_id, request.message)
         prev_pair = pipeline.previous_pair_text(conversation_history)
+        is_chitchat = str(primary_ns or "").strip().lower() == "chitchat"
         # Fallback: if streaming is disabled, return a simulated stream using the non-streaming path
         if not settings.streaming_enabled:
             async def fake_stream():
@@ -962,9 +978,11 @@ async def chat_stream(request: ChatRequest):
                             pipeline.persist_assistant(
                                 request.project_id,
                                 text,
-                                (primary_ns or "general"),
+                                (primary_ns or "other"),
                                 user_text_for_tagging=(request.message or ""),
                                 previous_pair_text_for_tagging=prev_pair,
+                                forget=is_chitchat,
+                                skip_tagger=is_chitchat,
                             )
                     except Exception:
                         pass
@@ -1120,9 +1138,11 @@ async def chat_stream(request: ChatRequest):
                         pipeline.persist_assistant(
                             request.project_id,
                             full_text,
-                            (primary_ns or "general"),
+                            (primary_ns or "other"),
                             user_text_for_tagging=(request.message or ""),
                             previous_pair_text_for_tagging=prev_pair,
+                            forget=is_chitchat,
+                            skip_tagger=is_chitchat,
                         )
                 except Exception:
                     pass

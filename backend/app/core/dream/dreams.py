@@ -17,9 +17,33 @@ from ..config import get_settings
 from .agents.questions_agent import run_questions_agent
 from .agents.idea_agent import run_idea_agent
 from .agents.research_agent import run_research_agent
-from .context import build_dream_context, _strip_open_questions_section
+from .context import build_dream_context
 
 logger = logging.getLogger(__name__)
+
+
+def _cleanup_question_artifacts(project_id: str) -> None:
+    """
+    Remove consumed question artifacts after a successful Dream run.
+    """
+    base_dir = os.path.join("memory", project_id)
+    paths = [
+        os.path.join(base_dir, "open_questions_consolidated.json"),
+        os.path.join(base_dir, "open_questions.json"),
+        os.path.join(base_dir, "open_questions.jsonl"),
+    ]
+    for path in paths:
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+                logger.info("[DREAM] Removed consumed questions artifact project=%s file=%s", project_id, os.path.basename(path))
+        except Exception as e:
+            logger.warning(
+                "[DREAM] Failed removing questions artifact project=%s file=%s err=%s",
+                project_id,
+                os.path.basename(path),
+                e,
+            )
 
 
 def write_dream_output(project_id: str, dream_data: dict, project_summary_text: str) -> None:
@@ -78,33 +102,7 @@ def write_dream_output(project_id: str, dream_data: dict, project_summary_text: 
         logger.error("Dream Writer failed for project=%s: %s", project_id, e, exc_info=True)
 
 
-def _strip_and_persist_sleep_summary(project_id: str, summary_text: str) -> None:
-    """
-    Strip the [Open Questions] section from the in-memory sleep summary and
-    persist the cleaned text back to memory/{project_id}/sleep_summary.txt.
-
-    This is a refactor of the inline logic in dream(); behavior is unchanged.
-    """
-    try:
-        cleaned = _strip_open_questions_section(summary_text or "")
-        base_dir = os.path.join("memory", project_id)
-        os.makedirs(base_dir, exist_ok=True)
-        summary_path = os.path.join(base_dir, "sleep_summary.txt")
-        with open(summary_path, "w", encoding="utf-8", newline="\n") as sf:
-            sf.write(cleaned)
-        logger.info(
-            "[DREAM] Stripped [Open Questions] section from sleep_summary.txt for project=%s",
-            project_id,
-        )
-    except Exception as se:
-        logger.warning(
-            "project=%s failed to strip [Open Questions] from sleep_summary.txt: %s",
-            project_id,
-            se,
-        )
-
-
-def dream(project_id: str, summary_text: str) -> None:
+def dream(project_id: str) -> None:
     """
     Execute Dream cycle for a project after Sleep completes.
 
@@ -112,8 +110,6 @@ def dream(project_id: str, summary_text: str) -> None:
 
     Args:
         project_id: Project identifier
-        summary_text: The formatted sleep_summary.txt content (in-memory string)
-
     Returns:
         None (exceptions are logged but not raised)
     """
@@ -124,13 +120,8 @@ def dream(project_id: str, summary_text: str) -> None:
         t0 = time.monotonic()
         logger.info("[DREAM] Starting dreaming for project=%s", project_id)
         try:
-            # Process questions synchronously and keep results in memory.
-            questions_data = run_questions_agent(project_id, summary_text)
-
-            # After extracting questions, strip the [Open Questions] section from the
-            # on-disk sleep_summary.txt so that long-term summaries and RAG do not
-            # contain the JSON appendix (questions are now represented in-memory via questions_data).
-            _strip_and_persist_sleep_summary(project_id, summary_text)
+            # Process deterministic consolidated questions synchronously and keep results in memory.
+            questions_data = run_questions_agent(project_id)
 
             # Build dream context after questions are processed and sleep_summary.txt
             dream_context, project_summary_text = build_dream_context(project_id, questions_data)
@@ -143,6 +134,9 @@ def dream(project_id: str, summary_text: str) -> None:
 
             # Serialize final Dream output to disk for downstream consumers (e.g., GUI).
             write_dream_output(project_id, dream_data, project_summary_text)
+
+            # Clear consumed question artifacts to prevent duplicate re-answering next cycle.
+            _cleanup_question_artifacts(project_id)
 
             # Currently, dream_data is kept in-memory for potential downstream use.
             _ = dream_data  # placeholder to avoid lints until consumed

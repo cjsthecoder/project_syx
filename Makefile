@@ -249,7 +249,7 @@ setup-env:
 		echo "MODEL_MAX_TOKENS=128000"; \
 		echo "# Max tokens in a single model response"; \
 		echo ""; \
-		echo "AVAILABLE_MODELS=[\"gpt-5.2\",\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5-mini\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
+		echo "AVAILABLE_MODELS=[\"gpt-5.2\",\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5.4-mini\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
 		echo "# Whitelisted chat models for the UI selector"; \
 		echo ""; \
 		echo "# === Server + CORS ==="; \
@@ -353,7 +353,7 @@ setup-env:
 		echo "# V2.3: Prefer keeping the daily hit on dedupe"; \
 		echo ""; \
 		echo "# === Query Builder + Reranking ==="; \
-		echo "BUILDER_MODEL=gpt-5-mini"; \
+		echo "BUILDER_MODEL=gpt-5.4-mini"; \
 		echo "# V2.3.1: LLM for query builder/router"; \
 		echo ""; \
 		echo "BUILDER_CONFIDENCE_MIN=0.75"; \
@@ -431,7 +431,7 @@ setup-env:
 		echo "# V3.5: Overall stream timeout (ms)"; \
 		echo ""; \
 		echo "# === Dream Pipeline ==="; \
-		echo "ENABLE_DREAM=false"; \
+		echo "ENABLE_DREAM=true"; \
 		echo "# V4.1: Enable Dream orchestrator"; \
 		echo ""; \
 		echo "MAX_WORKERS=1"; \

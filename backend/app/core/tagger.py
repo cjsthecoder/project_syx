@@ -10,7 +10,7 @@ Use of this software requires explicit written permission from the copyright hol
 import logging
 import json
 import time
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 from datetime import datetime
 
 from .config import get_settings
@@ -65,14 +65,65 @@ Semantic handle:
 - Prefer 5 to 12 words
 - Do not include commentary or explanation
 
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
 Return STRICT JSON only. No prose. No markdown fences.
 
 Schema:
-{"topics":"","intent":"","type":"","semantic_handle":""}
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
 
 Rules:
 - Always include all keys shown in the schema.
 - Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
 """
 
 
@@ -145,12 +196,19 @@ def tag_pair(
     project_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
-    Generate tag metadata (#topics, #intent, #type, #semantic_handle) using the builder model.
+    Generate tag metadata (#topics, #intent, #type, #semantic_handle, #questions)
+    using the builder model.
 
     Return value:
     - None on failure
-    - On success: {"topics": str, "intent": str, "type": str, "semantic_handle": Optional[str]}
-      where semantic_handle is None if the line is missing, or a string (possibly empty) if present.
+    - On success:
+      {
+        "topics": str,
+        "intent": str,
+        "type": str,
+        "semantic_handle": str,
+        "questions": [{"question": str, "topic": str, "resolution": str}, ...],
+      }
     """
     try:
         settings = get_settings()
@@ -244,6 +302,27 @@ def tag_pair(
             semantic_handle = ""
         if not isinstance(semantic_handle, str):
             semantic_handle = str(semantic_handle)
+        questions: List[Dict[str, str]] = []
+        allowed_resolutions = {"ignore", "remind_user", "answer_local", "answer_remote"}
+        raw_questions = data.get("questions")
+        if isinstance(raw_questions, list):
+            for item in raw_questions:
+                if not isinstance(item, dict):
+                    continue
+                q_text = str(item.get("question", "") or "").strip()
+                q_topic = str(item.get("topic", "") or "").strip()
+                q_resolution = str(item.get("resolution", "") or "").strip().lower()
+                if not q_text:
+                    continue
+                if q_resolution not in allowed_resolutions:
+                    q_resolution = "ignore"
+                questions.append(
+                    {
+                        "question": q_text,
+                        "topic": q_topic,
+                        "resolution": q_resolution,
+                    }
+                )
 
         # Debug dump (best-effort; no-op unless GENERATE_DEBUG_FILES=true)
         try:
@@ -273,6 +352,9 @@ def tag_pair(
                     + f"intent: {intent}\n"
                     + f"type: {tag_type}\n"
                     + f"semantic_handle: {semantic_handle}\n"
+                    + "questions:\n"
+                    + json.dumps(questions, ensure_ascii=False, indent=2)
+                    + "\n"
                 )
                 write_debug_file(project_id, f"prompts/{fname}", body)
         except Exception:
@@ -281,11 +363,12 @@ def tag_pair(
         # Log trimmed for brevity
         try:
             logger.info(
-                "[TAGGER] topics=%s intent=%s type=%s semantic_handle=%s",
+                "[TAGGER] topics=%s intent=%s type=%s semantic_handle=%s questions_count=%s",
                 (topics or "")[:120],
                 (intent or "")[:120],
                 (tag_type or "")[:120],
                 (semantic_handle or "")[:120] if isinstance(semantic_handle, str) else "None",
+                int(len(questions)),
             )
         except Exception:
             pass
@@ -300,6 +383,7 @@ def tag_pair(
             "intent": intent,
             "type": tag_type,
             "semantic_handle": semantic_handle,
+            "questions": questions,
         }
     except Exception as e:
         logger.warning("[TAGGER][WARN] %s", e)

@@ -362,6 +362,15 @@ setup-env:
 		echo "BUILDER_MAX_TOKENS=1024"; \
 		echo "# V2.3.1: Max tokens for builder output"; \
 		echo ""; \
+		echo "TAGGER_CURRENT_RESPONSE_MIDDLE_CUT_PERCENT=50"; \
+		echo "# V3.x tagger prompt optimization: percent removed from center of current assistant text (range: 10-90, int)"; \
+		echo ""; \
+		echo "TAGGER_PREVIOUS_RESPONSE_MIDDLE_CUT_PERCENT=75"; \
+		echo "# V3.x tagger prompt optimization: percent removed from center of previous assistant text (range: 10-90, int)"; \
+		echo ""; \
+		echo "TAGGER_MIN_RESPONSE_LENGTH_FOR_CHOP=600"; \
+		echo "# V3.x tagger prompt optimization: apply chopping only when assistant text length is greater than this value"; \
+		echo ""; \
 		echo "BUILDER_CACHE=true"; \
 		echo "# V2.3.1: Enable in-memory builder cache"; \
 		echo ""; \

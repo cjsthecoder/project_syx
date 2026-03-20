@@ -22,8 +22,14 @@ logger = logging.getLogger(__name__)
 
 _SYS_PROMPT = """You are a memory tagging system.
 
+You are a memory tagging system.
+
 Your task is to extract compact, durable metadata for later retrieval.
-The goal is to help future searches reliably find this exchange.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
 
 Use ONLY the content provided.
 Do NOT invent information.
@@ -188,6 +194,123 @@ def _slice_first_json(text: str) -> str:
     return text
 
 
+def _safe_percent(value: Any, default: int, name: str) -> int:
+    try:
+        coerced = int(float(value))
+    except Exception:
+        logger.warning("[TAGGER] invalid %s=%r; using default=%s", name, value, default)
+        return int(default)
+    if coerced < 10 or coerced > 90:
+        logger.warning("[TAGGER] out-of-range %s=%s; expected 10-90, using default=%s", name, coerced, default)
+        return int(default)
+    return coerced
+
+
+def _safe_min_len(value: Any, default: int, name: str) -> int:
+    try:
+        coerced = int(float(value))
+    except Exception:
+        logger.warning("[TAGGER] invalid %s=%r; using default=%s", name, value, default)
+        return int(default)
+    if coerced <= 0:
+        logger.warning("[TAGGER] non-positive %s=%s; using default=%s", name, coerced, default)
+        return int(default)
+    return coerced
+
+
+def _middle_cut_assistant_text(text: str, cut_percent: int, min_length_for_chop: int) -> str:
+    """
+    Remove a percentage from the center while preserving at least 100 chars on both ends.
+    """
+    raw = str(text or "")
+    n = len(raw)
+    if n <= int(min_length_for_chop):
+        return raw
+    cut = int((n * int(cut_percent)) / 100)
+    if cut <= 0 or cut >= n:
+        return raw
+    keep_total = n - cut
+    left = keep_total // 2
+    right = keep_total - left
+    min_side = 100
+    if left < min_side or right < min_side:
+        left = min_side
+        right = min_side
+    if (left + right) >= n:
+        return raw
+    start = left
+    end = n - right
+    return raw[:start] + "\n...[middle omitted for tagging]...\n" + raw[end:]
+
+
+def _extract_prev_tag_value(text: str, key: str) -> str:
+    import re
+
+    m = re.search(rf"(?m)^#{re.escape(key)}:\s*(.*)$", text or "")
+    return (m.group(1).strip() if m else "")
+
+
+def _build_previous_turn_block(previous_pair_text: Optional[str], prev_cut_percent: int, min_length_for_chop: int) -> str:
+    """
+    Build canonical PREVIOUS TURN block from stored previous_pair_text.
+    """
+    import re
+
+    p = str(previous_pair_text or "")
+    route = _extract_prev_tag_value(p, "route")
+    keep = _extract_prev_tag_value(p, "keep")
+    topics = _extract_prev_tag_value(p, "topics")
+    intent = _extract_prev_tag_value(p, "intent")
+    tag_type = _extract_prev_tag_value(p, "type")
+    semantic_handle = _extract_prev_tag_value(p, "semantic_handle")
+
+    prev_user = ""
+    prev_assistant = ""
+    m = re.search(r"\nUser:\s*(.*?)\nAssistant:\s*(.*)$", p, flags=re.DOTALL)
+    if m:
+        prev_user = (m.group(1) or "").strip()
+        prev_assistant = (m.group(2) or "").strip()
+    else:
+        m2 = re.search(r"User:\s*(.*?)\nAssistant:\s*(.*)$", p, flags=re.DOTALL)
+        if m2:
+            prev_user = (m2.group(1) or "").strip()
+            prev_assistant = (m2.group(2) or "").strip()
+
+    prev_assistant = _middle_cut_assistant_text(
+        prev_assistant,
+        cut_percent=int(prev_cut_percent),
+        min_length_for_chop=int(min_length_for_chop),
+    ).strip()
+
+    tags_lines = []
+    if route:
+        tags_lines.append(f"#route: {route}")
+    if keep:
+        tags_lines.append(f"#keep: {keep}")
+    if topics:
+        tags_lines.append(f"#topics: {topics}")
+    if intent:
+        tags_lines.append(f"#intent: {intent}")
+    if tag_type:
+        tags_lines.append(f"#type: {tag_type}")
+    if semantic_handle:
+        tags_lines.append(f"#semantic_handle: {semantic_handle}")
+    tags_block = "\n".join(tags_lines).strip() if tags_lines else "(none)"
+
+    prev_user_block = prev_user if prev_user else "(none)"
+    prev_asst_block = prev_assistant if prev_assistant else "(none)"
+
+    return (
+        "------PREVIOUS TURN------\n"
+        "------PREVIOUS TAGS------\n"
+        f"{tags_block}\n\n"
+        "------USER------\n"
+        f"{prev_user_block}\n\n"
+        "------ASSISTANT------\n"
+        f"{prev_asst_block}\n"
+    )
+
+
 def tag_pair(
     user_text: str,
     assistant_text: str,
@@ -227,8 +350,39 @@ def tag_pair(
             "total_tokens_reported": 0,
             "usage_is_estimate": True,
         }
-        context = (previous_pair_text + "\n\n") if previous_pair_text else ""
-        user_prompt = f"{context}USER: {user_text}\nASSISTANT: {assistant_text}\n"
+        current_cut_pct = _safe_percent(
+            getattr(settings, "tagger_current_response_middle_cut_percent", 50),
+            default=50,
+            name="TAGGER_CURRENT_RESPONSE_MIDDLE_CUT_PERCENT",
+        )
+        previous_cut_pct = _safe_percent(
+            getattr(settings, "tagger_previous_response_middle_cut_percent", 75),
+            default=75,
+            name="TAGGER_PREVIOUS_RESPONSE_MIDDLE_CUT_PERCENT",
+        )
+        min_length_for_chop = _safe_min_len(
+            getattr(settings, "tagger_min_response_length_for_chop", 600),
+            default=600,
+            name="TAGGER_MIN_RESPONSE_LENGTH_FOR_CHOP",
+        )
+        assistant_for_prompt = _middle_cut_assistant_text(
+            assistant_text,
+            cut_percent=int(current_cut_pct),
+            min_length_for_chop=int(min_length_for_chop),
+        )
+        previous_block = _build_previous_turn_block(
+            previous_pair_text,
+            prev_cut_percent=int(previous_cut_pct),
+            min_length_for_chop=int(min_length_for_chop),
+        )
+        user_prompt = (
+            f"{previous_block.rstrip()}\n\n"
+            "------CURRENT TURN------\n"
+            "------USER------\n"
+            f"{user_text}\n\n"
+            "------ASSISTANT------\n"
+            f"{assistant_for_prompt}\n"
+        )
 
         client = OpenAI(api_key=settings.openai_api_key)
         raw = ""
@@ -335,25 +489,12 @@ def tag_pair(
                     f"# model: {settings.builder_model}\n"
                     f"# success: true\n"
                     "\n"
-                    "====== USER_TEXT ======\n"
-                    + (user_text or "")
-                    + "\n\n====== ASSISTANT_TEXT ======\n"
-                    + (assistant_text or "")
-                    + "\n\n====== PREVIOUS_PAIR_TEXT ======\n"
-                    + (previous_pair_text or "")
-                    + "\n\n====== TAGGER PROMPT (SYSTEM) ======\n"
+                    "====== TAGGER PROMPT (SYSTEM) ======\n"
                     + (_SYS_PROMPT or "")
                     + "\n\n====== TAGGER PROMPT (USER) ======\n"
                     + (user_prompt or "")
-                    + "\n\n====== TAGGER RESPONSE (raw) ======\n"
+                    + "\n\n====== TAGGER RESPONSE ======\n"
                     + (raw or "")
-                    + "\n\n====== TAGGER PARSED ======\n"
-                    + f"topics: {topics}\n"
-                    + f"intent: {intent}\n"
-                    + f"type: {tag_type}\n"
-                    + f"semantic_handle: {semantic_handle}\n"
-                    + "questions:\n"
-                    + json.dumps(questions, ensure_ascii=False, indent=2)
                     + "\n"
                 )
                 write_debug_file(project_id, f"prompts/{fname}", body)

@@ -17,7 +17,7 @@ import os
 import logging
 import math
 from typing import Optional
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 # Set up module-level logger
@@ -126,6 +126,23 @@ class Settings(BaseSettings):
     builder_model: str = Field(default="gpt-5.4-mini", description="LLM used for query builder/router")
     builder_confidence_min: float = Field(default=0.75, ge=0.0, le=1.0, description="Minimum confidence for full retrieval")
     builder_max_tokens: int = Field(default=1024, gt=0, description="Max tokens for builder output")
+    tagger_current_response_middle_cut_percent: int = Field(
+        default=50,
+        ge=10,
+        le=90,
+        description="Percent (10-90) to remove from center of current assistant text for tagger prompt",
+    )
+    tagger_previous_response_middle_cut_percent: int = Field(
+        default=75,
+        ge=10,
+        le=90,
+        description="Percent (10-90) to remove from center of previous assistant text for tagger prompt",
+    )
+    tagger_min_response_length_for_chop: int = Field(
+        default=600,
+        gt=0,
+        description="Minimum assistant response length before center-chop is applied",
+    )
     builder_cache: bool = Field(default=True, description="Enable in-memory cache for builder JSON")
     topic_boost: float = Field(default=1.10, gt=0.0, description="Multiplicative boost for topic overlap")
     decision_boost: float = Field(default=1.05, gt=0.0, description="Multiplicative boost for decision overlap")
@@ -185,6 +202,33 @@ class Settings(BaseSettings):
     dream_topic_boost: float = Field(default=1.5, gt=0.0, description="Namespace boost used for topic hinting in RAG")
     # V4.1.3.1: Debug file generation
     generate_debug_files: bool = Field(default=False, description="V4.1.3.1: Enable writing debug files (e.g., debug_context.txt)")
+
+    @field_validator(
+        "tagger_current_response_middle_cut_percent",
+        "tagger_previous_response_middle_cut_percent",
+        "tagger_min_response_length_for_chop",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_tagger_numeric_to_int(cls, value):
+        """
+        Accept numeric env values such as "62.5" and coerce to int.
+        """
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        if isinstance(value, str):
+            s = value.strip()
+            if not s:
+                return value
+            try:
+                return int(float(s))
+            except Exception:
+                return value
+        return value
 
 # Global settings instance
 settings = Settings()

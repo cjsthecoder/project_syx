@@ -245,6 +245,8 @@ class _ChatPipeline:
                     "content": m.get("content"),
                     "tags_meta_json": m.get("tags_meta_json"),
                     "semantic_handle": m.get("semantic_handle"),
+                    "namespace": m.get("namespace"),
+                    "keep": m.get("keep"),
                 }
                 for m in hist
             ]
@@ -306,7 +308,7 @@ class _ChatPipeline:
             return ""
 
     def previous_pair_text(self, conversation_history: Optional[list[dict]]) -> Optional[str]:
-        """Immediately previous active pair text (User/Assistant), or None."""
+        """Immediately previous active pair text + prior tags, or None."""
         if not conversation_history:
             return None
         try:
@@ -326,8 +328,37 @@ class _ChatPipeline:
             if user_idx is None:
                 return None
             u = conversation_history[user_idx].get("content") or ""
-            a = conversation_history[last_asst_idx].get("content") or ""
-            return f"User: {u}\nAssistant: {a}"
+            asst_msg = conversation_history[last_asst_idx] or {}
+            a = asst_msg.get("content") or ""
+
+            ns = str(asst_msg.get("namespace") or "other").strip().lower()
+            keep = bool(asst_msg.get("keep", False))
+            topics = ""
+            intent = ""
+            tag_type = ""
+            semantic_handle = ""
+            try:
+                tj = asst_msg.get("tags_meta_json")
+                if isinstance(tj, str) and tj.strip():
+                    parsed = json.loads(tj)
+                    if isinstance(parsed, dict):
+                        topics = str(parsed.get("topics", "") or "")
+                        intent = str(parsed.get("intent", "") or "")
+                        tag_type = str(parsed.get("type", "") or "")
+                        semantic_handle = str(parsed.get("semantic_handle", "") or "")
+            except Exception:
+                pass
+
+            return (
+                f"#route: {ns}\n"
+                f"#keep: {str(keep).lower()}\n"
+                f"#topics: {topics}\n"
+                f"#intent: {intent}\n"
+                f"#type: {tag_type}\n"
+                f"#semantic_handle: {semantic_handle}\n"
+                f"User: {u}\n"
+                f"Assistant: {a}"
+            )
         except Exception:
             return None
 

@@ -2932,14 +2932,14 @@ Populate the Dream analysis modal with dream entries from `dream.json`, rendered
 # 5 Instrumentation Overview
 ## Instrumentation High Level Description
 
-Version 5.0 introduces **Instrumentation** as a first-class telemetry layer for Morpheus. Instrumentation collects structured, end to end metrics across the multi-module pipeline, including interactive chat turns, internal helper model calls, and Sleep maintenance jobs. Its purpose is to generate defensible evidence for token usage and latency behavior over time, and to support profiling and optimization without changing core routing, retrieval, or memory logic.
+Version 5.0 introduces **Instrumentation** as a first-class telemetry layer for Morpheus. Instrumentation collects structured, end to end metrics across the multi-module pipeline, including interactive chat turns and internal helper model calls. Its purpose is to generate defensible evidence for token usage and latency behavior over time, and to support profiling and optimization without changing core routing, retrieval, or memory logic.
 
 Instrumentation is designed to run with minimal overhead, remain disabled by default, and avoid logging raw content unless explicitly enabled for research and evaluation.
 
 Goals of Version 5.0:
 
 * Provide a unified Instrumentation component accessible across modules, similar in usage style to the logger.
-* Track tokens by type from day one, including main model tokens, mini model tokens, and maintenance tokens (Sleep).
+* Track tokens by type from day one, including main model tokens and mini model tokens.
 * Track latency per invocation and per turn, including TTFB and TTLT for the main model.
 * Record retrieval and context assembly counters needed to explain token spikes and to tune prompt budgeting.
 * Persist results in a run folder with JSON and JSONL artifacts suitable for offline plotting and report generation.
@@ -2957,10 +2957,10 @@ Instrumentation MUST enable generation of:
 - Tokens per turn vs turn index
 - Cumulative tokens processed vs turn index
 - Latency per turn vs turn index (TTFB and TTLT)
-- Optional stacked bar breakdown for Morpheus: main model vs mini model vs amortized maintenance
+- Optional stacked bar breakdown for Morpheus: main model vs mini model
 
 ### 5.1.3 In Scope
-- Per run, per turn, per invocation, and per maintenance job metrics capture
+- Per run, per turn, and per invocation metrics capture
 - Token totals by type from day one
 - Latency capture (TTFB and TTLT) for Morpheus
 - In memory collection with flush at end of run
@@ -3014,8 +3014,6 @@ Deployment note:
 At minimum, Instrumentation MUST produce:
 - `run.json` (single JSON object)
 - `turns.jsonl` (one JSON record per turn)
-- `invocations.jsonl` (one JSON record per model call)
-- `maintenance.jsonl` (one JSON record per maintenance job)
 
 ### 5.3.3 Flush Strategy
 - Instrumentation MAY collect in memory and flush only at end of run.
@@ -3047,8 +3045,6 @@ It MUST expose at least the following lifecycle surface:
 
 - `record_stage(name: str, data: dict) -> None`
 
-- `record_maintenance(job_type: str, meta: dict) -> None`
-
 Implementation pattern requirement:
 - Use a strategy/facade pattern with a shared interface and two concrete implementations:
   - `NoopInstrumentation` (disabled mode; no-op methods)
@@ -3071,76 +3067,6 @@ Tagger integration requirement:
 - The tagger call (mini-model classification of user/assistant pair metadata) MUST be instrumented as an invocation.
 - Tagger invocations MUST be emitted with `purpose="tagger"` and include reported or estimated token usage fields per 5.5.1.
 - Tagger token usage MUST be attributed to the same interactive turn that produced the assistant response being tagged.
-
-### 5.4.3 Invocation Event Schema Contract
-`invocations.jsonl` MUST use a stable two-event schema:
-- `start_invocation`
-- `end_invocation`
-
-Schema publication requirement:
-- The tracking module MUST maintain an explicit invocation schema document (for example markdown or code constant) defining required fields, optional fields, and field types.
-- This schema is authoritative for instrumentation event shape and MUST be kept in sync with emitted records.
-
-`start_invocation` required keys:
-- `ts` (UTC ISO timestamp string)
-- `event` = `"start_invocation"`
-- `invocation_id` (string)
-- `turn_id` (int or null)
-- `purpose` (string enum; see 5.5.3)
-- `model` (string; MAY be empty if unknown at start)
-- `meta` (object, at least `{}`)
-
-`start_invocation` optional keys:
-- `run_id` (string)
-- `schema_errors` (array; see schema validation behavior below)
-
-`end_invocation` required keys:
-- `ts` (UTC ISO timestamp string)
-- `event` = `"end_invocation"`
-- `invocation_id` (string)
-- `turn_id` (int or null)
-- `purpose` (string enum; see 5.5.3)
-- `model` (string)
-- `prompt_tokens_reported` (int)
-- `completion_tokens_reported` (int)
-- `total_tokens_reported` (int)
-- `usage_is_estimate` (bool)
-- `usage_source` (enum; see 5.5.1)
-- `timing.ttlt_ms` (int)
-- `timing.ttfb_ms` (int or null)
-- `start_ts` (UTC ISO timestamp string)
-- `end_ts` (UTC ISO timestamp string)
-- `first_token_ts` (UTC ISO timestamp string or null)
-- `meta` (object, at least `{}`)
-
-`end_invocation` optional keys:
-- `run_id` (string)
-- `usage_estimate_method` (string or null; see 5.5.1)
-- `schema_errors` (array; see schema validation behavior below)
-
-Invocation state consistency requirements:
-- `purpose` MUST come from invocation state established at `start_invocation`; `end_invocation` inputs MUST NOT override `purpose`.
-- `model` MAY be backfilled once at `end_invocation` only when the start value is empty/unknown.
-- After a non-empty model value is established for an invocation, conflicting model values MUST be recorded as schema errors.
-
-Schema validation behavior:
-- Validation MUST be best-effort and MUST NOT block writes.
-- When validation errors occur, records MUST still be written and include `schema_errors`.
-- `schema_errors` entries MUST be structured objects with:
-  - `code` (string)
-  - `field` (string)
-  - `expected` (any JSON value)
-  - `actual` (any JSON value)
-- Implementations MAY include optional `message` and `details`.
-- Standardized schema error codes SHOULD include at minimum:
-  - `missing_required_key`
-  - `type_mismatch`
-  - `enum_mismatch`
-  - `purpose_mismatch`
-  - `model_mismatch`
-  - `invariant_violation`
-
----
 
 ## 5.5 Token Accounting Requirements (Mandatory)
 
@@ -3308,96 +3234,6 @@ Stage-event requirements for turns stream:
 
 ---
 
-## 5.8 Maintenance Metrics and Amortization Support
-
-### 5.8.1 Maintenance Job Records
-Scope:
-- This section is scoped to `job_type="sleep"` only in this phase.
-- Additional maintenance job types are out of scope until introduced by a future delta.
-
-Canonical maintenance event shape:
-- `maintenance.jsonl` records MUST use top-level canonical fields for schema data.
-- Canonical fields MUST NOT be duplicated inside `meta`.
-- `meta` is reserved for non-canonical diagnostics and pipeline counters.
-
-Each sleep maintenance completion record MUST include:
-- `ts` (UTC ISO timestamp string)
-- `event` = `"maintenance"`
-- `run_id` (string)
-- `job_id` (string, stable per maintenance job)
-- `job_type` = `"sleep"`
-- `status` (`"success"` | `"partial"` | `"failed"`)
-- `start_ts` (UTC ISO timestamp string)
-- `end_ts` (UTC ISO timestamp string)
-- `after_turn` (int or null; scheduler-triggered jobs MUST use null/omitted, not `0`)
-- `prompt_tokens_reported` (int)
-- `completion_tokens_reported` (int)
-- `total_tokens_reported` (int)
-- `usage_source` (`"provider"` | `"estimate"` | `"zero_fallback"`)
-- `usage_estimate_method` (string or null)
-- `usage_is_estimate` (bool)
-- `duration_ms` (int)
-- `items_in` (int, optional)
-- `items_out` (int, optional)
-- `invocations_query` object with at minimum:
-  - `job_id` (string)
-  - `purpose` = `"sleep"`
-
-Optional diagnostic fields:
-- `provider_tokens_total` (int)
-- `estimated_tokens_total` (int)
-- `zero_fallback_tokens_total` (int)
-- `invocation_count_sleep` (int)
-- `invocation_ids_sample` (array of strings)
-- `schema_errors` (array of structured schema error objects; see below)
-
-Token, provenance, and reconciliation rules:
-- Maintenance token totals MUST represent sleep-pipeline LLM usage aggregated from invocations where `purpose="sleep"` for the same `job_id`.
-- Aggregated totals MUST include provider-reported values when available and estimate/zero fallback where provider usage is unavailable (best available total).
-- `usage_source="provider"` is allowed only when all included usage is provider-reported.
-- `usage_source="estimate"` MUST be used when any estimated component exists (including mixed provider+estimate jobs).
-- `usage_source="zero_fallback"` MUST be used only when zero-fallback is used and no estimate path is available for those portions.
-- `usage_is_estimate` MUST be `true` whenever any estimated or zero-fallback component exists (that is, not purely provider-derived).
-- `invocations_query` is the canonical reconciliation pointer for v1; readers SHOULD use it to recompute totals/counts from invocation records.
-- `duration_ms` MUST represent wall-clock elapsed time from worker start to worker finalize for the sleep job (including setup/IO/merge/rebuild/cleanup).
-
-Schema validation behavior:
-- Maintenance schema validation MUST be best-effort and MUST NOT block writes.
-- Validation issues MUST be emitted on the maintenance record in `schema_errors`.
-- `schema_errors` entries MUST use structured objects with:
-  - `code` (string)
-  - `field` (string)
-  - `expected` (any JSON value)
-  - `actual` (any JSON value)
-- Implementations MAY include optional `message` and `details`.
-- Standardized starter codes:
-  - `missing_required_key`
-  - `type_mismatch`
-  - `enum_mismatch`
-  - `token_total_mismatch`
-  - `timestamp_order_violation`
-  - `duration_mismatch`
-  - `counts_invariant_violation`
-  - `invocation_reconciliation_mismatch`
-  - `usage_provenance_missing`
-
-Operational status guidance:
-- Partial project-level failures within a sleep cycle MUST still produce a valid canonical maintenance record with best-effort aggregates.
-- `status` values are:
-  - `success`: all intended work completed and invariants met.
-  - `partial`: some intended work completed but some failed/skipped; best-effort outputs exist.
-  - `failed`: job aborted or did not complete meaningful work.
-
-### 5.8.2 Amortization
-- Instrumentation MUST log enough data to compute amortized maintenance tokens per turn offline.
-- Instrumentation SHOULD NOT permanently bake amortization into core metrics; amortization SHOULD be performed in reporting scripts so the formula can change without reruns.
-
-Amortization clarification:
-- The denominator convention for amortization is intentionally unspecified in core requirements.
-- Implementations MUST log sufficient fields to support multiple offline denominator choices (for example turn-window or time-window amortization), including maintenance `run_id`, `job_id`, maintenance timing bounds, and maintenance token totals.
-
----
-
 ## 5.9 Accounting Validation (Required)
 
 At `end_turn()`, Instrumentation MUST compute validation checks in-memory before writing records.
@@ -3467,7 +3303,6 @@ Turn rollup/provenance fields:
 - `turn_usage_is_estimate` MUST be true whenever `turn_usage_source != "provider"`.
 - Turn usage/provenance aggregation scope is only invocations where:
   - `invocation.turn_id == end_turn.turn_id`
-  - `purpose != "sleep"`
   - `turn_id` is not null
 
 Invocation reconciliation counters:

@@ -243,7 +243,7 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                     -1,
                     -2,
                     int(tokens),
-                    namespace="general",
+                    namespace="other",
                     keep=True,
                     embed_override=embed_text,
                     tags_meta=tags_meta,
@@ -255,7 +255,7 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                 block = (
                     f"{_BEGIN_DREAM_PAIR}\n"
                     f"#timestamp: {ts_local}\n"
-                    f"#route: general\n"
+                    f"#route: other\n"
                     f"#keep: {str(keep_flag).lower()}\n"
                     f"{tags_block}"
                     f"\n"

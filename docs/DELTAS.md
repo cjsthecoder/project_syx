@@ -40,6 +40,7 @@ Treating FAISS as a rebuildable cache aligns Daily memory with episodic semantic
 * Daily FAISS indices may be discarded and rebuilt at any time without data loss.
 * Loss or corruption of Daily FAISS data must never imply loss of memory.
 * `daily.txt` continues to be written/used for the sleep pipeline; it may include tag metadata lines for rolled-off pairs.
+* Open-question candidate tracking is maintained in dedicated project artifact streams and is not required to be serialized in `daily.txt` pair headers.
 
 #### Implementation Notes
 
@@ -186,6 +187,7 @@ For each rolled-off pair, the system SHALL resolve `previous_pair_text` using th
 
 * The system SHALL prepend `previous_pair_text` to the tagging prompt input before the current rolled-off pair when `previous_pair_text` is available.
 * If `previous_pair_text` is unavailable, the system SHALL emit a debug log and tagging SHALL proceed with the current rolled-off pair alone (best-effort).
+* Any structured outputs emitted by tagging at ingest time (for example, question candidates) SHALL be derived from this same tagging input contract.
 
 Anchors influence tagging input only and MUST NOT alter the stored text written to daily memory.
 
@@ -302,7 +304,9 @@ This step establishes the foundation for shared ranking, thresholding, and telem
   * `metadata.id` SHALL be null/absent
   * Daily-only fields (e.g., `tags_meta`, `topics`, `intent`, `type`, `keep`, `day_sequence`, `pair_ids`) SHALL be null/absent
   * `metadata.route` MAY be populated best-effort from the FAISS document metadata namespace if present; otherwise null/absent
+* Open-question candidate extraction/processing is handled outside retrieval candidate shaping; it is not a required `daily` candidate metadata field in this step.
 * For `ltm` candidates, missing metadata fields are allowed and SHALL be left absent/null. No parsing from retrieved text is performed in this step.
+* Auxiliary semantic artifact streams used by maintenance/dream workflows are out of scope for retrieval-stage shaping and MUST NOT be required inputs for A.4.1 candidate construction.
 
 #### Ordering Guarantees
 
@@ -342,6 +346,7 @@ Every candidate MUST include the following uniform schema (missing fields are al
   * `keep`: optional boolean
   * `day_sequence`: optional integer
   * `pair_ids`: optional list
+  * Open-question candidate fields are optional/out-of-band and are not required members of this retrieval metadata contract.
 
 #### New Invariants
 
@@ -1153,4 +1158,76 @@ Collapse the ordered, trimmed chunk list from A.4.4.3.4 into a list of **snippet
 
 Expanded retrieval produces multiple adjacent chunks per hit; showing a separate "Snippet N" header for each chunk duplicates the same label and adds visual noise. Collapsing at this stage keeps a single contract: one kept_candidates entry per logical snippet (one per adjacent set from a file), so prompt and debug both treat "one big concatenated chunk" per group without special-case formatting logic later.
 
+
+### DELTA-A.5 — Promptless Sleep Semantic Consolidation
+
+#### Status
+
+Planned
+
+#### Affected Requirements
+
+* FR-3.x Sleep-cycle pruning/formatting prompt flow
+* FR-4.1.x Open Questions extraction and Dream question handoff
+* FR-2.3.x Daily/LTM operational merge and maintenance lifecycle
+
+#### Intent
+
+Reduce maintenance-token overhead by removing LLM prompt-heavy sleep summarization/pruning/formatting steps while preserving the sleep lifecycle orchestration (flush, deterministic consolidation, merge/rebuild, verification, cleanup).
+
+Keep semantic extraction close to turn-time tagging and move open-question handoff to append-only project artifacts consumed by Dream.
+
+#### A.5.1 — Minimal Migration Shape (Safe)
+
+##### A.5.1.1 — Tagger Enrichment at Pair Time
+
+The tagger output contract SHALL be extended to include:
+
+* Question candidates extracted from the current pair (and optional short anchor context).
+
+These additions are pair-local signals and MUST NOT require full-memory/global resolution in the tagger step.
+
+Tagger SHALL keep existing fields and add questions in the same JSON object (single response contract).
+
+Canonical output contract (extension):
+
+```json
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<ignore | remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+```
+
+Contract notes:
+
+* `questions` MAY be empty (`[]`) when no question candidates are present.
+* `resolution` values are candidate hints at tag-time; final open/answered resolution remains a deterministic cross-turn consolidation step in sleep/dream.
+
+##### A.5.1.2 — Per-Project Append-Only Semantic Artifacts
+
+The system SHALL write project-scoped append-only artifacts at tag/ingest time:
+
+* `open_questions.jsonl` (required): canonical input stream for the Dream question pipeline.
+
+Each record SHOULD include stable provenance fields (for example project id, timestamp, source pair/message identifiers, topic/route metadata) so downstream consolidation is deterministic and auditable.
+
+##### A.5.1.3 — Sleep Uses Artifacts + Deterministic Consolidation
+
+During sleep, the system SHALL:
+
+1. Read the project artifact stream (`open_questions.jsonl`).
+2. Perform deterministic consolidation and status resolution (no LLM prompt for this stage).
+3. Continue existing maintenance operations unchanged:
+   * merge/upload artifacts
+   * FAISS rebuild/verification
+   * cleanup/reset lifecycle behaviors
 

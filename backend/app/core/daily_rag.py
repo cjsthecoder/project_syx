@@ -515,7 +515,7 @@ def append_pair(
     with FileLock(lock_path):
         entries = _load_metadata(meta_path)
         day_sequence = (entries[-1]["day_sequence"] + 1) if entries else 1
-        ns = (namespace or "general").lower()
+        ns = (namespace or "other").lower()
         entry = {
             "id": f"{int(time.time()*1000)}-{len(entries)+1}",
             "project_id": project_id,
@@ -683,7 +683,7 @@ def append_pair_text_only(
     When tags_meta is provided, writes #topics, #intent, #type, #semantic_handle (same format as roll-off).
     """
     _meta_path, lock_path, txt_path = _project_daily_paths(project_id)
-    ns = (namespace or "general").lower()
+    ns = (namespace or "other").lower()
     with FileLock(lock_path):
         try:
             # Ensure BEGIN header exists
@@ -771,7 +771,7 @@ def backfill_daily_txt_from_meta(project_id: str) -> bool:
                 tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
                 for e in entries:
                     ts = e.get("created_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                    ns = "general"
+                    ns = "other"
                     keep = bool(e.get("keep", False))
                     text = e.get("text") or ""
                     # Localize timestamp to MM-DD-YYYY_HH:MM:SS

@@ -89,7 +89,7 @@ class Settings(BaseSettings):
             "gpt-5.1-mini",
             "gpt-5.1-nano",
             "gpt-5",
-            "gpt-5-mini",
+            "gpt-5.4-mini",
             "gpt-5-nano",
             "gpt-4o",
             "gpt-4o-mini",
@@ -123,7 +123,7 @@ class Settings(BaseSettings):
     dedupe_keep_daily: bool = Field(default=True, description="Prefer keeping daily snippet on dedupe conflicts")
 
     # V2.3.1: Builder and reranking
-    builder_model: str = Field(default="gpt-5-mini", description="LLM used for query builder/router")
+    builder_model: str = Field(default="gpt-5.4-mini", description="LLM used for query builder/router")
     builder_confidence_min: float = Field(default=0.75, ge=0.0, le=1.0, description="Minimum confidence for full retrieval")
     builder_max_tokens: int = Field(default=1024, gt=0, description="Max tokens for builder output")
     builder_cache: bool = Field(default=True, description="Enable in-memory cache for builder JSON")

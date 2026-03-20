@@ -38,7 +38,7 @@ import os
 import json
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from ..core.state import release_lock
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,6 @@ from ..core.rag_manager import rebuild_faiss_index, load_faiss_index
 from filelock import FileLock
 from ..core.config import get_settings
 from ..core.daily_rag import _project_daily_paths, clear_daily_cache
-from ..core.tracking import get_instrumentation
 from ..core.dream import dream
 from ..utils.debug_utils import write_debug_file
 def _nl(s: str) -> str:
@@ -182,10 +181,7 @@ def _consolidate_open_questions_artifact(project_id: str) -> Dict[str, Any]:
     return consolidated
 
 def _sleep_cycle_worker():
-    instr = get_instrumentation()
     start_iso = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime())
-    start_ts = datetime.now(timezone.utc).isoformat()
-    t0 = time.monotonic()
     job_id = f"sleep_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
     status = "success"
     errors = []
@@ -194,8 +190,6 @@ def _sleep_cycle_worker():
     items_out = 0
     updated = 0
     projects_processed = 0
-    pruned_count = 0
-    formatted_count = 0
     skipped_no_daily = 0
     try:
         engage_lock()
@@ -381,8 +375,6 @@ def _sleep_cycle_worker():
                 final = _nl(source_text)
                 with open(summary_path, "w", encoding="utf-8", newline="\n") as sf:
                     sf.write(_nl(final))
-                pruned_count += 1
-                formatted_count += 1
                 logger.info("[SLEEP][FORMAT] Deterministic summary complete project=%s", pid)
 
                 # Run Dream cycle (questions, context, idea agent) BEFORE merge/RAG rebuild
@@ -538,51 +530,18 @@ def _sleep_cycle_worker():
                 errors.append(f"format:{pid}")
                 logger.error("[SLEEP][ERROR] Formatting failed project=%s: %s", pid, e, exc_info=True)
                 continue
-        logger.info("[SLEEP] Completed (updated_projects=%s, projects_processed=%s, pruned=%s, formatted=%s, skipped_no_daily=%s)",
-                    updated, projects_processed, pruned_count, formatted_count, skipped_no_daily)
+        logger.info(
+            "[SLEEP] Completed (updated_projects=%s, projects_processed=%s, skipped_no_daily=%s)",
+            updated,
+            projects_processed,
+            skipped_no_daily,
+        )
     except Exception as e:
         status = "failed"
         errors.append("worker:fatal")
         logger.error("[SLEEP][ERROR] %s", e, exc_info=True)
     finally:
         try:
-            # Duration logging (even on errors)
-            try:
-                elapsed = time.monotonic() - t0  # type: ignore[name-defined]
-                end_ts = datetime.now(timezone.utc).isoformat()
-                usage = instr.get_maintenance_usage(job_id)
-                h = int(elapsed // 3600)
-                m = int((elapsed % 3600) // 60)
-                s = int(elapsed % 60)
-                logger.info("[SLEEP] Duration elapsed=%.2fs (%02d:%02d:%02d) since=%s",
-                            elapsed, h, m, s, start_iso)
-                instr.record_maintenance(
-                    "sleep",
-                    {
-                        "job_id": job_id,
-                        "job_type": "sleep",
-                        "status": status,
-                        "start_ts": start_ts,
-                        "end_ts": end_ts,
-                        "after_turn": None,
-                        "prompt_tokens_reported": int(usage.get("prompt_tokens_reported", 0)),
-                        "completion_tokens_reported": int(usage.get("completion_tokens_reported", 0)),
-                        "total_tokens_reported": int(usage.get("total_tokens_reported", 0)),
-                        "duration_ms": int(max(0, elapsed * 1000.0)),
-                        "items_in": int(items_in),
-                        "items_out": int(items_out),
-                        "projects_processed_count": int(projects_processed),
-                        "projects_failed_count": int(projects_failed_count),
-                        "invocation_count_sleep": int(usage.get("invocation_count", 0)),
-                        "updated_projects": int(updated),
-                        "pruned_count": int(pruned_count),
-                        "formatted_count": int(formatted_count),
-                        "skipped_no_daily": int(skipped_no_daily),
-                        "errors": [str(x) for x in errors[:50]],
-                    },
-                )
-            except Exception as e:
-                logger.warning("[SLEEP] Failed to emit maintenance record: %s", e)
             release_lock()
             logger.debug("[SLEEP] Lock released")
         except Exception as e:

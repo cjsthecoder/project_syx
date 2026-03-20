@@ -58,10 +58,6 @@ class Instrumentation(Protocol):
 
     def record_stage(self, name: str, data: dict) -> None: ...
 
-    def record_maintenance(self, job_type: str, meta: dict) -> None: ...
-
-    def get_maintenance_usage(self, job_id: str) -> Dict[str, Any]: ...
-
 
 class NoopInstrumentation:
     """No-op implementation used when instrumentation is disabled."""
@@ -96,24 +92,6 @@ class NoopInstrumentation:
     def record_stage(self, name: str, data: dict) -> None:
         _ = (name, data)
 
-    def record_maintenance(self, job_type: str, meta: dict) -> None:
-        _ = (job_type, meta)
-
-    def get_maintenance_usage(self, job_id: str) -> Dict[str, Any]:
-        _ = job_id
-        return {
-            "prompt_tokens_reported": 0,
-            "completion_tokens_reported": 0,
-            "total_tokens_reported": 0,
-            "invocation_count": 0,
-            "provider_tokens_total": 0,
-            "estimated_tokens_total": 0,
-            "zero_fallback_tokens_total": 0,
-            "usage_source": "provider",
-            "usage_estimate_method": None,
-            "usage_is_estimate": False,
-        }
-
 
 class RealInstrumentation:
     """Minimal file-backed instrumentation implementation for lifecycle scaffolding."""
@@ -142,15 +120,9 @@ class RealInstrumentation:
         self._invocation_seq = 0
         self._turn_state: Dict[int, Dict[str, Any]] = {}
         self._invocation_state: Dict[str, Dict[str, Any]] = {}
-        self._maintenance_usage: Dict[str, Dict[str, int]] = {}
         self._models_observed: Dict[str, set] = {}
         self._last_turn_id: Optional[int] = None
         self._lock = threading.RLock()
-
-    @staticmethod
-    def _purpose_is_maintenance(purpose: str) -> bool:
-        p = str(purpose or "").strip().lower()
-        return p in {"sleep", "dream"}
 
     @staticmethod
     def _turn_state_defaults() -> Dict[str, Any]:
@@ -509,10 +481,10 @@ class RealInstrumentation:
                 self._write_run_json()
 
                 # Ensure canonical files exist from run start.
-                for fname in ("turns.jsonl", "invocations.jsonl", "maintenance.jsonl"):
+                for fname in ("turns.jsonl",):
                     self._append_jsonl(fname, {})
                 # Remove placeholder rows and keep empty files.
-                for fname in ("turns.jsonl", "invocations.jsonl", "maintenance.jsonl"):
+                for fname in ("turns.jsonl",):
                     path = os.path.join(self.run_dir, fname)
                     with open(path, "w", encoding="utf-8", newline="\n"):
                         pass
@@ -822,20 +794,6 @@ class RealInstrumentation:
                     "meta": meta_value,
                     "start_ts": start_ts,
                 }
-                payload = {
-                    "ts": start_ts,
-                    "event": "start_invocation",
-                    "invocation_id": invocation_id,
-                    "turn_id": turn_id,
-                    "purpose": purpose_value,
-                    "model": model_value,
-                    "meta": meta_value,
-                }
-                if self.run_id:
-                    payload["run_id"] = self.run_id
-                if schema_errors:
-                    payload["schema_errors"] = schema_errors
-                self._append_jsonl("invocations.jsonl", payload)
                 return invocation_id
             except Exception as e:
                 logger.warning("tracking.start_invocation failed: %s", e, exc_info=True)
@@ -1053,83 +1011,20 @@ class RealInstrumentation:
                         ts["ttlt_ms_main"] = int(ttlt_ms)
                         ts["_has_main_latency"] = True
                     else:
-                        if not self._purpose_is_maintenance(purpose):
-                            ts["mini_total_tokens_reported_sum"] = int(ts.get("mini_total_tokens_reported_sum", 0)) + int(total_tok)
-                            ts["mini_invocations_count"] = int(ts.get("mini_invocations_count", 0)) + 1
-                            ts["invocations_count_total"] = int(ts.get("invocations_count_total", 0)) + 1
-                            ts["interactive_non_main_total_tokens_reported"] = int(
-                                ts.get("interactive_non_main_total_tokens_reported", 0)
-                            ) + int(total_tok)
-                    if not self._purpose_is_maintenance(purpose):
-                        if usage_source == "provider":
-                            ts["provider_tokens_total"] = int(ts.get("provider_tokens_total", 0)) + int(total_tok)
-                        elif usage_source == "zero_fallback":
-                            ts["zero_fallback_tokens_total"] = int(ts.get("zero_fallback_tokens_total", 0)) + int(total_tok)
-                        else:
-                            ts["estimated_tokens_total"] = int(ts.get("estimated_tokens_total", 0)) + int(total_tok)
+                        ts["mini_total_tokens_reported_sum"] = int(ts.get("mini_total_tokens_reported_sum", 0)) + int(total_tok)
+                        ts["mini_invocations_count"] = int(ts.get("mini_invocations_count", 0)) + 1
+                        ts["invocations_count_total"] = int(ts.get("invocations_count_total", 0)) + 1
+                        ts["interactive_non_main_total_tokens_reported"] = int(
+                            ts.get("interactive_non_main_total_tokens_reported", 0)
+                        ) + int(total_tok)
+                    if usage_source == "provider":
+                        ts["provider_tokens_total"] = int(ts.get("provider_tokens_total", 0)) + int(total_tok)
+                    elif usage_source == "zero_fallback":
+                        ts["zero_fallback_tokens_total"] = int(ts.get("zero_fallback_tokens_total", 0)) + int(total_tok)
+                    else:
+                        ts["estimated_tokens_total"] = int(ts.get("estimated_tokens_total", 0)) + int(total_tok)
 
-                payload = {
-                    "ts": _utc_iso(),
-                    "event": "end_invocation",
-                    "invocation_id": invocation_id,
-                    "turn_id": turn_id,
-                    "purpose": purpose,
-                    "model": model,
-                    "prompt_tokens_reported": int(prompt_tok),
-                    "completion_tokens_reported": int(completion_tok),
-                    "total_tokens_reported": int(total_tok),
-                    "usage_is_estimate": bool(usage_is_estimate),
-                    "usage_source": usage_source,
-                    "usage_estimate_method": usage_estimate_method,
-                    "meta": meta_diag,
-                    "timing": {
-                        "ttfb_ms": ttfb_ms,
-                        "ttlt_ms": int(ttlt_ms),
-                    },
-                    "start_ts": start_ts,
-                    "end_ts": end_ts,
-                    "first_token_ts": first_token_ts,
-                }
-                if self.run_id:
-                    payload["run_id"] = self.run_id
-                if schema_errors:
-                    payload["schema_errors"] = schema_errors
-                self._append_jsonl("invocations.jsonl", payload)
                 self._invocation_state.pop(invocation_id, None)
-
-                # 5.8 support: aggregate sleep usage by maintenance job_id.
-                if purpose == "sleep":
-                    job_id = None
-                    try:
-                        jid = meta_diag.get("job_id")
-                        if isinstance(jid, str) and jid.strip():
-                            job_id = jid.strip()
-                    except Exception:
-                        job_id = None
-                    if job_id:
-                        agg = self._maintenance_usage.setdefault(
-                            job_id,
-                            {
-                                "prompt_tokens_reported": 0,
-                                "completion_tokens_reported": 0,
-                                "total_tokens_reported": 0,
-                                "invocation_count": 0,
-                                "provider_tokens_total": 0,
-                                "estimated_tokens_total": 0,
-                                "zero_fallback_tokens_total": 0,
-                            },
-                        )
-                        agg["invocation_count"] = int(agg.get("invocation_count", 0)) + 1
-                        # Aggregate best-available totals (provider where available, estimate/zero fallback otherwise).
-                        agg["prompt_tokens_reported"] = int(agg.get("prompt_tokens_reported", 0)) + int(prompt_tok)
-                        agg["completion_tokens_reported"] = int(agg.get("completion_tokens_reported", 0)) + int(completion_tok)
-                        agg["total_tokens_reported"] = int(agg.get("total_tokens_reported", 0)) + int(total_tok)
-                        if usage_source == "provider":
-                            agg["provider_tokens_total"] = int(agg.get("provider_tokens_total", 0)) + int(total_tok)
-                        elif usage_source == "zero_fallback":
-                            agg["zero_fallback_tokens_total"] = int(agg.get("zero_fallback_tokens_total", 0)) + int(total_tok)
-                        else:
-                            agg["estimated_tokens_total"] = int(agg.get("estimated_tokens_total", 0)) + int(total_tok)
             except Exception as e:
                 logger.warning("tracking.end_invocation failed: %s", e, exc_info=True)
 
@@ -1215,413 +1110,6 @@ class RealInstrumentation:
                 self._append_jsonl("turns.jsonl", payload)
             except Exception as e:
                 logger.warning("tracking.record_stage failed: %s", e, exc_info=True)
-
-    def record_maintenance(self, job_type: str, meta: dict) -> None:
-        with self._lock:
-            try:
-                if not self.run_id or self._ended:
-                    return
-                now_ts = _utc_iso()
-                schema_errors: list[Dict[str, Any]] = []
-                meta_in: Dict[str, Any] = {}
-                if meta is None:
-                    meta_in = {}
-                elif isinstance(meta, dict):
-                    meta_in = dict(meta)
-                else:
-                    schema_errors.append(
-                        self._schema_error(
-                            code="type_mismatch",
-                            field="meta",
-                            expected="object",
-                            actual=meta,
-                        )
-                    )
-
-                job_type_value = str(job_type or meta_in.get("job_type") or "").strip().lower()
-                if job_type_value != "sleep":
-                    schema_errors.append(
-                        self._schema_error(
-                            code="enum_mismatch",
-                            field="job_type",
-                            expected=["sleep"],
-                            actual=job_type_value,
-                        )
-                    )
-                    job_type_value = "sleep"
-
-                job_id = str(meta_in.get("job_id") or "").strip()
-                if not job_id:
-                    schema_errors.append(
-                        self._schema_error(
-                            code="missing_required_key",
-                            field="job_id",
-                            expected="non-empty string",
-                            actual=meta_in.get("job_id"),
-                        )
-                    )
-
-                usage_rollup = self.get_maintenance_usage(job_id)
-                prompt_tokens = self._as_int(
-                    meta_in.get("prompt_tokens_reported"),
-                    self._as_int(usage_rollup.get("prompt_tokens_reported"), 0),
-                ) or 0
-                completion_tokens = self._as_int(
-                    meta_in.get("completion_tokens_reported"),
-                    self._as_int(usage_rollup.get("completion_tokens_reported"), 0),
-                ) or 0
-                total_reported_raw = meta_in.get("total_tokens_reported")
-                if total_reported_raw is None:
-                    total_tokens = self._as_int(usage_rollup.get("total_tokens_reported"), prompt_tokens + completion_tokens) or 0
-                else:
-                    total_tokens = self._as_int(total_reported_raw, prompt_tokens + completion_tokens) or 0
-                expected_total = int(prompt_tokens + completion_tokens)
-                if int(total_tokens) != int(expected_total):
-                    schema_errors.append(
-                        self._schema_error(
-                            code="token_total_mismatch",
-                            field="total_tokens_reported",
-                            expected="prompt_tokens_reported + completion_tokens_reported",
-                            actual=total_tokens,
-                            details={
-                                "prompt_tokens_reported": int(prompt_tokens),
-                                "completion_tokens_reported": int(completion_tokens),
-                            },
-                        )
-                    )
-
-                provider_tokens_total = self._as_int(
-                    meta_in.get("provider_tokens_total"),
-                    self._as_int(usage_rollup.get("provider_tokens_total"), 0),
-                ) or 0
-                estimated_tokens_total = self._as_int(
-                    meta_in.get("estimated_tokens_total"),
-                    self._as_int(usage_rollup.get("estimated_tokens_total"), 0),
-                ) or 0
-                zero_fallback_tokens_total = self._as_int(
-                    meta_in.get("zero_fallback_tokens_total"),
-                    self._as_int(usage_rollup.get("zero_fallback_tokens_total"), 0),
-                ) or 0
-
-                status_value = str(meta_in.get("status") or "").strip().lower()
-                if status_value not in {"success", "partial", "failed"}:
-                    schema_errors.append(
-                        self._schema_error(
-                            code="enum_mismatch",
-                            field="status",
-                            expected=["success", "partial", "failed"],
-                            actual=meta_in.get("status"),
-                        )
-                    )
-                    status_value = "failed"
-
-                start_ts = meta_in.get("start_ts")
-                end_ts = meta_in.get("end_ts")
-                if not isinstance(start_ts, str) or not start_ts.strip():
-                    schema_errors.append(
-                        self._schema_error(
-                            code="missing_required_key",
-                            field="start_ts",
-                            expected="utc-iso timestamp string",
-                            actual=start_ts,
-                        )
-                    )
-                    start_ts = now_ts
-                if not isinstance(end_ts, str) or not end_ts.strip():
-                    schema_errors.append(
-                        self._schema_error(
-                            code="missing_required_key",
-                            field="end_ts",
-                            expected="utc-iso timestamp string",
-                            actual=end_ts,
-                        )
-                    )
-                    end_ts = now_ts
-
-                start_ms = self._epoch_ms_from_iso(start_ts)
-                end_ms = self._epoch_ms_from_iso(end_ts)
-                if (start_ms is not None) and (end_ms is not None) and end_ms < start_ms:
-                    schema_errors.append(
-                        self._schema_error(
-                            code="timestamp_order_violation",
-                            field="end_ts",
-                            expected=">= start_ts",
-                            actual=end_ts,
-                            details={"start_ts": start_ts},
-                        )
-                    )
-
-                after_turn_raw = meta_in.get("after_turn")
-                after_turn: Optional[int]
-                if after_turn_raw is None:
-                    after_turn = None
-                else:
-                    cast_after_turn = self._as_int(after_turn_raw, None)
-                    if cast_after_turn is None:
-                        schema_errors.append(
-                            self._schema_error(
-                                code="type_mismatch",
-                                field="after_turn",
-                                expected="int|null",
-                                actual=after_turn_raw,
-                            )
-                        )
-                        after_turn = None
-                    else:
-                        after_turn = int(cast_after_turn)
-
-                duration_ms = self._to_non_negative_int_or_none(meta_in.get("duration_ms"))
-                if duration_ms is None:
-                    if (start_ms is not None) and (end_ms is not None) and end_ms >= start_ms:
-                        duration_ms = int(end_ms - start_ms)
-                    else:
-                        schema_errors.append(
-                            self._schema_error(
-                                code="duration_mismatch",
-                                field="duration_ms",
-                                expected="non-negative int",
-                                actual=meta_in.get("duration_ms"),
-                            )
-                        )
-                        duration_ms = 0
-                elif (start_ms is not None) and (end_ms is not None) and end_ms >= start_ms:
-                    expected_duration = int(end_ms - start_ms)
-                    if abs(int(duration_ms) - expected_duration) > 1000:
-                        schema_errors.append(
-                            self._schema_error(
-                                code="duration_mismatch",
-                                field="duration_ms",
-                                expected="~ end_ts - start_ts (<=1000ms tolerance)",
-                                actual=duration_ms,
-                                details={"expected_duration_ms": expected_duration},
-                            )
-                        )
-
-                usage_source_raw = str(meta_in.get("usage_source") or usage_rollup.get("usage_source") or "").strip()
-                if usage_source_raw not in {"provider", "estimate", "zero_fallback"}:
-                    schema_errors.append(
-                        self._schema_error(
-                            code="usage_provenance_missing",
-                            field="usage_source",
-                            expected=["provider", "estimate", "zero_fallback"],
-                            actual=meta_in.get("usage_source"),
-                        )
-                    )
-                    usage_source_raw = "provider"
-                usage_source = usage_source_raw
-
-                if estimated_tokens_total > 0:
-                    usage_source = "estimate"
-                elif zero_fallback_tokens_total > 0:
-                    usage_source = "zero_fallback"
-                elif provider_tokens_total > 0:
-                    usage_source = "provider"
-
-                usage_is_estimate_expected = usage_source != "provider"
-                usage_is_estimate_in = bool(
-                    meta_in.get("usage_is_estimate", usage_rollup.get("usage_is_estimate", usage_is_estimate_expected))
-                )
-                usage_is_estimate = bool(usage_is_estimate_expected)
-                if usage_is_estimate_in != usage_is_estimate:
-                    schema_errors.append(
-                        self._schema_error(
-                            code="invariant_violation",
-                            field="usage_is_estimate",
-                            expected=usage_is_estimate,
-                            actual=usage_is_estimate_in,
-                            message="usage_is_estimate normalized to match usage_source",
-                        )
-                    )
-
-                usage_estimate_method_raw = meta_in.get("usage_estimate_method", usage_rollup.get("usage_estimate_method"))
-                if usage_source == "estimate":
-                    usage_estimate_method = str(usage_estimate_method_raw or "sum(invocations):mixed").strip() or "sum(invocations):mixed"
-                else:
-                    usage_estimate_method = None if usage_estimate_method_raw is None else str(usage_estimate_method_raw).strip() or None
-                    if usage_source != "estimate":
-                        usage_estimate_method = None
-
-                invocation_count_sleep = self._as_int(
-                    meta_in.get("invocation_count_sleep"),
-                    self._as_int(usage_rollup.get("invocation_count"), 0),
-                ) or 0
-                if int(invocation_count_sleep) != int(self._as_int(usage_rollup.get("invocation_count"), 0) or 0):
-                    schema_errors.append(
-                        self._schema_error(
-                            code="invocation_reconciliation_mismatch",
-                            field="invocation_count_sleep",
-                            expected=self._as_int(usage_rollup.get("invocation_count"), 0),
-                            actual=invocation_count_sleep,
-                        )
-                    )
-
-                items_in_val = meta_in.get("items_in")
-                items_out_val = meta_in.get("items_out")
-                items_in = self._as_int(items_in_val, None)
-                items_out = self._as_int(items_out_val, None)
-                if (items_in is not None) and (items_in < 0):
-                    schema_errors.append(
-                        self._schema_error(
-                            code="counts_invariant_violation",
-                            field="items_in",
-                            expected=">= 0",
-                            actual=items_in,
-                        )
-                    )
-                if (items_out is not None) and (items_out < 0):
-                    schema_errors.append(
-                        self._schema_error(
-                            code="counts_invariant_violation",
-                            field="items_out",
-                            expected=">= 0",
-                            actual=items_out,
-                        )
-                    )
-                if (items_in is not None) and (items_out is not None) and (items_out > items_in):
-                    schema_errors.append(
-                        self._schema_error(
-                            code="counts_invariant_violation",
-                            field="items_out",
-                            expected="<= items_in",
-                            actual=items_out,
-                            details={"items_in": items_in},
-                        )
-                    )
-
-                invocations_query = meta_in.get("invocations_query")
-                if not isinstance(invocations_query, dict):
-                    invocations_query = {}
-                invocations_query = {
-                    "job_id": str((invocations_query or {}).get("job_id") or job_id),
-                    "purpose": "sleep",
-                    "run_id": str((invocations_query or {}).get("run_id") or self.run_id),
-                }
-
-                payload = {
-                    "ts": now_ts,
-                    "event": "maintenance",
-                    "run_id": self.run_id,
-                    "job_id": job_id,
-                    "job_type": job_type_value,
-                    "status": status_value,
-                    "start_ts": start_ts,
-                    "end_ts": end_ts,
-                    "after_turn": after_turn,
-                    "prompt_tokens_reported": int(prompt_tokens),
-                    "completion_tokens_reported": int(completion_tokens),
-                    "total_tokens_reported": int(total_tokens),
-                    "usage_source": usage_source,
-                    "usage_estimate_method": usage_estimate_method,
-                    "usage_is_estimate": bool(usage_is_estimate),
-                    "duration_ms": int(duration_ms),
-                    "invocations_query": invocations_query,
-                    "provider_tokens_total": int(provider_tokens_total),
-                    "estimated_tokens_total": int(estimated_tokens_total),
-                    "zero_fallback_tokens_total": int(zero_fallback_tokens_total),
-                    "invocation_count_sleep": int(invocation_count_sleep),
-                }
-                if items_in is not None:
-                    payload["items_in"] = int(items_in)
-                if items_out is not None:
-                    payload["items_out"] = int(items_out)
-
-                canonical_fields = {
-                    "ts",
-                    "event",
-                    "run_id",
-                    "job_id",
-                    "job_type",
-                    "status",
-                    "start_ts",
-                    "end_ts",
-                    "after_turn",
-                    "prompt_tokens_reported",
-                    "completion_tokens_reported",
-                    "total_tokens_reported",
-                    "usage_source",
-                    "usage_estimate_method",
-                    "usage_is_estimate",
-                    "duration_ms",
-                    "items_in",
-                    "items_out",
-                    "provider_tokens_total",
-                    "estimated_tokens_total",
-                    "zero_fallback_tokens_total",
-                    "invocation_count_sleep",
-                    "invocations_query",
-                    "schema_errors",
-                    "meta",
-                }
-                extra_meta: Dict[str, Any] = {}
-                for k, v in meta_in.items():
-                    if str(k) not in canonical_fields:
-                        extra_meta[str(k)] = v
-                if extra_meta:
-                    payload["meta"] = extra_meta
-
-                if schema_errors:
-                    payload["schema_errors"] = schema_errors
-                self._append_jsonl("maintenance.jsonl", payload)
-            except Exception as e:
-                logger.warning("tracking.record_maintenance failed: %s", e, exc_info=True)
-
-    def get_maintenance_usage(self, job_id: str) -> Dict[str, Any]:
-        with self._lock:
-            try:
-                jid = str(job_id or "").strip()
-                if not jid:
-                    return {
-                        "prompt_tokens_reported": 0,
-                        "completion_tokens_reported": 0,
-                        "total_tokens_reported": 0,
-                        "invocation_count": 0,
-                        "provider_tokens_total": 0,
-                        "estimated_tokens_total": 0,
-                        "zero_fallback_tokens_total": 0,
-                        "usage_source": "provider",
-                        "usage_estimate_method": None,
-                        "usage_is_estimate": False,
-                    }
-                agg = self._maintenance_usage.get(jid) or {}
-                provider_total = int(agg.get("provider_tokens_total", 0))
-                estimated_total = int(agg.get("estimated_tokens_total", 0))
-                zero_total = int(agg.get("zero_fallback_tokens_total", 0))
-                if estimated_total > 0:
-                    usage_source = "estimate"
-                    usage_estimate_method: Optional[str] = "sum(invocations):mixed"
-                elif zero_total > 0:
-                    usage_source = "zero_fallback"
-                    usage_estimate_method = None
-                else:
-                    usage_source = "provider"
-                    usage_estimate_method = None
-                usage_is_estimate = usage_source != "provider"
-                return {
-                    "prompt_tokens_reported": int(agg.get("prompt_tokens_reported", 0)),
-                    "completion_tokens_reported": int(agg.get("completion_tokens_reported", 0)),
-                    "total_tokens_reported": int(agg.get("total_tokens_reported", 0)),
-                    "invocation_count": int(agg.get("invocation_count", 0)),
-                    "provider_tokens_total": provider_total,
-                    "estimated_tokens_total": estimated_total,
-                    "zero_fallback_tokens_total": zero_total,
-                    "usage_source": usage_source,
-                    "usage_estimate_method": usage_estimate_method,
-                    "usage_is_estimate": usage_is_estimate,
-                }
-            except Exception:
-                return {
-                    "prompt_tokens_reported": 0,
-                    "completion_tokens_reported": 0,
-                    "total_tokens_reported": 0,
-                    "invocation_count": 0,
-                    "provider_tokens_total": 0,
-                    "estimated_tokens_total": 0,
-                    "zero_fallback_tokens_total": 0,
-                    "usage_source": "provider",
-                    "usage_estimate_method": None,
-                    "usage_is_estimate": False,
-                }
-
 
 _INSTRUMENTATION: Instrumentation = NoopInstrumentation()
 _REGISTERED_ATEXIT = False

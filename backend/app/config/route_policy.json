@@ -16,30 +16,30 @@
 
   "DIRECT": {
     "_comment": "A clear, specific question with a narrow target. The user likely expects a precise response.",
-    "retrieval_multiplier": 1.5,
+    "retrieval_multiplier": 1,
     "max_keep": 12,
     "expansion": { "max_before": 0, "max_after": 2 }
   },
 
   "PROCEDURAL": {
     "_comment": "How-to questions, step-by-step guidance, implementation, configuration, or execution details.",
-    "retrieval_multiplier": 2.0,
+    "retrieval_multiplier": 1.5,
     "max_keep": 16,
     "expansion": { "max_before": 1, "max_after": 3 }
   },
 
   "EXPLORATORY": {
     "_comment": "Open-ended questions focused on understanding, comparison, or investigation.",
-    "retrieval_multiplier": 2.5,
+    "retrieval_multiplier": 2,
     "max_keep": 20,
     "expansion": { "max_before": 1, "max_after": 4 }
   },
 
   "SYNTHESIS": {
     "_comment": "Design, planning, tradeoff analysis, or 'help me think' requests.",
-    "retrieval_multiplier": 3.0,
+    "retrieval_multiplier": 2.5,
     "max_keep": 24,
-    "expansion": { "max_before": 2, "max_after": 5 }
+    "expansion": { "max_before": 2, "max_after": 4 }
   },
 
   "OTHER": {

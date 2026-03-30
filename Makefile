@@ -327,7 +327,7 @@ setup-env:
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
 		echo "# === Daily Memory + Daily RAG ==="; \
-		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
+		echo "CHAT_HISTORY_LIMIT_PAIRS=1"; \
 		echo "# V2.3: Number of prompt/response pairs kept in working memory:: 10 is working well"; \
 		echo ""; \
 		echo "DAILY_RAG_ENABLED=true"; \
@@ -457,6 +457,9 @@ setup-env:
 		echo "# === Debug / Observability ==="; \
 		echo "GENERATE_DEBUG_FILES=true"; \
 		echo "# V4.1.3.1: Enable debug file generation (e.g., debug_context.txt)"; \
+		echo ""; \
+		echo "VITE_SHOW_DEBUG_VALUES=false"; \
+		echo "# Frontend: show stats/debug values bar in chat UI"; \
 		echo ""; \
 	} > .env
 	@echo "✅ Created .env with defaults (update OPENAI_API_KEY)"

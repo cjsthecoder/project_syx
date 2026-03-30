@@ -77,7 +77,8 @@ Required fields:
 - `final_context_tokens_est` (int)
 - `final_context_clipped` (bool)
 - `main_total_tokens_reported` (int)
-- `mini_total_tokens_reported_sum` (int)
+- `mini_prompt_tokens_reported` (int)
+- `mini_completion_tokens_reported` (int)
 - `turn_total_tokens_reported` (int)
 - `turn_usage_source` (`"provider"` | `"estimate"` | `"zero_fallback"`)
 - `turn_usage_is_estimate` (bool)
@@ -109,7 +110,7 @@ Optional fields:
 
 ## Invariants
 
-- `turn_total_tokens_reported = main_total_tokens_reported + mini_total_tokens_reported_sum`
+- `turn_total_tokens_reported = main_total_tokens_reported + mini_prompt_tokens_reported`
 - prompt estimate sum must match:
   - `final_context_tokens_est = prompt_system_tokens_est + prompt_history_tokens_est + prompt_rag_tokens_est + prompt_profile_tokens_est + prompt_other_tokens_est`
 - retrieval counters must be non-negative

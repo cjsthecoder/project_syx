@@ -38,6 +38,9 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export default function App() {
+  const showDebugValues = !['false', '0', 'no', 'off'].includes(
+    String(import.meta.env.VITE_SHOW_DEBUG_VALUES ?? 'true').trim().toLowerCase(),
+  )
   const [projects, setProjects] = useState<Project[]>([])
   const [projectId, setProjectId] = useState<string>('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -136,13 +139,17 @@ export default function App() {
   }, [])
 
   const loadStats = useCallback(async (pid: string) => {
+    if (!showDebugValues) {
+      setStats(null)
+      return
+    }
     try {
       const data = await api<{ storage_bytes: number; index_size_bytes: number; tokens_indexed: number; context_tokens: number; file_count: number; daily_index_size_bytes?: number; daily_tokens_indexed?: number; daily_vector_count?: number }>(`/projects/${pid}/stats`)
       setStats(data)
     } catch {
       setStats(null)
     }
-  }, [])
+  }, [showDebugValues])
 
   const loadProjectInfo = useCallback(async (pid: string) => {
     try {
@@ -514,17 +521,19 @@ export default function App() {
       </header>
 
       {/* Stats Bar */}
-      <div className="px-4 py-2 border-b text-sm w-full flex justify-center">
-        <div className="flex flex-wrap gap-8 items-center text-center">
-          <div>Files: {fmtMB(stats?.storage_bytes)}</div>
-          <div>FAISS index: {fmtMB(stats?.index_size_bytes)}</div>
-          <div>Tokens indexed: {stats?.tokens_indexed ?? '—'}</div>
-          <div>Context tokens: {stats?.context_tokens ?? '—'}</div>
-          <div>Daily index: {fmtMB(stats?.daily_index_size_bytes)}</div>
-          <div>Daily tokens: {stats?.daily_tokens_indexed ?? '—'}</div>
-          <div>Active pairs: {stats?.active_pairs ?? '—'}</div>
+      {showDebugValues && (
+        <div className="px-4 py-2 border-b text-sm w-full flex justify-center">
+          <div className="flex flex-wrap gap-8 items-center text-center">
+            <div>Files: {fmtMB(stats?.storage_bytes)}</div>
+            <div>FAISS index: {fmtMB(stats?.index_size_bytes)}</div>
+            <div>Tokens indexed: {stats?.tokens_indexed ?? '—'}</div>
+            <div>Context tokens: {stats?.context_tokens ?? '—'}</div>
+            <div>Daily index: {fmtMB(stats?.daily_index_size_bytes)}</div>
+            <div>Daily tokens: {stats?.daily_tokens_indexed ?? '—'}</div>
+            <div>Active pairs: {stats?.active_pairs ?? '—'}</div>
+          </div>
         </div>
-      </div>
+      )}
 
       <main className="flex-1 overflow-hidden">
         <div ref={listRef} className="h-full overflow-auto p-4 space-y-3">

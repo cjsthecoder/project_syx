@@ -5,7 +5,7 @@ Build blind judging artifacts from a test run directory.
 Inputs read from the test run directory:
   - benchmark_results.jsonl
   - web_benchmark_results.jsonl
-  - prompts.json (preferred) or repo-root prompts.json fallback
+  - prompts JSON path passed on CLI
 
 Output written to <test_run_dir>/judging:
   - judge_runbook_blind_a.md
@@ -62,29 +62,11 @@ def _extract_turn_id(row: Dict[str, Any]) -> Optional[int]:
     return None
 
 
-def _repo_root_from_tools() -> str:
-    # tools/build_judge_input.py -> repo root
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-
-
-def _resolve_prompts_json(test_run_dir: str, override_path: Optional[str]) -> str:
-    if override_path:
-        p = os.path.abspath(override_path)
-        if not os.path.isfile(p):
-            raise FileNotFoundError(f"prompts file not found: {p}")
-        return p
-
-    local = os.path.join(test_run_dir, "prompts.json")
-    if os.path.isfile(local):
-        return local
-
-    fallback = os.path.join(_repo_root_from_tools(), "prompts.json")
-    if os.path.isfile(fallback):
-        return fallback
-
-    raise FileNotFoundError(
-        "Could not find prompts.json in test run directory or repo root; use --prompts-json."
-    )
+def _resolve_prompts_json(prompts_json_path: str) -> str:
+    p = os.path.abspath(prompts_json_path)
+    if not os.path.isfile(p):
+        raise FileNotFoundError(f"prompts file not found: {p}")
+    return p
 
 
 @dataclass
@@ -99,11 +81,11 @@ def _load_prompt_turns(prompts_json_path: str) -> tuple[Dict[int, PromptTurn], D
     with open(prompts_json_path, "r", encoding="utf-8") as f:
         payload = json.load(f)
     if not isinstance(payload, dict):
-        raise ValueError("prompts.json must be a JSON object")
+        raise ValueError("prompts JSON must be a JSON object")
 
     turns_raw = payload.get("turns")
     if not isinstance(turns_raw, list):
-        raise ValueError("prompts.json must include a 'turns' array")
+        raise ValueError("prompts JSON must include a 'turns' array")
 
     turns: Dict[int, PromptTurn] = {}
     for item in turns_raw:
@@ -354,7 +336,7 @@ def _build_judging_prompts_text(
     )
 
 
-def run(test_run_dir: str, prompts_json_override: Optional[str] = None) -> int:
+def run(test_run_dir: str, prompts_json_path: str) -> int:
     test_run_dir = os.path.abspath(test_run_dir)
     if not os.path.isdir(test_run_dir):
         raise FileNotFoundError(f"test run directory not found: {test_run_dir}")
@@ -366,7 +348,7 @@ def run(test_run_dir: str, prompts_json_override: Optional[str] = None) -> int:
     if not os.path.isfile(web_benchmark_path):
         raise FileNotFoundError(f"missing file: {web_benchmark_path}")
 
-    prompts_path = _resolve_prompts_json(test_run_dir, prompts_json_override)
+    prompts_path = _resolve_prompts_json(prompts_json_path)
     prompt_turns, prompt_meta = _load_prompt_turns(prompts_path)
 
     morpheus_rows = _index_by_turn(_read_jsonl(benchmark_path))
@@ -473,11 +455,7 @@ def run(test_run_dir: str, prompts_json_override: Optional[str] = None) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build blind judging artifacts from benchmark outputs.")
     parser.add_argument("test_run_dir", help="Path to test_run directory")
-    parser.add_argument(
-        "--prompts-json",
-        default=None,
-        help="Optional prompts.json path (defaults to <test_run_dir>/prompts.json then repo root prompts.json)",
-    )
+    parser.add_argument("prompts_json", help="Path to prompts JSON file")
     args = parser.parse_args()
     try:
         return run(args.test_run_dir, args.prompts_json)

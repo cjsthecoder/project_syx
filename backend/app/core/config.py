@@ -202,6 +202,11 @@ class Settings(BaseSettings):
     dream_topic_boost: float = Field(default=1.5, gt=0.0, description="Namespace boost used for topic hinting in RAG")
     # V4.1.3.1: Debug file generation
     generate_debug_files: bool = Field(default=False, description="V4.1.3.1: Enable writing debug files (e.g., debug_context.txt)")
+    # Frontend-only Vite flags may live in the same .env; keep backend parsing tolerant.
+    vite_show_debug_values: Optional[str] = Field(
+        default=None,
+        description="Frontend-only Vite env flag; ignored by backend runtime",
+    )
 
     @field_validator(
         "tagger_current_response_middle_cut_percent",

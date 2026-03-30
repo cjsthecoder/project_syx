@@ -53,6 +53,28 @@ def load_system_prompt_from_benchmark_json(prompts_json_path: str) -> tuple[str,
     return text_value, int(estimate_tokens(text_value))
 
 
+def load_profile_prompt_from_benchmark_json(prompts_json_path: str) -> tuple[str, int]:
+    """
+    Load benchmark profile prompt text and its token estimate.
+    """
+    try:
+        with open(prompts_json_path, "r", encoding="utf-8") as fp:
+            payload = json.load(fp)
+    except Exception as exc:
+        raise ValueError(f"Failed to read prompts JSON '{prompts_json_path}': {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError("prompts JSON root must be an object")
+    pp = payload.get("profile_prompt")
+    if not isinstance(pp, dict):
+        return "", 0
+    text = pp.get("known_component")
+    if not isinstance(text, str):
+        return "", 0
+    text_value = str(text)
+    return text_value, int(estimate_tokens(text_value))
+
+
 def parse_html_file(html_file: str) -> Optional[BeautifulSoup]:
     logger.info("Starting extraction from: %s", html_file)
     try:
@@ -221,7 +243,8 @@ def validate_web_turn_record(record: dict[str, Any]) -> tuple[bool, list[str]]:
         "final_context_tokens_est",
         "final_context_clipped",
         "main_total_tokens_reported",
-        "mini_total_tokens_reported_sum",
+        "mini_prompt_tokens_reported",
+        "mini_completion_tokens_reported",
         "turn_total_tokens_reported",
         "turn_usage_source",
         "turn_usage_is_estimate",
@@ -251,7 +274,7 @@ def validate_web_turn_record(record: dict[str, Any]) -> tuple[bool, list[str]]:
     if int(record["final_context_tokens_est"]) != prompt_sum:
         return False, ["final_context_tokens_est(prompt_sum_mismatch)"]
 
-    total_expected = int(record["main_total_tokens_reported"]) + int(record["mini_total_tokens_reported_sum"])
+    total_expected = int(record["main_total_tokens_reported"]) + int(record["mini_prompt_tokens_reported"])
     if int(record["turn_total_tokens_reported"]) != total_expected:
         return False, ["turn_total_tokens_reported(total_mismatch)"]
 
@@ -305,6 +328,11 @@ def run(prompts_json_path: str, input_file: str, test_run_path: str) -> int:
     except Exception as exc:
         logger.error("%s", exc)
         return 1
+    try:
+        profile_prompt_text, profile_prompt_tokens = load_profile_prompt_from_benchmark_json(prompts_json_path)
+    except Exception as exc:
+        logger.error("%s", exc)
+        return 1
 
     # Persist benchmark prompt definition as a run artifact.
     try:
@@ -345,7 +373,7 @@ def run(prompts_json_path: str, input_file: str, test_run_path: str) -> int:
         prompt_other_tokens_est = int(estimate_tokens(prompt_text))
         prompt_history_tokens_est = int(estimate_tokens("\n".join(history_text_parts))) if history_text_parts else 0
         prompt_system_tokens_est = int(system_prompt_tokens)
-        prompt_profile_tokens_est = 0
+        prompt_profile_tokens_est = int(profile_prompt_tokens)
         prompt_rag_tokens_est = 0
         final_context_tokens_est = int(
             prompt_system_tokens_est
@@ -390,7 +418,8 @@ def run(prompts_json_path: str, input_file: str, test_run_path: str) -> int:
             "final_context_tokens_est": int(final_context_tokens_est),
             "final_context_clipped": False,
             "main_total_tokens_reported": int(main_total_tokens_reported),
-            "mini_total_tokens_reported_sum": 0,
+            "mini_prompt_tokens_reported": 0,
+            "mini_completion_tokens_reported": 0,
             "turn_total_tokens_reported": int(main_total_tokens_reported),
             "main_prompt_tokens_reported": int(final_context_tokens_est),
             "main_completion_tokens_reported": int(response_tokens),
@@ -445,7 +474,7 @@ def run(prompts_json_path: str, input_file: str, test_run_path: str) -> int:
     logger.info("Wrote %s benchmark records to %s", len(records), out_path)
     logger.info("Wrote %s synthetic web_turn records to %s", len(web_turn_records), web_turns_out_path)
     logger.info(
-        "Extraction stats: messages=%s pairs=%s invalid_records=%s invalid_web_turn_records=%s orphan_assistant=%s replaced_unanswered_user=%s trailing_unanswered_user=%s system_prompt_tokens=%s total_context_tokens=%s total_main_tokens=%s",
+        "Extraction stats: messages=%s pairs=%s invalid_records=%s invalid_web_turn_records=%s orphan_assistant=%s replaced_unanswered_user=%s trailing_unanswered_user=%s system_prompt_tokens=%s profile_prompt_tokens=%s total_context_tokens=%s total_main_tokens=%s",
         len(messages),
         len(pairs),
         invalid_count,
@@ -454,6 +483,7 @@ def run(prompts_json_path: str, input_file: str, test_run_path: str) -> int:
         pair_stats["replaced_unanswered_user"],
         pair_stats["trailing_unanswered_user"],
         system_prompt_tokens,
+        profile_prompt_tokens,
         sum_context_tokens,
         sum_main_total_tokens,
     )

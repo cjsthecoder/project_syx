@@ -133,7 +133,8 @@ class RealInstrumentation:
             "prompt_profile_tokens_est": 0,
             "prompt_other_tokens_est": 0,
             "main_total_tokens_reported": 0,
-            "mini_total_tokens_reported_sum": 0,
+            "mini_prompt_tokens_reported": 0,
+            "mini_completion_tokens_reported": 0,
             "route": "OTHER",
             "rag_enabled": False,
             "retrieved_count": 0,
@@ -578,7 +579,9 @@ class RealInstrumentation:
                     logger.warning("tracking.end_turn missing turn state turn_id=%s; skipping write", tid)
                     return
                 main_total = int((turn_rollup or {}).get("main_total_tokens_reported", 0))
-                mini_total = int((turn_rollup or {}).get("mini_total_tokens_reported_sum", 0))
+                mini_prompt = int((turn_rollup or {}).get("mini_prompt_tokens_reported", 0))
+                mini_completion = int((turn_rollup or {}).get("mini_completion_tokens_reported", 0))
+                mini_total = int(mini_prompt + mini_completion)
                 ttfb_main_raw = (turn_rollup or {}).get("ttfb_ms_main", None)
                 ttlt_main_raw = (turn_rollup or {}).get("ttlt_ms_main", None)
                 ttfb_main = self._to_non_negative_int_or_none(ttfb_main_raw)
@@ -713,8 +716,9 @@ class RealInstrumentation:
                     "final_context_tokens_est": int(final_context_tokens_est),
                     "final_context_clipped": bool(final_context_clipped),
                     "main_total_tokens_reported": main_total,
-                    "mini_total_tokens_reported_sum": mini_total,
-                    "turn_total_tokens_reported": int(main_total + mini_total),
+                    "mini_prompt_tokens_reported": mini_prompt,
+                    "mini_completion_tokens_reported": mini_completion,
+                    "turn_total_tokens_reported": int(main_total + mini_prompt),
                     "main_prompt_tokens_reported": main_prompt_tokens_reported,
                     "main_completion_tokens_reported": main_completion_tokens_reported,
                     "turn_usage_source": turn_usage_source,
@@ -989,7 +993,7 @@ class RealInstrumentation:
                     first_token_ts = None
                     ttfb_ms = None
 
-                # 5.5.2 rollups: main contributes to main_total, non-main contributes to mini_total.
+                # 5.5.2 rollups: main contributes to main_total; mini is split by prompt/completion.
                 if isinstance(turn_id, int):
                     ts = self._turn_state.setdefault(
                         int(turn_id),
@@ -1011,7 +1015,10 @@ class RealInstrumentation:
                         ts["ttlt_ms_main"] = int(ttlt_ms)
                         ts["_has_main_latency"] = True
                     else:
-                        ts["mini_total_tokens_reported_sum"] = int(ts.get("mini_total_tokens_reported_sum", 0)) + int(total_tok)
+                        ts["mini_prompt_tokens_reported"] = int(ts.get("mini_prompt_tokens_reported", 0)) + int(prompt_tok)
+                        ts["mini_completion_tokens_reported"] = int(
+                            ts.get("mini_completion_tokens_reported", 0)
+                        ) + int(completion_tok)
                         ts["mini_invocations_count"] = int(ts.get("mini_invocations_count", 0)) + 1
                         ts["invocations_count_total"] = int(ts.get("invocations_count_total", 0)) + 1
                         ts["interactive_non_main_total_tokens_reported"] = int(

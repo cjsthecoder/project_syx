@@ -14,6 +14,8 @@ import { resolve } from 'path'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // Load env vars from repo root so frontend can consume VITE_* from main .env.
+  envDir: resolve(__dirname, '..'),
   base: '/static/',
   build: {
     outDir: resolve(__dirname, '../backend/app/static'),

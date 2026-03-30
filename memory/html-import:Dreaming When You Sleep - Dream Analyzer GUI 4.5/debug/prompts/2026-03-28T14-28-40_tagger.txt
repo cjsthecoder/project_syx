@@ -1,0 +1,159 @@
+# timestamp: 2026-03-28T14-28-40
+# project_id: html-import:Dreaming When You Sleep - Dream Analyzer GUI 4.5
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Reflective Analysis, User Validation, patent diagrams, memory consolidation, prompt assembly, diagram labels
+#intent: review updated diagram and suggest label refinements
+#type: technical, design
+#semantic_handle: updated patent diagram review
+
+------USER------
+take a look at this updated drawing.  you can ignore that there is no space around the outside, the inside is the way it is (something about exporting to png)
+
+------ASSISTANT------
+This isvery good.
+ You’re extremely close to the final version that will communicate 
+clearly to the lawyer. The structure is correct, the flows make sense, 
+and the labels are 90 percent of the way there.Below are therefinements that will elevate this from “good” to “crystal clear.”Nothing major, just tightening.✔ What is working perfectly1. Clean separation of the three major domains:Memory Consolidation + Reflective Analysis(left)STM / LTM(center)Prompt Assembly + LLM 
+...[middle omitted for tagging]...
+tenance Prompts” arrowClarify STM/LTM text (Active Day Memory / Consolidated Knowledge)Rename “Consolidated Chats” to “Consolidated Memory Data”Ensure Chat Response arrow hits Chat WindowLabel or evaluate Reflective Analysis → STM arrowAdd diagram titleOnce you apply these, this diagram will be attorney-ready.When you're done with this pass, we can move on to:Figure 2: Consolidation FloworFigure 3: Reflective Analysis FlowJust let me know which one you want to tackle next.
+
+------CURRENT TURN------
+------USER------
+for 2 -4 we are good, for 1, I think we are leaning heavy on LLM to do the pruning, tagging, ect.  I think we need to show that as a loop outside the chat loop.  Maybe better wording?
+
+------ASSISTANT------
+That makes total sense — and you're right that this part of the diagram is doing important work conceptually.Youdoneed to show a loop where the system invokes the LLMoutsidethe normal chat cycle to perform:pruningcategorizationtaggingsummarizationstructured formattingIn other words, themaintenance workthe LLM performs during consolidation.So yes, you should show that loop.But it must be labeled clearly so it doesn’t look like an inference path for chat.Right now “Maintenance Prompts” is too vague, and itlookslike an alternate inference loop.Here’s the correct way to show it.✔ What the diagramshoulde
+...[middle omitted for tagging]...
+ the loop:“Autonomous Background Memory Processing”This reinforces that the loop:is not tied to chatis system-controlledrepresents the core consolidating mechanismThis will make an attorney immediately understand the reason it exists.✔ Final recommendation (short version)Replace:“Maintenance Prompts”withInternal Maintenance Queriesand“Pruned, Categorized, Tagged Chats”withProcessed Memory DataThat’s the clean, technical, lawyer-friendly description of the same mechanism.If
+ you update that section and upload the revised image (or describe it), 
+I’ll confirm the wording and flow before you lock it in.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent diagrams, memory consolidation, llm, pruning, tagging, chat loop",
+  "intent": "suggest wording and diagram flow for background memory processing",
+  "type": "technical, design",
+  "semantic_handle": "background llm memory processing loop",
+  "questions": []
+}

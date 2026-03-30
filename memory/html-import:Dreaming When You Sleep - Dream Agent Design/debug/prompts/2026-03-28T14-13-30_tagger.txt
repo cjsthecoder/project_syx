@@ -1,0 +1,213 @@
+# timestamp: 2026-03-28T14-13-30
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Morpheus Dream Cycle, dream_context, insight system, prompt design, Idea Agent
+#intent: approve expanded insight coverage across the full dream_context
+#type: design, system
+#semantic_handle: expanded insight coverage for dream_context
+
+------USER------
+Yes, expand insights across the full dream_context.
+
+------ASSISTANT------
+Here is theexpanded, fully general, domain-independentinsight system.This upgrade makes the Idea Agent capable of drawing Dream Entries fromevery layerof dream_context, not just daily conversations.This version is robust enough to handle:Large AGI design daysWriting sessionsTechnical planningMemory architecture workFiction worldbuildingPatent researchAnything else the user throws at itAnd itstill avoids hallucinationbecause it is grounded in text thatactually appearsin the context.Below is the 
+...[middle omitted for tagging]...
+uch more powerful, because Dream output will no longer be limited to “what happened today.”It can draw from any part of the project’s knowledge base.Next StepIf you want, I can:Update thecomplete Idea Agent promptwith the new insight sectionAdd higher clarity around how insights must cite contextAdd a “coverage check” so the agent considers every major sectionAdd reasoning constraints to further reduce hallucinationRun another test with this new versionJust tell me:“Update the full prompt now.”
+
+------CURRENT TURN------
+------USER------
+we got less, but are they better?
+{
+  "date": "12/04/2025",
+  "items": [
+    {
+      "id": "dq1-memory-worries",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T18:30:00Z",
+      "origin_text": "What other things do we need to be worried about?",
+      "origin_type": "open_question",
+      "assistant_response": "This question is about identifying additional risks in your long-term memory lifecycle. Since the design involves pruning, summarization, and periodic fine-tuning, the biggest remaining choices revolve around how aggressive this system should be. You may want to decide whether the system favors preservation or efficiency, and how strict the guardrails should be to prevent accidental loss of key decisions. Clarifying these preferences will shape the pruning thresholds, safety checks, and summary depth.",
+      "context_link": "What other things do we need to be worried about",
+      "metadata": {
+        "priority": 1,
+        "confidence": 0.30,
+        "theme": "memory",
+        "recommended_research": [
+          "Risk tradeoffs in automated pruning systems",
+          "User experience patterns for long-term memory tools"
+        ]
+      }
+    },
+    {
+      "id": "nt1-yearly-ft-topic",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T18:30:10Z",
+      "origin_text": "Extra long term, maybe once a year, it could turn the saved old stuff into a fine tuned model.",
+      "origin_type": "new_topic",
+      "assistant_response": "The yearly conversion of accumulated memory into a fine-tuned model is a major new topic because it defines how the system evolves. This creates a drift-management challenge and a version-control problem. You will need a clear process for selecting canonical examples, excluding sensitive content, and tagging style-preferred responses so the yearly model remains aligned with your current preferences.",
+      "context_link": "once a year, it could turn the saved old stuff into a fine tuned model",
+      "metadata": {
+        "priority": 2,
+        "confidence": 0.55,
+        "theme": "architecture",
+        "recommended_research": [
+          "Model lifecycle management",
+          "Canonical dataset curation strategies"
+        ]
+      }
+    },
+    {
+      "id": "ins1-forgetting-feature",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T18:30:20Z",
+      "origin_text": "this, Over-pruning important context , is kind of inevitable, but it is also what humans do, so that just makes it more like AGI",
+      "origin_type": "insight",
+      "assistant_response": "You identified that imperfect recall is not only acceptable but desirable because it reinforces human-like behavior. This suggests the system should intentionally allow some ambiguity and soft forgetting, as long as core decisions and patterns remain intact. Designing for graceful uncertainty will improve adaptability and reduce pressure to preserve exhaustive detail.",
+      "context_link": "this, Over-pruning important context , is kind of inevitable",
+      "metadata": {
+        "priority": 2,
+        "confidence": 0.55,
+        "theme": "agi",
+        "recommended_research": [
+          "Human memory decay models",
+          "Adaptive uncertainty handling in long-term AI agents"
+        ]
+      }
+    }
+  ]
+}
+
+------ASSISTANT------
+Short answer:Yes, this is better, even though there are fewer entries.And here is why, in a very precise way.1. The Agent Now Avoids Treating Metadata as Actionable ContentThis is exactly what we wanted.Your expanded insight rules told the Agent:“You may useany partof the context IF it contains patterns, risks, tensions, or missing decisions.”But your dream_context (this specific run) contains verylittlethat fits that bill.Most of the text is:static profilestatic system prompthigh level system descriptionsmetadatalists of open questions with no answersRAG fallback summariesbig conceptual summariesThose arereference sections, not actionable input.The Idea Agent is now correctly ignoring anything that:does not contain a decisiondoes not contain a riskdoes not contain a tensiondoes not contain a new topicdoes not invite analysisThis is perfect behavior.2. The Agent Found the Only T
+...[middle omitted for tagging]...
+t all entries groundedThis is perfect.7. What will happen on a richer day?When the daily memory is large or contains:multiple project decisionstechnical back and forthcontradictionsquestions implicitly raisedpatternssystem prompt changesarchitecture planningwriting ideasThe Agent will naturally produce 6 to 12 entries, sometimes more.It scales with content.That is exactly what you want.Final verdictThis output is better. Absolutely.The Idea Agent is now:More disciplinedMore selectiveMore generalLess noisyMore groundedLess likely to hallucinateMore aligned with the Dream philosophyYou should keep this version.If you want, next we can:further improve contradiction detectionimprove use of open questions in the system promptadd coverage rules so the agent touches more sections when appropriaterun a full test with a longer or richer dream_contextJust tell me what you want to do next.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Idea Agent, dream_context, insight system, memory pruning",
+  "intent": "evaluate whether a smaller set of insights is better quality",
+  "type": "meta, technical",
+  "semantic_handle": "evaluating reduced insight output quality",
+  "questions": []
+}

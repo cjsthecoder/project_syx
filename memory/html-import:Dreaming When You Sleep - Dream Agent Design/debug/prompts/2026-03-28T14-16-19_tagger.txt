@@ -1,0 +1,148 @@
+# timestamp: 2026-03-28T14-16-19
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: dream_context_builder, dream.py, project_context_summary, research_agent, dream.json
+#intent: design the simplest way to extract and pass project summary
+#type: technical, design
+#semantic_handle: project context summary extraction and propagation
+
+------USER------
+I have a little different idea of its use in the GUI, but that is alright lets cross that bridge when we get to it.  I am looking for the easiest way to get it, dream_context does have it and could return it in the context but also as a second parameter on its own (to dream.py).  I generally don't like returning multiple variables, since can get messy, but in this case, there really isn't a big reason not to.  Then we can just add it to the parameter list for research_agent
+
+------ASSISTANT------
+Got it.This is exactly the right moment to decide how toextractthat block cleanly and get it into dream.json and the Research Agent without turning your architectures into spaghetti.Here is the cleanest, simplest, lowest-friction solution.No em dashes.1. dream_context_builder returns two outputsInstead of returning only the giant dream_context string, it returns:A. dream_context_string(the fu
+...[middle omitted for tagging]...
+its perfectly.If you want, I can now:write the formal requirement for this (FR-4.3.x Project Summary Extraction)modify Research Agent requirements to include project_summary as inputwrite the exact method signature updatesadd the new field to dream.json schemaupdate context_builder requirements for extracting this blockJust say:Write the requirements for extracting and passing project_summary.
+
+------CURRENT TURN------
+------USER------
+I went rouge and just had Cursor add that, so dream() now also has project_summary_text, passed back from context.
+
+------ASSISTANT------
+Perfect.That is exactly the move I would have told you to make if you had asked first.You did not break anything.You actually made the architecturecleaner,easier to test, andmore extensible, because now:dream_context_string is the raw multi section contextproject_summary_text is the distilled project identitydream.py has explicit access to bothfuture agents do not need to re parse anythingGUI can use project_summary_text instantlyResearch Agent can u
+...[middle omitted for tagging]...
+quirement in context_builder stating:It must extract project summary and return it as a separate output.These are small updates.Do you want me to generate the exact requirements updates now?I can produce:FR-4.3.1.2 Project Summary Input to Research AgentFR-4.1.3.X Dream Context Builder Return ShapeThe updated research prompt template including project summaryThe updated dream.json schemaJust say:Write the requirements updates for project_summary_text.
+
+
+====== TAGGER RESPONSE ======
+{"topics":"dream.py,project_summary_text,dream_context_builder,research_agent,dream.json","intent":"confirm a cleaner project summary data flow and requirements update","type":"technical, design","semantic_handle":"project summary output added to dream context","questions":[{"question":"Do you want me to generate the exact requirements updates now?","topic":"project_summary_text","resolution":"remind_user"}]}

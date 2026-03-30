@@ -1,0 +1,177 @@
+# timestamp: 2026-03-28T15-01-07
+# project_id: html-import:Dreaming When You Sleep - Version 2.3 summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: morpheus, cursor, roadmap, version 3.1, rag, one-month project
+#intent: plan a fast-moving learning project
+#type: planning, technical
+#semantic_handle: Morpheus through-3.1 monthly roadmap
+
+------USER------
+oh i think at the speed we are going, with cursor, we can get thru 3.1 by the end of the month, we have already done a ton in the first two weeks.
+
+------ASSISTANT------
+That’s actually plausible given where Morpheus already is — you’ve laid almost all the scaffolding that slows most teams down.Here’s a condensed“through-3.1” roadmap for the rest of the month, tuned for your current velocity with
+...[middle omitted for tagging]...
+intaining AGI memory system— something no commercial model currently exposes publicly.Want me to turn that timeline into a formatted mini-roadmap file (docs/Morpheus_Roadmap_v3.1.md) so you can drop it in next to REQUIREMENTS.md?
+
+------CURRENT TURN------
+------USER------
+ok, it looks like this is what we landed on for 2.3, but I think we need to change some things, plus we need to figure out if we are going to use the main FAISS or have each project also have like a daily file, that gets rolled into the main one when sleeping.
+
+Version 2.3 — Rolling Context → RAG Bridge
+
+Purpose:
+Bridge short-term working memory (the in-memory chat buffer) and long-term project RAG, giving Morpheus a virtually unlimited context window.
+
+Core Mechanics
+
+Track rolling conversation up to CHAT_HISTORY_LIMIT tokens (≈24 K).
+
+When new input pushes past that, roll off oldest messages → embed → append to project’s FAISS index.
+
+During chat generation:
+
+Retrieve top-K RAG results (similarity >= 0.75).
+
+Inject them as a single “Context:” block before the user message.
+
+Maintains both “live memory” and persistent knowledge without a sleep cycle yet.
+
+Foundation for 3.0’s nightly pruning and consolidation.
+
+------ASSISTANT------
+Yes — that’s the right foundation for2.3, but you’re correct that now we should refine how therolled-off datais stored and when it joins the permanent FAISS index.Below is an updated version that resolves the “daily file vs. main FAISS” question and locks down the full 2.3 design.Version 2.3 — Rolling Context → RAG Bridge (Revised)PurposeExtend Morpheus’ short-term working memory into long-term storage, 
+allowing effectively unlimited conversational continuity while keeping 
+the permanent RAG clean for later “sleep” processing.Architecture DecisionUse atwo-tier memory structure per project:TierFilePurposeDaily Buffer (Transient)/memory/{p
+...[middle omitted for tagging]...
+odal.Optional button: “Flush Day → Sleep Queue” (manual merge trigger).Advantages of Daily FilesKeeps main FAISS clean and fast (no constant writes).Easy to prune, inspect, or re-embed if errors occur.Mirrors biological memory: hippocampal short-term store (daily) → cortical consolidation (sleep).Foundation for 3.0When 3.0 runs the sleep cycle, it will:Read all daily FAISS files since the last run.Prune, summarize, deduplicate, and append results to the main FAISS index.Delete or archive daily files afterward.Would you like me to turn this version into aMarkdown section formatted for your REQUIREMENTS.md(so it’s ready to paste under V2.2)?
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "morpheus, faiss, rag, daily files, memory consolidation, version 2.3",
+  "intent": "refine a memory storage design and decide between main index and daily rolled files",
+  "type": "technical, planning",
+  "semantic_handle": "Morpheus two-tier RAG memory design",
+  "questions": []
+}

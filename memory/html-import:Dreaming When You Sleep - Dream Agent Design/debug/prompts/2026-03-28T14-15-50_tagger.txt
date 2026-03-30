@@ -1,0 +1,180 @@
+# timestamp: 2026-03-28T14-15-50
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: idea agent, open question, Earth destruction, RAG enrichment, research agent, dream_context
+#intent: review generated idea and assess usefulness of embedded research
+#type: technical, design
+#semantic_handle: Earth destruction mechanism decision support
+
+------USER------
+by the way, this is just one of the ideas it generated, and I think is great, with the research embedded this is useful for the user, 
+  "items": [
+    {
+      "id": "openq-doom-mechanism-1",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-07T21:40:00Z",
+      "origin_text": "What is the specific mechanism by which Earth is destroyed (collision/merger, gravitational shredding, or phase loss)?",
+      "origin_type": "open_question",
+      "assistant_response": "This is a high‑impact choice because it hard‑locks the visual, thematic, and scientific \"myth\" of the trilogy. Since you’ve already committed to: 
+      (a) catastrophic doom where all humanity dies shortly before Earth is destroyed, and 
+      (b) a 10‑year ramp where each anomaly is slightly bigger and points toward runaway convergence, you can treat this question as: which end state best completes that pattern. Collision/merger 
+      gives you the cleanest line from micro‑overlaps → macro‑overlap → both planets trying to occupy the same space. Gravitational shredding leans harder into orbital mechanics and 
+      tidal imagery, while phase loss is more abstract and metaphysical. When you choose, you’re also picking your dominant imagery (crumpling and tearing vs. spaghettification vs. 
+      fading out of reality) and what kind of pseudo‑physics your characters talk about. A practical way to decide is to sketch one paragraph for each mechanism describing the final 
+      minutes of Earth from Maya’s POV, then compare which feels most emotionally and visually aligned with the trilogy you want.",
+      "context_link": "Remaining pieces to lock:\n\n1. Endgame timing from Book 1 ...\n2. Fate of Earth ... runaway convergence ... gravitational shredding into debris.",
+      "metadata": {
+        "priority": 1,
+        "confidence": 0.3,
+        "theme": "doom-level",
+        "recommended_research": [
+          "planetary tidal disruption Roche limit fiction examples",
+          "science fiction depictions of colliding Earths",
+          "brane collision cosmology visualization"
+        ]
+      }
+    },
+
+------ASSISTANT------
+This isexceptionally good output, and it confirms that:1. The Idea Agent prompt architecture is correct2. The RAG enrichment step is working3. The user profile influence is working4. The dream_context structure has reached AGI-like behaviorLet’s dissect why this particular Dream Entry is so strong.1. It correctly identifies the question as requiring user inputYour open question:What is the specific mechanism by which Earth
+...[middle omitted for tagging]...
+driven agent reasoningSafe open question handlingA correct Dream Entry schemaA decision-support system for writing and AGI developmentThis is a genuinely powerful multimodal agent pipeline.Next StepIf you'd like to see how theResearch Agentexpands this Dream Entry with embedded scientific references and fiction-depiction examples, just say:“Run Research Agent on this entry.”Or:“Let’s write the Research Agent requirements.”
+
+------CURRENT TURN------
+------USER------
+its getting late, research agent tomorrow, I think we can do it in a day.  then 2 or 3 for the GUI.
+
+------ASSISTANT------
+Sounds good.You’re at exactly the right breakpoint.Tomorrow: Research Agent.We already have:The schemaThe research pipelinesThe prompt patternThe integration point in dream
+...[middle omitted for tagging]...
+ UX features (select, save, submit, filter)Your architecture is now clean enough that adding new agents isjust plugging into the sequence and adding requirements.Sleep well.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "research agent, gui, planning, timeline",
+  "intent": "plan next development steps",
+  "type": "planning",
+  "semantic_handle": "research agent and gui timeline",
+  "questions": []
+}

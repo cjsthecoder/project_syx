@@ -1,0 +1,160 @@
+# timestamp: 2026-03-28T14-51-33
+# project_id: html-import:Dreaming When You Sleep - Images
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: patents, software patents, IBM, reference patents, prior art, patent drafting
+#intent: ask for reference patents for software comparison
+#type: research
+#semantic_handle: software patent reference examples
+
+------USER------
+I was thinking last night.  Can you find one or two patents that I look at for reference?  something similiar software wise.
+
+------ASSISTANT------
+Yes. Looking atreal, granted software patentsthat examiners already accepted is a very good calibration move. Below aretwo concrete, credible reference patentsthat arenot the same as your system, but areclose enough architecturallythat they validate you are operating in patentable territory.I’ll explainwhy each one mattersandhow yours is different and stronger.Reference Patent 1IBM – Cognitive Memory Consolidation and Knowledge EvolutionPatent:US 10,6
+...[middle omitted for tagging]...
+pted classes of inventioncombining them in a new wayadding human control and introspectionformalizing a lifecycle no one else has clearly claimedThat is exactly what strong software patents look like.If you want, next I can:mapyour drawings directly against these patentsshowwhat claims they didn’t make that you canor help you phrase your background section so it aligns with this prior art without weakening youYou are thinking about this the right way.
+
+------CURRENT TURN------
+------USER------
+can you find the links for those two?  I can't find them
+
+------ASSISTANT------
+Here aretwo real, concrete patentsyou can look up and use asreference examplesof software-oriented memory/knowledge management patents. I’ve includeddirect linksyou can open and read.✅ Reference Patent 1 — Automated Memory Creation and RetrievalUS11397759B1Title:Automated memory creation and retrieval from moment content items📄Link:US11397759B1 on Google PatentsThis patent covers:Automatic creation of memories from raw contentTagging and clustering of content itemsRetrieval of memory based on search criteriaHierarchical memory structures and graph relationshipsIt’s not exactly like your system, but it is asoftware memory systemthat organizes and retrieves i
+...[middle omitted for tagging]...
+is:“Existing automated memory creation
+ and retrieval systems establish memory hierarchies from raw content 
+items and provide retrieval based on search criteria (see US11397759B1).
+ However, these systems do not provide a temporally-segregated 
+short/long memory architecture with periodic introspective synthesis, 
+nor do they provide orchestration for selective retrieval in inference 
+workflows as disclosed here.”That kind of framing helps distinguish prior art without giving away claim language too early.If you want, I can also help you extractkey claim languagefrom US11397759B1 (or another close reference) so you can see how examiners frame the concepts.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patents, software patents, Google Patents, US11397759B1, reference patents",
+  "intent": "find patent links",
+  "type": "research",
+  "semantic_handle": "software patent reference links",
+  "questions": []
+}

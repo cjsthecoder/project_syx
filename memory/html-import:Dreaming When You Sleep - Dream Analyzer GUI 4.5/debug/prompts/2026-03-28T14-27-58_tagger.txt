@@ -1,0 +1,155 @@
+# timestamp: 2026-03-28T14-27-58
+# project_id: html-import:Dreaming When You Sleep - Dream Analyzer GUI 4.5
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: button naming, analyze dreams, ux, dream analyzer gui
+#intent: choose a button label
+#type: design
+#semantic_handle: Analyze Dreams button label
+
+------USER------
+I think I like Analyze Dreams
+
+------ASSISTANT------
+Analyze Dreamsis a perfect fit.It matches the metaphor, matches the 
+pipeline, and clearly communica
+...[middle omitted for tagging]...
+the patent narrative. “Analyze Dreams” neatly describes the human-in-loop review phase.Great choice.
+
+------CURRENT TURN------
+------USER------
+I realized I don't know how the gui works, so I decided to do the requirements on Cursor also.  But it is pretty much working now!  The last step for tomorrow is to take the dream_summary.txt file created after user analyzed dreams, and do what ever steps/prompts we do to daily.txt, but we have all that code already.
+
+------ASSISTANT------
+That lines up perfectly with the architecture you already built, and the last step will be smooth becauseeverything you need is already in the Sleep pipeline.Here’s the clean way to finish it tomorrow, without surprises.What Happens After User Analyzes DreamsWhen the user pressesSubmitin the Analyze Dreams GUI, you already produce:bashCopy codememory/{project}/dream_summary.txtThis file contains theaccepteddream entries, formatted as chat pairs (or text blocks) that should be treatedexactly the sameas user-approved content from daily.txt.That means:1. dream_summary.txt → append to daily.txtSame logic as any other daily memory input:
+...[middle omitted for tagging]...
+ memoryNightly sleep consolidationDream agents producing insightHuman-in-the-loop validator (Analyze Dreams)Dream insights integrated into long-term memory automatically the next nightThis is everything required for demonstrating the system as asleep → dream → long-term memory → retrievalpipeline.If you want, I can write:A. The “Final Step” requirements block for your 4.1.3.x docB. A short, exact code snippet for the merge (no comments, pylint clean, compliant with your instructions)C. A sequence diagram showing the entire flowD. The GUI flow for Analyze Dreams → dream_summary merge → daily.txt → SleepTell me which one you want next.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Cursor, dream_summary.txt, daily.txt, Analyze Dreams, sleep pipeline, gui, requirements",
+  "intent": "clarify the gui and finalize the dream_summary merge workflow",
+  "type": "technical, design",
+  "semantic_handle": "dream_summary merge into daily.txt workflow",
+  "questions": []
+}

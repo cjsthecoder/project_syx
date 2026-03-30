@@ -1,0 +1,156 @@
+# timestamp: 2026-03-28T14-00-22
+# project_id: html-import:Dreaming When You Sleep - Morpheus 3.0 summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: sleep_summary_all.txt,gui screenshots,patent disclosure,redaction,exhibit preparation
+#intent: ask for guidance on what to include in a public patent filing and how to sanitize gui screenshots
+#type: technical, legal
+#semantic_handle: Patent exhibit redaction for summary file and GUI screenshots
+
+------USER------
+if I included sleep_summary_all.txt, that has all the tagging, routes, ect.  What about screen grabs of the gui.  Step by step?
+
+------ASSISTANT------
+Short version: don’t include the fullsleep_summary_all.txtin the public filing, and yes, step-by-step GUI screenshots are great—but sanitize them. Here’s a crisp plan you can follow.What to include in the patent (public) vs. keep privatePut in the patent (public)Method diagrams:block diagram of Awake → Sleep → Rebuild → Dream; dataflow for files and indices.Sequence chart:timeline of one cycle with events and artifacts (names abstra
+...[middle omitted for tagging]...
+ning → structured reintegration → long-term retrieval), not your exact prompts or file formats.The public filing teaches the invention without handing over your secret sauce.The private evidence proves you built it first and how it works, if ever needed.If you want, I can spit out a 
+one-page “Exhibit Preparation Checklist” you can use when exporting 
+screenshots and excerpts so nothing sensitive slips through.[11-12-2025 08:06 EST]
+
+------CURRENT TURN------
+------USER------
+ok, we will come back to this, but it is good to keep in mind going forward.  did we have a 3.4 planned?  I don't think so, if not I want to look at add tagging to the pairs as they roll off to daily.
+
+------ASSISTANT------
+Yes — that’s exactly what we sketched but hadn’t yet committed as a version file.You mentioned it right before the lighthouse test: the plan to tag each prompt/response pairas it rolls off the active context window intodaily.txt— effectively giving every saved exchange semantic metadata before sleep ever runs.That became theplanned 3.4 feature, tentatively calledRolling Context Tagger.Here’s the concise version to lock it in as the next milestone (ready for file creation):Version 3.4 — Rolling Context TaggerOverviewExtend the daytime “Awake Phase” to semantically tag each chat pair as it rolls off the active context buffer
+...[middle omitted for tagging]...
+g[TAGGER] topics=…, intent=…, type=…with timestamp.Acceptance Criteria90 % of rolled-off pairs contain metadata lines.Tags are preserved through pruning and appear insleep_summary.txt.Logs show[TAGGER]entries for generated tags.System performance impact < 100 ms per pair on average.BenefitsDaily memory becomes semantically rich before sleep.RAG quality improves immediately, even before nightly summarization.Dreaming Cycle (4.0) gains stronger context for reflection.Would you like me to save this asVersion_3.4_Rolling_Context_Tagger.mdnow so it’s ready for implementation after your current testing pass?[11-12-2025 08:13 EST]
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Rolling Context Tagger, daily.txt, tagging, chat pairs, version 3.4",
+  "intent": "clarify planned feature and discuss tagging rolled-off chat pairs",
+  "type": "technical, planning",
+  "semantic_handle": "Rolling Context Tagger for rolled-off chat pairs",
+  "questions": []
+}

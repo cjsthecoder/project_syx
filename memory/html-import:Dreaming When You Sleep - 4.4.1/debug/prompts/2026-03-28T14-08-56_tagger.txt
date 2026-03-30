@@ -1,0 +1,156 @@
+# timestamp: 2026-03-28T14-08-56
+# project_id: html-import:Dreaming When You Sleep - 4.4.1
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: chunk retrieval, overlapping chunks, token overlap, duplication, deduplication
+#intent: clarify how overlapping chunk retrieval handles duplicated tokens
+#type: technical, design
+#semantic_handle: overlapping chunk retrieval and token duplication
+
+------USER------
+ok, this may be 4.4.2 or 3, but if we pull the previous or next chunk, aren't we getting 100 tokens twice?  if we have say 800/100?
+
+------ASSISTANT------
+Yes. If you use overlapping chunks, for example 800 tokens with 100-token overlap, thenpulling adjacent chunks will duplicate those 100 tokens. That is not a bug. It is a deliberate tradeoff.What matters ishow and when you resolve the duplication.Let’s separate the concerns cleanly.First principleOverlap exists to protect meaning, not to define final context.Duplication is 
+...[middle omitted for tagging]...
+plication is temporaryMeaning preservation beats cleanlinessIf you are seeing duplicate tokens, it means the system is doing its job.Bottom lineYes, you will get 100 tokens twice when pulling adjacent overlapping chunks.That is expected.That is correct.And that is far safer than losing context.Handle duplication later, when you actually know how much context you can afford.
+
+------CURRENT TURN------
+------USER------
+ok, I agree, that is a later step, but I do think we should remove duplication, its not just 100, its 100 per extra pairs grabbed that is likely > 1000 extra tokens to the api.
+
+my only question is, how solid is the overlap.  Like can we say get 0-699, on the one before?  and not even get the ones that overlap?
+
+------ASSISTANT------
+Great question. This is exactly the right place to be picky, because this choice locks in downstream behavior.Short answer first, then the nuance:Yes, you can remove overlap at assembly time safely.No, you should not redefine the stored chunk boundaries to avoid overlap.The overlap must remainsolid at write time, but it doesnotneed to survive into the final context you send to the API.Let’s be precise.The overlap must beauthoritative, notinevitableOverlap exists for one reason only:To guarantee thatno semantic boundary is ever lost at retrieval time.Once you have retrieved the chunks that matter, overlap has already done its job.After that point, overlap is just duplicated bytes.So the rule becomes:Overlap is required for retrieval correctness,not required for context presentation.The safe way to think
+...[middle omitted for tagging]...
+ens.That is absolutely worth doing.Where this belongs in your staged planYou are right that this isnot 4.4.1.This belongs in what you already intuitively labeled as:4.4.3 Context assembly and budget enforcement4.4.1 must stay dumb and lossless.4.4.3 is where you get to be efficient.Clean rule you can codifyOverlap exists at rest.Overlap is removed in motion.Or more concretely:Storage: overlappingRetrieval: overlappingAssembly: deduplicatedModel input: cleanFinal answer to your direct question“Can we say get 0–699 on the one before and not even get the ones that overlap?”At assembly time: yes.At storage or retrieval time: absolutely not.If you follow that separation, you get:Zero semantic lossZero duplicated tokensPredictable token budgetsNo boundary bugsYou are thinking about this exactly the right way.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "chunk retrieval, overlapping chunks, token overlap, duplication, deduplication, context assembly",
+  "intent": "clarify overlap handling and deduplicate retrieved tokens",
+  "type": "technical, design",
+  "semantic_handle": "overlap removal during context assembly",
+  "questions": []
+}

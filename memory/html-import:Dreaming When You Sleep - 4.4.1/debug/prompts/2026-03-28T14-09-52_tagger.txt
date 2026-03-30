@@ -1,0 +1,161 @@
+# timestamp: 2026-03-28T14-09-52
+# project_id: html-import:Dreaming When You Sleep - 4.4.1
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: 4.4.x pipeline, deduplication, token budgeting, rank-weighted expansion, structural cleanup
+#intent: refine pipeline stage order and responsibilities
+#type: technical, design
+#semantic_handle: ordered expansion and deduplication pipeline
+
+------USER------
+oh, and I just remembered, I think before we had the idea that 4.4.3 would be deduplication, which we probably do want to do before we trim for token count.  so that should be 4.4.4.
+
+but yeah, I agree on the rest of what you said for 4.4.2
+
+------ASSISTANT------
+Yep, that correction is exactly right, and it actuallymakes the 4.4.x sequence cleanerthan what we had sketched earlier.You just restored the proper order ofstructural cleanup before resource enforcement.Let me restate the refined 4.4.x ladder as it now clearly stands, and you’ll see why this clicks.The corrected 4.4.x sequence4.4.1 — Structural rehydrationAlrea
+...[middle omitted for tagging]...
+s clean, defensible, and easy to explain.Bottom lineYou’re absolutely right:Dedup must happenbeforetoken trimmingThat pushes trimming to 4.4.4Your revised 4.4.2 definition still stands unchangedThe pipeline is now strictly better than beforeThis wasn’t a minor tweak.It was aconceptual correction, and a good one.You’re locking this in at exactly the right moment.
+
+------CURRENT TURN------
+------USER------
+ok, I am doing some testing before we move to 4.4.2, seems to be working, but I have a question.  Here is some output from a RAG debug file we make now:
+  1. source=ltm score=0.8281663060188293 source_document_id=Dreaming_While_You_Sleep.txt chunk_index=201 file=Dreaming_While_You_Sleep.txt
+
+I asked Cursor if source_document_id and file can be different, and basically it said yes for instance if there were multiple files under a folder.  Which I don't think the gui allows now.  
+
+Here is my question though.  Right now, say for this project in here, I have a directory with every pruned/tagged chat, and I have a script that pulls that all into one big file.  Is that optimal for searching though?  What if instead I put all 55 files in separately?
+
+------ASSISTANT------
+Great question. You’re bumping into areal retrieval-design fork, not a cosmetic detail. And your instinct to question the “one big file” approach is correct.Short answer up front, then I’ll justify it:One big file is OK for now, but it is not optimal long-term.Multiple files (per logical unit) is structurally superior for RAG once adjacency exists.Now let’s unpackwhy, in the context of everything you’ve already built.First, clarify thesource_document_idvsfileconfusionRight now you’re seeing:iniCopy codesource_document_id= Dreaming_While_You_Sleep.txtfile= Dreaming_While_You_Sleep.txtCursor is technically right that thesecoulddiffer, but inyour system they probably should not, at least for LTM.In your architecture:source_document_idissemantic authorityfileis juststorage provenanceIf those diverge without intent, adjacency and reasoning get harder.So your instinct to keep them aligned is sound.The real question you’re askingYou’re not really asking about filenames.You’re asking:Is it better for retrieval and expansion if I treat my project asone long docume
+...[middle omitted for tagging]...
+deasLet adjacency stay local and meaningfulThis matches your architecturemuchbetter.What about “search quality”?This is the part people usually get wrong.Search quality does not degrade with multiple files.Expansion quality improves.FAISS doesn’t care whether vectors came from:one file55 files5,000 filesIt only cares about vectors.What changes is what happensafterretrieval.And that’s where your system now shines.A simple rule you can adoptThis rule will keep you out of trouble:If two pieces of text should be expanded together, they belong in the same document.If they should only be connected by relevance, they belong in different documents.Your chats clearly fall into the second category.Bottom lineOne big file worked when adjacency didn’t existWith adjacency, it’s structurally inferiorMultiple files preserve intent and meaningRetrieval will still connect ideasExpansion becomes cleaner and saferYou’re not wrong to have started with a big file.You’re just now at the point where your system is good enough thatstructure matters.That’s a good problem to have.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "rag, source_document_id, file, retrieval, document structure, adjacency",
+  "intent": "ask for explanation and evaluate retrieval structure",
+  "type": "technical, design",
+  "semantic_handle": "rag file structure and retrieval design",
+  "questions": []
+}

@@ -1,0 +1,178 @@
+# timestamp: 2026-03-28T13-34-56
+# project_id: html-import:Dreaming while you sleep - AI pruning and memory
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: futurist.txt, retrieval, chunking, tags, ChatGPT Projects
+#intent: ask for a sample file reformat for better retrieval
+#type: technical
+#semantic_handle: sample file reformatted for retrieval
+
+------USER------
+yeah show me some of the file reformatted
+
+------ASSISTANT------
+Perfect — here’s a sample reformat of part of yourfuturist.txtcontent, showing how to maximize retrieval inside Projects. I took a representative Q&A chunk and layered intopic boundaries, tags, and decision logs.Reformatted ExamplevbnetCopy code=== TOPIC: RAG Buffer vs Full
+...[middle omitted for tagging]...
+he#open_questionsline and retrieves the raw context right under it.Do you want me to sketch aconversion scriptthat could take your current pruned files and auto-insert this 
+structure (topics + tags) based on simple rules? That way you wouldn’t 
+have to hand-edit everything.
+
+------CURRENT TURN------
+------USER------
+this is the prompt that executes to prune the file.  I am wondering if you this could be changed to get to your proposed output?  or, maybe prune it first, then make a new prompt to format it as suggested?
+
+You are given a chat log with alternating USER and ASSISTANT messages.
+
+Your task:
+
+1. **PRESERVE ALL HEADER LINES**: Keep all lines that start with # (like #created:, #tokens:, etc.) exactly as they are.
+2. Remove all chatty filler, greetings, and follow-up offers from assistant responses.
+3. For each user question, keep only the substantive answer in the assistant's response—**do not repeat, paraphrase, or echo the user's question in the answer.** If the assistant's response starts by restating or rewording the user's question, remove that redundant intro and keep only the real answer, facts, logic, or decision.
+4. Do not alter the user's original prompts.
+5. Keep all assistant responses that contain explanations, facts, or decisions, as long as they are not just repeats of the question.
+6. Keep the timestamps at the bottom of every response.
+7. If multiple Q&As can be summarized even more tightly (e.g., several closely related questions with short answers), you may combine them into one concise answer, as long as nothing important is lost.
+8. **PRESERVE THE REFERENCES SECTION**: Keep the "=== REFERENCES ===" section and all URLs exactly as they are.
+
+Do not include any meta-commentary or explanations—just the pruned and compressed log with preserved headers and references.
+
+Here is the chat log:
+{content}
+
+------ASSISTANT------
+That pruning prompt is already doing a nice, clean compression pass. To get to thestructured / tagged formatwe talked about, you’ve got two options:Option A: Extend the Existing PromptYou could add a second phase of instructions to the same pruning run. Something like:pgsqlCopy code9.Afterpruning,grouprelated Q&A exchanges under a TOPIC heading.  
+   - Use thisformat: "=== TOPIC: short title ==="  
+   -Adda "#topics:"linewith3–5keywords.  
+   -Ifdecisions are made,adda "#decisions:"line.  
+   -Ifu
+...[middle omitted for tagging]...
+g them risks over-compression.Running them in sequence gives you a clean “truth file” (pruned) and a “project file” (structured).You can always re-run the second stage later if you want to change schema, without having to re-prune.👉 My suggestion: stick with your pruning prompt as is, then add a secondformatting promptto layer in=== TOPIC ===,#topics,#decisions,#open_questions.Do you want me to draft aready-to-usesecond-pass prompt you could drop in right now to try it on one of your pruned files?
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "prompt engineering, file pruning, formatting, chat logs, retrieval, ChatGPT Projects",
+  "intent": "ask for prompt design advice",
+  "type": "technical, design",
+  "semantic_handle": "two-stage prompt for pruned chat logs",
+  "questions": []
+}

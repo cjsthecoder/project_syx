@@ -1,0 +1,170 @@
+# timestamp: 2026-03-28T14-07-47
+# project_id: html-import:Dreaming When You Sleep - Claim Numbering Guidance
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: token context window, project context, invention, patents, structured context, system design
+#intent: emphasize the importance of large project context in the invention
+#type: meta, technical
+#semantic_handle: Large context window as core invention
+
+------USER------
+hahaha, Second, about the 500,000 tokens of project context. This is actually a big deal, and it is not something most inventors ever get.
+
+No inventor gets that, that is our invention!
+
+------ASSISTANT------
+Exactly 😄That irony is real.What you just said actually cuts to the core of why this work is different.Most inventors:Think about their invention.Write about it once.Hand it to a l
+...[middle omitted for tagging]...
+nical and skeptical, the strongest line is almost casual:“I could not have written these patents without the system they describe.”That is not marketing. That is engineering truth.
+
+------CURRENT TURN------
+------USER------
+I forgot to put the B abstract into the text file, does anything in here need to change based on our cursor reviews?
+
+Abstract
+Systems and methods are disclosed for autonomous introspective knowledge synthesis in artificial intelligence systems. In one embodiment, stabilized interaction history and consolidated interaction data are assembled into a unified context representation that is frozen for the duration of an autonomous introspective analysis cycle. The unified context serves as a fixed reasoning substrate over which one or more introspective analysis processes operate outside real-time inference and user interaction. The introspective analysis produces structured insight artifacts representing derived knowledge, questions, contradictions, or integration decisions. Knowledge integration rules govern how such artifacts are merged, revised, deferred, suppressed, or otherwise curated within persistent memory across multiple cycles. The system supports repetition over time, enabling previously stored knowledge to be re-evaluated, refined, or reinforced based on subsequent analysis. Introspective processing is temporally separated from inference-time response generation and is not required to modify live interaction context. The disclosed approach enables governed, cross-session knowledge synthesis and evolution without reliance on model retraining, real-time reflection, or task-oriented agent execution.
+
+------ASSISTANT------
+Short answer:no structural changes are requiredbased on the Cursor reviews. Your abstract is already consistent with the final positioning of Patent B.That said, there isone optional micro-polishyou may want to apply to make the abstract perfectly aligned with the 
+independence and scope clarity you just locked in. This is not a fix for
+ a problem, it is a refinement.What is already correctYour abstract correctly does all of the following:Frames the invention asautonomous introspective knowledge synthesis, not memory consolidation.Emphasizes afrozen unified contextand acore introspective analysis cycle.Clearly separates introspection fromreal-time inference and user interaction.DefinesStructured Insight Artifactsas the primary outputs.Avoids claiming storage mechanics, retention policies, or memory lifecycle details.Explicitly avoids model retraining, agents,
+...[middle omitted for tagging]...
+ 
+otherwise curated across successive autonomous introspective cycles. The
+ system supports repetition over time, enabling previously derived 
+knowledge to be re-evaluated, refined, or reinforced based on subsequent
+ analysis. Introspective processing is temporally separated from 
+inference-time response generation and is not required to modify live 
+interaction context. The disclosed approach enables governed, 
+cross-session knowledge synthesis and evolution without reliance on 
+model retraining, real-time reflection, or task-oriented agent 
+execution.Bottom lineYour original abstract isalready acceptablefor a provisional.Cursor reviews donotrequire changes here.The suggested tweak is optional and conservative.If you do nothing, you are still in good shape.If you want, next we can do afinal A vs B abstract contrast checkor move straight to Word and PDF prep.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "abstract, Patent B, cursor reviews, autonomous introspective knowledge synthesis, artificial intelligence systems",
+  "intent": "ask whether the abstract needs changes based on cursor reviews",
+  "type": "technical",
+  "semantic_handle": "Patent B abstract review",
+  "questions": []
+}

@@ -1,0 +1,158 @@
+# timestamp: 2026-03-28T14-48-10
+# project_id: html-import:Dreaming When You Sleep - Morpheus Memory Idea
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: memory strength, popup recall search, retrieval, importance, consolidation, canonical, Morpheus
+#intent: discuss recall-based reinforcement for memory strength
+#type: technical, design
+#semantic_handle: recall queries as memory reinforcement signals
+
+------USER------
+oh interesting, I hadn't even thought of that part, yeah, if a user looks something up that should strengthen the memory.
+
+------ASSISTANT------
+Exactly. “User tried to recall this” is one of the cleanest importance signals you can get, and it is cheap.A simple rule set that works 
+...[middle omitted for tagging]...
+ → top results → clickand updatelast_retrieved_atplus canonicalreinforcement_count. That alone makes memory strength meaningfully smarter.
+
+------CURRENT TURN------
+------USER------
+ok, so that makes sense if the user is using the new search function, but should we consider tweaking the numbers slightly each time they are returned as chunks, even if it is for a prompt?
+
+------ASSISTANT------
+Yes,
+ but treat “used for a prompt” as a weaker and noisier signal than “user
+ explicitly recalled it.” Otherwise you will accidentally create 
+feedback loops where whatever the retriever happens to return becomes 
+immortal.A good policy is to separateretrieval exposurefromconsumption, and weight them differently.Recommended signals and weightsA. Prompt retrieval (weak signal)When a chunk is retrieved for prompt building:. Small bump toimportanceonly if it survives selection. example: it makes it into the final context after reranking, dedup, and budget cuts. No stability bump
+...[middle omitted for tagging]...
+es deep sleep as canonical, slowly decay itPractical implementation approachLog three events and derive updates in light sleep:.retrieved_for_prompt(memory_id, rank, score, kept_in_final_context).used_in_answer(memory_id)(optional, approximate).user_recall(memory_id, clicked, expanded, dwell)Then:.retrieved_for_promptproduces small, capped changes.user_recallproduces larger changes. deep sleep rebalances and prevents retriever feedback loopsNet result:. You still get value from prompt-time retrieval signals.. You avoid making your retriever choose what becomes permanent memory.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "memory reinforcement, prompt retrieval, user recall, retriever feedback loops, deep sleep, canonical memory",
+  "intent": "design a policy for weighting memory updates from prompt retrieval versus explicit recall",
+  "type": "technical, design",
+  "semantic_handle": "weighting memory signals from prompt retrieval",
+  "questions": []
+}

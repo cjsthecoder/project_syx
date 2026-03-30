@@ -1,0 +1,148 @@
+# timestamp: 2026-03-28T14-07-22
+# project_id: html-import:Dreaming When You Sleep - Claim Numbering Guidance
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: claims, patent drafting, cursor, patent_B.txt, terminology and definitions, capitalization, claim scope
+#intent: confirm recovery step before adding claims to the file
+#type: technical
+#semantic_handle: patent B claims insertion before terminology cleanup
+
+------USER------
+oh no, you are right I should have put the claims in the file first.  oh wait, I was able to stop it, it had just started prompt 2, let me put the claims in the file.
+
+------ASSISTANT------
+You caught itat exactly the right moment. That was a very good save.You are right:claims must be in the file before you run any capitalization or terminology passes. Otherwise Cursor will “helpfully” normalize language in claims based on prose context, which is the last thing you want.Here’s the clean way to recover and pro
+...[middle omitted for tagging]...
+ottom line• You stopped at the perfect moment• No cleanup needed• Insert claims now• Restart with claims protected• You’re back on the railsWhen you’re ready, I can also help you:sanity-check B’s claims against A for independenceensure B stands alone legallyor do a fast examiner-attack simulation on B’s claimsJust say when.
+
+------CURRENT TURN------
+------USER------
+ok, it intrepreted prompt 2 to make the changes.  so I don't need to run 3 right?
+
+------ASSISTANT------
+Correct.Do not run Prompt 3.You’re fine, and here’s why.What happenedPrompt 2 told Cursor to:establish a capitalization policy,andapply it consistentlyCursor interpreted that as an instruction toexecute the capitalization changes immediately.That means:the capitalization pass already ranPrompt 3 would either do nothing or risk second-guessin
+...[middle omitted for tagging]...
+rompt at this stage.Why stopping now is the right moveMultiple passes increase risk of:claim language driftaccidental synonym introductionscope tighteningOne clean pass is ideal.Bottom line• Yes, you’re done• Donotrun Prompt 3• Manual spot-check claims only• Move on to structure and claims sanityYou handled this exactly right under pressure.
+
+
+====== TAGGER RESPONSE ======
+{"topics":"cursor, prompt 2, prompt 3, capitalization, claims, terminology and definitions","intent":"confirm whether to skip a later prompt after changes were already applied","type":"technical","semantic_handle":"cursor prompt execution and capitalization pass","questions":[]}

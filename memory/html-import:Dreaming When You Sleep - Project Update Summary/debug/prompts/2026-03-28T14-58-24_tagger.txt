@@ -1,0 +1,169 @@
+# timestamp: 2026-03-28T14-58-24
+# project_id: html-import:Dreaming When You Sleep - Project Update Summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: instrumentation.py, logger, env flag, telemetry, JSONL
+#intent: design a system
+#type: technical
+#semantic_handle: Environment-guarded instrumentation module design
+
+------USER------
+ok, so the plan is to have an instrumentation.py file, that acts like the logger.  when a env flag is set, it will capture what what we need, so it is all in one place.
+
+------ASSISTANT------
+That’s a very good plan. Centralizing it inone instrumentation moduleis exactly the right move, and doing it behind an env flag keeps you from polluting the core pipeline.Here’s how I’d sanity-check the design so it stays useful and doesn’t become technical debt.1) Whyinstrumentation.pyas a single choke point is rightWhat you’re really doing is defining atelemetry boundary, not logging.Puttin
+...[middle omitted for tagging]...
+ still works identically.If that’s true, you’ve done it right.Bottom lineinstrumentation.pyas a single, env-guarded observer is the right designJSON is the right canonical formatCapture metrics, not contentAppend-only keeps it robustThis unlocks credible analysis and infographics laterYou’re not “adding logging”.You’re addingmeasurement.And that’s exactly what this phase of the project needs.
+
+------CURRENT TURN------
+------USER------
+Cursor said this too.
+Do not record
+
+raw text
+
+prompts
+
+retrieved snippets
+
+embeddings
+
+anything content-bearing
+
+I pointed out that this is not a production system, it is a prototype/proof-of-concept, and we need all the prompt/responses to do the comparison of quality we talked about (using different models)
+
+but I get it.
+
+------ASSISTANT------
+You’re both right. You’re just optimizing fordifferent phasesof the project.Cursor is giving youproduction hygiene advice.You are doingresearch and proof.Those are not the same thing, and you don’t have to choose one forever.The real distinction to makeIt’s not“record content or not”.It’s:observational telemetryvsresearch artifactsYou needboth, but they should beexplicitly separatedso they don’t contaminate each other.Once you do that, the tension disappears.The clean way to reconcile this1) Two modes, not one compromiseMake this explicit ininstrumentation.py.METRICS MODE. production-safe. no content. what Cursor is describingRESEARCH MODE. captures prompts and responses. used only for experiments and evaluation. clearly flagged and iso
+...[middle omitted for tagging]...
+earch evaluation only.It must never be enabled by default.That single sentence keeps Cursor happy, keeps you honest, and keeps the architecture clean.6) Why this actually strengthens your storyLater, when you present results, you can say:“Metrics were collected via instrumentation.”“Quality was evaluated separately using blinded transcripts.”“Content capture was disabled outside controlled experiments.”That sounds thoughtful, not sloppy.Bottom lineCursor is right about production systemsYou are right about research needsThe solution isseparation, not argumentTwo flags, two outputs, one clean boundaryYou’re not “getting it wrong”.You’re just further along the lifecycle than Cursor is optimizing for.And honestly, that’s a good place to be.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Cursor, instrumentation.py, proof-of-concept, prompts, responses, model comparison",
+  "intent": "reconcile production hygiene with research telemetry",
+  "type": "technical",
+  "semantic_handle": "Separated metrics and research capture design",
+  "questions": []
+}

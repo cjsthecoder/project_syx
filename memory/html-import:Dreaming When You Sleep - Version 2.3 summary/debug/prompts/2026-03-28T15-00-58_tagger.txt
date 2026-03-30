@@ -1,0 +1,150 @@
+# timestamp: 2026-03-28T15-00-58
+# project_id: html-import:Dreaming When You Sleep - Version 2.3 summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: version 3.0, autonomous sleep cycle, model evolution, version 2.3, rag integration, scheduler, self-training, multi-project coordination
+#intent: summarize planned version 3.0 and clarify scope vs version 2.3
+#type: technical, planning
+#semantic_handle: version 3.0 autonomous sleep cycle plan
+
+------USER------
+what was our plan for 3.0 then?  I thought those changes were 3.0?
+
+------ASSISTANT------
+Good catch — you’re right thatv2.3 and 3.0overlap conceptually. The distinction we made earlier wasscope:v2.3 = “local sleep” integration(single-node Morpheus pruning & updating its own RAG)v3.0 = “full autonomous sleep cycle” and cross-system evolutionHere’s how we defined it in the design filesDreaming_Whe
+...[middle omitted for tagging]...
+aining + multi-project coordination3.1Subconscious networkingBackground research + AI-to-AI registrySo yes — what we built asv2.3is thefoundationof the sleep system.v3.0turns it on 
+automatically, teaches Morpheus to manage it alone, and begins the 
+transition from RAG maintenance to real continual learning.
+
+------CURRENT TURN------
+------USER------
+oh right, 2.3 had no sleep cycle, it was just going to be the part that rolled off the context window past N to a RAG file, and then used that along with the rest of the RAG to have basically an unlimited context window (which will be cleaned up in sleep with 3.0).  We are also going to need to have a 2.4 (and I am not sure which should come first), but that will be the addition of instructions (per project), and I think also a few other fields.  like I am thinking maybe the project can have a personality field, that would map to a file that would have a bit of information to include in the system prompt.  Also, I think we have talked about some ways to help RAG, putting in some json that may help.
+
+------ASSISTANT------
+Exactly right — you’ve got the version sequencing and intent nailed.Here’s how it all fits together based on the earlier design discussions and what you’re describing now:Version 2.3 — Rolling Context → RAG BridgePurpose:Bridge short-term working memory (the in-memory chat buffer) and long-term project RAG, giving Morpheus avirtually unlimited context window.Core MechanicsTrack rolling conversation up toCHAT_HISTORY_LIMITtokens (≈24 K).When new input pushes past that, roll off oldest messages → embed → append to project’s FAISS index.During chat generation:Retrieve top-K RAG results (similarity >= 0.75).Inject them as a single “Context:” block before the user message.Maintains both “live memory” and persistent knowledge without a sleep cycle
+...[middle omitted for tagging]...
+les semantic + structured filtering (e.g., only retrieve"tags":["pruning"]").Version RelationshipVersionFocusDescription2.3Rolling-off contextWrites overflowed chat tokens to FAISS for recall.2.4Project identity layerAdds per-project instructions, personality, and richer metadata for retrieval.3.0True sleep cycleNightly pruning + summarization + fine-tune prep.Implementation RecommendationDo2.3 first— you’ll need the rolling-to-RAG logic in place before personality and retrieval profiles can leverage it.Then 2.4 can enrich that foundation with project-specific behaviors and smarter RAG filters.Would you like me to draft the2.4 requirements section(formatted like the existing REQUIREMENTS.md V2 / 2.2 entries) so it’s ready to add to your file?
+
+
+====== TAGGER RESPONSE ======
+{"topics":"version 2.3, version 2.4, version 3.0, rag, project instructions, personality field, json metadata","intent":"clarify version sequencing and planned feature scope","type":"technical, planning","semantic_handle":"version sequencing for RAG and project metadata","questions":[]}

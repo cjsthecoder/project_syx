@@ -1,0 +1,167 @@
+# timestamp: 2026-03-28T14-47-37
+# project_id: html-import:Dreaming When You Sleep - Cloud Migration
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Morpheus, Apple iPad M5, iPadOS, Python, always-on server
+#intent: ask about feasibility of running Morpheus on an iPad as an always-on computer
+#type: technical
+#semantic_handle: running Morpheus on an iPad
+
+------USER------
+ok, I was thinking I need another computer to run Morpheus all the time.  I was curios if I could do that on the ipad, since it would sort of give me a computer and an ipad
+
+------ASSISTANT------
+Short answer:You can run Morpheus on an iPad, but not as your always-on server.Long answer below with the exact reasons.1. What youcando on an iPadAn iPad (including future M5 models) can runPython appsandcontainer-like sandboxes, and it can even host lightweight local servers inside an app. But these environments are:sandboxednot allowed to run background daemonsnot allowed to keep long-running processes alive when the screen is offnot allowed to expose r
+...[middle omitted for tagging]...
+o noisezero maintenanceblazing-fast local embeddingsa clean separation between UI and backendreal always-on behaviorfull compliance with your V3 sleep-cycle architecture7. If you want, I can design a fullMorpheus Server BoxspecIncluding:hardwareOSPython environmentDocker layoutsystemd services for always-on sleep cycleslocal LLM hosting optionsremote API tunnelinglogging/backup planJust say “design the Morpheus server box” and I’ll produce a full blueprint.
+
+------CURRENT TURN------
+------USER------
+the mac mini is now using the M4.  This isn't going to happen right away, but something to think about.  Really, should probably thinking about hosting it in a docker container.
+
+I wonder what it would cost per month to have a small cloud linux server running all the time
+
+------ASSISTANT------
+Good
+ thinking — running Morpheus in a Docker container on a small cloud 
+Linux server is a sensible path. Here’s a breakdown of cost 
+considerations and what you should size for.📊 Cost EstimatesMany cloud providers offer Linux VPS / cloud server instances starting at approximatelyUS $4/monthfor very basic specs (e.g., 1 vCPU, ~1 GB RAM).DigitalOcean+2Bluehost+2Mid-tier entry VMs (e.g., 2-4 vCPUs, 4-8 GB RAM, SSD) typically fall in theUS $20-US $80/monthrange for always-on usage.Bluehost+2Akamai+2Example: Linode lists a 4 GB RAM / 2 vCPU plan at ~$24/month.AkamaiExample: Small shared “Droplet” on DigitalOcean begins
+...[middle omitted for tagging]...
+workload.🔍 My recommendation for your Morpheus setupSince you’re a software engineer and likely will be iterating, I’d recommend starting at something like:2 vCPU, 4–8 GB RAM80–120 GB SSDDocker + Ubuntu 22.04 (or similar)Cost expectation ~$20-30/monthMonitor CPU and RAM usage after 
+deployment. If okay, you’re good. If the vector DB or LLM calls get 
+heavier, bump to 4 vCPU/16 GB RAM ~$40-50/month.If you like, I canscan and compare current cloud providers(AWS, GCP, DigitalOcean, Linode, Vultr)and estimate exactly for your Morpheus architecture(with memory DB + vector store + scheduled jobs) and show you acost table.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Morpheus, mac mini, M4, docker container, cloud linux server, monthly hosting cost",
+  "intent": "estimate cloud server hosting cost and consider docker deployment",
+  "type": "technical",
+  "semantic_handle": "cloud hosting cost for Morpheus in Docker",
+  "questions": [
+    {
+      "question": "What would it cost per month to have a small cloud Linux server running all the time?",
+      "topic": "cloud linux server",
+      "resolution": "answer_remote"
+    }
+  ]
+}

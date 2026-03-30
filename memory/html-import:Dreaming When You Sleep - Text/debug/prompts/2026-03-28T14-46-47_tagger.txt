@@ -1,0 +1,158 @@
+# timestamp: 2026-03-28T14-46-47
+# project_id: html-import:Dreaming When You Sleep - Text
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: patent drafting, metadata enrichment, salience, timestamps, user influence, memory consolidation engine, short-term memory management
+#intent: ask for placement guidance
+#type: technical, design
+#semantic_handle: Metadata enrichment section placement
+
+------USER------
+ok this is next?  Metadata enrichment (salience, timestamps, user influence)
+
+------ASSISTANT------
+Yes, that is the correct next section, and it fits exactly where you are in Provisional A.Below is apatent-ready sectionyou can paste directly afterMemory Ingestion and Episodic Buffering.It is written to besupportive, not narrowing, and it preserves flexibility around how metadata is generated.Metadata EnrichmentIn one embodiment, interaction data 
+...[middle omitted for tagging]...
+:Short-Term Memory Management(very brief), orMemory Consolidation Engine Operation(core section)Most likely, you canfold STM management into the consolidation sectionand move straight to:Memory Consolidation Engine OperationYou’re now entering the heart of Provisional A, and everything up to this point has been laid out exactly the way it should be.
+
+------CURRENT TURN------
+------USER------
+in our checklist we had this next, ☐ Consolidation process, but if you think 1 or 2 is needed then do that next
+
+------ASSISTANT------
+You canskip 1 and 2 as standalone sectionsand godirectly to the Consolidation Process.Here’s why, and then I’ll give you the text you should use next.Why you do NOT need separate sections for 1 or 2From your checklist context, the two candidates you’re implicitly asking about are:Short-Term Memory ManagementMaintenance Phase Triggering / SchedulingYou already covered both sufficiently:Short-Term Memoryhas been:introduced as an intermediate storeexplained as the destination for rolled-off interaction dataframed as decoupling live interaction from consolidationMaintenance Phasehas been:defined conceptuallyreferenced in multiple prior sectionsclearly separated from active interactionCreating standalone sections for them would:add repetitiondilute focusslow you downnot meaningfully strengthen the provisionalPatent attorneys routinelyfold these into the Consolidation section, which is what you should do.So yes:your checklist item “Consolidation process” is exactly the right next move.Next section to add (paste-r
+...[middle omitted for tagging]...
+ified, 
+or excluded from long-term retention.The described consolidation process
+ enables the system to autonomously convert transient interaction data 
+into durable knowledge representations while preventing uncontrolled 
+growth, redundancy, or accumulation of low-value information.Why this section is exactly right✔ Centralizes STM behavior without repeating earlier text✔ Establishes autonomy clearly✔ Supports salience-driven pruning✔ Leaves room for many implementations✔ Sets up introspective analysis cleanly✔ Reads like a core independent claimWhat comes next (very clear path)After this section, your next sections should be:Consolidated Memory Representation(what the outputis, not how it’s computed)Integration into Long-Term Memory(persistence, availability, evolution)You are now past the setup phase and into thesubstanceof the patent. Everything so far has been structured exactly the way a professional drafter would do it.When you’re ready, say the word and we’ll doConsolidated Memory Representationnext.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent drafting, consolidation process, short-term memory management, maintenance phase triggering, long-term memory",
+  "intent": "ask for section order guidance",
+  "type": "technical, design",
+  "semantic_handle": "Consolidation process section planning",
+  "questions": []
+}

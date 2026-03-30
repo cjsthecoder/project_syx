@@ -1,0 +1,182 @@
+# timestamp: 2026-03-28T14-01-12
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: in-memory, daily memory, ltm tagging, metadata schema, retrieval, ai memory systems
+#intent: ask for feedback on memory tagging and query usefulness
+#type: technical, design
+#semantic_handle: In-memory daily and LTM tagging schema
+
+------USER------
+ok, I like the in memory idea.  so next step in chain.  What we do is take the pair to be rolled off, use a quick prompt on small model to find and tag this information (which we are ignoring, haha), 
+tags: ["rolled_off"]
+tags_meta.topics: AI memory systems, prototype development, patent strategy
+tags_meta.intent: Seeking feedback on an innovative AI concept
+tags_meta.type: technical
+
+So, first question, before we get to how to improve.
+
+Just FYI, here is an example (below) of the LTM tagging we do, and apparently also ignore.  You know its funny it still kind of works, which is strange.  I guess the first question is, for daily, is there more information that could be useful for queries later?  Then for LTM, is that enough information?
+
+#source: sleep_summary
+
+
+
+=== BEGIN DAILY MEMORY: 12/16/2025 ===
+=== TOPIC: Sci-Fi Story Seed Generation ===
+#topics: sci-fi, story-ideas, quantum-tech, speculative-fiction, brainstorming
+#decisions:
+#open_questions:
+#user_context:
+
+#timestamp: 12-16-2025_18:31:40
+#route: other
+#keep: false
+
+--- USER (data-message-author-role: user) ---
+I want to make a high tech sci-fi story, give me three ideas for a story
+
+------ASSISTANT------
+This is a very good question, and you are noticing the right paradox.“It still kind of works, which is strange.”It works because embeddings are doing most of the lifting.But you are leavinga lot of retrieval power unused, especially for LTM.I will answer in two clean sections:Whatadditional information is worth capturing at Daily timeWhether yourcurrent LTM tags are sufficient, and where they fall shortNo improvement plan yet, just informational sufficiency.1. Daily memory: what additional information is worth capturing?Think of Daily memory asraw experience, not knowledge. The metadata you attach should help future qu
+...[middle omitted for tagging]...
+tion trackingTo support those, LTM needs metadata aboutrole, stability, and reuse, not just topic and intent.The most important insightDaily metadata should answer:“What just happened?”LTM metadata should answer:“Why does this exist?”Right now, both are answering “what was it about”.That is why it works, but feels shallow.If you want, next we can:• Define a minimal Daily metadata schema that feeds LTM cleanly• Define a minimal LTM schema that supports design memory and narrative memory• Or map which Daily fields are promoted, collapsed, or discarded during SleepYou are at exactly the right place in the chain to do this.
+
+------CURRENT TURN------
+------USER------
+ok, one problem I found in the code, is that there was an idea that the previous_pair gets sent along with the prompt and current pair to categorize for tagging.  but it is not being used.  I think the idea was if the user put something like "Why won't that work?" there would be some context for it would know what 'that' was.  
+
+I am not sure how to deal with that problem.  In a way we need maybe the last pair, but also now I am thinking we need to keep some running list of key words that would help it find tags?  I don't know but this could be improved for sure
+
+------ASSISTANT------
+This is a real issue, and you have correctly identifiedwhyit exists andwhy it still mostly works. The fact that it works at all is accidental, not guaranteed.Let’s reason this through cleanly and then converge on a principled solution.What the original idea was trying to solveThe intent behind passingprevious_pairwas to handleanaphora and ellipsis:Examples:• “Why won’t that work?”• “Can we do it this way instead?”• “That seems risky”These utterances aresemantically incompletein isolation.So the original idea was sound:Tagging needs short-term conversational context.But the implementation stopped halfway:• previous_pair exists conceptually• It is not actually used• Tagging model only sees the current pairSo the systemassumescompleteness that does not exist.Why embeddings partially mask the problemThis is the paradox you noticed.It still works because:• Thepair_textoften includes both user and assistant• Assistant responses restate context implicitly• Embeddings blur boundaries and absorb nearby meaningBut tagging issymbolic, not continuous.Tags needexplicit disambiguation.This will break more often as:• Conversations get denser• References get shorter• Design discussions get iterativeThe real problem, precisely sta
+...[middle omitted for tagging]...
+Here is the clean rule set.DR.Tagging.1Daily tagging SHALL include the immediately previous interactiononly when required for disambiguation.DR.Tagging.2Disambiguation SHALL be triggered by referential language or short-form follow-ups.DR.Tagging.3The tagging model input SHALL be bounded to:• Current interaction• At most one prior anchorNever more.What this unlocks immediatelyWith this change:• “Why won’t that work?” gets tagged correctly• Intent classification becomes reliable• Topic tags stabilize• Fewer mis-tags propagate into LTMAnd you do thiswithout adding memory bloat.Why this fits Morpheus perfectlyThis maps cleanly to cognition:• Chat context = working memory• Tagging context = attentional focus• Daily memory = episodic trace• Sleep = semantic consolidationYou are just making the attentional focus explicit.The key insight to carry forwardYou do not need more memory.You needbetter scope control.Previous_pair was the right instinct.It just needs:• Conditional inclusion• Explicit purpose• Tight boundsIf you want, next we can:• Define the exact tagging prompt structure• Define a tiny referential detector• Or map how tagging metadata flows into Sleep consolidationYou are fixing this at exactly the right layer.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "anaphora, previous_pair, conversational context, tagging prompt, ai memory systems, tagging disambiguation",
+  "intent": "design a solution for contextual tagging and disambiguation",
+  "type": "technical, system",
+  "semantic_handle": "Context-aware tagging with previous pair",
+  "questions": []
+}

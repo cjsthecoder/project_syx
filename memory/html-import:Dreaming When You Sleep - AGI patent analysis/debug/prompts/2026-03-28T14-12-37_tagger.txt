@@ -1,0 +1,185 @@
+# timestamp: 2026-03-28T14-12-37
+# project_id: html-import:Dreaming When You Sleep - AGI patent analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Lectron, J1772, EV charger, Level 1 charging, WiFi app, durability
+#intent: evaluate an EV charger option for durability
+#type: technical
+#semantic_handle: Lectron Level 1 EV charger durability
+
+------USER------
+is this a good option?  not looking for OEM, or cheapest, but one that may last longer than a year.  Lectron Level 1 J1772 EV Charger (WiFi) with App Control - 120V, 12 Amp, & 16 ft Cord - Portable Charger for J1772 EVs with NEMA 5-15 Plug - Compatible with All J1772 Evs
+
+------ASSISTANT------
+If you’re looking at theLectron Level 1 J1772 EV Charger (WiFi)as a charging option and your criteria arenotlowest‐price but “reasonably durable / lasts more than a year,” here’s a breakdown of how it stacks up + what you should check.👍 What’s good about itIt’s plug‐and‐play with standard 120 V
+ (NEMA 5-15) outlets. According to the product listing: “120 V | 12 Amp |
+ NEMA 5-15 | 16 ft cord”.Lectron EVIt includes WiFi/app control so you 
+...[middle omitted for tagging]...
+ven though EVSEs 
+are built for use, still avoiding continuous max stress helps).Register the product (if required) for warranty and keep the receipt + photos of installation just in case.If you like, I cancompare this charger to 2-3 other mid‐tier alternatives(i.e., not cheapest, but better durability) so you can see how it ranks
+ and decide if going up one notch is worth it for your usage. Would that
+ be helpful? [11-14-2025 12:04 EST]
+
+------CURRENT TURN------
+------USER------
+one thing I noticed, and is possibly why I fried this one.  The car was set to 15 amps, and the charger cable said it supported 12 amps.  But if any of these could do, 15 that would be worth extra money
+
+------ASSISTANT------
+Good
+ catch on the amperage mismatch — yes, that could definitely be part of 
+the problem. Let’s walk through what’s going on + how to pick a safer 
+charger for a 15-amp draw scenario, and then look at some good product 
+options.⚠️ What to know: Amps, circuits & charger ratingsHere are some important things to check:Standard 120 V household outlets on a 15A breaker are typically rated such that they shouldnothave a continuous load at 15 amps. The rule of thumb (and code) is ~80%
+ of the breaker for continuous loads, meaning ~12A on a 15A circuit.VWID Talk+2Reddit+2For a Level 1 EV charger (120 V), many are rated 12A (≈1.44 kW) which aligns with safe continuous use on a 15A circuit.Qmerit+1If you plug in a charger and the car
+ is set to draw 15A (or the charger allows 15A or more) on a circuit 
+that’s really only rated for safe continuous ~12A, you risk overheating 
+of wiring, outlet, plug, or charger equipment. That may explain a 
+“fried” scenario.So yes: If you want something that supports15Aat 120 V (i.e., ~1.8 kW) you also need to ensure your outlet, wiring, 
+breaker, and plug all are upstream rated accordingly (usually a 20A 
+circuit with proper wiring). One Reddit forum plugin for example:“1
+...[middle omitted for tagging]...
+Budget): Lower amp rating (12A) but still decent spec, safer on a standard 15A outlet.Schumacher Electric Level 1 Portable EV Charger 12 A: 12A rating, more conservative.🎯 My recommendation given your situationSince youfrieda charger likely because of the mismatch, I’d recommend:If you wanthigher amp (15A+),
+ make sure your outlet/circuit is upgraded appropriately (dedicated 20A 
+circuit if possible) or you accept some risk if using a standard 15A 
+outlet.If you don’t want to upgrade wiring, it might be safer to go with a12A rated charger(which aligns with standard 15A outlet continuous load) and accept the slower charge but improved safety and longevity.If you go the 15A route: lean 
+toward one of the 15A-rated or 16A-rated chargers above, choose a 
+well-reviewed brand, ensure build quality (plug, cable, certification).Keep checking for heat during 
+initial use (outlet faceplate, plug, cable) — overheating is a warning 
+sign you might be overloading.If you like, I cancheck durability reviewsof the 15A-rated chargers in this list (especially for the brand you’re
+ leaning toward) and we can identify which one has the best build 
+quality / user longevity. Would you like that? [11-14-2025 12:38 EST]
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Lectron, J1772, EV charger, amperage, 15 amp circuit, 12 amp charger",
+  "intent": "evaluate charger amperage compatibility and durability",
+  "type": "technical",
+  "semantic_handle": "EV charger amperage mismatch and safer upgrade options",
+  "questions": [
+    {
+      "question": "Can a Level 1 EV charger safely support 15A on a 120V circuit, and what circuit upgrades are required?",
+      "topic": "EV charger",
+      "resolution": "answer_remote"
+    }
+  ]
+}

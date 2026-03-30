@@ -1,0 +1,189 @@
+# timestamp: 2026-03-28T14-57-33
+# project_id: html-import:Dreaming When You Sleep - Project Update Summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: RAG query, BASE_TOP_K, RETRIEVAL_MULTIPLIER, MAX_KEEP, MIN_KEEP, MIN_SCORE, chitchat
+#intent: simplify retrieval category settings
+#type: technical, design
+#semantic_handle: retrieval category settings simplification
+
+------USER------
+ok, back to this list, 
+DIRECT
+
+low BASE_TOP_K
+
+low RETRIEVAL_MULTIPLIER
+
+small MAX_KEEP
+
+PROCEDURAL
+
+medium BASE_TOP_K
+
+medium MIN_KEEP
+
+EXPLORATORY
+
+high RETRIEVAL_MULTIPLIER
+
+relaxed MIN_SCORE
+
+SYNTHESIS
+
+high BASE_TOP_K
+
+higher MIN_KEEP
+
+encourage diversity before truncation
+
+and chitchat which won't use rag, and we don't need a flag returned for that in retrospect we can just make a case for that, or make the multiplier 0 or something.
+
+------ASSISTANT------
+Good,
+ this is the right place to tighten it. I’m going to be very explicit 
+and a little ruthless about simplification, because you’ve already 
+removed the conditions that made half of those knobs necessary.First, align with what you already decidedYou have already locked in these facts, even if implicitly:No score thresholds during retrievalNo score thresholds during selectionNo MIN_KEEPSelection 
+...[middle omitted for tagging]...
+ thing you just didYou accidentally did something very right here:You reduced “classification” from:semantic interpretationrelevance judgmentconfidence estimationinto:resource allocationThat is exactly what this stage should be doing.If you want next, we can:pick concrete default numbersrewrite the classifier prompt to emit only categoryor sanity-check edge cases like “DIRECT but long memory history”
+
+------CURRENT TURN------
+------USER------
+see now you are confusing me again.  I was thinking that BASE_TOP_K is an env value, and fixed outside the type or retrieval.  so, if you want to tweak one, you tweak the multiplier, but if you want to make all return more or less you tweak the base.
+
+------ASSISTANT------
+Perfect.
+ Thank you for stopping me there. You are right, and your mental model 
+is the correct one. Let’s lock it cleanly and remove the ambiguity I 
+just introduced.The correct authority model (what you intended)You are thinking inlayers of control, not per-category knobs. That is the right abstraction.System-wide (global authority)These areenvironment values, fixed unless you intentionally change system behavior:BASE_TOP_KBaseline desired context size for the entire system.MAX_KEEPFinal cap on how many snippets can ever reach the prompt.These donotvary by category.They define the character of the system.Per-category (relative behavior only)Categories donotredefine
+...[middle omitted for tagging]...
+he budget.That’s a very strong design.Why this will not confuse you laterWant more recall everywhere?Increase BASE_TOP_K.Want exploratory queries to go wider?Increase that category’s multiplier.Want to limit prompt size globally?Lower MAX_KEEP.Each knob has exactly one job.Bottom lineYour original instinct here was right.I accidentally blurred system-level and category-level authority in my previous reply. Thanks for catching it.This version issimpler, more stable, and easier to tune.If you want next, we can:choose actual numeric defaultsrewrite the classifier prompt to emit only the categoryor write a one-page spec that freezes this behavior so it never drifts again
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "BASE_TOP_K, RETRIEVAL_MULTIPLIER, MAX_KEEP, retrieval, env value",
+  "intent": "clarify retrieval control model",
+  "type": "technical, design",
+  "semantic_handle": "global and per-category retrieval knobs",
+  "questions": []
+}

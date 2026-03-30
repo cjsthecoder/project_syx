@@ -1,0 +1,554 @@
+# timestamp: 2026-03-28T14-01-07
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: daily rag, ltm, retrieval pipeline, faiss, daily.json, daily.txt, requirements
+#intent: analyze daily memory ingestion and retrieval code and plan a unified chain
+#type: technical, design
+#semantic_handle: Daily memory ingestion and retrieval pipeline review
+
+------USER------
+I want to start at the beginning and improve the entire chain.  Here is where it builds the daily.
+"""
+Copyright (c) 2025 Christopher Shuler. All rights reserved.
+
+This source code is part of the Morpheus project and is proprietary.
+
+Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
+
+Use of this software requires explicit written permission from the copyright holder.
+"""
+from __future__ import annotations
+
+import os
+import json
+import time
+import logging
+from typing import List, Dict, Any, Optional, Tuple
+
+from filelock import FileLock
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+
+from .config import get_settings
+from ..utils.logging import get_route
+
+logger = logging.getLogger(__name__)
+
+def _nl(s: str) -> str:
+    """Normalize line endings to LF to avoid mixed terminators."""
+    return s.replace("\r\n", "\n").replace("\r", "\n")
+
+def _project_daily_paths(project_id: str) -> Tuple[str, str, str, str]:
+    base_dir = os.path.join("memory", project_id)
+    os.makedirs(base_dir, exist_ok=True)
+    faiss_dir = os.path.join(base_dir, "daily_faiss")
+    os.makedirs(faiss_dir, exist_ok=True)
+    meta_path = os.path.join(base_dir, "daily.json")
+    lock_path = os.path.join(base_dir, "daily.lock")
+    txt_path = os.path.join(base_dir, "daily.txt")
+    return faiss_dir, meta_path, lock_path, txt_path
+
+
+def _load_metadata(meta_path: str) -> List[Dict[str, Any]]:
+    if not os.path.isfile(meta_path):
+        return []
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"DailyRAG: failed to load metadata {meta_path}: {e}")
+        return []
+
+
+def _save_metadata(meta_path: str, entries: List[Dict[str, Any]]) -> None:
+    tmp_path = meta_path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(entries, f)
+    os.replace(tmp_path, meta_path)
+
+
+def reset_daily(project_id: str) -> None:
+    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    with FileLock(lock_path):
+        # remove faiss dir contents
+        try:
+            if os.path.isdir(faiss_dir):
+                for n in os.listdir(faiss_dir):
+                    try:
+                        os.remove(os.path.join(faiss_dir, n))
+                    except Exception as e:
+                        logger.warning("DailyRAG: failed to remove %s: %s", os.path.join(faiss_dir, n), e)
+        except Exception as e:
+            logger.warning("DailyRAG: failed to clean faiss dir %s: %s", faiss_dir, e)
+        # remove metadata
+        for p in (meta_path,):
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+            except Exception as e:
+                logger.warning("DailyRAG: failed to remove metadata %s: %s", p, e)
+        logger.info(f"DailyRAG: reset daily files for project={project_id}")
+
+
+def append_pair(
+    project_id: str,
+    pair_text: str,
+    user_msg_id: int,
+    assistant_msg_id: int,
+    tokens: int,
+    namespace: Optional[str] = None,
+    keep: bool = False,
+    embed_override: Optional[str] = None,
+    tags_meta: Optional[Dict[str, str]] = None,
+    write_daily_txt: bool = True,
+) -> bool:
+    """Append a single embedded pair to the daily index and metadata.
+    Note: We don't persist raw FAISS via langchain here; for V2.3 we only track metadata and rely on embeddings at retrieval-time for simplicity.
+    """
+    settings = get_settings()
+    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    with FileLock(lock_path):
+        entries = _load_metadata(meta_path)
+        day_sequence = (entries[-1]["day_sequence"] + 1) if entries else 1
+        ns = (namespace or "general").lower()
+        entry = {
+            "id": f"{int(time.time()*1000)}-{len(entries)+1}",
+            "project_id": project_id,
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "pair_ids": [str(user_msg_id), str(assistant_msg_id)],
+            "text": pair_text,
+            "tokens": int(tokens),
+            "embedding_model": settings.embedding_model,
+            "source": "chat",
+            "scope": "daily",
+            "namespace": ns,
+            "keep": bool(keep),
+            "confidence": 1.0,
+            "tags": ["rolled_off"],
+            "day_sequence": day_sequence,
+        }
+        if tags_meta:
+            entry["tags_meta"] = tags_meta
+        entries.append(entry)
+        _save_metadata(meta_path, entries)
+        # Append to daily.txt (human-readable) unless explicitly skipped
+        if write_daily_txt:
+            try:
+                # If first write, add BEGIN header with local date (MM/DD/YYYY)
+                try:
+                    if (not os.path.isfile(txt_path)) or os.path.getsize(txt_path) == 0:
+                        begin_date = time.strftime("%m/%d/%Y", time.localtime())
+                        with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                            tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
+                except Exception:
+                    pass
+                ts = entry["created_at"]
+                # Split pair_text into user and assistant parts safely
+                if "\nAssistant:" in pair_text:
+                    _user_part, _assistant_part = pair_text.split("\nAssistant:", 1)
+                    user_text = _user_part.replace("User:", "", 1).strip()
+                    assistant_text = _assistant_part.strip()
+                else:
+                    user_text = ""
+                    assistant_text = pair_text.strip()
+                # New V3.2 header + block format (local time MM-DD-YYYY_HH:MM:SS)
+                try:
+                    tstruct = time.strptime(ts.replace("Z", ""), "%Y-%m-%dT%H:%M:%S")
+                    ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime(time.mktime(tstruct)))
+                except Exception:
+                    ts_local = ts
+                block = (
+                    f"#timestamp: {ts_local}\n"
+                    f"#route: {ns}\n"
+                    f"#keep: {str(bool(keep)).lower()}\n"
+                    f"\n"
+                    f"--- USER (data-message-author-role: user) ---\n"
+                    f"{user_text}\n"
+                    f"\n"
+                    f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
+                    f"{assistant_text}\n"
+                    f"\n"
+                )
+                with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                    tf.write(_nl(block))
+                logger.debug("[DAILYTXT] project=%s wrote %s bytes", project_id, len(block.encode('utf-8')))
+            except Exception as te:
+                logger.error("DailyRAG: failed writing daily.txt: %s", te)
+        # Append to FAISS index (directory-based)
+        try:
+            embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
+            vs: Optional[FAISS] = None
+            # Use override text for vector content when provided (V3.4 tagging)
+            text_for_faiss = embed_override if embed_override else pair_text
+            try:
+                # load existing
+                try:
+                    vs = FAISS.load_local(faiss_dir, embeddings, allow_dangerous_deserialization=True)
+                except TypeError:
+                    vs = FAISS.load_local(faiss_dir, embeddings)
+            except Exception:
+                vs = None
+            if vs is None:
+                # create new with normalize_L2 when available
+                try:
+                    vs = FAISS.from_texts(texts=[text_for_faiss], embedding=embeddings, metadatas=[{"source": "daily", "namespace": ns}], normalize_L2=True)
+                except TypeError:
+                    vs = FAISS.from_texts(texts=[text_for_faiss], embedding=embeddings, metadatas=[{"source": "daily", "namespace": ns}])
+            else:
+                vs.add_texts([text_for_faiss], metadatas=[{"source": "daily", "namespace": ns}])
+            vs.save_local(faiss_dir)
+        except Exception as e:
+            logger.error(f"DailyRAG: failed to update FAISS daily index: {e}")
+        return True
+
+
+def append_pair_text_only(
+    project_id: str,
+    user_text: str,
+    assistant_text: str,
+    created_at_iso_utc: Optional[str],
+    namespace: Optional[str],
+    keep: bool,
+) -> bool:
+    """
+    Append a single pair to daily.txt only (no FAISS, no daily.json).
+    Used by Sleep flush to move active DB pairs into daily text at start of cycle.
+    """
+    _, _, lock_path, txt_path = _project_daily_paths(project_id)
+    ns = (namespace or "general").lower()
+    with FileLock(lock_path):
+        try:
+            # Ensure BEGIN header exists
+            try:
+                if (not os.path.isfile(txt_path)) or os.path.getsize(txt_path) == 0:
+                    begin_date = time.strftime("%m/%d/%Y", time.localtime())
+                    with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                        tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
+            except Exception:
+                pass
+            ts = created_at_iso_utc or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            # Localize timestamp to MM-DD-YYYY_HH:MM:SS
+            try:
+                tstruct = time.strptime(ts.replace("Z", ""), "%Y-%m-%dT%H:%M:%S")
+                ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime(time.mktime(tstruct)))
+            except Exception:
+                ts_local = ts
+            block = (
+                f"#timestamp: {ts_local}\n"
+                f"#route: {ns}\n"
+                f"#keep: {str(bool(keep)).lower()}\n"
+                f"\n"
+                f"--- USER (data-message-author-role: user) ---\n"
+                f"{user_text or ''}\n"
+                f"\n"
+                f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
+                f"{assistant_text or ''}\n"
+                f"\n"
+            )
+            with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                tf.write(_nl(block))
+            logger.info("[DAILYTXT] Text-only append project=%s bytes=%s", project_id, len(block.encode("utf-8")))
+            return True
+        except Exception as e:
+            logger.error("[DAILYTXT][ERROR] Text-only append failed project=%s: %s", project_id, e)
+            return False
+
+
+def _cosine_from_l2_dist_sq(d2: float) -> float:
+    # For unit vectors: d^2 = 2(1 - cos)
+    return max(0.0, min(1.0, 1.0 - (d2 / 2.0)))
+
+
+def retrieve_daily(project_id: str, query: str, top_k: int, score_threshold: float) -> List[Tuple[str, float, Optional[str]]]:
+    """Retrieve from daily FAISS index. Returns list of (text, cosine, namespace)."""
+    settings = get_settings()
+    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    with FileLock(lock_path):
+        try:
+            embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
+            try:
+                vs = FAISS.load_local(faiss_dir, embeddings, allow_dangerous_deserialization=True)
+            except TypeError:
+                vs = FAISS.load_local(faiss_dir, embeddings)
+        except Exception as e:
+            # Attempt on-demand backfill from metadata if index missing
+            logger.debug(f"DailyRAG: no daily index for project={project_id}: {e}")
+            try:
+                entries = _load_metadata(meta_path)
+                if entries:
+                    texts = []
+                    metas = []
+                    for e in entries:
+                        t = e.get("text")
+                        if not t:
+                            continue
+                        texts.append(t)
+                        metas.append({"source": "daily", "namespace": (e.get("namespace") or "general")})
+                    if texts:
+                        try:
+                            embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
+                            try:
+                                vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metas, normalize_L2=True)
+                            except TypeError:
+                                vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metas)
+                            vs.save_local(faiss_dir)
+                            logger.info(f"DailyRAG: backfilled daily FAISS index for project={project_id} from metadata ({len(texts)} entries)")
+                        except Exception as be:
+                            logger.error(f"DailyRAG: failed to backfill daily index: {be}")
+                            return []
+                    else:
+                        return []
+                else:
+                    return []
+            except Exception:
+                return []
+    try:
+        results = vs.similarity_search_with_score(query, k=top_k)  # type: ignore[name-defined]
+    except Exception:
+        results = []
+    scored: List[Tuple[str, float, Optional[str]]] = []
+    for doc, dist in results:
+        d = float(dist)
+        d2 = d * d
+        cos_a = _cosine_from_l2_dist_sq(d2)
+        cos_b = _cosine_from_l2_dist_sq(d) if d >= 0 else 0.0
+        cos = max(min(cos_a, 1.0), min(cos_b, 1.0))
+        if cos >= score_threshold:
+            ns = (getattr(doc, "metadata", None) or {}).get("namespace")
+            scored.append((doc.page_content, cos, ns))
+    scored.sort(key=lambda t: t[1], reverse=True)
+    return scored[:top_k]
+
+
+def daily_stats(project_id: str) -> Dict[str, int]:
+    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    with FileLock(lock_path):
+        entries = _load_metadata(meta_path)
+    size_bytes = 0
+    # Sum FAISS dir contents
+    try:
+        if os.path.isdir(faiss_dir):
+            for n in os.listdir(faiss_dir):
+                p = os.path.join(faiss_dir, n)
+                if os.path.isfile(p):
+                    size_bytes += os.path.getsize(p)
+    except Exception:
+        pass
+    # Add metadata size (file or serialized estimate)
+    try:
+        if os.path.exists(meta_path):
+            size_bytes += os.path.getsize(meta_path)
+        else:
+            size_bytes += len(json.dumps(entries).encode("utf-8")) if entries else 0
+    except Exception:
+        size_bytes += len(json.dumps(entries).encode("utf-8")) if entries else 0
+    tokens = sum(int(e.get("tokens", 0)) for e in entries)
+    logger.debug(
+        "DailyRAG: stats project=%s vectors=%s tokens=%s size_bytes=%s (faiss_present=%s, meta_present=%s)",
+        project_id,
+        len(entries),
+        tokens,
+        size_bytes,
+        os.path.isdir(faiss_dir) and any(os.path.isfile(os.path.join(faiss_dir, n)) for n in os.listdir(faiss_dir) or []),
+        os.path.exists(meta_path),
+    )
+    return {"daily_index_size_bytes": size_bytes, "daily_tokens_indexed": tokens, "daily_vector_count": len(entries)}
+
+
+def backfill_daily_txt_from_meta(project_id: str) -> bool:
+    """If daily.json exists and daily.txt missing, write out text blocks for all entries (V3.2 format)."""
+    faiss_dir, meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    if os.path.isfile(txt_path):
+        return False
+    with FileLock(lock_path):
+        entries = _load_metadata(meta_path)
+        if not entries:
+            return False
+        try:
+            with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                # Write BEGIN header once (local date MM/DD/YYYY)
+                begin_date = time.strftime("%m/%d/%Y", time.localtime())
+                tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
+                for e in entries:
+                    ts = e.get("created_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                    ns = (e.get("namespace") or "general").lower()
+                    keep = bool(e.get("keep", False))
+                    text = e.get("text") or ""
+                    # Localize timestamp to MM-DD-YYYY_HH:MM:SS
+                    try:
+                        tstruct = time.strptime(ts.replace("Z", ""), "%Y-%m-%dT%H:%M:%S")
+                        ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime(time.mktime(tstruct)))
+                    except Exception:
+                        ts_local = ts
+                    # Best-effort split back into prompt/response
+                    if "\nAssistant:" in text:
+                        u, a = text.split("\nAssistant:", 1)
+                        u = u.replace("User:", "", 1).strip()
+                        a = a.strip()
+                    else:
+                        u, a = "", text.strip()
+                    block = (
+                        f"#timestamp: {ts_local}\n"
+                        f"#route: {ns}\n"
+                        f"#keep: {str(keep).lower()}\n"
+                        f"\n"
+                        f"--- USER (data-message-author-role: user) ---\n"
+                        f"{u}\n"
+                        f"\n"
+                        f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
+                        f"{a}\n"
+                        f"\n"
+                    )
+                    tf.write(_nl(block))
+            logger.warning("[DAILYTXT] Backfilled daily.txt (V3.2 format) for project=%s", project_id)
+            return True
+        except Exception as e:
+            logger.error("[DAILYTXT] Failed backfill for project=%s: %s", project_id, e)
+            return False
+
+------ASSISTANT------
+Here
+ is what this “daily build” code is doing today, what is already good, 
+what is holding you back, and what I would change at the very start of 
+the chain so Daily and LTM can share one canonical pipeline.What this file does nowA. Data persistencedaily.json. Append-only list of entries. Each entry stores: pair_ids, text, tokens, namespace, keep, tags_meta, etc.daily.txt. Human readable transcript format. Includes #timestamp, #route, #keep plus user and assistant blocksdaily_faiss. FAISS index persisted to disk using LangChain FAISS.save_local. Each append loads the index, adds one vector, saves it backB. Daily indexing behavior. Text inserted into FAISS isembed_overrideif provided, otherwise the fullpair_text. Metadata s
+...[middle omitted for tagging]...
+fact that you already have daily.json as a source of truth, Option B is usually cleaner.Immediate, highest-impact changes in this fileReplace hard filtering in retrieve_daily with return-all-candidates behavior.. Let the canonical pipeline decide inclusion.Add id and created_at to FAISS metadatas on insert.. Today you cannot do recency, keep, or pair-level reinforcement.Stop returning True on FAISS update failure without marking it.. You want the system to know it is in degraded state and trigger backfill.If
+ you want, paste your LTM ingestion and retrieval modules next, and I 
+will write a single unified “CanonicalRetriever” requirements spec that 
+covers both tiers and maps each existing function into the pipeline 
+stages.
+
+------CURRENT TURN------
+------USER------
+for this, 3. Per-append load and save is a performance and correctness risk, is there a way to add to RAG without doing this?  Some kind of append?
+
+------ASSISTANT------
+Yes. Thereisa way to append safely without reload save on every write, and this is a
+ well understood FAISS problem. You have three viable patterns, one of 
+which fits Morpheus extremely well.I will walk them in order of architectural maturity, then recommend one.Why the current pattern is riskyYour current flow is effectively:Load FAISS index from diskAdd 1 vectorSerialize entire index back to diskProblems:• O(N) write amplification• Disk churn• Higher chance of partial writes• Lock contention• Latency tied to index sizeThis pattern is acceptable for batch indexing, not streaming memory.Option 1. In-memory append with periodic checkpoint (recommended)This is the canonical solution.How it works conceptually• Keep the FAISS indexresident in memory• Append vectors in-memory viaadd()• Periodically checkpoint to disk• On crash or restart, reload last checkpointFAISS is designed for this.Why this fits Morpheus perfectlyMorpheus already has:• A “day” lifecycle• A sleep cycle• Explicit reset and consolidation phasesSo your daily FAISS index should behave like:“short-term hippocampus buffer, checkpointed during sleep”Concrete behaviorDuring the day:• Append ve
+...[middle omitted for tagging]...
+ntarily.Requirement language you can lock inUse this. It prevents regression later.FR.Ingest.3FR.Ingest.3Daily RAG SHALL use an in-memory FAISS index for incremental updates and SHALL NOT persist the index on every append.FR.Ingest.4FR.Ingest.4The FAISS daily index SHALL be checkpointed to disk only during explicit lifecycle events or size thresholds.FR.Ingest.5FR.Ingest.5On startup or recovery, the system SHALL reconcile FAISS indices with daily.json to guarantee no loss of recall.One important warningLangChain’s FAISS wrapper isnot thread-safe.You already serialize with FileLock, which is good. If you move to in-memory:• Keep one writer• Or add a mutex around add()Do not allow concurrentadd_texts()without protection.Bottom lineThere is no true “append-only FAISS file”.But thereisa correct architecture:• Append in memory• Checkpoint deliberately• Recover deterministicallyThis is how every serious streaming vector system works, and it maps cleanly to Morpheus’ sleep metaphor.Next logical step, if you want:• Define DailyIndexManager interface• Then make LTM use the same manager abstraction• Then unify retrieval fullyThis is a very solid foundation move.
+
+
+====== TAGGER RESPONSE ======
+{"topics":"faiss, in-memory index, checkpointing, streaming memory, daily rag","intent":"ask how to append to a vector index without reloading and saving on every write","type":"technical","semantic_handle":"FAISS append without reload-save cycle","questions":[]}

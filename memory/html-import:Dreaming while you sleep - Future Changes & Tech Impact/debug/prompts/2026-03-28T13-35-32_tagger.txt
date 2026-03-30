@@ -1,0 +1,204 @@
+# timestamp: 2026-03-28T13-35-32
+# project_id: html-import:Dreaming while you sleep - Future Changes & Tech Impact
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: effective intelligence, human-ai collaboration, brain-computer interfaces, extended mind, creativity, productivity
+#intent: explore how technology will amplify human intelligence in 25 years
+#type: research
+#semantic_handle: future of effective intelligence and human-ai partnership
+
+------USER------
+I wrote the article below about the idea that as technologies grow they enhance our intelligence.  In 25 years, how do you think that will look?  I imagine more than just asking you a question and getting an answer, I think we will want to be working together.  Your raw knowledge and my ability to expand that knowledge by being creative.
+
+ Effective Intelligence
+Christopher Shuler, #OPEN_TO_WORK
+Christopher Shuler
+Principal Test Automation Engineer at York Space Systems
+July 3, 2025
+
+I have often wondered what my IQ is when I am using a computer connected to the internet at work. If you think about it, that is all my company cares about. They give me a problem and I solve it, and if I can look up the answer in seconds online, that is exactly what they want. For years, I have believed we should measure not just our raw intelligence, but our combined intelligence as a human working with tools. I call this effective intelligence, or the sum of what you can achieve using all the technology and resources available to you. Now that AI is becoming a part of daily work, this idea is more relevant than ever. We are no longer judged by what we can do alone, but by how well we use the technology around us.
+
+When I started off in computer science we programmed on terminals connected to mainframes. Yes, I am that old. We edited in vi. Everything else was done on the command line. Over time there were better editors which evolved into development environments. These helped to speed things up and that meant I could get more done in the same amount of time. Now I am using an AI editor called Cursor. I tell it "add a function to do something," and the function is done. In my terminal days I could not have imagined being this productive just by using new tools.
+
+But this shift toward using tools to enhance our abilities is not unique to the digital age. Let’s be honest, the last time IQ mattered was before counting tokens. Early humans invented tokens to solve the problem of keeping track of livestock, grain, or debts in early trade. From the moment the first pebble stood for a cow, intelligence became about more than memory or raw brainpower. It became about using tools to extend our abilities, solve harder problems, and do more than we ever could alone.
+
+This was the moment everything changed. Early humans went from relying only on memory and simple reasoning to creating tools that could help them think and keep track of information. Counting tokens, tally sticks, and the first systems of math allowed people to manage trade, plan ahead, and build more organized societies. Every time we invented a new tool, it pushed the boundaries of what we could accomplish, and intelligence started to become a partnership between mind and tool.
+
+Most jobs today do not depend on raw memorization or mental calculation. In the real world, success depends on how well you can use the tools at your disposal. Calculators, spreadsheets, search engines, coding libraries, and now, AI, all play a part. Yet interviews and assessments often focus on what you remember, not on your ability to find, filter, and apply knowledge. The truth is, being fluent with these tools is now more valuable than memorizing every detail, especially in fast-changing fields.
+
+This is why traditional IQ does not translate directly to job performance. A person with average recall but strong tool skills can outperform a human calculator who insists on doing everything alone. If you tested someone’s abilities at each step, unaided, with a calculator, with a computer, the internet, and finally with an AI assistant, you would see their effective intelligence rise with every new layer. Each advancement transforms individuals into hybrids of human and technology, achieving results far beyond what any unaided mind could accomplish.
+
+The next leap will be even bigger. Brain-computer interfaces are moving from science fiction to early reality. As these tools mature, people will interact with AI and information directly, without keyboards or screens. This will push the gap between unaided and extended intelligence even wider. The question will shift from "How smart are you?" to "How effectively can you collaborate with your tools?" The advantage will go to those who adapt fastest and learn to collaborate with technology.
+
+From the first counting tokens to the latest AI models, our greatest achievements have come from embracing new tools. Intelligence is no longer limited to what fits inside your head. The next chapter in human progress will belong to those who can see technology not as a crutch, but as a natural extension of their mind.
+
+If we could actually measure our effective intelligence, and see how much each new tool increases our ability to solve problems, that number would be just as important as our IQ, maybe even more. As technology changes, knowing our multiplier would help us choose and optimize the tools that make the biggest difference. In a world where new technology emerges every day, understanding and improving our extended intelligence is not just interesting, it is essential.
+
+If you have never thought about your own effective intelligence, take a moment to reflect on the tools you use every day and how they amplify your problem-solving power. What single tool or technology could you learn right now to dramatically amplify your problem-solving power? The future belongs to those who keep learning, adapting, and building their own extended mind.
+Comments
+
+
+Add a comment…
+No comments, yet.
+
+Be the first to comment.
+
+------ASSISTANT------
+In
+ 25 years, the idea of “effective intelligence” will probably be as 
+outdated as slide rules are today—not because the core idea is wrong, 
+but because it will be so woven into daily life that people will rarely 
+talk about “using” technology. The boundary between mind and tool will 
+blur, and effective intelligence will feel like a baseline expectation 
+rather than an edge.Here’s what that might look like, building on your article’s vision:1. Human-AI Collaboration Becomes SeamlessInstead of asking an AI for answers or to write code,
+...[middle omitted for tagging]...
+thenew normal.
+ Your article’s argument will look prophetic—only the tools will be so 
+deeply embedded that “using” them will be like “using” your own hand. 
+The question of “raw IQ” will matter about as much as who can run 
+fastest without a bicycle. What matters will behow farandhow creativelyyou can go with your extended mind.If you want to write the follow-up article, the world of 2050 will be abouthuman-AI fusion,measurable extended intelligence, andcreativity as the true multiplier.Want to riff on that more? Or spin out a scenario?
+
+------CURRENT TURN------
+------USER------
+I am watching a documentary called I Am Human, it is about brain implants.  but from 2020 (so ancient history).  Do you think in 2025 I will have an implant and we will be directly communicating?
+
+------ASSISTANT------
+Not in 2025—unless you are a bold clinical trial volunteer with a strong tolerance for risk and disappointment.As of today, brain implants are still
+ experimental and mostly used for serious medical conditions: things 
+like restoring movement for paralyzed patients, helping people with ALS 
+communicate, or deep brain stimulation for Parkinson’s and epilepsy. 
+There 
+...[middle omitted for tagging]...
+ur friendly neighborhood AI? That is 
+still science fiction, at least for now.Short answer:No, you will not be DM’ing me with your thoughts in 2025. But in 2035 or
+ 2045? That is starting to look like a solid bet—at least for the 
+bravest and most curious among us.Want some real-world examples or the latest updates on where brain-computer interfaces stand right now?
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "I Am Human, brain implants, brain-computer interfaces, direct communication, 2025",
+  "intent": "ask about near-term brain implant communication",
+  "type": "research",
+  "semantic_handle": "brain implants and direct communication by 2025",
+  "questions": []
+}

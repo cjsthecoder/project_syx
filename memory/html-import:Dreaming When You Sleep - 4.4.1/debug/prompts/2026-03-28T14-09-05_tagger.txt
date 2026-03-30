@@ -1,0 +1,160 @@
+# timestamp: 2026-03-28T14-09-05
+# project_id: html-import:Dreaming When You Sleep - 4.4.1
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: cache invalidation, rebuild triggers, adjacency metadata, background rebuild, query time behavior
+#intent: clarify fallback behavior when adjacency metadata is unavailable
+#type: technical, design
+#semantic_handle: adjacency metadata fallback and rebuild behavior
+
+------USER------
+5) (Cache invalidation/rebuild) If adjacency metadata is unavailable at query time (e.g., legacy index, partial/corrupt state), 
+is the correct behavior to **serve only the retrieved full chunk(s) with no expansion** for that request while a background rebuild is triggered (no in-request retry)?
+
+------ASSISTANT------
+Yes.That is the correct behavior.Serve the retrievedfull chunk(s) only, withno expansion, and trigger abackground rebuild. Donotretry or block the request.Here is the authoritative reasoning and the rule you can lock in.Canonical behaviorWhen adjacency metadata is unavailable at query time:Return
+...[middle omitted for tagging]...
+=trueEmit a metric or log eventTrack rebuild completionBut the response itself should remain clean and correct.Bottom lineYour proposed behavior is exactly right:Serve safelyRebuild asynchronouslyNever retry in-requestNever guessThat choice favors correctness, predictability, and long-term sanity.
+
+------CURRENT TURN------
+------USER------
+8) (Cache invalidation/rebuild + migration/compatibility) Please reconcile #5 vs #6: when adjacency metadata is missing at query time, 
+should we **always** trigger a background rebuild, or should we trigger rebuild **only when the index claims to be A.4.4.1+** (missing implies corruption), 
+while treating “no adjacency fields” as an expected **legacy** condition that does *not* auto-rebuild (since you plan to force sleep)?
+
+------ASSISTANT------
+Great
+ question. This is exactly where people accidentally create rebuild 
+storms or, worse, hide real corruption. You are right to force a 
+reconciliation.Short, authoritative answerTrigger a background rebuild only when the indexclaimsto be A.4.4.1+ and adjacency is missing or invalid.If adjacency fields are entirely absent and the index is explicitly marked aslegacy, donotauto-rebuild. Treat it as an expected condition and let sleep/migration handle it.That distinction is critical.The reconciled rule setYou are really dealing withtwo different states, and they must be treated differently.State A: A.4.4.1+ index (adjacency is expected)ConditionIndex metadata declares version ≥ A.4.4.1Adjacency fields existor should existIf adjacency is missing, corrupt
+...[middle omitted for tagging]...
+hout adjacency metadata are treated as compatible but non-expandable and do not trigger automatic rebuild.That sentence reconciles #5 and #6 cleanly.Why this plays nicely with sleepThis design:Avoids rebuild stormsKeeps query latency deterministicLets sleep cycles control migrationPreserves correctness guaranteesMakes adjacency opt-in by version, not by accidentIt also gives you a clean observability hook:“degraded due to legacy index”vs“degraded due to corruption”Those are very different operationally.Bottom lineYou were right to question this.Always rebuildis wrongNever rebuildis wrongRebuild only when adjacency is expected and missingis correctThat gives you safety, performance, and a clean migration path without special cases leaking into query logic.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "cache invalidation, rebuild triggers, adjacency metadata, legacy index, migration compatibility, sleep cycles",
+  "intent": "reconcile rebuild behavior for missing adjacency metadata",
+  "type": "technical, design",
+  "semantic_handle": "adjacency metadata rebuild and legacy compatibility rules",
+  "questions": []
+}

@@ -1,0 +1,160 @@
+# timestamp: 2026-03-28T14-01-28
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: REQUIREMENTS.md, DELTAS.md, numbering, formatting, Cursor, Morpheus AGI Chatbot Framework
+#intent: design a document structure for deltas and requirements
+#type: design, technical
+#semantic_handle: requirements and delta document structure
+
+------USER------
+the formatting of REQUIREMENTS.md changed a bit over time, but I want to stick with it, especially the numbering as it was toward the end.  although I guess we need to think about the numbering, as before there were clear big steps that changed 1-4, and then we broke things down below that, we broke things up in a way that made sense.  What should we do for DELTA.md?
+
+------ASSISTANT------
+This is the right moment to designDELTAS.mddeliberately, because its structure will either save you years of friction or quietly recreate the same problem.The key insight is this:DELTAS.md must never compete with REQUIREMENTS.md’s numbering scheme.If it does, you will lose the clarity you just gained.Design goal for DELTAS.mdDELTAS.md should answer four questions, cleanly and unambiguously:What changed?Why did it change?What requirements does it affect?What is 
+...[middle omitted for tagging]...
+being a problem.Recommendation summaryKeep REQUIREMENTS.md numbering exactly as-isMake DELTAS.md chronological and flatReference requirements, never replace themUse dates or semantic titles, never sequence numbersTreat DELTAS.md as authoritative overridesIf you want, next we can:Draft the first real DELTA entry togetherConvert one of your recent design decisions into a deltaStress-test this format against a future major refactorYou are setting this up correctly.
+
+------CURRENT TURN------
+------USER------
+ok, lets do the first delta.  at a high level I agree this is probably correct "Unified Daily and LTM Retrieval Pipeline", but there are going to be probably 10 steps all done separately to complete that.  I think probably the first step is to make daily be memory based.
+
+------ASSISTANT------
+Yes, and your instinct here is exactly right.“Unified Daily and LTM Retrieval Pipeline” is thedestination, not the first delta.If you make that the first delta, it will become vague, oversized, and impossible to reason about incrementally.You wantsmall, irreversible steps, each of which leaves the system in astrictly better, simpler state.How to think about delta granularityA good delta should:• Changeone architectural invariant• Be implementable without touching unrelated code• Be independently testable• Reduce future complexityYour proposal meets all four.Correct first deltaThe real first step is not “unify retrieval”.It is:Stop treating Daily FAISS as persistent state.Everything else becomes easier after that.Recommended first delta titleKeep it narrow and factual.✅ GoodDELTA-2026-01-XX — Daily FAISS Converted to In-Memory Cache❌ Too broad (save for later)Unified Daily and LTM Retrieval PipelineWhy this must be the first deltaBec
+...[middle omitted for tagging]...
+to in-memory cache← this oneCanonical retrieval result shape for Daily and LTMSoft-threshold retrieval semanticsShared post-retrieval ranking pipelineRemoval of duplicate Daily/LTM retrieval codeTagging ambiguity resolution with rolled-off anchorTag metadata promotion rules into LTMRetrieval-time namespace and reinforcement scoringSleep-time consolidation improvementsFinal “Unified Daily and LTM Retrieval Pipeline” deltaNotice:• Each delta is small• Each one reduces branching• Each one moves you closer to unificationOne guiding rule for future deltasEach delta should remove one special case.This delta removes:• “Daily FAISS must be kept in sync on disk”That is a big win.If you want, next we can:• Refine this delta to match exact FR numbers• Write the Cursor implementation checklist for this delta• Decide whether Daily FAISS shouldeverbe persisted (probably no)• Draft delta #2 so the roadmap is explicitThis is the correct first move.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "DELTAS.md, Daily FAISS, in-memory cache, retrieval pipeline, Unified Daily and LTM Retrieval Pipeline",
+  "intent": "plan the first delta and narrow the scope to a memory-based daily retrieval step",
+  "type": "design, technical",
+  "semantic_handle": "daily faiss in-memory cache delta",
+  "questions": [
+    {
+      "question": "Should Daily FAISS ever be persisted?",
+      "topic": "Daily FAISS",
+      "resolution": "remind_user"
+    }
+  ]
+}

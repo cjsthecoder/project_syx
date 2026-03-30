@@ -1,0 +1,182 @@
+# timestamp: 2026-03-28T14-50-45
+# project_id: html-import:Dreaming When You Sleep - Images
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: short-term memory store, long-term memory store, patent drafting, figure 1, terminology consistency
+#intent: confirm terminology and diagram naming
+#type: technical
+#semantic_handle: memory store naming consistency review
+
+------USER------
+look good?
+
+------ASSISTANT------
+Yes, this looks good. 👍From a patent and consistency standpoint, everything now lines up correctly:Short-Term Memory Stor
+...[middle omitted for tagging]...
+ Architecture for Multi-Stage Memory Management and Adaptive ReasoningYou’re in good shape to move on to the next drawing.
+
+------CURRENT TURN------
+------USER------
+ok, can you produce a text file, of the terminology, that has the terms put is also tagged so it can be easily searched in RAG?   and I will include it in the project so you don't forget.
+
+------ASSISTANT------
+Below is aclean, plain-text terminology filedesigned specifically forRAG ingestion and searchability.Each term isexplicitly taggedDefinitions arepatent-safe, abstract, and non-implementation-specificFormatting is stable for vectorization, keyword search, and future reuseNo references to “you”, Morpheus, or implementation detailsYou can save this directly as something like:terminology_memory_lifecycle.txtpgsqlCopy code# TERMINOLOGY DEFINITIONS
+#DOMAIN: AI MEMORY MANAGEMENT, CONSOLIDATION,ANDADAPTIVE REASONING
+# PURPOSE: Canonical terminologyforsystemdescription, patent drafting,andretrieval
+
+[TAG:INTERACTION_DATA]
+Interaction Data
+Datageneratedduring active operationofan artificial intelligencesystem, includinguserinputs,systemoutputs, timestamps,andassociated metadata.
+
+[TAG:EPISODIC_BUFFER]
+Episodic Buffer
+A bounded,temporarycollectionofrecent interaction data maintained during active operation priortoconsolidation, transformation,orlong-term processing.
+
+[TAG:SHORT_TERM_MEMORY]
+Short-Term Memory Store (STM)
+A memory store that retains interaction data
+...[middle omitted for tagging]...
+fanyparticularstoragetechnology.
+
+[TAG:AUTONOMOUS_PIPELINE]
+Autonomous Cognitive Pipeline
+A coordinatedsequenceofautomated processing stages executedwithoutreal-timeuserintervention, producing structured artifactsormemory updates.
+
+[TAG:MAINTENANCE_CYCLE]
+MaintenanceCycleA non-interactive operational phase during which consolidation, introspective analysis,orotherinternalprocessingisperformed independentlyofactiveuserinteraction.
+
+[TAG:STORAGE_ABSTRACTION]StorageAbstraction
+The describedsystemisindependentofanyparticularstoragetechnology,databasetype, indexingmethod,orretrieval mechanismandmay be implementedusinganysuitablestoragemedium.
+
+[TAG:MODEL_ABSTRACTION]
+Model Abstraction
+The describedsystemisindependentofanyspecific artificial intelligence model architecture, vendor,orinference implementation.If you want, next we can:Addcross-referencesbetween termsCreate apatent-ready glossary sectiondirectly from thisGenerate amachine-readable JSON versionalongside the textEmbedpriority weightsfor retrieval bias in RAGJust tell me how far you want to take it.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "terminology file, rag ingestion, text file, tagging, memory management",
+  "intent": "produce a searchable terminology file for project reuse",
+  "type": "technical",
+  "semantic_handle": "tagged terminology file for RAG search",
+  "questions": []
+}

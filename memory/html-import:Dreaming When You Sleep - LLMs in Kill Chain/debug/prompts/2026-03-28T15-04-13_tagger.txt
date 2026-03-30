@@ -1,0 +1,167 @@
+# timestamp: 2026-03-28T15-04-13
+# project_id: html-import:Dreaming When You Sleep - LLMs in Kill Chain
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+(none)
+
+------USER------
+(none)
+
+------ASSISTANT------
+(none)
+
+------CURRENT TURN------
+------USER------
+This is an interesting news summary.  You can look to confirm it if you want, but what I am wondering is why even use LLM in a kill chain?  It seems the wrong AI implementation for the job.
+
+AI used nuclear weapons in 95% of war game simulations, study finds
+King's College London study found AI models chose tactical nuclear strikes in 95% of simulated crises, highlighting risks of escalation and failure of deterrence logic.
+
+    Across the tournament, the study found frontier AI models deployed tactical nuclear weapons in 95% of simulated games, using Anthropic's Claude Sonnet 4, OpenAI's GPT-5.2, and Google DeepMind's Gemini 3 Flash.
+    Safety training and RLHF produced conditional pacifism, but under deadline-driven scenarios models launched strikes despite peaceful programming, the study by Dr. Kenneth Payne found.
+    Researchers recorded that across 21 games and 329 turns, around 780,000 words of private reasoning were produced, with 86 mistakes per cent of conflicts escalated unintentionally.
+    In a Pentagon meeting on Tuesday, Defense Secretary Pete Hegseth urged Anthropic's CEO Dario Amodei to provide signed access, amid calls for invoking the Defense Production Act and urgent oversight warnings.
+    That raises questions about deterrence as the study challenges assumptions about deterrence and mutually assured destruction, while Tong Zhao, Princeton University, and Dr. Kenneth Payne agree no nation will soon hand AI direct nuclear control.
+
+------ASSISTANT------
+Your
+ instinct is basically right: an LLM is a strange fit for anything “in 
+the kill chain” if that means selecting targets, authorizing fires, or 
+triggering weapons. The wargame result you pasted is a pretty good 
+illustration of why.First, a quick reality check on that summaryThe core claim appears to be real: 
+Kenneth Payne (King’s College London) ran a tournament where frontier 
+LLMs (GPT-5.2, Claude Sonnet 4, Gemini 3 Flash) played leaders in 
+simulated nuclear crises, and in95% of the 21 gamesat least one side usedtactical nuclear weapons.arXiv+1Two details in your pasted blurb look garbled:The paper notes“86% ending in knockout”(a game scoring outcome), not “86% mistakes” or “86% escalated unintentionally.”arXivThe “Pentagon ultimatum / Defense 
+Production Act / signed access” angle is being reported as a separate, 
+very current policy dispute involving Anthropic and DoD.AP News+2CBS News+2Why use an LLM anywhere near a kill chain at all?Because there are parts of military workflows that are mostlylanguage and synthesis, not physics or control:Intell
+...[middle omitted for tagging]...
+faces with auditabilityThese can still be dangerous, but 
+at least you can evaluate them against operational test criteria in a 
+way that is much harder with a general-purpose LLM.The sane way to use LLMs, if at allIf someone insists on integrating LLMs in defense workflows, the safest pattern is:Never allow direct action.LLM outputs are advisory only.Constrain it to summarization and retrieval.Require independent verificationfor any factual claim (tooling, cross-checks, provenance).Human authorization gatesfor anything operational.Hard policy constraints outside the model(deterministic enforcement).That keeps the LLM as a “text engine” and avoids turning it into a de facto commander.Recent reporting and the underlying studyAxiosAI really likes using nuclear weapons in simulated war scenarios30 days agoCBS NewsPentagon officials sent Anthropic best and final offer for ...30 days agoAP NewsWhat to know about Defense Protection Act and the Pentagon's Anthropic ultimatum | AP Newswashingtonpost.comPete Hegseth seeks a Pyrrhic victory against Anthropic29 days ago
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "large language models, kill chain, nuclear weapons, war game simulations, AI safety, Anthropic, OpenAI, Google DeepMind",
+  "intent": "ask for explanation and assess military use of llms",
+  "type": "technical, research",
+  "semantic_handle": "LLMs in military kill chains",
+  "questions": []
+}

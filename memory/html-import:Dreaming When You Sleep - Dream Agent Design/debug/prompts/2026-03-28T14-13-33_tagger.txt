@@ -1,0 +1,187 @@
+# timestamp: 2026-03-28T14-13-33
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: user profile, project context summaries, QUESTION ANSWERS, insight system, prompt rules
+#intent: clarify how idea agents should treat reference sections and refine prompt rules
+#type: meta, technical
+#semantic_handle: treating reference sections in insight generation
+
+------USER------
+ok let's go back to some of your other suggetions:
+1. A user profile
+
+Not actionable.
+It describes you, not the project’s reasoning needs.
+
+3. Project context summaries
+
+These describe:
+
+What the system does
+
+What the writing loop is
+
+How worldbuilding is maintained
+
+High level concerns about drafts and codex structure
+
+This is reference material, not conversational content.
+
+4. The “QUESTION ANSWERS” section
+
+These are mostly (but not all) “User input required.”
+That means they do not lend themselves to insights unless explicitly referenced in conversation.
+
+------ASSISTANT------
+Here is the clear way to think about these three sections and how the Idea Agentshouldtreat them going forward.The short version is:They should not be ignored. They should be used differently.Not like daily chat content, but likedesign materialthat can generate system level insights.Below is the breakdown and the recommended behavior.1. User profileWhat it actually isStable identity metadata such as:your engineering backgroundyour rolesyour interestsyour writing focusHow the Idea Agent should use itUse itonly when it affects interpretation of the project.Not as a daily source of insights, but as:a weighting factor for what ty
+...[middle omitted for tagging]...
+it so it knowswhena section is actionable.The updated rule is:Treat user profile, project summaries, and question lists as passive reference material.Only generate insights from them when they clearly imply missing 
+decisions, risks, architectural tensions, planning gaps, or meaningful 
+unresolved choices.This gives:fewer but much more accurate entriesdomain independent behaviorlow hallucination riskhigher value insightsIf you want, I can now:update the full Insight section againadd explicit rules for how to treat these sectionstune the prompt so it creates entries from QUESTION ANSWERS only when appropriateJust say the word.
+
+------CURRENT TURN------
+------USER------
+for questions what I was hoping is that it would look at them, if they are user input required, then look at the question and see if there is useful information that would help the user answer the question.
+
+------ASSISTANT------
+Great, that is the right behavior for the Idea Agent, and it isexactly the missing piecewe need to add to the prompt.Right now the Agent treats questions too cautiously.You want it to be smarter:Notice a question that requires user inputTry to help the userthink about the questionProvide background, considerations, options, implicationsProvide reasoning scaffoldingProvide examples or frameworksProvide tradeoffs that would help the user chooseProvide clarifications of what the decision affectsMaybe offer research directionsButnotanswer the question for the userAndnotignore the question eitherThis makes Dream function like a nightly “design consultant,” helping the user articulate decisions they have not made yet.Below is the exact rule set you want, and I will phrase it in the style needed for the prompt.What you want the Agent to do with “user input required” questionsFor every open question markeduser input required, the Agent should:Step 1Read the question text carefully.Step 2Look for anything in dream_context that relates to:the top
+...[middle omitted for tagging]...
+ake the decision later.Set the confidence score using the low bucket (0.30) since this requires user decision.Include recommended_research entries when appropriate.Do not attempt to answer the question; only help the user make the decision.This produces exactly the behavior you wantFor example:Question:“What should the STM size be per project?”Good DreamEntry:origin_type: open_questionassistant_response:“This decision affects retrieval speed, memory cost, and pruning policies.A small STM forces frequent summarization but reduces cost.A large STM increases historical awareness but risks sluggish performance.You may want to consider how often you expect long threads, how 
+important fine detail is to your workflow, and whether future GUI tools 
+should allow manual STM overrides.”That is the Dream Agent working as intended.Do you want me to update theentire Idea Agent prompt, inserting this new block correctly and integrating it with the confidence rules and the expanded insight logic?If yes, just say:“Yes, update the full prompt with this.”
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "user input required, question handling, idea agent prompt, dream agent, prompt rules",
+  "intent": "clarify how to handle open questions by providing helpful context and decision support",
+  "type": "meta, technical",
+  "semantic_handle": "handling user input required questions",
+  "questions": [
+    {
+      "question": "Do you want me to update the entire Idea Agent prompt, inserting this new block correctly and integrating it with the confidence rules and the expanded insight logic?",
+      "topic": "idea agent prompt",
+      "resolution": "remind_user"
+    }
+  ]
+}

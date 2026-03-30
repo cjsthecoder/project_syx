@@ -1,0 +1,157 @@
+# timestamp: 2026-03-28T14-34-28
+# project_id: html-import:Dreaming When You Sleep - Local RAG integration plan
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: RAG, FAISS, persistent chats, embeddings, chat memory, incremental indexing
+#intent: ask for architectural explanation of hybrid chat memory without rebuilding the index each time
+#type: technical, design
+#semantic_handle: incremental RAG chat memory architecture
+
+------USER------
+ok, so in the past we decided that it was probably be best to save the last N number of prompts/replies, then use RAG for the rest of the chat.  but I can't think of how we do that without rebuilding the RAG on every prompt/reply after we start rolling over
+
+------ASSISTANT------
+Excellent — you’re right back in one of thecore architectural tradeoffsfor long-context AI systems:how tokeep the conversation coherentwithout constantly re-embedding the world.You’re spot on that the naïve approach — rebuilding FAISS after every prompt — doesn’t scale.Let’s reason it out clearly, and I’ll walk you through the architecture that solves this cleanly.🔹 Problem RestatementYou want:Thelast N messages(e.g., 20 exchanges or ~5k tokens) to belivein-memory for immediate contex
+...[middle omitted for tagging]...
+.3)Maintain a short-term memory buffer of the lastRECENT_CHAT_LIMITmessages.Older messages automatically embedded and appended to FAISS (incremental update).FAISS rebuilds only occur during nightly sleep cycles./chatcontext combines short-term history and RAG retrieval results.Track embedding state per chat message withembeddedflag.Would
+ you like me to show how to code that incremental append + flagging 
+system now (basically the step between 2.2 persistent chat and 3.0 sleep
+ cycle)?
+
+------CURRENT TURN------
+------USER------
+so we are going to have 2 RAG files per project?  one is the main one with the files and pruned data, and the other is going to be this running file of the chat that has gone over the limit but haven't been cleaned up/pruned yet?
+
+------ASSISTANT------
+Exactly — you nailed it.That’sthe right architectural moveand exactly how a biologically inspired memory system (like what you’re modeling with Morpheus) should behave.Let’s unpack it clearly so you can formalize it in your design notes:🔹Two RAG Layers per Project1️⃣ Long-Term RAG (“main index”)Path:memory/{project_id}/faiss/Contents:Uploaded documentsPruned / summarized chat memories from prior “sleep cycles”Purpose:Serves asstable, consolidated knowledgefor retrieval.Rarely rebuilt (only during nightly pruning or version migrations).Treated as theauthoritative project memory.Update cadence:nightly or manual “sleep cycle” trigger.2️⃣ Rolling Chat RAG (“delta index”)Path:memory/{project_id}/chat_faiss/Contents:Chat messages that have rolled off the short-term buffer (older than N)Not yet summarized or prunedPurpose:Acts as atemporary holding areafor recent-but-not-current conversation context.Ensures thos
+...[middle omitted for tagging]...
+iss, then clear chat_faiss.✅REQUIREMENTS.md (V2.3 Preview – Dual RAG Architecture)Dual RAG Architecture (V2.3)Each project maintains two FAISS indexes:faiss/→ main long-term memory (documents + pruned chat summaries)chat_faiss/→ rolling short-term archive of older chat messagesWhen chat exceeds the short-term buffer (N messages), overflow messages are embedded and appended tochat_faiss./chatretrieves from both indexes for context assembly.The nightly sleep cycle summarizes and mergeschat_faissintofaiss, then resets it.Prevents constant rebuilds while maintaining continuous memory growth and consolidation.This dual-index setup isthe key enablerfor your “sleeping memory” concept —short-term recall during the day, consolidation into stable long-term memory at night.Would you like me to also add how the/chatretrieval logic should prioritize the two indexes (delta vs main) so Cursor builds it correctly in V2.3?
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "RAG, FAISS, chat memory, dual-index architecture, project memory",
+  "intent": "clarify chat memory storage architecture",
+  "type": "technical, design",
+  "semantic_handle": "dual RAG indexes for project chat memory",
+  "questions": []
+}

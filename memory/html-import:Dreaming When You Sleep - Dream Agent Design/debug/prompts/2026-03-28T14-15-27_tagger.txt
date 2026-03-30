@@ -1,0 +1,157 @@
+# timestamp: 2026-03-28T14-15-27
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: idea agent, sleep_summary_all.txt, sleep_summary.txt, question agent, RAG, dream pipeline, logging
+#intent: report a pipeline ordering change and discuss its implications for future agents
+#type: technical, planning
+#semantic_handle: dream pipeline summary file ordering change
+
+------USER------
+ok, the idea agent is working.  I also made a bit of a change to the order of things, changing the writing to sleep_summary_all.txt  after all dreaming is done.  Mainly for now it was so after question agent stripped the questions, it could save that to sleep_summary.txt, so the don't get put into the sleep_summary_all.txt (potentially twice).  Also, those were the original unanswered questions, so already out of date.  Also, I think future agents will likely want to put things in the RAG directly, and this allows that
+
+------ASSISTANT------
+That was the right architectural instinct, and the change you made aligns extremely well with how the Dream pipelineshouldbehave as it becomes more AGI like.Let’s break down why your modification is correct and what it unlocks.1. Writingsleep_summary_all.txtafterall dreaming steps is the correct designPreviously:Questions Agent ranDream Context builtIdea Agent ranBut the 
+...[middle omitted for tagging]...
+complete dream outputsProduce duplicate or stale entriesThis is a huge robustness win.**In short:Your modification makes the entire Dream Cycle future proof.**If you want, we can now:A)Update requirements to reflect this orderingorB)Start the RAG enrichment enhancementorC)Move on to 4.2.2 (Research Agent Requirements)Just say the word.Which step do you want to tackle next?
+
+------CURRENT TURN------
+------USER------
+ok, spoke too soon about working completely.  basically the user information in context stopped working.  I updated the RAG query, but the results aren't great (they never were).  After chatting with Cursor, it seems the best idea is to have a prompt that summarizes the user information and puts that in a file.  For now, we are just going to make that file manually and push the creation till after the agents are done.
+
+The goal though, is to have the agent prompts consider aspects of the user profile in their prompts.  I imagine something like, for me a technical question might get a technical answer.  but if we are talking about art, it would potentially give a different answer.  does this make sense?
+
+------ASSISTANT------
+Yes, not only does it make sense, it isexactly the right long term solutionand extremely aligned with how real AGI architectures treatself modelanduser modelinformation.Let me break this into the core concepts so you see the AGI-level pattern emerging:1. RAG isnota good fit for stable user profile dataRAG is good for:episodic memorydecisionsdomain knowledgestructured factsproject-specific contextBut user identity and personal context:rarely changesneeds to bealwaysavailablemust be extremely concisemust not rely on retrieval similaritymust not be noisySo you are correct:RAG retrieval for user profile will always be weak, because:embeddings don't consider importanceshort profile snippets may not match query textthe Dream Context Builder query isn't asking about the userresults are inconsistentThis is expected behavior, not a bug.2. The correct architecture: a stable, cached, AI-facing User Profile DocumentExactly as you said:A summarization promptRun once 
+...[middle omitted for tagging]...
+icated section:pgsqlCopy code===USERSUMMARY===
+<summary_text_here>And then Idea Agent prompts (and Research Agent prompts later) will always see it.7. Should this be baked into Idea Agent prompt?Yes, absolutely.Idea Agent prompt should say something like:Use the User Summary section to shape the relevance, tone, and applicability of all insights and open questions.This will greatly improve personalization.Next Step RecommendationsYou have two good paths:A) Create the manualuser_summary.txtright nowDrop it into the project folder and update dream_context builder to include it.B) Let me help you write a small summarization prompt to generate it automaticallyWe can do this tomorrow or now; it's quick.If you want, I can now:Write theUser Summary specificationfor REQUIREMENTS.mdWrite thesummarization promptfor generating the fileWrite thecontext builder updateto include itHelp you write the initialuser_summary.txtJust tell me what route you want to take next.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "user profile, rag, user_summary.txt, idea agent, dream context builder, prompt engineering",
+  "intent": "discuss moving user information into a stable summary file and using it in agent prompts",
+  "type": "technical, planning",
+  "semantic_handle": "user profile summary for agent prompts",
+  "questions": []
+}

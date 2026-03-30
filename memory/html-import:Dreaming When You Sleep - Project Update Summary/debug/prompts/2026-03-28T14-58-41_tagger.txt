@@ -1,0 +1,181 @@
+# timestamp: 2026-03-28T14-58-41
+# project_id: html-import:Dreaming When You Sleep - Project Update Summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: namespace metadata, namespace boosting, retrieval logic, FR-2.5.4, A.4.2
+#intent: decide whether to remove namespace boosting and metadata
+#type: technical
+#semantic_handle: removing namespace boosting from retrieval
+
+------USER------
+I think I am going to do this before 4.3, basically as an update to 4.2 (both in the document and in code)
+
+but why leave it?
+Leave namespace metadata intact
+
+Disable namespace boosting by default
+
+I mean if it doesn't help, I want it all gone.
+
+------ASSISTANT------
+That reaction makes sense, and in your case I agree with you:if it no longer serves a real purpose, don’t half-deprecate it. Remove it.Let’s be very explicit about the tradeoff so you’re doing this deliberately, not just on instinct.Why people usually say “leave the metadata”The usual reasons are defensive, not architectural:“We might want it later”“It’s cheap to keep”“Someone may depend on it”“It’s useful 
+...[middle omitted for tagging]...
+tion is positional.”That’s a very strong answer.Bottom lineYou’re not being reckless by deleting it.You’re being consistent.Namespace boosting was a bridge.You’ve crossed it.At this point,keeping it would be architectural debt, not safety.If you want, next we can:write the exact doc edit for 4.2 to formally retire FR-2.5.4, orsanity-check the diff so nothing accidentally still depends on namespace semantics
+
+------CURRENT TURN------
+------USER------
+ok, I had all that removed and the DELTA 4.2 updated to reflect that.
+
+so, here is a question for 4.3:
+6. (Cache invalidation and rebuild conditions) In mixed-source retrieval (Daily + LTM),N_SOURCEScan vary (e.g., Daily disabled per project or missing).
+   For A.4.3’s derivedRETRIEVAL_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER * N_SOURCES):
+   - IsN_SOURCESthe number of sources *attempted* or the number that *successfully returned* candidates?
+   - IsRETRIEVAL_Konly for telemetry, or should it constrain retrieval/selection behavior in A.4.3?
+
+------ASSISTANT------
+Good
+ questions. These are exactly the kinds of edge details that, if you 
+don’t lock them down now, turn into “why does this behave weirdly 
+sometimes” later.I’ll answer directly, then explain why.1. What shouldN_SOURCESmean?N_SOURCESshould be the number of sourcesattempted, not the number that successfully returned candidates.Why attempted, not successfulN_SOURCESis part ofpolicy intent, not outcome accounting.When you compute:iniCopy codeRETRIEVAL_K= ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER * N_SOURCES)you are answering:“Given the number of retrieval streams weintendto query, how large should the candidate pool be before selection?”That intent existsbeforeyou know what comes back.If you instead use “sources that returned results”:retrieval behavior becomes data-dependentthe same query can produce different effective K values based on corpus sparsityselection pressure changes unpr
+...[middle omitted for tagging]...
+:used upstream to size retrievalrecorded for telemetrynot used as a hard cutoff in A.4.3MAX_KEEPis the only selection limiter in A.4.3That keeps:retrieval intent explicitselection behavior deterministictelemetry meaningfulfuture expansion (A.4.4) clean4. Why this matches your architecture philosophyYou’ve consistently moved toward:policy before datadeterminism before heuristicsstructure before thresholdsexplicit bounds over emergent onesAttempted-basedN_SOURCESand telemetry-onlyRETRIEVAL_Kfit that perfectly.Anything else would quietly reintroduce:data-dependent behaviorhidden couplinghard-to-debug variabilityBottom lineN_SOURCESshould be the number of sourcesattemptedRETRIEVAL_Kshould not constrain selection in A.4.3MAX_KEEPis the selection controlRETRIEVAL_Kexists for policy clarity, upstream sizing, and telemetryYou’re asking exactly the right questions at exactly the right time.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "cache invalidation, rebuild conditions, mixed-source retrieval, Daily, LTM, A.4.3, RETRIEVAL_K",
+  "intent": "clarify retrieval sizing and selection rules",
+  "type": "technical",
+  "semantic_handle": "retrieval sizing in mixed-source cache rebuilds",
+  "questions": [
+    {
+      "question": "Should N_SOURCES mean the number of sources attempted or the number that successfully returned candidates?",
+      "topic": "mixed-source retrieval",
+      "resolution": "answer_local"
+    },
+    {
+      "question": "Should RETRIEVAL_K be only for telemetry, or should it constrain retrieval and selection behavior in A.4.3?",
+      "topic": "A.4.3",
+      "resolution": "answer_local"
+    }
+  ]
+}

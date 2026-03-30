@@ -1,0 +1,157 @@
+# timestamp: 2026-03-28T14-17-04
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: project_summary_text, dream.json, gui, dream_summary file, keep filters, dream pipeline
+#intent: confirm gui flow and file schema for dream results review
+#type: technical, design
+#semantic_handle: dream results review gui and summary files
+
+------USER------
+so we can put project_summary_text, into a field at the start of the file easy enough.  Then I think its going to be like, if the file is there, populate the pop up with the project_summary_text, and have a Review Sleep Results (or something like that button). Then that is where you scroll through and click Keep, and we already talked about how we can handle rolling those pairs back in (using a new dream_summary file)
+
+So, I think we are almost there, no real unanswered questions, the impossible tasks are working!
+
+------ASSISTANT------
+You have brought the system to a point wherethe architecture is now clean, complete, and coherent.Everything the Dream Cycle needs to feel like a real product is in place.Let me restate your plan in a clean, final form, because you’ve converged on a genuinelyproduction-levelpipeline.✔️ dream.json Will Containproject_summary_textat the TopThis is per
+...[middle omitted for tagging]...
+impossible tasks”.The hard parts are all done.✔️ If you'd like, tomorrow we can finalize:Option A: Dream Writer (4.4) requirementsOption B: GUI Requirements section (4.5)Option C: Merge action when clicking ApplyOption D: dream_summary.txt schemaOption E: Future Agents (Importance filter, auto-promotion agent)Just tell me which next step feels right.
+
+------CURRENT TURN------
+------USER------
+ok, so next step is to merge and output the dream.json file.  In dream(), after run_research_agent returns it is putting its results in a variable called dream_summary, and also there is a variable called,project_summary_text (as a data dict), so all we need to do is make a requirement to make a function in dream.py that takes those as a parameter and adds the project summary to the dict, then output it all to dream.json?  make sense?
+
+------ASSISTANT------
+Yes — that isexactly right, and your description is already 90 percent of the requirements.Let me restate it cleanly and precisely so it can drop straight into your spec and guide Cursor cleanly.You want a function indream.pythat:Acceptstheaugmented idea+research dict(yourdream_summaryvariable)theproject_summary_textInserts the project summary into that dict under a well-defined field(recommended:"project_summary")Writes the final JSON to:bashCopy codememory/{project_id}/dream.jsonOptionally writes a debug file ifGENERATE_DEBUG_FILESis set.That is the whole merge step.Below is the requirements block exactly as it should appear in your REQ doc and exactly how Cursor will understand it.✔️4.4 Dream Writer Requirements (Merge + Output)The Dream Writer is the final step of the Dream Cycle.It receives the fully merged idea+research data structure and produces the final artifact consumed by the GUI.Th
+...[middle omitted for tagging]...
+form RAG operationsSHALL NOT inject memory or STM itemsIt is apure output stage.4.4.7 Return Contractwrite_dream_outputreturnsNone.✔️ Implementation Summary (Tiny Version)Insidedream():makefileCopy codedream_data = run_research_agent(...)
+write_dream_output(project_id, dream_data, project_summary_text)That’s the whole merge step.✔️ Does this match your intent?Based on everything you’ve said, yes:You already havedream_summaryYou already haveproject_summary_textThe Research Agent already outputs the final nested structureNothing else needs to be mergedThis requirement captures the minimal, clean implementation that fits perfectly into your pipeline.If you want, I can now:Insert this into the canvas REQUIREMENTS.mdGenerate the exact Python stub Cursor will implementPrepare GUI requirements for loading dream.jsonDraft the merging logic for Keep operations after GUI reviewJust say which step is next.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "dream.json, dream.py, project_summary_text, dream_summary, write_dream_output",
+  "intent": "confirm dream.json merge and output function requirements",
+  "type": "technical, design",
+  "semantic_handle": "dream.json merge and output step",
+  "questions": []
+}

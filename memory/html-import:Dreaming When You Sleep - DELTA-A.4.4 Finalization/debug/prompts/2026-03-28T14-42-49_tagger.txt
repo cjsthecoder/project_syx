@@ -1,0 +1,161 @@
+# timestamp: 2026-03-28T14-42-49
+# project_id: html-import:Dreaming When You Sleep - DELTA-A.4.4 Finalization
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Cursor, Python, exceptions, logger.warning, best effort, code rules
+#intent: ask for ways to make Cursor follow coding constraints
+#type: technical
+#semantic_handle: Cursor instruction for exception handling
+
+------USER------
+do you have any ideas on telling Cursor to do something, when putting in the rules didn't work?  It keeps putting in exceptions, the just do a pass, which is just wrong on multiple levels.  I put a rule in to say, at very least logger.warning that, and if it truly is a 'best effort' type call, then comment it that way in the code at least, and it doesn't seem to follow it.
+
+------ASSISTANT------
+Yes.
+ Cursor can be stubborn about “defensive coding” defaults, especially 
+with Python. The trick is to stop phrasing it as a style preference and 
+instead give ithard, testable constraintsplus amechanical checklistthat forces compliance.Here are a few approaches that usually work, in increasing strength.1) Turn the rule into a hard contract with a fail conditionInstead of “don’t add broad exceptions”, say:.Reject any diff that introducesexcept Exceptionor a bareexcept.Reject any ne
+...[middle omitted for tagging]...
+pfully” deviate from.My recommendation for your codebaseFor Morpheus specifically:Use a singlebest_effort()helper for:telemetrycache warmersbackground rebuild triggersoptional enrichmentEverything else:no try/except unless you can name the exception classThat will keep your system honest and your debugging sane.If
+ you want, paste one short example of a diff where Cursor added the bad 
+try/except and I’ll rewrite the instruction you should feed it so it 
+stops doing that on that file.
+
+------CURRENT TURN------
+------USER------
+ok, before we start today, I have a question about the whole llm object change.  In python, can we make an instance of an llm object thru the factory, then pass that instance around so all the providers use it?
+
+------ASSISTANT------
+Yes —that’s not only possible in Python, it’s thenormaland preferred way to do this.You’re describingdependency injection by instance, and Python is very good at it.Let me walk through this cleanly, from concept to shape, without overengineering.The short answerYes.You can:Create an LLM instance once via a factoryPass that instance to every provider that needs itHave all providers share it safelyThis is idiomatic Python.The correct mental modelThink of the LLM object asinfrastructure, not logic.You build it once, then hand it to the parts of the system that need it.markdownCopy codeLLM instance  ─────▶ TaggerProvider└────────▶ ClassifierProvider
+        └────────▶ GeneratorProviderNo globals required.No singleton hacks.No repeated construction.Minimal example (conceptual, clean)1. LLM factorypythonCopy c
+...[middle omitted for tagging]...
+ider❌ Don’t hide it behind globals❌ Don’t let providers choose their own model❌ Don’t let business logic touch SDKsThose all make refactoring painful.Where the factory belongsThe factory should liveat the composition rootof your app:app startupmain()dependency wiring moduleAfter that, everything should receiveinstances, not configs.That’s a clean boundary.How this fits your future cleanup perfectlyWhen you refactor later:LangChain removal becomes trivialModel swaps are one-line changesAdding a local model is easyPer-role providers stay unchangedDebugging stays localizedThis is exactly the abstraction youmeantto get originally — just done at the right level.Bottom lineYes, you can do this.Yes, it’s idiomatic Python.Yes, it’s the right architecture for Morpheus.You’re thinking about this the right way now.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Python, LLM, factory, dependency injection, providers",
+  "intent": "ask about sharing an llm instance across providers",
+  "type": "technical",
+  "semantic_handle": "Python llm instance passed through factory",
+  "questions": []
+}

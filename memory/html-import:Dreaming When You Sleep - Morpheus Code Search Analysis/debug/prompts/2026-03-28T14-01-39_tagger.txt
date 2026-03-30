@@ -1,0 +1,165 @@
+# timestamp: 2026-03-28T14-01-39
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: daily.json, embedding model, cache metadata, sidecar file, daily faiss, DELTA-A.1
+#intent: clarify cache metadata storage design
+#type: technical, design
+#semantic_handle: embedding model tracking in daily.json
+
+------USER------
+this is a new set of questions based on the previous answers.  I think this is just inside daily.json?
+
+3) (#6 + implementation detail) Where should the “current embedding model used for the cache” be tracked for comparison—in memory only, 
+or persisted (e.g., inside daily.json entries, or a small sidecar like daily_cache_meta.json)?
+
+------ASSISTANT------
+You’re
+ thinking about this exactly the right way, and your instinct in the 
+question (“I think this is just inside daily.json?”) isalmostright, with one important refinement.Short answer first, then the reasoning.Correct answer (authoritative)Track the embedding model indaily.jsonentries, and optionally cache it in memory.Do NOT introduce a new sidecar file.More precisely:daily.jsonis thesource of truthThe in-memory Daily FAISS cache remembers the cur
+...[middle omitted for tagging]...
+he semanticsYour corruption-tolerant rebuild strategyLTM design (which should work the same way)Cursor’s reasoning modelAnd importantly: it avoids addingnewmoving parts while you are actively simplifying the system.If you want next, we can:Decide how to handle mixed-model legacy data explicitlyMirror this exact logic into LTMOr pre-answer Cursor’s next likely question about performance of scanningdaily.jsonBut your instinct here was essentially correct.
+
+------CURRENT TURN------
+------USER------
+even more questions
+
+1) Embedding-model mismatch + daily.json metadata update: When you rebuild the in-memory Daily FAISS cache because the runtime EMBEDDING_MODEL differs from what’s recorded in daily.json, 
+should the rebuild process update each entry’s embedding_model in daily.json to the new model 
+(so future comparisons don’t trigger another rebuild), or should daily.json preserve historical embedding_model values even though the cache is rebuilt with the current model?
+
+------ASSISTANT------
+This is an excellent question, and it goes right to the heart ofwhatdaily.jsonrepresents after DELTA-A.1.The correct answer isnot “both”, and it isnot neutral. One choice is clearly safer and more consistent with your architecture.Correct answer (authoritative)Yes.When rebuilding the in-memory Daily FAISS cache with a newEMBEDDING_MODEL, you SHOULD update each entry’sembedding_modelindaily.jsonto the new model.daily.jsonshould always reflect thecurrent semantic interpretationof Daily memory, not a historical audit log of past embedding models.Why this is the correct choice1.daily.jsonis not an audit trailUnder DELTA-A.1,daily.jsonis:The authoritative representation of Daily memoryThe basis for rebuilding cachesThe semantic “truth” of what Daily memorymeans nowIt isnot:A provenance logA historical record of how memory used to be embeddedIf it were an audit trail, you would never mutate it.But Daily memory isephemer
+...[middle omitted for tagging]...
+he rebuild process should update each entry’sembedding_modelfield indaily.jsonto the current runtime model.daily.jsonrepresents the current semantic interpretation of Daily memory, not 
+historical embedding provenance. Preserving old model names would cause 
+repeated rebuilds and is not desired.One-sentence invariant to lock inDaily memory stores meaning, not the history of how meaning was computed.That sentence alone answers this class of question permanently.Why this question is a very good signCursor is now asking:Semantic questionsConsistency questionsLifecycle questionsThat means:Your DELTA process is workingThe system is convergingYou are removing ambiguity rather than adding itIf you want next, we can:Decide whetheranyDaily metadata should be immutableMirror this policy into LTM explicitlyOr pre-answer Cursor’s next likely question about partial rebuilds or lockingThis was exactly the right question to ask.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "daily.json, embedding model, cache rebuild, DELTA-A.1",
+  "intent": "clarify metadata update policy",
+  "type": "technical, design",
+  "semantic_handle": "daily.json embedding model update policy",
+  "questions": []
+}

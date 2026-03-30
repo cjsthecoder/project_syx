@@ -1,0 +1,196 @@
+# timestamp: 2026-03-28T14-39-17
+# project_id: html-import:Dreaming When You Sleep - Provisional Filing Checklist
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: utility provisional, patent application, 35 U.S.C. 111(b), filing date, inventors, specification
+#intent: ask which patent application option to choose
+#type: technical
+#semantic_handle: choosing a patent application filing type
+
+------USER------
+I finally got in.  which of these am I choosing?
+REGULAR SUBMISSIONS
+Utility Nonprovisional
+
+File a utility nonprovisional application under 35 U.S.C. 111(a), the most common form of patent application
+Learn more
+Utility Provisional
+
+Not ready with complete details for your patent application? File a provisional application under 35 U.S.C. 111(b) and receive a filing date. A corresponding nonprovisional application can be filed within 12 months to receive the benefit of a provisional applications filing date
+Learn more
+Design Nonprovisional
+
+File a design application under 35 U.S.C. 171 for any new, original, and ornamental design for an article of manufacture
+Learn more
+371 National Stage
+
+File the U.S. national stage of an international (PCT) application to seek a U.S. patent
+Learn more
+Plant Nonprovisional
+
+File a plant application under 35 U.S.C 161 for an asexually reproduced distinct and new variety of plant, other than a tuber propagated plant or a plant found in an uncultivated state.
+Learn more
+
+------ASSISTANT------
+ChooseUtility Provisional.Nothing else on that list applies to what you are doing.Why this is the correct cho
+...[middle omitted for tagging]...
+our PDF as “Specification”• Review and submitYou are on the correct path.ClickUtility Provisionaland proceed.
+
+------CURRENT TURN------
+------USER------
+ok, next screen, do I have an ADS?
+
+Application Data Sheet (ADS) filing options
+
+Select a method for filing an ADS. Changing the filing method will overwrite any unsaved application data.
+Web ADS
+
+Use the ADS online form:
+
+    Generate a streamlined Application Data Sheet
+    Error checking and data validations
+    Provided data is automatically loaded to USPTO database
+
+Upload ADS (PDF)
+
+Upload a completed fillable AIA/14 form:
+
+    Upload a USPTO fillable AIA/14 Application Data Sheet
+    No online error checking or data validation
+    Provided data is automatically loaded to USPTO database
+
+No ADS, or Attach ADS (PDF)
+
+Complete ADS later:
+
+    Provide required application data
+    Upload AIA/14, SB/14, or custom ADS form (PDF)
+    User may file ADS at a later time (may result in additional fees)
+
+------ASSISTANT------
+ChooseNo ADS, or Attach ADS (PDF).Do not create one now. Do not upload one. Do not use Web ADS.Why this is the correct choice for a provisionalFor autility provisional:• An ADS isnot required• All required data is entered directly in the UI• Filing without an ADS is completely nor
+...[middle omitted for tagging]...
+but in this context it just means:• You are not filing an ADS• The system will rely on the UI fields insteadThat is exactly what you want.Bottom lineSelectNo ADS, or Attach ADS (PDF)Continue to the next screenEnter your data in the UI when promptedYou are doing this exactly right.
+
+
+====== TAGGER RESPONSE ======
+{"topics":"application data sheet, ADS, utility provisional, USPTO, provisional patent application","intent":"ask which ADS filing option to choose","type":"technical","semantic_handle":"choosing an ADS filing method","questions":[]}

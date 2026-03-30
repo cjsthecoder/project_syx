@@ -1,0 +1,163 @@
+# timestamp: 2026-03-28T14-46-40
+# project_id: html-import:Dreaming When You Sleep - Text
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: patent drafting, high-level system overview, artificial intelligence model, active interaction window, memory consolidation engine
+#intent: draft a patent system overview
+#type: technical, research
+#semantic_handle: Patent-ready high-level system overview
+
+------USER------
+ok, I can see that we are beyond those examples.
+
+High-level system overview, next?
+
+------ASSISTANT------
+Yes.High-level System Overviewis exactly the next section, and this is where everything you’ve already done starts paying off.Below is apatent-ready High-Level System Overviewyou can paste directly intoProvisional A.It is intentionally:broadarchitecturalnon-algorithmicaligned with your diagramsreusable across B and C with light editsHigh-Level System OverviewIn one embodiment, the disclosed 
+system provides an autonomous architecture for consolidating interaction
+ data generated during active
+...[middle omitted for tagging]...
+step-by-step methods✔ Leaves room for multiple embodiments✔ Can be reused in B and C with minimal changes✔ Does not pre-commit to AI techniques, RAG, or modelsThis section sets you up perfectly for:Next sectionsBrief Description of the DrawingsDetailed Description of the Memory Consolidation Engine(core of Provisional A)When you’re ready, the logical next move is:Brief Description of the Drawings, which is mostly mechanical now that diagrams are locked.You’re moving at exactly the right pace.
+
+------CURRENT TURN------
+------USER------
+ok, for this sentence, are we refering to the more general active pairs/context window?
+
+Interaction inputs and model outputs are processed initially within an Active Interaction Window, which maintains a bounded, real-time context used directly for response generation.
+
+------ASSISTANT------
+Yes,that sentence is referring to the general active pairs / context window, and the wording you used iscorrectfor a patent. You do not need to change it unless you want to slightly tighten clarity.Here’s the precise interpretation and why it works.What that sentence means (exactly)“Interaction
+ inputs and model outputs are processed initially within an Active 
+Interaction Window, which maintains a bounded, real-time context used 
+directly for response generation.”This refers to:Thelive conversational turnscurrently in playWhat many systems informally call:“active pairs”“context window”“recent turns”The 
+...[middle omitted for tagging]...
+lymore explicit that this is the live conversational context, you could use:“…which maintains a bounded, real-time conversational context used directly for response generation.”This is optional. Your current sentence is already correct.What you should NOT doDonot:mention “context length”mention “token window”mention “LLM context”mention “prompt”All of those would narrow the claim.Bottom line✔ Yes, it refers to the active pairs / context window✔ The sentence is correct as written✔ It aligns with your terminology and diagrams✔ No change is requiredYou can leave it exactly as-is and move forward confidently.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent drafting, active interaction window, context window, response generation, active pairs",
+  "intent": "clarify terminology in patent wording",
+  "type": "technical, research",
+  "semantic_handle": "Active interaction window terminology clarification",
+  "questions": []
+}

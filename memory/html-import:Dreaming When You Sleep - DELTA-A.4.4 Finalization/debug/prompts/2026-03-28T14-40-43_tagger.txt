@@ -1,0 +1,228 @@
+# timestamp: 2026-03-28T14-40-43
+# project_id: html-import:Dreaming When You Sleep - DELTA-A.4.4 Finalization
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: canonical_retrieve_candidates, env vars, daily retrieval, main retrieval, redundancy, refactor
+#intent: evaluate retrieval configuration redundancy and cleanup
+#type: technical, design
+#semantic_handle: retrieval env var unification
+
+------USER------
+ok, I have been trying to chase down the env values we currently have defined.  I think maybe after 4.1 and 4.2 we have some redundancy.  so long story short even though we have one path for retrieving daily and a different one for main.  now that I look at it, all that canonical_retrieve_candidates did, was move the two calls to one function, instead of replacing each of those paths with one.
+
+------ASSISTANT------
+Yeah, that diagnosis is correct. What you are seeing is a classic “unification in name only” situation.Right now you effectively have:• Two retrieval implementations• One wrapper thatcalls both• Shared ordering logic after the factSo canonical_retrieve_candidates didcoordination, notcanonicalization.That explains the env sprawl and the feeling that knobs are duplicated or fighting each other.Let’s ground this and then outline the cleanup.Wh
+...[middle omitted for tagging]...
+r.You unifiedcontrol flow, notpolicy.A.4.3 is the missing keystone that lets you finish the job cleanly.If you want, next we can:• Inventory the exact env vars you have now and mark keep vs delete• Sketch the final canonical_retrieve_candidates signature• Write a migration plan that does not break existing behavior during rolloutYou are absolutely on the right track. This is the kind of cleanup that turns a clever system into a durable one.
+
+------CURRENT TURN------
+------USER------
+ok, when we call main (LTM) we do this:
+results = vs.similarity_search_with_score(query, k=int(ltm_top_k))
+
+and when we call daily we do this:
+def retrieve_daily_candidates(project_id: str, query: str, top_k: int) -> List[Dict[str, Any]]:
+    """
+    DELTA-A.4.1: Canonical Daily retrieval candidates (raw top-K, no thresholding, no boosting).
+
+    Returns a list of candidate dicts in the same order returned by the underlying vector search.
+    Each candidate includes authoritative metadata sourced from daily.json via the in-memory cache'smeta_by_idmapping, keyed by stabledaily_entry_id.
+    """
+    if top_k <= 0:
+        return []
+    settings = get_settings()
+    # Warm lazily on first use for a project (non-blocking; return empty for this request).
+    with _CACHE_LOCK:
+        cache = _CACHE.get(project_id)
+    if cache is None:
+        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_warm")
+        return []
+    with _CACHE_LOCK:
+        cache = _CACHE.get(project_id)
+    if cache is None or cache.vs is None:
+        return []
+    # If runtime model changed vs cache, rebuild but do not retry this request (return empty).
+    if cache.embedding_model != settings.embedding_model:
+        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_model_mismatch")
+        return []
+    try:
+        results = cache.vs.similarity_search_with_score(query, k=top_k)
+    except Exception as e:
+        logger.warning("DailyRAG: candidate retrieve failed project=%s: %s", project_id, e)
+        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_exception")
+        return []
+
+    out: List[Dict[str, Any]] = []
+    for doc, dist in results:
+        cos = cosine_from_l2_distance(dist)
+        md = getattr(doc, "metadata", None) or {}
+        eid = md.get("daily_entry_id")
+        entry = None
+        try:
+            if eid is not None:
+                entry = cache.meta_by_id.get(str(eid))
+        except Exception:
+            entry = None
+        # Authoritative metadata from daily.json when available; otherwise best-effort from doc metadata.
+        created_at = (entry.get("created_at") if isinstance(entry, dict) else None)
+        route = (entry.get("namespace") if isinstance(entry, dict) else md.get("namespace"))
+        tags_meta = (entry.get("tags_meta") if isinstance(entry, dict) else None)
+        topics = (tags_meta.get("topics") if isinstance(tags_meta, dict) else None)
+        intent = (tags_meta.get("intent") if isinstance(tags_meta, dict) else None)
+        tag_type = (tags_meta.get("type") if isinstance(tags_meta, dict) else None)
+        out.append(
+            {
+                "source": "daily",
+                "text": getattr(doc, "page_content", "") or "",
+                "score": float(cos),
+                "metadata": {
+                    "id": str(eid) if eid is not None else None,
+                    "timestamp": created_at,
+                    "route": (str(route).lower() if isinstance(route, str) else route),
+                    "tags": (entry.get("tags") if isinstance(entry, dict) else None),
+                    "topics": topics,
+                    "intent": intent,
+                    "type": tag_type,
+                    "tags_meta": tags_meta,
+                    "keep": (entry.get("keep") if isinstance(entry, dict) else None),
+                    "day_sequence": (entry.get("day_sequence") if isinstance(entry, dict) else md.get("day_sequence")),
+                    "pair_ids": (entry.get("pair_ids") if isinstance(entry, dict) else None),
+                    "source": (entry.get("source") if isinstance(entry, dict) else "daily"),
+                },
+            }
+        )
+    return out
+
+------ASSISTANT------
+Good, this concrete comparison makes the problem very clear. You are not justconceptuallysplit, you aresemanticallysplit.Let me reflect back what you actually have, then show exactly what needs to change to align with A.4.1–A.4.3.What You Have Right Now (Truth, Not Intent)Main (LTM) RetrievalpythonCopy coderesults = vs.similarity_search_with_score(query, k=int(ltm_top_k))This path:• Returns (doc, dist)• Minimal metadata• No authoritative enrichment• No stable IDs• No cache• No post-processing except later stagesIt isthin, fast, and raw.Daily Retrievalretrieve_daily_candidates(...)This path:• Uses a warmed in-memory FAISS cache• Rebuilds opportunistically• Converts distance to cosine• Rehydrates metadata from daily.json• Injects tags, intent, topics, keep flags• Normalizes routes• Handles model mismatch• Returns rich candidate dictsIt isstateful, enriched, defensive, and policy-aware.Key Insight (This Is the Bug)You currently havetwo different definitions of “candidate”.• LTM candidate = vector hit• Daily candidate =
+...[middle omitted for tagging]...
+tity and authoritative metadataThat is not retrieval logic.That ismemory integrity logic.As long as:• It does not prune• It does not threshold• It does not decide relevanceIt is compliant with A.4.1.The Architectural Smell You Correctly Noticedcanonical_retrieve_candidates just moved the callsYes. Exactly.It unifiedcontrol flow, notsemantics.Once LTM emits the same candidate shape as Daily, suddenly:• Env values collapse naturally• A.4.3 has a clean insertion point• Debugging becomes obvious• Future tiers “just work”Litmus Test (Very Important)After this refactor, the following must be true:A.4.3 does not know or care whether a candidate came from Daily or LTM.If that is true, you are done.Where to Go NextThe next concrete steps I would recommend:Define the canonical candidate dataclass or schemaWrap LTM retrieval to emit itDelete all thresholds from retrieval pathsRe-run retrieval with inflatedtop_kLet A.4.3 finally do its jobYou are not far off. You just needed to see that the asymmetry wassemantic, not accidental.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "ltm, daily retrieval, similarity_search_with_score, retrieve_daily_candidates, canonical_retrieve_candidates, metadata",
+  "intent": "compare retrieval paths and evaluate refactor cleanup",
+  "type": "technical, design",
+  "semantic_handle": "main and daily retrieval path comparison",
+  "questions": []
+}

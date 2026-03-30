@@ -1,0 +1,167 @@
+# timestamp: 2026-03-28T14-12-38
+# project_id: html-import:Dreaming When You Sleep - AGI patent analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Lectron, J1772, EV charger, amperage, 15 amp circuit, 12 amp charger
+#intent: evaluate charger amperage compatibility and durability
+#type: technical
+#semantic_handle: EV charger amperage mismatch and safer upgrade options
+
+------USER------
+one thing I noticed, and is possibly why I fried this one.  The car was set to 15 amps, and the charger cable said it supported 12 amps.  But if any of these could do, 15 that would be worth extra money
+
+------ASSISTANT------
+Good
+ catch on the amperage mismatch — yes, that could definitely be part of 
+the problem. Let’s walk through what’s going on + how to pick a safer 
+charger for a 15-amp draw scenario, and then look at some good product 
+options.⚠️ What to know: Amps, circuits & charger ratingsHere are some important things to check:Standard 120 V household outlets on a 15A breaker are typically rated such that they shouldnothave a continuous load at 15 amps. The rule of thumb (and code) is ~80%
+ of the breaker for continuous loads, meaning ~12A on a 15A circuit.VWID Talk+2Reddit+2For a Level 1 EV charger (120 V), ma
+...[middle omitted for tagging]...
+ept the slower charge but improved safety and longevity.If you go the 15A route: lean 
+toward one of the 15A-rated or 16A-rated chargers above, choose a 
+well-reviewed brand, ensure build quality (plug, cable, certification).Keep checking for heat during 
+initial use (outlet faceplate, plug, cable) — overheating is a warning 
+sign you might be overloading.If you like, I cancheck durability reviewsof the 15A-rated chargers in this list (especially for the brand you’re
+ leaning toward) and we can identify which one has the best build 
+quality / user longevity. Would you like that? [11-14-2025 12:38 EST]
+
+------CURRENT TURN------
+------USER------
+oh, I just looked the breaker is 15A and it is a GFI breaker (presumably because it also covers to outdoor lights).  I set the car at 15, thinking it would pull what it could, and the breaker never blew once.  So, could I technically put a 20A breaker in there? And then pull 15A? at least till I can buy a permenant one?
+
+------ASSISTANT------
+You shouldnotreplace a 15A breaker with a 20A breaker unless you first verify (or upgrade) thewire gauge and the entire circuit. This isn’t just a code issue, it’s a real fire-risk scenario.Here is the clear rule:⚠️ A 20A breakerrequires12-gauge wiringIf your circuit is 14-gauge (typical 
+of 15A circuits), then a 20A breaker can overheat the wires before the 
+breaker trips. That can lead to insulation melting or fire.Why your 15A breaker didn’t trip when pulling 15ATwo possibilities:Your car may not actually have pulled the full 15A, even though you set it.Many 
+...[middle omitted for tagging]...
+tions you can do now1.Set the car to 12AThis aligns with what the circuit is actually designed for.Safer for the outlet, wiring, and charger.2.Buy a 12A Level 1 charger for nowEspecially if you cannot confirm wire gauge today.3.Plan for a dedicated 20A or 240V line laterWhen you eventually upgrade, you’ll get more reliable charging and can safely run 15–16A Level 1 or 32–40A Level 2.If you want, I can tell you:How to identify wire gauge visuallyHow to check the circuit load pathWhat a proper 20A EV-ready circuit looks likeJust say the word.[11-14-2025 12:50 EST]
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "15a breaker, gfi breaker, 20a breaker, wire gauge, ev charging",
+  "intent": "ask about breaker upgrade and safe charging capacity",
+  "type": "technical",
+  "semantic_handle": "EV charging on a 15A GFI circuit",
+  "questions": []
+}

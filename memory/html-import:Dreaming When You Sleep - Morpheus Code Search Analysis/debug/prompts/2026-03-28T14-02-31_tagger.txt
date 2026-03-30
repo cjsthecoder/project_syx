@@ -1,0 +1,148 @@
+# timestamp: 2026-03-28T14-02-31
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: gpt-5-mini, gpt-5-nano, ambiguity classification, referent resolution, edge cases, model selection
+#intent: evaluate a model switch for ambiguity detection
+#type: technical, system
+#semantic_handle: gpt-5-mini vs gpt-5-nano for ambiguity detection
+
+------USER------
+another thing I thought of, we tried nano first, maybe mini would do better?
+
+------ASSISTANT------
+Short answer:yes, tryinggpt-5-miniis averyreasonable next move— and it’s not you giving up, it’s you calibrating the right tool.But there’s a nuance worth locking in so you don’t chase ghosts.Why nano is strugglingspecificallyheregpt-5-nanois optimized for:Fast routingSimple classificationShallow pattern detectionYour ambiguity task has quietly cros
+...[middle omitted for tagging]...
+csPre-filtersBut ambiguity classification, as you’ve defined it now, is no longer a nano task.That’s not failure. That’s clarity.One-sentence takeawayIf your rule needs to understandwhether ambiguity was resolved, you’ve graduated from nano to mini.Try the switch.Look at the logs.And if mini behaves, stop tuning.You’re close to done with this piece.
+
+------CURRENT TURN------
+------USER------
+face palm!  I mean it works, mini seems to figure those complicated ones out, but now can't get 'true' again.  not sure how to even try now
+
+------ASSISTANT------
+😄 Thatface-palmmoment is actually a really good sign. It means you’ve bracketed the problem tightly enough that the behavior flipped in theexpecteddirection.Let me calm this down and give you a clear mental model, because right now it feels like whack-a-mole, but it’s not.What just happened (and why it’s logical)You did this:Tightened the definition of ambiguity to “unresolved referents only”Added explicit exclusions for exploratory questionsAdded the “assistant may resolve ambiguity” clauseSwitched fromnano(shallow rules) tomini(discourse-aware)Result:Mini now correctly saysfalsefor:exploratory promptsassistant-resolved referents…but now it almostneversaystrueThat’s not random. It means:You have accidentally defined ambiguity so narrowly that only “pure referential failure” cases qualify.Those are actually rarer than you think.The key realization (this is the unlock)Right now, your ambiguity detector is answering this question:“Is this pair self-containedafterreading the assistant response?”And mini is very good at saying “yes” whenever the assistant doesany
+...[middle omitted for tagging]...
+alseLeena example:Assistant names fatherRestates operationShould befalseMicro black hole brainstorming:No referential dependency at allIf mini still never returnstrueafter this,thenwe reassess.Why this is actually progress (not regression)You’ve now:Proven nano is too shallowProven mini can reason correctlyNarrowed ambiguity to asingle semantic conditionReduced the problem from “millions of edge cases” to:“Did the assistant explicitly restate the referent?”That is afinite, testable rule.One last mental anchor (keep this)Ambiguity is not “was an answer given”.Ambiguity is “could this answer exist without earlier context”.Mini needs to be told that difference explicitly.Bottom lineYou’re not stuck.You’re at thelast 5%tuning phase, which always feels the worst.Add that one rule.Run the three contrast tests.Then stop touching it for a while.If you want, next I can:Rewrite the full prompt one final time with all rules consistentHelp you add a tiny unit test harness for ambiguity casesOr help you decide when to stop tuning and move onBut you arevery close, not lost.
+
+
+====== TAGGER RESPONSE ======
+{"topics":"gpt-5-mini, ambiguity classification, model behavior, test cases, prompt tuning","intent":"ask for guidance on how to test and tune ambiguity detection after switching models","type":"technical, system","semantic_handle":"ambiguity detector tuning after model switch","questions":[]}

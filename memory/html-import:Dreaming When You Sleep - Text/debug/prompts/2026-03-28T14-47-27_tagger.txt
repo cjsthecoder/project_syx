@@ -1,0 +1,159 @@
+# timestamp: 2026-03-28T14-47-27
+# project_id: html-import:Dreaming When You Sleep - Text
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: patent, continuations, merging B and C, claim strategy, legal budget
+#intent: ask for concrete examples of continuation flexibility loss
+#type: technical, planning
+#semantic_handle: continuation flexibility in patent merging
+
+------USER------
+for this statement "You lose some future flexibility for continuations", what are some examples there?  or is this more just in general, maybe I lose flexibility?
+
+------ASSISTANT------
+Great question, and this is worth being concrete about rather than hand-wavy.When people say“you lose future flexibility for continuations”, they are not talking about a vague penalty. They meanspecific strategic options that only exist if inventions are separated early. Here are clear, real examples so you can judge whether you actually care.First, quick grounding: what a continuation really isAcontinuation(or continuation-in-part) lets you:Reuse thesame original disclosureFilen
+...[middle omitted for tagging]...
+hen I said:“You lose some future flexibility for continuations”What I meant was:You tradeportfolio maneuverabilityforstrength and simplicityYou lose some optionalityonly if you later have resources to exploit itGiven your constraints and goals, merging B and C is adefensible, intelligent move, not a mistake.If you want, next we can:Rename the merged patent cleanlyCollapse the section list into a single coherent structureMake sure nothing accidentally narrows scope during the merge
+
+------CURRENT TURN------
+------USER------
+can you give me a detailed description and definition of Patent D as we defined it here?
+
+------ASSISTANT------
+Absolutely. Below is aclear, formal, patent-ready description and definition of Patent D, written to reflectexactlyhow we have defined it throughout this process, without drifting into B or C territory.This isnota title page or background. This is theconceptual definitionof the invention itself. You can reuse this verbatim later as the basis
+ for Technical Field, Background, or High-Level System Description.Patent D — Conceptual DefinitionModel-Driven Retrieval Routing and Inference-Time Context AssemblyCore IdeaPatent D covers a system and method formodel-driven orchestration of inference-time context construction, in which an artificial intelligence system autonomously analyzes an incoming interaction and determineswhether retrieval is necessary,which memory sources should be consulted, andhow retrieved information should be incorporated into a prompt used for response generation.The invention operatesduring active interaction, not during memory consolidation or offline introspection, and governs how the system decideswhat information to include or excludeat inference time.What the invention isnotPatent D doesnotcover:Memory consolidation or long-term storageOffline introspective reasoningKnowledge synthesis or reflectionPeriodic maintenance cyclesThose are addr
+...[middle omitted for tagging]...
+governhow information is stored, transformed, or reflected upon over time.This separation allows inference behavior to evolve independently of memory management or offline reasoning systems.Why this is a distinct inventionThe novelty of Patent D lies in the fact that:retrieval isnot unconditional,context construction ismodel-driven, not static,memory inclusion isselective and dynamic,inference behavior adapts to the nature of each interaction.Existing systems typically retrieve by default, retrieve uniformly, or rely on fixed heuristics. Patent D instead introducesAI-mediated decision making about retrieval itself, as a control layer preceding response generation.One-sentence summary (useful later)Patent D covers systems and methods
+ for model-driven inference-time retrieval routing and dynamic prompt 
+assembly, in which an artificial intelligence system autonomously 
+determines whether, how, and from which memory sources information is 
+incorporated into an inference prompt during active interaction.If you want, the next step could be:turning this into aTechnical Field + Backgroundfor D, orstress-testing whether D is strong enough to justify filing alongside A and merged B/C, ormapping D cleanly to the diagrams you already haveJust tell me how you want to proceed.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Patent D, model-driven retrieval routing, inference-time context assembly, prompt assembly",
+  "intent": "ask for detailed definition and description",
+  "type": "technical, planning",
+  "semantic_handle": "Patent D conceptual definition",
+  "questions": []
+}

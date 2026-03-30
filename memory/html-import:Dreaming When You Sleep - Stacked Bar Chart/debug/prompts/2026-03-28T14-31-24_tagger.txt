@@ -1,0 +1,154 @@
+# timestamp: 2026-03-28T14-31-24
+# project_id: html-import:Dreaming When You Sleep - Stacked Bar Chart
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: benchmark conversation, memory entries, web side, JSON, turn 1-8, NEEDLE-38102
+#intent: request corrected benchmark patch
+#type: technical, meta
+#semantic_handle: corrected benchmark memory JSON patch
+
+------USER------
+if it is just 1-8, then yeah generate the new, I just tried it and it worked on web side.
+
+------ASSISTANT------
+JSON[{"turn_id":1,"prompt_text":"For this benchmark conversation only, remember this key-value pair for later recall.\nKey: NEEDLE-15234\nValue: atmospheric superconducting dust lattice\nReply only: stored.","rubric_id":"turn_1","rubric_text":"Evaluate the response using the following criteria.\n\nTask Completion: The response acknowledges the storage instruction correctly.\n\nFormat Compliance: The answer is only the single word 'stored' with no meaningful extra text.\n\nClarity: The response is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact required reply with no deviation\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes unnecessary extra text or mild formatting drift\n- 2 = partially correct but unclear or noncompliant\n- 1 = incorrect, missing, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact compliance. Do not lower a score because of cosmetic formatting artifacts unless they meaningfully change the answer."},{"turn_id":2,"prompt_text":"For this benchmark conversation only, remember
+...[middle omitted for tagging]...
+prompt_text":"For this benchmark conversation only, remember this key-value pair for later recall.\nKey: mars_system_name\nValue: Acheron Array\nReply only: noted.","rubric_id":"turn_8","rubric_text":"Context: Earlier turns established the full set of initial stored mission facts.\n\nEvaluate the response using the following criteria.\n\nTask Completion: The response acknowledges the memory instruction correctly.\n\nFormat Compliance: The answer is only the single word 'noted' with no meaningful extra text.\n\nClarity: The response is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact required reply with no deviation\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes unnecessary extra text or mild formatting drift\n- 2 = partially correct but unclear or noncompliant\n- 1 = incorrect, missing, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact compliance. Do not lower a score because of cosmetic formatting artifacts unless they meaningfully change the answer.","depends_on_turns": [1,2,3,4,5,6,7]}]
+
+------CURRENT TURN------
+------USER------
+double face palm.  they seem to work in web, but this "For this benchmark conversation only, remember this key-value pair for later recall.\nKey: NEEDLE-15234\nValue: atmospheric superconducting dust lattice\nReply only: stored." was ranked as chitchat again.
+
+------ASSISTANT------
+Yeah — the word“remember”is probably enough to drag it back toward chitchat or memory-ish/meta behavior on the Morpheus side.So I would stop using both of these families of words in the seed turns:persistent memoryremember ... for later recallWhat you want is something that looks like atasked setup operation, not a conversational memory request.Try this pattern instead:Benchmark setup step: register th
+...[middle omitted for tagging]...
+dd the following record to the benchmark data table.Key: NEEDLE-15234Value: atmospheric superconducting dust latticeReply only: stored.That sounds even more procedural.I’d test one of those before changing the full set. The most likely winner is:Benchmark setup step: register this key-value pair in the conversation data.Key: NEEDLE-15234Value: atmospheric superconducting dust latticeReply only: stored.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "benchmark setup, chitchat classification, memory request wording, Morpheus, web",
+  "intent": "troubleshoot prompt wording for benchmark classification",
+  "type": "technical, meta",
+  "semantic_handle": "benchmark prompt wording for memory classification",
+  "questions": []
+}

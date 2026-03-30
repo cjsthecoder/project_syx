@@ -1,0 +1,160 @@
+# timestamp: 2026-03-28T14-26-11
+# project_id: html-import:Dreaming When You Sleep - Patent B Revision Outline
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Patent A, abstract, artificial intelligence systems, memory consolidation, long-term knowledge management
+#intent: draft aligned patent abstract
+#type: technical
+#semantic_handle: Patent A abstract drafting
+
+------USER------
+ok, one thing we need for A (well A for now) is an Abstract
+
+------ASSISTANT------
+Here is aPatent A–aligned abstract,
+ written to match everything you have locked in so far and to survive 
+§102 and §103 scrutiny. It stays deliberately architectural, 
+lifecycle-focused, and avoids Patent B territory.AbstractSystems and method
+...[middle omitted for tagging]...
+timized for examiner skimming.Amethod-claim-friendly abstractthat maps cleanly to flow diagrams.Apair of abstractsA and B that are clearly distinct but stylistically aligned.But as it stands, this abstract is solid, conservative, and defensible.
+
+------CURRENT TURN------
+------USER------
+in the past checklist, we are up to this:
+☐ Optional: Add brief method-style embodiment section (A)
+
+what is that?
+
+------ASSISTANT------
+Good question. This item sounds scarier than it is.What “Optional: Add brief method-style embodiment section (A)” meansIt means adding ashort narrative section written in method language, without turning Patent A into a full method-claim patent and without overlapping Patent B.Think of it as abridge between the system description and future method claims, included purely to strengthen enablement and examiner clarity.You already have most of the substance. This would just reframe it once, cleanly, as steps.What it isnot❌ Not required❌ Not a separate patent❌ Not Patent B❌ Not a detailed algorithm❌ Not step-by-step code behaviorYou can skip it and still be fine. It is optional because Patent A already stands on a
+...[middle omitted for tagging]...
+ead-only use during subsequent inference without modifying stored memory.That is it. One paragraph, one list.Should you include it for Patent A?My honest take, given where you are now:✔️Nice to have❌Not required✔️ Low risk if you keep it high-level✔️ Helps if examiner tries to force-fit RAG prior artIf you feel done and don’t want scope creep, you can safelycheck this as intentionally skipped.If you want maximum polish before filing, this is thelast optional reinforcement, not a missing core piece.If you want, I can:Write afinal, perfectly scoped versionyou can drop in verbatimOr tell you exactlywhereit would go and how to label it so it doesn’t blur with Patent BBut you are not missing anything critical here.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Patent A, patent checklist, method-style embodiment, patent abstract, enablement",
+  "intent": "ask for explanation",
+  "type": "technical",
+  "semantic_handle": "Patent A method-style embodiment section",
+  "questions": []
+}

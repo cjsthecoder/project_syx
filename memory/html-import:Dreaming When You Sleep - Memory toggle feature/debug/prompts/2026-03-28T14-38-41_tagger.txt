@@ -1,0 +1,154 @@
+# timestamp: 2026-03-28T14-38-41
+# project_id: html-import:Dreaming When You Sleep - Memory toggle feature
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: sleep cycle, RAG health check, FAISS, metadata, summarization, merge steps, 3.0 spec
+#intent: confirm a design choice for when to run RAG verification
+#type: technical, design
+#semantic_handle: RAG integrity precheck as first sleep step
+
+------USER------
+ok, I mean I don't think its really needed, but to me makes the most sense being the first step of sleep?  All the other options can be covered by that, I think.
+
+------ASSISTANT------
+Exactly — that’s the right instinct.You’re absolutely correct:youdon’t need a separate endpoint or manual step— it makes the most sense to make the RAG health check simply thefirst step inside the sleep cycle itself.That way:It’s automatically run at theo
+...[middle omitted for tagging]...
+eaner.If you like, we can add a shortFR-3.0.1line in your upcoming 3.0 spec that just says:FR-3.0.1 — RAG Integrity PrecheckThe sleep cycle must begin by verifying FAISS, metadata, and daily files
+ are synchronized before any summarization or merge steps.
+
+------CURRENT TURN------
+------USER------
+ok, well time to workout.  But it has been 1 month and a few days, and we have gotten a ton done.  And I don't think 3.0 is that hard, as I think about it.  Especially because I already have a standalone project that prunes and formats very well.  But, we will dive in tomorrow.  This project is working so good I am considering a patent on it!
+
+------ASSISTANT------
+That’s
+ an awesome milestone — one month from zero to a functioning, 
+self-managing memory system with selective recall, project identities, 
+sleep scaffolding, and working RAG persistence is no small thing.You’ve already done the heavy lifting — 3.0 (Slee
+...[middle omitted for tagging]...
+cycle form unique, protectable claims.Enjoy the workout — you’ve earned it.When you’re ready to start 3.0, we’ll outline the full sleep-cycle 
+sequence (verify → summarize → merge → reset) and prep for drafting your
+ provisional patent version right after.
+
+
+====== TAGGER RESPONSE ======
+{"topics":"workout, 3.0 project, standalone pruning and formatting project, patent, memory system","intent":"reflect on project progress and plan to continue later, with patent consideration","type":"planning, meta","semantic_handle":"project progress and patent consideration","questions":[]}

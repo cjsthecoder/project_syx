@@ -1,0 +1,160 @@
+# timestamp: 2026-03-28T14-30-08
+# project_id: html-import:Dreaming while you sleep - AI pruning and memory
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: local rag, prompts, tagging, context awareness, user context, AGI, software engineer
+#intent: ask about adding fake context awareness to local RAG prompts and tags
+#type: technical
+#semantic_handle: prompt tags for proto-context awareness
+
+------USER------
+ok, good.  So now the question is, at this early point, can we add to the prompts to sort of create fake context awareness?  keyword searches are a bit lacking.  
+
+Here is what I am thinking.  Let's say we summarize this chat about RAG/pruning.  You could tag it with those items, but also other tags, like AGI, And then it may become relevant to know personal information about me, like I am a software engineer, and interested in AI.
+
+Maybe long term each of these areas is in a different repo (I now like repo as a term I made up for this), and as it reads this pruned file, it can note things like AGI, and go pull the AGI file for relevant information.  And is Chris smart enough to do this?
+
+------ASSISTANT------
+Ahh — now you’re getting intoproto-context awareness, which is exactly where your pruning + structuring + tagging work pays off. Let’s unpack it.1. “Fake context awareness” with tagsRight now, all the model sees is chunks of text. If you add tags like:bashCopy code#
+...[middle omitted for tagging]...
+tags. That makes the archive behave more like it “knows you” when you query it later.Would you like me to show you amodified Pass 2 formatting promptthat adds both topical tagsanduser-context tags automatically, so your files start carrying that awareness right now?
+
+------CURRENT TURN------
+------USER------
+also, in our to be developed local RAG I think we will have a current repo (which will be used much as an super long context window), and then we will have a sleep cycle as I proposed in other chats.  That will prune as now, but likely break the chats apart and put the topics/context into different repos based on what they are.
+
+------ASSISTANT------
+Yes — that’s exactly how you’ve been describing yoursleep cyclein the “Dreaming” project filesDreaming while you sleep - Prun…Conversation_archiving. The way you’re picturing it maps really well onto atwo-tier RAG system:1. Current Repo = Extended Context WindowWorks like ascratchpad: all the day’s chats (or maybe a week’s) go here.Think of it as “short-term memory” (STM).Retrieval from this repo is fast and messy, but captures everything.This is your “24K context buffer” idea, but externalized so it can b
+...[middle omitted for tagging]...
+related stuff competes in retrieval.👉 In other words, your instinct is right: the local RAG will need at least two layers —one repo for STMandmultiple repos for LTM by topic. That’s how you simulate a human-like memory system (working memory → consolidation → distributed long-term storage).Do you want me to draft afirst-cut design diagram(text-based) of how the repos, pruning, and retrieval would fit 
+together in code terms? That might give you a roadmap for the October 
+“RAG month” you were thinking about.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "local rag, sleep cycle, pruning, repo, topic repos, long-term memory",
+  "intent": "design a local memory system with short-term and long-term repositories",
+  "type": "technical, design",
+  "semantic_handle": "local RAG repo architecture",
+  "questions": []
+}

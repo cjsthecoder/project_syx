@@ -1,0 +1,220 @@
+# timestamp: 2026-03-28T14-01-25
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: REQUIREMENTS.md, engineering deltas, requirements management, versioning, Morpheus, Cursor
+#intent: design a process for separating stable requirements from engineering changes
+#type: technical, design
+#semantic_handle: requirements and engineering delta separation
+
+------USER------
+REQUIREMENTS.mdFileattached is the requirements file from the project.  this process worked very well.  I would discuss with you the next requirement, because you knew the deep history of the project, and then I put the requirement in the file.  I would have Cursor look and ask questions, once all answered, would have it implement the requirement.  
+
+here is problem though, how to we we engineer parts?  do we make a new requirement, 5?  which would work, but as we changed things the requirements file would no longer match the code.
+
+------ASSISTANT------
+This is areal engineering problem, not a process nit, and you are right to stop and design it instead of papering over it.Short answer first, then the concrete pattern.The core issue you are seeingYou currently haveone artifact doing three jobs:Product intent and scope definitionCursor instruction surfaceArchitectural truth of the codebaseThose three inevitably drift at different speeds.If you keep adding “Requirement 5, 6, 7…” you get:• A file that no longer reflect
+...[middle omitted for tagging]...
+not:• Renumber• Rewrite old FRs• “Fix” requirements to match codeDo:• Freeze requirements• Layer deltas on top• Let the file tell the story of evolutionIf you want, next stepsI can help you:• Define the exact template for ENGINEERING_NOTES.md• Decide which upcoming change is a delta vs a new FR• Write the first 2–3 delta entries with you• Teach Cursor how to interpret both files correctlyBut architecturally, you are asking the right question at exactly the right time.
+
+------CURRENT TURN------
+------USER------
+ok, in Cursor below is the rule we made that works for REQUIREMENTS.md.  I added a file called DELTAS.md, so I want to tweak this prompt to have it refer to DELTAS.md instead of, or before maybe requirements.
+
+---
+alwaysApply: true
+description: "Morpheus AGI Chatbot Project Prompt"
+priority: high
+---
+
+# Morpheus AGI Project Rules
+
+You are working inside the **Morpheus AGI Chatbot Framework** repository.  
+This project implements a modular chatbot and memory system with:
+
+- **Frontend**: React + Shadcn/UI  
+- **Backend**: FastAPI (LLM routing, Builder Model, Tagger Model)  
+- **Memory**: daily.txt, pruned_memory.txt, FAISS indexes, sleep/dream pipeline  
+- **Docs**: REQUIREMENTS.md (authoritative source of truth)
+
+## General Guidance
+
+1. Refer to **docs/REQUIREMENTS.md** as the authoritative specification.
+   - Every feature, endpoint, and behavior must be consistent with REQUIREMENTS.md.
+   - If the user asks for code changes, verify alignment with requirements first.
+   - Never introduce functionality not supported by REQUIREMENTS.md unless explicitly instructed.
+
+2. Maintain the current architecture.
+   - Frontend lives under/frontend.
+   - Backend lives under/backend/app.
+   - Memory pipeline uses:  
+     -memory/{project}/daily.faiss-memory/{project}/index.faiss- nightly sleep consolidations  
+     - weekly compression (future)
+
+3. Frontend rules.
+   - Use Shadcn/UI components.
+   - Functional components, React hooks, TypeScript.
+   - Chat UI must support:
+     - Message list  
+     - Input box  
+     - Buttons (Query RAG, Sleep Cycle)  
+     - Project selector  
+     - Forget / Remember toggles (future)  
+   - Preserve consistent layout and styling.
+
+4. Backend rules.
+   - Use FastAPI with endpoints inbackend/app/api/.
+   - All endpoints return JSON with aresponsefield.
+   - Use LangChain for LLM calls.
+   - Keep builder/tager models configurable via env:
+     -BUILDER_MODEL-TAGGER_MODEL- Sleep, dream, and RAG pipelines must follow REQUIREMENTS.md.
+
+5. Coding style.
+   - **Python**: Pydantic, modular layout, no ad-hoc scripts.
+   - **React**: TypeScript, component-driven, clean state management.
+   - Avoid temporary hacks unless explicitly requested.
+
+6. Testing.
+   - Backend: tests under/backend/tests/.
+   - Frontend: smoke tests where reasonable.
+
+## Identity
+
+Your role is to help implement this system faithfully.  
+You must follow REQUIREMENTS.md, the memory pipeline architecture, and all versioned requirements already established.
+
+---
+
+------ASSISTANT------
+This is a good moment to tighten the contract, not just tweak wording.You donotwant Cursor to treat REQUIREMENTS.md and DELTAS.md as equals.You want aclear precedence rulethat mirrors how you actually engineer.Below is adrop-in revised versionof your rule with minimal disruption, but correct semantics.Core principle to encodeDELTAS.md overrides REQUIREMENTS.mdREQUIREMENTS.md remains the baseline, historical contractCursor must always reconcile both before actingIf there is a conflict, DELTAS.md winsThat one rule prevents 90 percent of drift problems.Revised Cursor Rule (recommended)You can replace your existing rule with this, or edit only Section 1 and Identity if you prefer.yamlCopy code---alwaysApply:truedescription:"Morpheus AGI Chatbot Project Prompt"priority:high---# Morpheus AGI Project RulesYouareworkinginsidethe**MorpheusAGIChatbotFramework**repository.This project implements a modular chatbot and memory system with:-**Frontend**:React+Shadcn/UI-**Backend**:FastAPI(LLMrouting,BuilderModel,TaggerModel)-**Memory**:dai
+...[middle omitted for tagging]...
+roleistofaithfullyimplementtheMorpheussystem.You must:-TreatREQUIREMENTS.mdashistoricalandcontractual-TreatDELTAS.mdasthecurrentoperationaltruth-Askquestionswhenintentisunclear-Neversilentlydivergefromdocumentedbehavior---Why this worksCursor now has atotal orderof authorityOld requirements remain useful context, not liabilitiesYou can evolve aggressively without rewriting historyCursor will stop guessing when gaps appearThis mirrors:• kernel RFCs + errata• CPU specs + microcode updates• protocols + amendment documentsWhich is exactly the class of system Morpheus is becoming.Practical workflow going forwardWhen you want to change behavior:Discuss it hereDecide:new requirement or deltaWrite a DELTA entryCursor implementsREQUIREMENTS.md stays untouchedThat is how you keep both humans and tools sane.If you want next:• I can help you design the DELTAS.md template• Or walk through converting your current Daily/LTM unification into the first delta• Or test this rule against a hypothetical conflicting changeThis was the right move.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Cursor, DELTAS.md, REQUIREMENTS.md, Morpheus AGI Chatbot Framework, prompt engineering",
+  "intent": "tweak a Cursor project prompt to prioritize DELTAS.md over REQUIREMENTS.md",
+  "type": "technical, design",
+  "semantic_handle": "cursor prompt for requirements and deltas precedence",
+  "questions": []
+}

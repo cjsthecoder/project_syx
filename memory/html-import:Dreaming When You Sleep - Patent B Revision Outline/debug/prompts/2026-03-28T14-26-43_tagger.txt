@@ -1,0 +1,180 @@
+# timestamp: 2026-03-28T14-26-43
+# project_id: html-import:Dreaming When You Sleep - Patent B Revision Outline
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: patent_B.txt, terminology and definitions, internal consistency, defined terms, unified context construction, freeze semantics, structured insight artifacts
+#intent: check term alignment across patent text
+#type: technical, meta
+#semantic_handle: Patent B terminology consistency check
+
+------USER------
+patent_B.txtDocumenthere is the updated document.  Now lets do this:
+one-pass internal consistency check against the rest of Patent B to ensure every later use of these terms stays perfectly aligned with these definitions.
+
+------ASSISTANT------
+Did
+ a pass across the full Patent B text and checked every later use of the
+ defined terms against your Terminology and Definitions section. Overall
+ it is in good shape: the lifecycle separation, snapshot semantics, and 
+“retrieval completes before the core introspective pass” language stays 
+consistent throughout.Here are the few spots where wording drifts enough that an examiner could claim ambiguity, plus the cleanest fixes.1) “Freeze” vs “frozen unified context”Your def
+...[middle omitted for tagging]...
+B (also fine):add “derived knowledge artifacts” to the Terminology Variations list so it is explicitly covered.If you make just those edits, your 
+defined-term spine becomes airtight: stabilized interaction history → 
+freeze → consolidated interaction data → unified context (contextualized
+ memory representation) → structured insight artifacts → knowledge 
+integration rules, with “real-time inference” and “autonomous 
+maintenance mode” staying non-overlapping.patent_Bpatent_B
+
+------CURRENT TURN------
+------USER------
+ok, I made the consistency changes, now do this:
+do a one-pass internal consistency scan for B
+
+------ASSISTANT------
+Here is the one-pass internal consistency scan onPatent Bafter your edits. Overall, thephase boundary + freeze + fixed unified contextstory is staying aligned throughout the document. What remains is a 
+small set of “term drift” spots where later wording introduces 
+near-synonyms that are not in your Definitions, or uses a shorthand that
+ is not declared.Items that are still slightly misaligned1) “Consolidated memory” shows up as an undeclared termYou definedconsolidated interaction dataandunified context, but later you still useconsolidated memoryin a few places as if it were a defined object. That creates an 
+avoidable ambiguity: is “consolidated memory” the same thing as 
+consolidated interaction data, or the unified context, or something 
+else?What to do (pick one):Replace each “consolidated memory” occurrence with the correct defined term:Useconsolidated inte
+...[middle omitted for tagging]...
+r re-use.Search for:By grounding autonomous introspective analysis in a contextualized memory representation5) Minor: your “Consolidated interaction data” definition reads like it is always persistedIn your Definitions block, the “Consolidated interaction data” line currently starts with wording like“Persisted data derived from…”. Elsewhere, you describe consolidated interaction data as something the systemassemblesfor internal processing (which is fine), but “persisted” can read like a hard requirement.If you want maximum flexibility, consider changing that one definition phrase to“data derived from stabilized interaction history…”(dropping “persisted”) unless you truly intend persistence to be required.If you clean up items 1 to 3, your 
+later usage will be tightly aligned with the Definitions, and the 
+examiner will have fewer “is this the same thing?” openings.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent_B.txt, internal consistency, terminology and definitions, defined terms, term drift",
+  "intent": "check term alignment across patent text",
+  "type": "technical, meta",
+  "semantic_handle": "Patent B internal consistency scan",
+  "questions": [
+    {
+      "question": "Is \"consolidated memory\" meant to be the same thing as consolidated interaction data, unified context, or a separate defined object?",
+      "topic": "terminology and definitions",
+      "resolution": "remind_user"
+    }
+  ]
+}

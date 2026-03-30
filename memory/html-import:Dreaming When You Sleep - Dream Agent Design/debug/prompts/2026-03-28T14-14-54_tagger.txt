@@ -1,0 +1,171 @@
+# timestamp: 2026-03-28T14-14-54
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: debug file generation, helper function, idea_output.json, in-memory flow, research_agent, merge_dream
+#intent: clarify requirements for JSON handling and debug file writing
+#type: technical, design
+#semantic_handle: Idea agent debug file and JSON flow requirements
+
+------USER------
+for this, 4.1.3.2.9 Also, it should add a helper function to do the check/write, don't do it inline.
+
+For 4.1.3.2.8, I thought we would just return the json as a string?  Then just pass that to research.  Why are we writing to file?
+
+------ASSISTANT------
+Excellent clarifications.Both of these points should be incorporated into the requirements.Let’s take them one at a time.============================================================1. Debug file generation must use a helper function============================================================You are absolutely right that debug file writing should NEVER happen inline inside idea_agent.py.This prevents:duplicationmessy codeinconsistent file handlingbrittle path logicInstead, idea_agent.py should call a helper:scssCopy
+...[middle omitted for tagging]...
+ution BoundariesSame.============================================================Summary of ChangesYou clarified two critical design choices:1. No intermediate idea_output.jsonAll idea agent output flowsin memoryto the next agent.2. Debug files use a helper, not inline writesFuture maintainability is improved.These changes simplify dream(), research_agent, and merge_dream.============================================================If this looks right, I will polish it into thefinal REQUIREMENTS.md style formatting.
+
+------CURRENT TURN------
+------USER------
+ok, for logging, use the [DREAM][IDEA] tags for the info tags steps (although remove file save success).
+
+I think this will confuse it:
+FR-4.1.3.2.11 Limits
+
+The Idea Agent SHALL NOT:
+
+perform research
+
+merge files
+
+write to long term memory
+
+These actions belong to downstream components.
+
+does idea agent need the research api? (we have two different calls)
+
+------ASSISTANT------
+Perfect timing to catch those two issues.Let’s address both cleanly.============================================================1. Logging Requirements Fix============================================================You are absolutely right thatfile save successshould be removed.The Idea Agent isn’t saving persistent output anymore, so that log line would confuse Cursor or create phantom requirements.Also, we need to ensure:• Info logs use[DREAM][IDEA]• Warning and error logs do NOT use DREAM tagsHere is the corrected logging requirement:FR-4.1.3.2.10 Logging Requirements (Corrected)The Idea Agent SHALL log the following messages:Info logsUsing the prefix[DREAM][IDEA]:agent startnumber of extracted itemsWarning logsWithout DREAM tags:missing or empty dream_contextmissing expected fields in LLM responseError logsWithout DREAM tags:JSON parsing failuresunexpected exceptionsWarning and error l
+...[middle omitted for tagging]...
+ces insights and research topics.Does not call your research wrapper.Research Agent:Takes those research topics.Calls your research API wrapper.Writes research results.Two completely separate flows.If we keep this distinction sharp in requirements, Cursor will not get confused.============================================================Summary of Required FixesWe will update the requirements as follows:1. Logging rules updatedInfo logs use[DREAM][IDEA]No file save successErrors and warnings untagged2. Remove FR-4.1.3.2.11 (the "Limits" section)Replace with a single architectural note clarifying no external research tools are used.3. Ensure requirements never imply the Idea Agent should call the research API.============================================================If you're ready, I can now generate thefinal official versionof:4.1.3.2 Idea Agent Requirementswith these corrections applied.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "idea agent, logging requirements, [DREAM][IDEA], research api, requirements",
+  "intent": "clarify logging rules and research api boundaries",
+  "type": "technical, design",
+  "semantic_handle": "Idea agent logging and research api boundaries",
+  "questions": []
+}

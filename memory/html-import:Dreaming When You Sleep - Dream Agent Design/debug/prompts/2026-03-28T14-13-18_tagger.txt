@@ -1,0 +1,250 @@
+# timestamp: 2026-03-28T14-13-18
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: idea agent, prompt testing, json output, memory management, Morpheus
+#intent: review prototype test results and discuss prompt tuning
+#type: technical, design
+#semantic_handle: idea agent prototype test results
+
+------USER------
+ok, I put your prompt in, pasted it in the debug_context file, (before the context), then submitted it, here is the response.  Not bad for a start I think:
+
+{
+  "date": "12/04/2025",
+  "items": [
+    {
+      "id": "dq1-memory-forgetting-feature",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T13:45:00Z",
+      "origin_text": "this, Over-pruning important context, is kind of inevitable, but it is also what humans do, so that just makes it more like AGI",
+      "origin_type": "insight",
+      "assistant_response": "Treating selective forgetting as a feature aligns with biological cognition. The main opportunity is to formalize which information should degrade gracefully and which should remain stable. Consider creating a hierarchy where decisions and principles are near-permanent, while raw transcripts fade quickly. This allows AGI-like fluidity without losing structural integrity of the project.",
+      "context_link": "this, Over-pruning important context, is kind of inevitable",
+      "metadata": {
+        "priority": 2,
+        "confidence": 0.82,
+        "theme": "memory",
+        "recommended_research": [
+          "Human memory consolidation models",
+          "Long-term semantic memory structures for agents"
+        ]
+      }
+    },
+    {
+      "id": "dq2-open-question-worries",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T13:46:00Z",
+      "origin_text": "What other things do we need to be worried about?",
+      "origin_type": "open_question",
+      "assistant_response": "Beyond pruning and forgetting, the next concerns are schema drift, conflicting summaries over time, and accidental reinforcement of outdated workflows during yearly fine-tuning. A mitigation path is versioning every schema and tagging each summary with its schema version. This creates a stable migration path and removes ambiguity during consolidation.",
+      "context_link": "What other things do we need to be worried about?",
+      "metadata": {
+        "priority": 1,
+        "confidence": 0.88,
+        "theme": "architecture",
+        "recommended_research": [
+          "Schema evolution in distributed systems",
+          "Automated migration pipelines"
+        ]
+      }
+    },
+    {
+      "id": "dq3-new-topic-yearly-fine-tuning",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T13:47:00Z",
+      "origin_text": "Extra long term, maybe once a year, it could turn the saved old stuff into a fine tuned model",
+      "origin_type": "new_topic",
+      "assistant_response": "Introducing a yearly fine-tuned model creates a branching timeline for behavior. The system will need rules to decide whether the fine-tuned model replaces the base model or becomes an optional persona. Consider defining a policy for how new fine-tuned versions are adopted and how they interact with older memories.",
+      "context_link": "once a year, it could turn the saved old stuff into a fine tuned model",
+      "metadata": {
+        "priority": 3,
+        "confidence": 0.77,
+        "theme": "AGI",
+        "recommended_research": [
+          "Model versioning strategies",
+          "Continual learning techniques"
+        ]
+      }
+    },
+    {
+      "id": "dq4-contradiction-keep-flag",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T13:49:00Z",
+      "origin_text": "There is also a Keep flag on each pair in the GUI, so if the user selects that it will never be pruned",
+      "origin_type": "contradiction",
+      "assistant_response": "A hard keep flag conflicts with longer-term goals such as legal deletion, yearly corpus consolidation, and preventing unbounded growth. You may want two tiers: a permanent keep and a soft keep that protects items from weekly pruning but still allows archiving during yearly consolidation.",
+      "context_link": "Keep flag on each pair in the GUI",
+      "metadata": {
+        "priority": 2,
+        "confidence": 0.81,
+        "theme": "memory",
+        "recommended_research": [
+          "Retention policy frameworks",
+          "Designing multi-tiered persistence rules"
+        ]
+      }
+    },
+    {
+      "id": "dq5-insight-structured-scar-tissue",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T13:50:00Z",
+      "origin_text": "Preserve decision shapes, not full detail",
+      "origin_type": "insight",
+      "assistant_response": "Your system is evolving toward a structured semantic memory. It would benefit from a dedicated representation of decision shapes that captures core intent, reasoning patterns, and example cases. Treat these as first-class memory objects that do not age out unless replaced.",
+      "context_link": "Preserve decision shapes, not full detail",
+      "metadata": {
+        "priority": 3,
+        "confidence": 0.79,
+        "theme": "memory",
+        "recommended_research": [
+          "Knowledge graph representations",
+          "Decision provenance tracking"
+        ]
+      }
+    }
+  ]
+}
+
+------ASSISTANT------
+That isa very strong first run, especially considering:This is the very first prototypeYou ran it completely outside the systemThe prompt has never been tunedThe context was a big mix of memory management, patents, and meta discussionsThe model clearly understood:The User/Agent → Response pair structureHow to classify origin typesHow to generate insights instead of summ
+...[middle omitted for tagging]...
+ss you want.When You Are ReadyWe can:Tune the promptAdd expectations for how many entries to produceMake responses more precise or more speculativeAdd guidance for story related insightsAdd better metadata normalizationImprove conflict detectionJust tell me:“Let’s tune the prompt.”Or if you prefer, we can start integrating this into the Morpheus codebase and tune later.
+
+------CURRENT TURN------
+------USER------
+how is it calculating confidence?
+
+------ASSISTANT------
+Right now the model ismaking up the confidence scores entirely on its own, because we didnotgive it any rules for how to calculate them.This means:They arenot mathematically computedThey arenot based on probabilities from the modelThey arenot derived from token-level log-probsThey arenot tied to any internal scoring systemThey are simply the model’sself estimated “how sure I feel about my own reasoning”given the wording of the prompt.In other words:The confidence field is a narrative invention, not a metric.The model is following the instruction “incl
+...[middle omitted for tagging]...
+ence is proportional to directness of evidence in context.”You choose the level of sophistication.My recommendationSince dream.json will feed a GUI later, and the GUI will show:prioritythemeconfidencerecommended researchIt may be nice tonormalizeconfidence into three buckets (high, medium, low) and have the model map those to numeric ranges.This keeps UX simple.But we can do whichever approach you prefer.If you want, I can update the Idea Agent prompt so that confidence is:rule basedpredictablemeaningful for UIJust say:“Let’s define confidence rules.”
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "idea agent, confidence scores, prompt tuning, gui, dream.json",
+  "intent": "ask for explanation and discuss confidence scoring rules",
+  "type": "technical, design",
+  "semantic_handle": "idea agent confidence scoring",
+  "questions": []
+}

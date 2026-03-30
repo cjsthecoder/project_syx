@@ -1,0 +1,156 @@
+# timestamp: 2026-03-28T14-13-34
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: user input required, question handling, idea agent prompt, dream agent, prompt rules
+#intent: clarify how to handle open questions by providing helpful context and decision support
+#type: meta, technical
+#semantic_handle: handling user input required questions
+
+------USER------
+for questions what I was hoping is that it would look at them, if they are user input required, then look at the question and see if there is useful information that would help the user answer the question.
+
+------ASSISTANT------
+Great, that is the right behavior for the Idea Agent, and it isexactly the missing piecewe need to add to the prompt.Right now the Agent treats questions too cautiously.You want it to be smarter:Notice a question that requires user inputTry to help the userthink about the questionProvide background, considerations, options, implicationsProvide reasoning scaffoldingProvide examples or frameworksProvide tradeoffs that would help the user chooseProvide clarifications of what the decision affectsMaybe offer research directio
+...[middle omitted for tagging]...
+ reduces cost.A large STM increases historical awareness but risks sluggish performance.You may want to consider how often you expect long threads, how 
+important fine detail is to your workflow, and whether future GUI tools 
+should allow manual STM overrides.”That is the Dream Agent working as intended.Do you want me to update theentire Idea Agent prompt, inserting this new block correctly and integrating it with the confidence rules and the expanded insight logic?If yes, just say:“Yes, update the full prompt with this.”
+
+------CURRENT TURN------
+------USER------
+do I replace this with the above new prompt? 1. Identify Open Questions
+
+------ASSISTANT------
+Yes — you shouldreplace the entire existing “Identify Open Questions” task blockwith the new, expanded version that includes the correct behavior foruser input requiredquestions.Right now your Open Questions task probably looks something like:Identify open questions.If answerable from context, answer.If not, classify.Generate a DreamEntry, etc.This is too weak and does not capture the reasoning support you want.The new block I wrotecompletely replaces that, because:It explains how to handle different kinds of open questionsIt includes the new “help the user make the decision” behaviorIt integrates with confidence scoring rulesIt specifies how to use context to scaffold reasoningIt stops the model from hallucinating answersIt specifies metadata behaviorIt ensures recommended resea
+...[middle omitted for tagging]...
+.D. If the question is trivial, informational, or not relevant to the project’s goalsDo not create a DreamEntry.E. General RulesEach open question producesat most oneDreamEntry.Only generate entries that add meaningful value.All open question DreamEntries must follow the JSON schema exactly.This replacement block integrates perfectly with:the Confidence Rulesthe Expanded Insights systemthe Daily + Project context architectureselective, non hallucinating behaviorOnce you paste this in, the Idea Agent will finally behave the way you originally envisioned:A nightly system that helps you think through decisions instead of answering them for you.If you want, I can now rebuild theentire Idea Agent promptwith all changes integrated cleanly so you don’t need to worry about missing pieces.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "open questions, prompt replacement, idea agent prompt, dreamentry, confidence rules",
+  "intent": "clarify whether to replace an existing prompt block with a new version",
+  "type": "meta, technical",
+  "semantic_handle": "replacing open questions prompt block",
+  "questions": []
+}

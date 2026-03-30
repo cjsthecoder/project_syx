@@ -1,0 +1,184 @@
+# timestamp: 2026-03-28T14-16-37
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: research_summary, ResearchEntry, build_research_prompt, run_research_agent, json parsing
+#intent: simplify research agent output and entry construction
+#type: technical, design
+#semantic_handle: research summary text output simplification
+
+------USER------
+this is adding a step we are going to ignore, we should just have it return the research text, and stick it in to the entry.  {{
+  "entry_id": "{entry_id}",
+  "agent": "researcher_agent",
+  "timestamp": "<ISO timestamp>",
+  "research_topic": "{research_topic}",
+  "research_summary": "<your factual summary>",
+  "metadata": {{
+    "confidence": <score>,
+    "related_theme": "{theme}"
+  }}
+}}
+
+------ASSISTANT------
+Yeah, you are right to push on that.Having the model spit back the full ResearchEntry JSON is work we do not
+ actually need, since we already know almost all those fields in code.We should simplify.What to changeInstead of this:Prompt: “Return this JSON object with entry_id, agent, 
+...[middle omitted for tagging]...
+aph.Thenresearch_llm_calljust gives you a string, and you shove it intoresearch_summary.If you like this, next step is to update:4.3.3 requirements so they say “model returns summary text”the prompt inbuild_research_promptto remove the JSON output block and just ask for a paragraph.
+
+------CURRENT TURN------
+------USER------
+I tweaked it a little bit to this:
+4. Confidence scoring:
+   - 0.80 for strong, well grounded research  
+   - 0.55 for partially grounded research  
+   - 0.30 for weakly grounded research  
+
+Write a concise, factual research summary as plain text.
+Do not return JSON.
+Do not repeat the origin text or the Idea Agent response.
+Output only the research summary with the topic in this format:
+{research_topic}
+factual research summary
+
+Global Rules: 
+- Do not include commentary or explanation outside JSON.  
+- Do not modify the Idea Agent response.  
+- Do not generate insights or opinions.  
+- Do not mention the research tool.  
+- If unsure about a name for a theory or concept, describe it without naming it.
+
+------ASSISTANT------
+This is very close, but there is onemajor correction needed.Your Global Rules still say:Do not include commentary or explanation outside JSON.…but your new formatdoes not return JSON at all, it returns plain text:cssCopy code{research_topic}
+factual researchsummarySo this rule contradicts the output format and will confuse the model.We simply need to delete or rewrite that rule.Below is the corrected and cleaned version.Corrected Final VersionHere is 
+...[middle omitted for tagging]...
+e for a theory or concept, describe it instead of naming it.Why this version worksNo contradictions.The model is not forced to emit JSON when you're expecting plain text.The output is extremely easy to embed back into your DreamEntry structure.Cursor will not fight this phrasing.The agent remains pure and predictable.If you want, I can now update:4.3.3 Research Agent Implementation Requirementsto match the new format so Cursor builds the correct code.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "confidence scoring, research summary, JSON, plain text output, prompt formatting, Cursor",
+  "intent": "clarify and clean up the research agent output format",
+  "type": "technical, design",
+  "semantic_handle": "research summary prompt format cleanup",
+  "questions": []
+}

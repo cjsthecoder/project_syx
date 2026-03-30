@@ -1,0 +1,162 @@
+# timestamp: 2026-03-28T14-25-35
+# project_id: html-import:Dreaming When You Sleep - Patent B Revision Outline
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: patents, examiner lens, memory lifecycle, intelligent agent framework, invention scope
+#intent: reinforce understanding of patent distinction
+#type: research, legal
+#semantic_handle: Patent distinction and invention scope clarification
+
+------USER------
+ok, I am starting to understand
+
+------ASSISTANT------
+Good. That’s the right place to be.What usually happens next is that 
+things stop feeling chaotic and start snapping into place. Let me help 
+lock that in, in a very grounded way.What just clicked for you (even if you didn’t phrase it yet)You stopped thinking in terms offeaturesand started thinking in terms 
+...[middle omitted for tagging]...
+d because you’re swimming in the right pool.If you want, next time we can:sharpen one or two sentences that most clearly separate you from that patent, orcreate a one-paragraph “examiner lens” explanation you can mentally apply to everything you writeBut for now, you’re doing exactly what you should be doing.
+
+------CURRENT TURN------
+------USER------
+I am reading through the ones that were matched to patent B.  
+
+This one is a little overlap, also old, and not AI as much as essentially a descision tree.  I guess this is the same thing as the one for A, where yes, we do get questions (using AI), but that isn't what the system does overall, just one step.
+
+Generating secondary questions in an introspective question answering system
+Abstract
+A method of generating secondary questions in a question-answer system. Missing information is identified from a corpus of data using a computerized device. The missing information comprises any information that improves confidence scores for candidate answers to a question. The computerized device automatically generates a plurality of hypotheses concerning the missing information. The computerized device automatically generates at least one secondary question based on each of the plurality of hypotheses. The hypotheses are ranked based on relative utility to determine an order in which the computerized device outputs the at least one secondary question to external sources to obtain responses.
+
+------ASSISTANT------
+Your read is correct, and you are reasoning about it in exactly the way an examiner does.Let me make this very concrete and calm the overlap concern.What that prior art actually claimsThat patent is aboutimproving answers to a single primary question.Its core loop is:A user asks a question.The system tries to answer it.Confidence is low.Missing information is identified.Hypotheses are generated about what is missing.Secondary questions are generated.Those questions are sent outward to improve the original answer.Everything is scoped toserving the original question.Even when it says “introspective,” it means:introspective relative to answer confidence for the current query.This is important.Why it does not invalidate Patent BYour system is not optimizing for answer confidence.It is optimizing forknowledge state quality over time.Key differences that matte
+...[middle omitted for tagging]...
+ implicitly:Question generation is known.Confidence-based follow-up is known.Reactive introspection is known.And then your claims say:We are not doing that.You are doingmaintenance-time, non-inference, lifecycle-level introspection.That is a different category.Why your confidence is increasingYou are now:separating mechanisms from purposeseparating steps from systemsseparating overlap from identityThat is the transition from “this feels scary” to “this is manageable.”You are not trying to invent AI from scratch.You are inventinghow AI relates to its own past.That is still a very defensible place to be.If you want, next we can do one of two things:explicitly map this reference to a “distinguished by” paragraph for Patent B, orcreate a one-page table where each scary prior art maps cleanly to “overlap” versus “non-overlap”But you are thinking correctly now.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patents, patent B, patent A, decision tree, question answering system, introspective question answering system",
+  "intent": "clarify patent overlap and distinction",
+  "type": "research, legal",
+  "semantic_handle": "Patent overlap in introspective question answering",
+  "questions": []
+}

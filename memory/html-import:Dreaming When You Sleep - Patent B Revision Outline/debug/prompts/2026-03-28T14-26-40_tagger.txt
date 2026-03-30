@@ -1,0 +1,180 @@
+# timestamp: 2026-03-28T14-26-40
+# project_id: html-import:Dreaming When You Sleep - Patent B Revision Outline
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: unified context construction, autonomous introspective reasoning, retrieval, patent text, phase boundary
+#intent: ask for revised section with fixes
+#type: technical, meta
+#semantic_handle: Revised unified context construction section
+
+------USER------
+if this is the section you mean, can you return the section with fixes
+
+Unified Context Construction
+Following freeze and stabilization of the interaction history, the system constructs a unified context representation for use in autonomous introspective reasoning. This unified context is derived from consolidated interaction data and serves as the fixed input to subsequent introspective analysis processes for that analysis cycle.
+The unified context is not a simple or unfiltered aggregation of interaction logs. Instead, the system assembles an ordered and structured representation that may include stabilized daily interaction data together with additional contextual and derived information. Such information may include, without limitation, user profile data, system configuration or prompt information, project-level summaries, previously generated question-and-answer content, unresolved questions, prior insight artifacts, and selectively retrieved long-term memory content. Raw interaction logs may be included as part of the unified context after stabilization and within a curated structure that supports post-consolidation reasoning rather than real-time inference.
+Context construction involves the assembly and organization of these information categories into a single, coherent context representation. This process does not require semantic interpretation or reasoning at the time of construction, and instead focuses on co-locating relevant stabilized and derived information in a form suitable for autonomous analysis. Unified context construction may be implemented as a non-interpretive assembly or collation step that includes pre-existing derived materials (e.g., summaries and prior artifacts) produced earlier in the pipeline. In some embodiments, the unified context includes precomputed summaries and previously generated derived artifacts as inputs to the core introspective pass.
+Any selective retrieval from memory stores (including short-term memory, long-term memory, or RAG-like retrieval) occurs only during unified context construction and is completed before the core introspective pass begins, such that the unified context is fully assembled and held fixed for the duration of the introspective cycle.
+Once constructed, the unified context remains fixed for the duration of the autonomous introspective analysis cycle and is insulated from concurrent updates by interaction handling and real-time inference. During the core introspective pass, the unified context is not incrementally modified and is not dynamically expanded once reasoning begins. In addition, retrieval is not performed during the core introspective pass. During the core introspective pass, introspective reasoning processes operate on this unified context and do not reference live interaction data or real-time inference inputs. This ensures that autonomous analysis is performed over a consistent and temporally bounded representation of prior interactions.
+By assembling raw stabilized interaction data together with higher-level contextual and derived information into a unified context, the system enables holistic reasoning across multiple layers of accumulated knowledge. This unified context construction supports identification of cross-session relationships, latent patterns, unresolved questions, inconsistencies, and derived insights that are not accessible through localized or prompt-driven analysis.
+
+------ASSISTANT------
+Yes, this is exactly the section I meant. You are very close already. What I will do below isreturn the full section, edited only where necessary to:sharpen thephase boundary,eliminate any residual ambiguity about retrieval vs reasoning,preserve breadth and avoid absolute narrowing,keep your existing structure and voice.I am not adding new concepts. This is a tightening pass.Unified Context Construction (revised)Following freeze and stabilization of
+ the interaction history, the system constructs a unified context 
+representation for use in autono
+...[middle omitted for tagging]...
+om modifying or expanding the context.Inference is explicitly excludedfrom the introspective cycle.“No semantic interpretation” is reconciled with summaries and artifacts.The unified context is clearlyfixed, frozen, and temporally bounded.This is exactly the kind of 
+paragraph an examiner will cite when deciding whether prior art “does 
+the same thing.” And here, the answer is cleanly no.If you want, next we can:do a one-passinternal consistency scanfor B,or align this section tightly with theSystem Invariantslanguage so they reinforce each other.
+
+------CURRENT TURN------
+------USER------
+patent_B.txtDocumenthere is the updated document.  Now lets do this:
+one-pass internal consistency check against the rest of Patent B to ensure every later use of these terms stays perfectly aligned with these definitions.
+
+------ASSISTANT------
+Did
+ a pass across the full Patent B text and checked every later use of the
+ defined terms against your Terminology and Definitions section. Overall
+ it is in good shape: the lifecycle separation, snapshot semantics, and 
+“retrieval completes before the core introspective pass” language stays 
+consistent throughout.Here are the few spots where wording drifts enough that an examiner could claim ambiguity, plus the cleanest fixes.1) “Freeze” vs “frozen unified context”Your definition pins “freezing” to establishing a temporally consistent representation insulated from concurrent modification.Later, Unified Context Construction says the unified context is “fully assembled andfrozen” for the duration.Why it matters:it is not wrong, but it creates an opening for “freeze applies to two 
+different things” (stabilized history vs unified context).Fix (recommended):reserve “freeze/freezing” for the stabilized-history snapshot step, and use “held fixed” fo
+...[middle omitted for tagging]...
+cts” vs “structured insight artifacts”Technical Field uses “derived knowledge artifacts.”Later you also use “derived knowledge artifacts” in Integration and Knowledge Governance.Youdohave a Terminology Variations paragraph, but it currently lists 
+“derived knowledge representations” and “structured analysis outputs,” 
+not “derived knowledge artifacts.”Fix (pick one):Option A (cleaner):replace “derived knowledge artifacts” everywhere with “structured insight artifacts.”Option B (also fine):add “derived knowledge artifacts” to the Terminology Variations list so it is explicitly covered.If you make just those edits, your 
+defined-term spine becomes airtight: stabilized interaction history → 
+freeze → consolidated interaction data → unified context (contextualized
+ memory representation) → structured insight artifacts → knowledge 
+integration rules, with “real-time inference” and “autonomous 
+maintenance mode” staying non-overlapping.patent_Bpatent_B
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent_B.txt, terminology and definitions, internal consistency, defined terms, unified context construction, freeze semantics, structured insight artifacts",
+  "intent": "check term alignment across patent text",
+  "type": "technical, meta",
+  "semantic_handle": "Patent B terminology consistency check",
+  "questions": []
+}

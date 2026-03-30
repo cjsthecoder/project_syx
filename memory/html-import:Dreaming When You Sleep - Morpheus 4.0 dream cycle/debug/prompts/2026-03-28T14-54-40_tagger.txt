@@ -1,0 +1,158 @@
+# timestamp: 2026-03-28T14-54-40
+# project_id: html-import:Dreaming When You Sleep - Morpheus 4.0 dream cycle
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: dream.txt, open_questions.txt, dream_work, RAG, file layout
+#intent: design a file-based workflow for dream agent inputs and outputs
+#type: technical, design, planning
+#semantic_handle: Dream agent input and output file architecture
+
+------USER------
+ok, So where does the next dream agent put its input?  also in dream.txt?  a different block?  
+
+what I was thinking was more like we put the open questions in a open_questions.txt file.  And the final output of the Open Questions Agent, will be a dream.txt file, that we will have to figure out how to roll back into the RAG.
+
+------ASSISTANT------
+Here
+ is the clean, correct way to handle this so the architecture stays 
+simple, scalable, and consistent with everything we have already built.You are sensing the right tension:Dream needs multiple agents to write outputs over time,and those outputs need to move somewhere stable so later agents (and later Sleep cycles) can consume them.Here is the design that works best.1.dream.txt is NOT the right place for Dream Agent inputsdream.txt is theuser-facingresult of Dream.Putting internal ag
+...[middle omitted for tagging]...
+/{project}/dream_work/.Open Questions Agent outputs go into open_questions.json in dream_work/.dream.txt remains the final, small, GUI-facing file only.All future Dream Agents read/write inside dream_work/.Sleep (not Dream) integrates Dream outputs back into the RAG.If you want, I can write thenew 4.1 requirementsreflecting:dream_work directoryopen_questions.json writedream.txt as final reportnon-deletion of sleep_summary.txtfuture integration planJust say:“Write the new 4.1 requirements.”
+
+------CURRENT TURN------
+------USER------
+ok, so lets say that we implement the gui, and we pop up a window and the user clicks something something like 'keep' for all the dream items.  So, we could essentially have a dream.txt with all the information to keep.  We could in theory have a dream_all.txt we concat to in uploads similar to how sleep_summar_all.txt is.  Then rebuild RAG again to absorb it.
+
+------ASSISTANT------
+Yes.This is exactly the right way to do it, and it cleanly mirrors the Sleep pipeline you already built.Here is the clean architecture, step by step, for handling user-accepted Dream items and getting them back into the RAG.1. User reviews Dream output in the GUIDream produces:bashCopy codememory/{project}/dream.txtThis contains:proposed answerslocal findingsremote findingsuser-required decisionscleaned list (no ignores)The GUI displays the items and the user clicksKeep,Discard, or similar.This yields the final “accepted” set of dream items.2. The backend receives the accepted dream itemsWhen the user clicks Keep All (or Keep Selected), the GUI sends the accepted dream entries back to the backend.The backend writes:bashCopy codememory/{project}/dream_accepted.txtor JSON if you prefer:bashCopy codememory/{project}/dream_accepted.jsonThis file contains only user-approved material that should become long
+...[middle omitted for tagging]...
+ed.txtAppend dream_accepted.txt → dream_all.txtNext Sleep absorbs dream_all.txt into the next RAG rebuildBeautiful.Clean.Deterministic.Patent-ready.7. This also sets up Dream 5.0 laterWhere trusted Dream agents can auto-approve certain types of insights.Then Sleep absorbs them without user involvement.This is fully aligned with where you eventually want to take the project.8. SummaryYES:dream.txt = output for human reviewuser accepts itemsbackend collects accepted items into dream_accepted.txtappend dream_accepted.txt → dream_all.txtnext Sleep rebuilds RAG using dream_all + sleep_summary_alldream_work/ remains the scratch spacedream.txt stays clean for GUI onlyThis is the cleanest design possible.If you want, I can now draft the updated4.1 requirementsor jump to4.2 requirementswhich will formalize:dream_workopen_questions.jsondream.txtdream_accepted.txtdream_all.txtSleep integration modelJust tell me.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "dream.txt, dream_accepted.txt, dream_all.txt, RAG, GUI, sleep_summary_all.txt",
+  "intent": "design a file-based workflow for accepted dream items and RAG rebuilds",
+  "type": "technical, design, planning",
+  "semantic_handle": "Accepted dream items and RAG rebuild flow",
+  "questions": []
+}

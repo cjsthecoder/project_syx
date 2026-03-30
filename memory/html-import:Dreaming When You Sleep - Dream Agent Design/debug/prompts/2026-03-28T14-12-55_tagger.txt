@@ -1,0 +1,160 @@
+# timestamp: 2026-03-28T14-12-55
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: questions.json, dream.json, dream.txt, file append, dream pipeline, gui review flow
+#intent: design file flow for dream questions and persistent dream entries
+#type: technical, design
+#semantic_handle: persistent dream json and questions file flow
+
+------USER------
+for the record, 4.3.1.2 doesn't do the GUI, I was just thinking ahead about how it would work.  
+
+Also, I think we should probably tweak what happens now and put the questions in a questions file and use dream.txt as the final file that the GUI will use.
+
+Another thought,  what it the user doesn't have time or want to go through the list, we wouldn't want to overwrite it, so we will want to append new days to the dream.txt file, we may want to make that dream.json
+
+------ASSISTANT------
+Got it. Here is a clean, coherent design update that fits4.1.3.2, your future plans, and the Sleep–Dream pipeline. Thisdoes notinvolve GUI work (correct for 4.1.3.2) but prepares the data structures and file flow that the GUI will use later.Below is the refined architecture incorporating:Aquestions fileA stabledream.jsonthat persists across daysAppending new DreamEntries rather than overwritingA structure that supports future GUI reviewCorrect alignment with the Dream Orchestra
+...[middle omitted for tagging]...
+ prevent losing dream contentMulti agent output becomes naturalThe user can skip reviewing for several days without overwritingThis mirrors how real AGI-like systems accumulate “dream knowledge” over time.If this looks good, next stepsI can now produce:FR-4.1.3.2 Requirements in full MarkdownTheDreamEntry JSON SchemaTheformat specification for questions.json and dream.jsonTheupdated dream orchestrator flowOr thepromptfor this enhanced Dream AgentJust tell me which one you want.
+
+------CURRENT TURN------
+------USER------
+I had a thought, this is going to ignore what is in the active chat.  Which could be many pairs, 10 seems to work, but who knows.  this maybe something we want to fix later though.
+
+------ASSISTANT------
+You are correct to notice this, and itisan architectural gap that will matter later. The current dream pipeline usessleep_summary.txt, which is built only from thedaily.txt rollovers, and doesnotinclude the most recent active chat pairs that have not yet fallen out of the rolling window.This means Dream 4.1.3.2 would miss:Any important questions from the last several exchangesAny major insights that happened right before sleepAny new topics introduced right before bedtimeAny contradictions or ideas surfaced in the last 10 prompt/response pairsRight now that is acceptable since 
+4.1.3.2 is a prototype and the goal is to get the patentable pipeline 
+working. But you are correct that a full-featured AGI-like dream systemmustsee the active chat context as well.Below is the clean analysis of the issue and a roadmap to fix it later.Why Active Chat Is MissedThe architecture today works like this:W
+...[middle omitted for tagging]...
+ep_summary textThe active chat buffer appended beneathA divider so the agent can tell which part is whichExample:diffCopy code=== SLEEP SUMMARY ===<summary content>=== ACTIVE CHAT ===<most recent N pairs>This prevents Dream from missing anything.Why it should waitAdding active chat merging:touches the Sleep pipelinemight confuse the early prototype if placed too soonis easier when the Dream Orchestrator is more stabledoes not affect the patent scopeis not required for 4.1.3.2fits naturally into the expanded Dream architecture in 4.2 or 4.3You were right to point it out but also right that it can wait.If you want, I can now:Add this fix to theVersion 4.2 Goals sectionWrite theFRdescribing how merged_dream_input.txt should be createdAdd it to the long term roadmap inside the requirementsOr adjust the 4.1.3.2 Ideas to mention future active chat integrationJust tell me what you would like next.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "active chat context, dream pipeline, sleep_summary.txt, daily.txt, dream orchestration",
+  "intent": "evaluate a future pipeline gap and plan a later fix",
+  "type": "technical, design",
+  "semantic_handle": "missing active chat in dream pipeline",
+  "questions": []
+}

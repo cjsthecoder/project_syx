@@ -1,0 +1,160 @@
+# timestamp: 2026-03-28T14-09-28
+# project_id: html-import:Dreaming When You Sleep - 4.4.1
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Cursor, scoring compatibility, FAISS, LangChain, cosine similarity, unit-normalized embeddings, IndexFlatIP
+#intent: answer a scoring compatibility design question and choose retrieval metric
+#type: technical
+#semantic_handle: FAISS cosine scoring compatibility decision
+
+------USER------
+this is one of the Cursor questions on this:
+7) (Scoring compatibility) Today retrieval code assumes **unit-normalized embeddings** and converts a FAISS/LangChain L2-distance into a cosine-like score 
+in \([0,1]\). After switching to raw FAISS, do you want scores to remain in **\([0,1]\)** (compat), and should we implement cosine via 
+**IndexFlatIP + normalized vectors** (so score≈cosine) rather than L2 distance?
+
+------ASSISTANT------
+This is a good question, and it’s actually one of thefewplaces where you should be very explicit, because scoring drift will quietly break assumptions upstream.Short answerYes, keep scores in[0,1][0,1][0,1]for compatibility.Yes, switch to cosine similarity viaIndexFlatIPwith unit-normalized vectors.Do not carry L2 forward.That choice is aligned with both your past decisionsandyour future flexibility.Why this is 
+...[middle omitted for tagging]...
+similarity usingIndexFlatIPwith unit-normalized embeddings.Treat cosine similarity as the canonical scoring contract; avoid L2-based transforms.That’s unambiguous and closes the question cleanly.Bottom lineLangChain hid this choiceYou now get to make it explicitCosine + normalized vectors is the correct, stable, long-term answerThis is one of those “quiet but important” decisions, and you’re making the right one.
+
+------CURRENT TURN------
+------USER------
+what about this one?
+8) (Chunking compatibility) Removing LangChain’sRecursiveCharacterTextSplitterwill change chunk boundaries unless we replicate its behavior. 
+Do you want “compat mode” chunking that matches LangChain’s defaults as closely as possible (same separators/merge logic), or is it acceptable to implement 
+a simpler deterministic splitter that only guarantees chunk_size/overlap but may shift boundaries?
+
+------ASSISTANT------
+This is another one where being explicit will save you a lot of downstream confusion.Short answerDo not implement “compat mode” chunking.Yes, it is acceptable and preferable to implement a simpler, deterministic splitter, even if boundaries shift.That choice is aligned with your past decisions and with what 4.4.x is actually about.Why “compat mode” is the wrong goalTrying to replicateRecursiveCharacterTextSplitterbuys you very little and costs you a lot.1) LangChain’s splitter is not a stable contractIts behavior depends on:Separator priority listsRecursive merge heuristicsImplicit assumptions about “natural” boundariesVersion-specific tweaksThere is no formal spec you can faithfully reproduce.So “compatibility” would be:ApproximateBrittleHard to testEasy to accidentally diverge laterYou would be freezing anaccident of implementati
+...[middle omitted for tagging]...
+cisions.You are breaking compatibility with atool artifact, intentionally.That’s the correct call.What to tell Cursor (clean directive)You can answer Cursor like this:Do not implement LangChain-compatible chunking.It is acceptable for chunk boundaries to shift.Implement a simpler, deterministic splitter that guarantees chunk_size and overlap, with fixed, documented boundary rules.Boundary stability and explainability matter more than matching LangChain heuristics.That closes the question and reinforces your architectural direction.Bottom line“Compat mode” chunking is a trapDeterminism beats imitationOne rebuild is cheaper than permanent ambiguityThis decision is consistent with 4.4.x and earlier A.4 choicesYou are very consistently choosingstructural correctness over accidental continuity, which is exactly what this phase is about.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Cursor, chunking compatibility, LangChain, RecursiveCharacterTextSplitter, deterministic splitter, chunk_size, overlap",
+  "intent": "ask for a design decision on chunking compatibility",
+  "type": "technical",
+  "semantic_handle": "LangChain chunking compatibility decision",
+  "questions": []
+}

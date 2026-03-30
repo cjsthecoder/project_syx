@@ -1,0 +1,275 @@
+# timestamp: 2026-03-28T14-25-43
+# project_id: html-import:Dreaming When You Sleep - Patent B Revision Outline
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Patent A, checklist, terminology, lifecycle phases, prior art, memory consolidation
+#intent: verify document changes against checklist
+#type: technical, planning
+#semantic_handle: Patent A checklist verification
+
+------USER------
+patent_A.txtDocumentI did an experiment and had Cursor update the document attached with the current patent A text.  Can you use this checklist of changes and see if the new document captures all the changes?
+
+Updates for A   1. Terminology and Definitions (tighten examiner clarity)
+☐ Add an explicit definition of “Maintenance Phase” as:
+* non-inference,
+* non-interactive,
+* autonomously triggered,
+* operating over previously stabilized data.
+☐ Explicitly define “Memory Consolidation” as an umbrella lifecycle operation that may include pruning, decay, summarization, extraction, restructuring, validation, and reinforcement, without requiring all steps.
+☐ Standardize and lock terminology for:
+* “consolidated memory representations”
+* “consolidated memory artifacts” Choose one as the primary term and define the other as synonymous or as a subtype.
+☐ Add a one-sentence clarification that “Persistent Knowledge Store / Long-Term Memory” refers to governed, curated memory, not raw logs or archives.
+
+2. Lifecycle and Phase Boundaries (new item from prior-art analysis)
+☐ Add a short Lifecycle Phases paragraph explicitly enumerating:
+1. Active interaction and episodic buffering
+2. Roll-off into short-term memory
+3. Autonomous maintenance and consolidation
+4. Integration into long-term memory
+5. Optional retrieval during later inference
+☐ Explicitly state that memory consolidation never occurs inside the active interaction window, even if retrieval later does.
+☐ Add one sentence clarifying that retrieval during inference does not modify stored memory directly.
+Why this matters: This cleanly distinguishes your system from RAG pipelines that blur inference and memory updates.
+
+1. Add an explicit “What this system is not” paragraph to Patent A
+Something like, in patent language:
+* Not an agent framework
+* Not a task execution engine
+* Not a real-time context manager
+* Not a fine-tuning system
+This helps examiners map prior art correctly.
+
+2. Tighten one invariant sentence in Patent A
+Make sure one sentence clearly says, in substance:
+* Consolidation occurs outside inference.
+* Consolidation produces a fixed snapshot.
+* Subsequent reasoning operates on that snapshot.
+This is your legal anchor.
+
+
+3. Architectural Anchors and System Invariants (expanded)
+☐ Add a short System Invariants subsection or paragraph stating that the invention is defined by:
+* temporal separation of interaction vs maintenance,
+* autonomous consolidation outside inference,
+* governed memory lifecycle (not ad hoc storage).
+☐ Explicitly state that the invention is architecture-level, not dependent on:
+* vector databases,
+* embeddings,
+* model retraining,
+* specific LLM providers.
+(New from prior art: prevents examiners from mapping you onto generic “LLM memory” papers.)
+
+4. Decay, Pruning, and Reinforcement (strengthen technical effect)
+☐ Add one concrete decay embodiment, for example:
+* priority score decays over time unless accessed,
+* falling below a threshold triggers compression, archival, or removal.
+☐ Add one concrete reinforcement embodiment, for example:
+* repeated retrieval reduces decay rate,
+* confirmation across sessions increases retention weight.
+☐ Add one sentence describing interaction between decay and reinforcement, such as:
+“Reinforcement signals may counteract or reset decay trajectories.”
+(New emphasis: shows governed evolution, not static heuristics.)
+
+5. Metadata Grounding (minor but useful)
+☐ Add 2 concrete examples of user influence markers:
+* explicit “keep / forget” signals,
+* inferred importance from repeated follow-ups or references.
+☐ Clarify that metadata may be:
+* assigned at ingestion,
+* updated during maintenance,
+* revised during later consolidation cycles.
+
+6. Optional Components Audit (prior-art risk mitigation)
+☐ Do a global sweep to ensure these are clearly optional:
+* human review,
+* optional analysis components,
+* external content ingestion.
+☐ Add one sentence stating:
+“The core memory consolidation and long-term knowledge management system operates fully autonomously without human intervention.”
+This avoids accidental narrowing to “human-in-the-loop” systems.
+
+7. Example Embodiment (high-leverage §112 support)
+☐ Add a compact Example Embodiment section including:
+* episodic buffer entry structure (fields),
+* STM record structure,
+* consolidated artifact structure (sample fields and values).
+☐ Add a short policy example in prose, such as:
+* promotion threshold,
+* decay interval,
+* reinforcement trigger.
+This materially improves enablement without narrowing scope.
+
+8. Prior-Art Differentiation Paragraph (new, targeted)
+☐ Add a short paragraph explicitly distinguishing your system from:
+1. RAG systems (retrieval at inference time only),
+2. logging / archival pipelines (unfiltered persistence),
+3. fine-tuning or weight updates (model retraining).
+Frame the distinction around:
+* lifecycle governance,
+* autonomous consolidation,
+* decay and reinforcement over time.
+This directly anticipates examiner reasoning.
+
+9. Language and Scope Preservation Sweep
+☐ Replace overuse of “may” in core architecture descriptions with:
+* “in some embodiments,”
+* “can include,”
+* or direct statements where appropriate.
+☐ Ensure all lists are explicitly non-limiting using:
+* “for example,”
+* “such as,”
+* “including but not limited to.”
+☐ Avoid absolute phrasing that could narrow scope unintentionally.
+
+------ASSISTANT------
+Yes. The updated Patent A document incorporates every item in your checklist.patent_AChecklist coverage status (Pat. A updated text)1) Terminology and Definitions✅ Maintenance Phase definition (non-inference, non-interactive, autonomously triggered, stabilized data)✅ Memory Consolidation defined as umbrella operation (non-required steps listed)✅ Consolida
+...[middle omitted for tagging]...
+snapshot +
+ subsequent reasoning” language is now in A. That is fine if you want A 
+to cover post-consolidation non-inference processing generally, but if 
+you want to keep “reasoning” as Patent B’s centerpiece, consider 
+swapping “subsequent reasoning” to “subsequent non-interactive 
+processing” or “subsequent maintenance operations” to avoid bleed-over.
+
+------CURRENT TURN------
+------USER------
+for 9, are you suggesting this sentence changes?
+
+Invariant (phase boundary and snapshot semantics)
+In one embodiment, Memory Consolidation is performed outside inference during one or more Maintenance Phases to produce a fixed consolidated memory artifact (snapshot), and any subsequent reasoning that is not real-time response generation operates on that fixed consolidated memory artifact rather than modifying the live Active Interaction Window.
+
+------ASSISTANT------
+Yes, that is exactly the sentence I was flagging, and this is ascope-tuning suggestion, not a correctness issue.Why that sentence is legally fineAs written, the sentence isaccurate, defensible, and internally consistentwith Patent A. An examiner would read it as:Consolidation happens outside inference.Consolidation produces a fixed snapshot.Anything that is not real-time response generation operates on that snapshot, not on the live window.That is all solid.Why I suggested a possible tweakThe only reason to consider a change isclaim hygiene between Patent A and
+...[middle omitted for tagging]...
+n modifying the live Active Interaction Window.This change:Preserves the snapshot invariant.Preserves separation from inference.Avoids staking a broad claim on “reasoning” as such.Makes Patent B feel like a natural continuation, not a repetition.Bottom lineYou donotneed to change the sentence for validity.The suggestion is aboutportfolio clarity, not examiner risk.If you want the cleanest A/B separation, Option 2 is slightly better.If you want A to remain broad and foundational, Option 1 is perfectly acceptable.You are thinking about this exactly the right way.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Patent A, Patent B, claim hygiene, phase boundary, snapshot semantics, reasoning",
+  "intent": "clarify scope-tuning suggestion for patent language",
+  "type": "technical, meta",
+  "semantic_handle": "Patent A snapshot invariant wording",
+  "questions": []
+}

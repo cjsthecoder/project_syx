@@ -3104,11 +3104,13 @@ Usage provenance consistency:
 ### 5.5.2 Turn Level Token Rollups
 Each turn record MUST include:
 - `main_total_tokens_reported`
-- `mini_total_tokens_reported_sum`
-- `turn_total_tokens_reported` = main + mini
+- `mini_prompt_tokens_reported`
+- `mini_completion_tokens_reported`
+- `turn_total_tokens_reported` = `main_total_tokens_reported + mini_prompt_tokens_reported`
 
 Rollup inclusion rule:
-- `mini_total_tokens_reported_sum` MUST include all non-main interactive mini calls for that turn, including at minimum `router` and `tagger` invocations.
+- `mini_prompt_tokens_reported` MUST include prompt tokens for all non-main interactive mini calls for that turn, including at minimum `router` and `tagger` invocations.
+- `mini_completion_tokens_reported` MUST include completion tokens for all non-main interactive mini calls for that turn, including at minimum `router` and `tagger` invocations.
 - If tagging occurs in post-response persistence for the same request path, its tokens still belong to that originating turn and MUST be included in that turn rollup.
 
 ### 5.5.3 Purpose Taxonomy (Token Types)
@@ -3297,7 +3299,7 @@ Turn record contract additions (v1):
 
 Turn rollup/provenance fields:
 - `turn_total_tokens_reported` MUST equal:
-  - `main_total_tokens_reported + mini_total_tokens_reported_sum`
+  - `main_total_tokens_reported + mini_prompt_tokens_reported`
 - `turn_usage_source` MUST use enum:
   - `provider` | `estimate` | `zero_fallback`
 - `turn_usage_is_estimate` MUST be true whenever `turn_usage_source != "provider"`.

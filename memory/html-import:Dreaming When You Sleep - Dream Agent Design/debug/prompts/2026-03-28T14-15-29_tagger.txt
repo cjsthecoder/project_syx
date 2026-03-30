@@ -1,0 +1,416 @@
+# timestamp: 2026-03-28T14-15-29
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: user profile, rag, user_summary.txt, idea agent, dream context builder, prompt engineering
+#intent: discuss moving user information into a stable summary file and using it in agent prompts
+#type: technical, planning
+#semantic_handle: user profile summary for agent prompts
+
+------USER------
+ok, spoke too soon about working completely.  basically the user information in context stopped working.  I updated the RAG query, but the results aren't great (they never were).  After chatting with Cursor, it seems the best idea is to have a prompt that summarizes the user information and puts that in a file.  For now, we are just going to make that file manually and push the creation till after the agents are done.
+
+The goal though, is to have the agent prompts consider aspects of the user profile in their prompts.  I imagine something like, for me a technical question might get a technical answer.  but if we are talking about art, it would potentially give a different answer.  does this make sense?
+
+------ASSISTANT------
+Yes, not only does it make sense, it isexactly the right long term solutionand extremely aligned with how real AGI architectures treatself modelanduser modelinformation.Let me break this into the core concepts so you see the AGI-level pattern emerging:1. RAG isnota good fit for stable user profile dataRAG is good for:episodic memorydecisionsdomain knowledgestructured factsproject-specific contextBut user identity and personal context:rarely changesneeds to bealwaysavailablemust b
+...[middle omitted for tagging]...
+ummary.txtright nowDrop it into the project folder and update dream_context builder to include it.B) Let me help you write a small summarization prompt to generate it automaticallyWe can do this tomorrow or now; it's quick.If you want, I can now:Write theUser Summary specificationfor REQUIREMENTS.mdWrite thesummarization promptfor generating the fileWrite thecontext builder updateto include itHelp you write the initialuser_summary.txtJust tell me what route you want to take next.
+
+------CURRENT TURN------
+------USER------
+ok, we are calling it memory/{project_id}/user_profile_summary.txt
+
+also, below is my current profile.  I want to make one file for now based on this, in what ever format you think would help the agents give better results.  also, we can add other sections, personality or something that maybe an agent could fill in over time.
+
+User Profile Codex
+
+#name: Chris Shuler
+#full_name: Christopher James Shuler
+#pen-name: CJ Shuler
+
+=== TOPIC: Core Profile ===
+
+#topics: user profile, background, career, personal context
+
+#decisions: transition focus toward AI/ML while continuing creative writing projects
+
+#open_questions: how to balance technical projects with fiction publishing timeline
+
+#user_context: 56-year-old software engineer with aerospace background, AI/AGI researcher, aspiring fiction author
+
+Summary:
+Chris Shuler is an experienced software engineer, originally with a strong background in aerospace and satellite ground systems (NASA, DoD). He’s now pivoting toward AI/ML experimentation and AGI design, while also developing multiple fiction projects.
+
+=== TOPIC: Technical Skills ===
+
+#topics: software engineering, mission-critical systems, AI tools
+
+#decisions: deepen skills in generative AI, move toward ML mastery
+
+#open_questions: optimal balance of AI experimentation vs. job applications
+
+#user_context: long career in mission software, now hands-on with AI prototyping
+
+Skills snapshot:
+
+Programming: Python, C++, C#, Java
+
+Systems: Linux, Windows, REST APIs, microservices, SOA
+
+Middleware: Kafka, ActiveMQ, DDS
+
+Tools: Docker, Git, GitLab, CI/CD
+
+AI/LLM: Generative AI, NLP, LangChain, RAG, embeddings, fine-tuning
+
+Emerging: FAISS/Chroma RAG, LlamaIndex, FastAPI + React stack
+
+=== TOPIC: Learning Habits ===
+
+#topics: continuous learning, courses, neuroscience, curiosity
+
+#decisions: continue “learn something new every day” strategy (since 2018)
+
+#open_questions: how to track long-term knowledge integration
+
+#user_context: daily learner, rotating monthly study topics
+
+Notes:
+
+Dedicates ~1 hr/day to structured learning.
+
+Past topics: neuroscience, cybersecurity, philosophy, writing, astronomy, history, AI.
+
+Upcoming: thermodynamics, genetics, chess, flight science, energy, Ethereum/solidity.
+
+Uses Great Courses, MasterClass, books, podcasts.
+
+=== TOPIC: AI/AGI Design Interests ===
+
+#topics: AGI design, memory pruning, sleep cycles, multiple intelligences
+
+#decisions: experiment with pruning/sleep cycle pipeline → local RAG in October
+
+#open_questions: best approach to hybrid STM/LTM memory; how to integrate unconscious layers
+
+#user_context: AGI researcher designing experimental memory systems
+
+Key ideas:
+
+AI needs “sleep” to prune and consolidate daily memory.
+
+Repos = distributed long-term memory (like SD cards).
+
+Short-term repo → nightly pruning → domain-specific repos.
+
+Interested in embodied AGI with multiple intelligences (Howard Gardner mapping).
+
+Sees parallels to hippocampus ↔ cortex consolidation.
+
+=== TOPIC: Writing Projects ===
+
+#topics: fiction writing, thrillers, sci-fi, codex-driven workflow
+
+#decisions: self-publish Ghost vs. The Machine first; Majestic Disclosure as longer-term project
+
+#open_questions: pacing for spin-offs, when to serialize novellas
+
+#user_context: aspiring fiction author with multiple series arcs in development
+
+Active projects:
+
+Ghost vs. The Machine (AI Profiler trilogy): tech-driven crime thrillers with Charlie, Rachel, Mitchell; arc includes surveillance ethics + AI dilemmas.
+
+Majestic Disclosure: UFO/space thriller involving TR-7B, DARPA, disclosure themes.
+
+Ravi’s Treasure: maritime adventure with Ramirez siblings; salvage-diving + treasure hunting.
+
+Spin-off & novella concepts: Maya Torres’ CIA unit (Casper Protocol), Ali Kahani’s spree, Amy Winn recruitment.
+
+Process:
+
+Uses codex + outline + chapter workflow in Scrivener/NovelCrafter.
+
+Stronger at dialogue than description; actively improving description & pacing.
+
+Inspired by Dan Brown, J.N. Chaney, Barry Eisler.
+
+=== TOPIC: Health & Training Experiments ===
+
+#topics: fitness, recovery, fasting, cognitive performance
+
+#decisions: maintain Zone 2 + kettlebell/bodyweight program, track fat loss → goal 15%
+
+#open_questions: how best to integrate protein intake for recovery without fat gain
+
+#user_context: midlife athlete focused on sustainable strength + cognition
+
+Notes:
+
+Training: kettlebells, dumbbells, elliptical, biking; favors higher-rep sustainable work.
+
+Recovery: balances Zone 2 cardio with leg fatigue; HRV + resting HR tracked via Apple Watch.
+
+Nutrition: 2000–2500 cal deficit, fasting mimicking diet 3×/yr, low protein preference.
+
+Cold exposure (20 min, 4×/week) for recovery + fat loss.
+
+Cognitive experiments: Human Benchmark (reaction, memory, agility), nut/bolt dexterity test, tennis ball wall drill.
+
+=== TOPIC: Career & Goals ===
+
+=== TOPIC: Career Snapshot ===
+
+#topics: software engineering, aerospace, NASA, DoD, AI transition
+
+#decisions: pursue transition from aerospace software into AI/ML; leverage 25+ years mission-critical experience
+
+#open_questions: best entry points into agentic AI/ML roles in aerospace/defense industry
+
+#user_context: senior engineer with long record in NASA/DoD programs, now specializing in AI
+
+Summary:
+Chris Shuler is an experienced software engineer with a career spanning NASA Goddard, NASA Kennedy, Lockheed Martin, ASRC Federal, L3Harris, Jacobs, Parsons, Emergent Space, and York Space Systems. He has contributed to spacecraft ground systems, launch control, satellite testing, and distributed architectures. Recognized with multiple NASA Software of the Year awards, Chris is now pivoting into Generative and Agentic AI.
+
+=== TOPIC: Career Timeline ===
+
+#topics: career history, aerospace, ground systems, AI pivot
+
+York Space Systems (2023–2024)
+Principal Test Automation Engineer (Remote)
+
+Built automated Python framework for Assembly, Integration, and Testing (AIT) of satellites.
+
+Ported a proprietary STOL (satellite test language) into Python using OpenAI API.
+
+Automated telemetry/commanding of industrial power supplies and DAQ devices.
+
+Emergent Space Technologies (2022–2023)
+Senior Principal Engineer (Remote; later acquired by York Space)
+
+Developed Dockerized test suites for flatsats interoperability using Kafka + GMSEC.
+
+Prototyped ground system ↔ antenna system interface.
+
+Parsons (2021–2022)
+Senior Software Engineer (Remote)
+
+Supported Space Force ops with NASA’s GMSEC architecture.
+
+Developed code linking ground systems with antenna networks.
+
+Jacobs (2020–2021)
+Senior Software Engineer (NASA Kennedy)
+
+Maintained SLS launch control system software for component status monitoring.
+
+L3Harris (2019–2020)
+Senior Software Engineer
+
+Developed real-time embedded systems for DSP, electronic warfare, C&D displays.
+
+ASRC Federal Space & Defense (2011–2019)
+Principal Software Engineer (Kirtland AFB, MMSOC GSA project)
+
+Integrated NASA GMSEC into Air Force’s re-engineered ground system.
+
+Ensured IT security compliance in classified environments.
+
+ASRC Aerospace (2007–2010)
+Senior Software Engineer (NASA Kennedy)
+
+Built distributed communication services for Ares I launch control system.
+
+Prototyped low-latency ground control systems (Java, C++).
+
+CSC (2000–2007)
+Lead Software Engineer (NASA Goddard)
+
+Original GMSEC API team lead — standardized bus interface still in use at NASA/Space Force.
+
+Supported TRMM, Terra, GLAST, GPM, SMEX mission ground system integration.
+
+Presented GMSEC to NASA management and commercial partners.
+
+CSC (1995–2000)
+Software Engineer (Cape Canaveral, Lockheed Martin Launch Ops)
+
+Automated procedure processing for Atlas V.
+
+Deployed training/tracking systems to multiple sites (10,000 users).
+
+Provided PC/Mac desktop support for Titan/Atlas facilities.
+
+=== TOPIC: Achievements & Recognition ===
+
+#topics: awards, recognition, NASA, innovation
+
+#decisions: leverage history of award-winning software design in AI/ML transition
+
+#user_context: award-winning engineer with long NASA history
+
+Awards:
+
+NASA Goddard Software of the Year (2006, 2008) – GMSEC architecture & API.
+
+Runner-Up / Honorable Mention (2006, 2008) – NASA Software of the Year.
+
+NASA Group Achievement Award (2008) – Launch Control System Proof of Concept.
+
+Author on peer-reviewed paper: Collaborative Problem Solving Agent for Onboard Real-Time Systems (2002).
+
+=== TOPIC: Personal Projects ===
+
+#topics: AI projects, generative AI, agentic AI, OpenAI, LangChain
+
+#decisions: build prototypes that combine aerospace rigor with cutting-edge AI tools
+
+#user_context: self-driven engineer experimenting with applied AI
+
+Projects:
+
+LLM Memory Pipeline – custom scripts for pruning/summarizing chat logs into hierarchical long-term memory (unlimited context windows).
+
+LangChain Code Review Agent – automated LLM-based branch reviewer.
+
+Whitepaper Podcast Generator – summarization + ElevenLabs voice synthesis for deep-dive podcasts.
+
+Scrivener AI Assistant – parses Scrivener files, applies fine-tuned model for style/grammar that matches author voice.
+
+------ASSISTANT------
+Below is aclean, agent friendly user_profile_summary.txtthat you can drop directly into:bashCopy codememory/{project_id}/user_profile_summary.txtIt is structured, compact, and tuned so thatIdea Agent, Research Agent, and all future dream agentscan reliably use it to shape tone, depth, and reasoning style.No em dashes.No metadata noise.Just a clean, high signal user model.You can extend it later with personality or preference sections.USER PROFILE SUMMARY(Place this directly intouser_profile_summary.txt)IdentityName: Chris ShulerPen name: CJ ShulerAge: 56Professional background: Senior software engineer with long experience 
+in aerospace, NASA, DoD, satellite ground systems, mission critical 
+software, and distributed architectures.Current focus: Transitioning into generative AI, agentic AI systems, memory architectures, and AGI design concepts.Creative role: Aspiring fiction author in thriller and science fiction genres.Cognitive PreferencesChris prefers responses that are:Technically accurate when discussing engineering, AI, or system design.Conceptually structured when discussing AGI, cognition, or memory systems.Clear, concise, and practical when evaluating tradeoffs.Emotionally grounded and paced well when discussing fiction or story development.Adaptable in tone depending on s
+...[middle omitted for tagging]...
+acobs, Parsons, Emergent Space, York Space 
+SystemsAwards: Multiple NASA Software of the Year awardsCurrent goal: Full pivot into advanced AI systems engineering and agent designAgents should respect deep domain experience when framing technical insights.Personality Attributes (initial seed)Chris is analytical, concept driven, curious, improvement minded, and thrives on big systems that evolve over time.He prefers reasoning steps that expose tradeoffs and decision paths.He enjoys creativity when balanced with structure.Agents can extend this section in the future based on long term observations.Agent Guidance SummaryWhen generating insights, explanations, or creative ideas:Adjust tone to match technical or artistic context.Provide structured reasoning.Use his background to avoid beginner level explanations.Offer meaningful tradeoff analysis.Tie AGI concepts to cognition and memory.For writing tasks, keep advice story centered and context aware.This file is the stable personalization layer. Dream agents should always use it when producing outputs.If you want, I can now:Update requirements to include this file.Update the dream_context builder to inject this file automatically.Help write the summarizer prompt that will later generate this file automatically.Which step do you want next?
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "user_profile_summary.txt, memory/{project_id}, prompt engineering, agent guidance, personality attributes, dream_context builder",
+  "intent": "design a stable user profile summary file for agent personalization",
+  "type": "technical, design",
+  "semantic_handle": "user profile summary for agent personalization",
+  "questions": []
+}

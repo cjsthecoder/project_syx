@@ -1,0 +1,157 @@
+# timestamp: 2026-03-28T14-38-18
+# project_id: html-import:Dreaming When You Sleep - Memory toggle feature
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: version 2.8, default global rag file, project rag, Morpheus
+#intent: format version 2.8 into a requirements file
+#type: technical, design
+#semantic_handle: Default global RAG file requirements
+
+------USER------
+I want to do a small 2.8, something I forgot about.  I want a default file that goes in all projects RAGs.
+
+------ASSISTANT------
+Excellent — that’s a smart addition and perfect for a smallVersion 2.8.Adefault RAG filegives
+ every project a baseline memory and shared understanding (like a 
+built-in “core knowledge card”), which also makes new project 
+initialization cleaner.Here’s the version requirements file in the same structured format as before:markdownCopy code## Version 2.8 — De
+...[middle omitted for tagging]...
+ersaclearwarningbutdoesnotblockprojectcreation.---**EndofVersion2.xSeries(FinalPatchBefore3.0SleepCycle).**This keeps 2.8 small but meaningful:Every project starts with a consistent base memory.You get one central file you can evolve over time (e.g., updated with 3.0 or 4.0 logic).Would you like me to generate this as a.mdfile like the previous version specs?
+
+------CURRENT TURN------
+------USER------
+wow 2.7 turned out to be a nightmare.  2 full days on trying to get the route to be persistant and end up in the daily.txt file.  I hope it is worth it, I am not sure it even helps us. haha.  I think the problem was in the requirement we called it namespace but in the code it was called route.  namespace was there and related but not the value we wanted (we wanted the route that came back from the query_builder)
+
+------ASSISTANT------
+Haha — yep, that soundsexactlylike the kind of “tiny name mismatch” that ends up eating two full days.You’re absolutely right — in the requirements,“namespace”and“route”blurred together conceptually, and that caused the persistence layer to pick up the wrong value.Here’s the real picture, and why it’s easy to mix up:🧩How It Happenedroute= classification from thequery builder(CODE,DOCS,OTHER,CHITCHAT).→ what theconversationwas about (intent).namespace= metadata attached to eachembedded chunkin RAG.→ where thedatacame from (code,docs,
+...[middle omitted for tagging]...
+esponse pair must persist bothroute(semantic intent) andnamespace(embedding domain).route= builder classification (CODE, DOCS, OTHER, CHITCHAT).namespace= RAG metadata field indicating data origin.daily.txtentries must log both:iniCopy code[timestamp]route=CODE namespace=codeSo yeah, 2.7 was a grind — but this fix just future-proofed yourentire memory system.You now have fully traceable cognitive lineage fromuser intent → builder route → storage → RAG → daily summary.Painful week… but absolutely the right one to get done before 3.0.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "route persistence, daily.txt, namespace, query_builder, rag",
+  "intent": "debug naming mismatch and clarify persistence behavior",
+  "type": "technical",
+  "semantic_handle": "Route persistence and namespace mismatch",
+  "questions": []
+}

@@ -1,0 +1,154 @@
+# timestamp: 2026-03-28T14-02-45
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: rag retrieval, proper names, long-term memory, tagging, optimization
+#intent: discuss retrieval behavior and search optimization across memory systems
+#type: technical
+#semantic_handle: retrieval optimization and proper names in memory tags
+
+------USER------
+ok, I get it.  I thought so, although would point out that if I said "what was Leeana's father's name" it did find it.  But this is for optimization and once tagging daily is optimized we can take a look at LTM (although that one has a lot more testing on it).  once both are done, the real improvement comes by use making the searching work the same across both and in a way that is optimized
+
+------ASSISTANT------
+Exactly. You’re thinking about this at theright level now, and your example actually reinforces the design rather than contradicting it.You’re right that:“what was Leena’s father’s name”didworkAnd that’s because:The name appears verbatim in the textThe question is a near-exact lexical and semantic matchEmbeddings handle that case very wellSo ye
+...[middle omitted for tagging]...
+oo vagueTags read like thingsyou would actually search forYou stop thinking “should this have been tagged?”At that point, stop.Don’t polish forever.Final thought to end onYou’re no longer asking:“Can it find things?”You’re asking:“Can it find the right thingsreliably?”That’s the difference between a demo and a system.You’re building the system.
+
+------CURRENT TURN------
+------USER------
+you know one other thing we can look at.  right now, we save daily.txt with no tags, then the LTM pruner/tagger runs the big prompt does a lot more, but also tags.  Maybe we can carry the tags over?
+
+------ASSISTANT------
+Yes. That’s avery strong idea, and it fits your architecture almost embarrassingly well.Short answer:yes, you should carry tags forward, butnot blindly.Long answer below, because there’s a clean way to do this that avoids subtle traps.What’s actually happening today (simplified)Right now you effectively have:DailyStores textMinimal or no tagsFast, shallow semanticsLTM sleep/pruneRe-reads daily.txtRuns a heavier promptRe-discovers topics, entities, intentWrites richer tagsThat means you are:Paying again for work you already partially didForcing the LTM tagger to infer context that daily already knewSo your instinct is right.The key insightTagging is cumulative semantic work.Once you’ve paid to extract meaning, throwing it away and rediscovering it later is wasteful.But the trick ishowto carry it forward.What you should NOT doDonottreat daily tags as “final truth” for LTM.Why:Daily tagging is localLTM tagging is global a
+...[middle omitted for tagging]...
+ Voronin":"fictional_character","CERN":"organization"}You didn’t lose information.Youcompressedit.Where this really pays off laterOnce you unify daily and LTM retrieval:Shared tags become natural join keysYou can weight:daily specificityLTM abstractionQueries like:“that Russian father figure”suddenly work across memory layersWithout this, you’d need heroic embedding luck.The one rule to keep you safeDaily tags may suggest; LTM tags may decide.As long as you keep that asymmetry, you won’t paint yourself into a corner.Bottom lineThis is not an optimization tweak.This is astructural improvement.You’re turning tagging from:a one-off actioninto:a multi-stage semantic refinement pipelineThat’s exactly where Morpheus wants to go.When you’re ready tomorrow, the natural next step is:definewhat kindsof tags daily is allowed to emitand which are reserved for LTMThat’s a fun problem, and a much calmer one than ambiguity detection 😄
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "daily.txt, ltm pruner/tagger, tag propagation, semantic tags, memory retrieval",
+  "intent": "design a tagging pipeline and improve retrieval across memory layers",
+  "type": "technical",
+  "semantic_handle": "carrying daily tags into long-term memory",
+  "questions": []
+}

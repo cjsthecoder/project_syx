@@ -1,0 +1,204 @@
+# timestamp: 2026-03-28T14-41-17
+# project_id: html-import:Dreaming When You Sleep - DELTA-A.4.4 Finalization
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: daily retrieval, canonical retrieval, ltm, daily.json, rag_manager.py
+#intent: clarify architecture and recommend where metadata joining should live
+#type: technical
+#semantic_handle: daily retrieval adapter boundary
+
+------USER------
+when I asked it why, I got this answer maybe you can help me with.  
+
+“But LTM code is simpler” — it only looks that way
+The LTM block is also doing adapter work (loading the store + converting doc/dist into the canonical candidate shape + rebuild-on-error):
+rag_manager.py
+Lines 312-355
+if "ltm" in srcs:    vs = load_faiss_index(project_id)    if vs:        try:            results = vs.similarity_search_with_score_by_vector(qvec, k=int(per_source_k))        except Exception as e:            ... schedule rebuild ...            results = []        for doc, dist in results:            ... normalize to {"source","text","score","metadata"} ...
+So both sides are “adapters”; Daily’s is just doing more because it must consult daily.json.
+If you want it “greatly simplified,” the clean way (conceptually)
+To make Daily match the LTM pattern more closely, you’d restructure so that:
+canonical_retrieve_candidates() owns the generic logic:
+run vs.similarity_search_with_score_by_vector(qvec, k)
+map (doc, dist) → canonical candidate dict
+Daily helper becomes only:
+“get me the Daily vs (or empty) + metadata join map”
+optionally: “given a Daily doc’s metadata, enrich from meta_by_id”
+Concretely, that means changing Daily helper from “do the search + join + shape” into something like:
+get_daily_vs_and_meta(project_id) -> (vs|None, meta_by_id|None)
+(handles warm/mismatch/rebuild; no search)
+Then canonical does:
+results = daily_vs.similarity_search_with_score_by_vector(qvec, k=per_source_k)
+for each doc: build candidate and enrich using meta_by_id[daily_entry_id]
+That would make Daily and LTM code paths look almost identical at the call site, while still meeting the A.4.1 rule that Daily metadata is authoritative from daily.json.
+If that’s what you want, tell me your preference for where the daily.json join should live:
+In canonical (most symmetric), or
+In Daily module (keeps canonical thinner, but Daily stays “special”).
+
+------ASSISTANT------
+Yeah, this is agoodquestion, and Cursor’s answer is actually pointing at the right issue, just without fully resolving the authority boundary.Let me untangle it and then give you a clear recommendation so you can unblock the implementation.First: why this is still happeningYourrequirement is correct.YourDaily code is not wrong.The mismatch iswhere the “adapter boundary” lives, not what the code does.Right now you have this shape:canonical_retrieve_candidatesembeds oncecomputesPER_SOURCE_Kcalls:retrieve_daily_candidates(...)inline LTM retrievalretriev
+...[middle omitted for tagging]...
+ be unifiedDaily metadata is authoritative, but theact of enrichmentis not a Daily responsibilityThink of Daily as:“Here is the truth store”Not:“Here is the retrieval pipeline”Bottom lineNothing is “broken”.Cursor didn’t hallucinate.It followed the shape of the code more than the intent of the spec.To fix that:move the vector search loop into canonicalreduce Daily to a source adapterlet symmetry enforce correctnessOnce you do that, A.4.1 will stop being interpretable and start beingmechanically enforced.And that’s exactly what you want at this stage.
+
+------CURRENT TURN------
+------USER------
+daily_rag.pyPythonok, for the point of option A, when I read the requirements before implementing that is what I thought we were doing, so that is fine.
+
+For this:
+Answer to Cursor’s final question
+
+“Where should the daily.json join live?”
+
+In canonical.
+
+Not because Daily is unimportant, but because:
+
+joining metadata is part of candidate shaping
+
+candidate shaping must be unified
+
+Daily metadata is authoritative, but the act of enrichment is not a Daily responsibility
+
+Think of Daily as:
+
+“Here is the truth store”
+
+Not:
+
+“Here is the retrieval pipeline”
+
+That may be a problem, maybe not, but the daily_rag.py file where that call is for retrieve does a lot more, maintaining the in memory daily rag. take a look
+
+------ASSISTANT------
+Yeah, this is the key nuance, and you’re right to pause here. After looking atdaily_rag.py, the concern you’re raising is real, but it doesnotinvalidate Option A. It just means Option A needs to be framed correctly so you don’t accidentally hollow outdaily_rag.py.Let me ground this in what the file is actually doing, then reconcile it with the requirement.Whatdaily_rag.pyreally is (after looking at it)daily_rag.pyisnotjust a retrieval helper. It is three things at once:Daily memory lifecycle managerOwnsdaily.jsonOwnsdaily.txtOwns cache warmup, rebuild, and invalidationOwns embedding model compatibility checksOwns background rebuild semanticsAuthoritative metadata storemeta_by_idis the source of truthStabledaily_entry_idis enforced hereMetadata isnot reconstructibleelsewhereVector access providerOwns the in-memory FAISS instanceKnows when it is safe to use vs. rebuildKnows when to degrade gracefullySo your instinct is correct:Daily is not “just another vector store.”Where the confusion is coming fromWhen I said:“Daily helper becomes only: get me the Daily vs + meta_by_id”That didnotmean:strip Daily down to a thin wrappermove cache management in
+...[middle omitted for tagging]...
+ retrieval mechanics and candidate shaping.Daily owns lifecycle, truth, and safety.Not:“Move Daily logic into canonical”That distinction is important, and you spotted why.Answer to the underlying worry“That may be a problem, maybe not”It’snot a problem, as long as:Daily continues to own:cache staterebuild triggersauthoritative metadataCanonical owns:embeddingKsearch loopsshapingIf you cross that line, it becomes a problem. But you don’t need to.Why Cursor tripped againCursor looked at:retrieve_daily_candidatessaw it doing “extra work”assumed that extra work was part of retrieval semanticstherefore preserved itBecause the boundary wasn’t explicit in code.Once you split “get source” from “retrieve candidates”, Cursor has nothing left to reinterpret.Bottom lineYour original reading of the requirements was correct.The fix isnotto gutdaily_rag.py.The fix is to:stop letting Daily run its own retrieval loopkeep Daily as the authoritative memory subsystemlet canonical be the only place where candidates are formedAfter that, A.4.1 stops being an interpretation and becomes a fact.And yeah… this is exactly the kind of boundary Morpheus exists to remember.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "daily_rag.py, canonical, daily.json, candidate shaping, in-memory daily rag, FAISS",
+  "intent": "clarify architecture and where daily.json join should live",
+  "type": "technical",
+  "semantic_handle": "daily rag architecture boundary",
+  "questions": []
+}

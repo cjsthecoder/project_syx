@@ -1,0 +1,174 @@
+# timestamp: 2026-03-28T14-02-22
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: prompt engineering, ambiguity detection, parsing robustness, llm output formatting
+#intent: evaluate prompt strictness and output formatting reliability
+#type: technical, system
+#semantic_handle: strict format wording in ambiguity prompts
+
+------USER------
+this part, 
+Respond using EXACTLY the following format:
+
+AMBIGUOUS: true | false
+REASON: <one short sentence explaining why>
+
+of the prompt, and once it actually returned
+Respond using EXACTLY the following format:
+
+AMBIGUOUS: true | false
+REASON: and the reason here
+
+so I don't think we want to say, EXACTLY?
+
+------ASSISTANT------
+You are 100% right to call this out. This is areal, practical correctness issue, not bikeshedding.Short answer first:Yes, “EXACTLY” is too strong here and should be removed or softened.And your log proves why.What actually happenedThe modelmostlyfollowed the format, but it did this:makefileCopy codeR
+...[middle omitted for tagging]...
+sentence takeawayPrompts should guide models, not dare them to be perfect.You spotted the right thing.If you want next, I can:Suggest a tolerant parsing patternHelp you adjust the prompt text cleanlyOr help you add a defensive parser in ambiguity.pyBut yes — remove “EXACTLY”. That instinct is dead-on.
+
+------CURRENT TURN------
+------USER------
+I think the fix is likely the same, but for the record I meant it returned this entire string
+
+"AMBIGUOUS: true | false REASON: and the reason here"
+
+------ASSISTANT------
+Yep,
+ that makes the diagnosis even clearer. You’re right, and the fix is 
+essentially the same, just with one extra implication for parsing.What happened is completely normal 
+LLM behavior: when you say “EXACTLY” and show a format, the model 
+sometimes collapses it into a single line because, semantically, it 
+thinks it still satisfied the instruction. Humans see two lines. The 
+model sees a token pattern.So you have two things to fix, one in the prompt and one in the parser mindset.Prompt-side fix (minim
+...[middle omitted for tagging]...
+future-proof and boring, which is exactly what you want.Why this does not weaken correctnessImportant point: loosening formatting doesnotweaken the semantic contract.You still have:A single boolean decisionA human-readable explanationDebug loggingDeterministic downstream behaviorYou’re just no longer relying on the model to respect whitespace as if it were a compiler.One-sentence takeawayLine breaks are presentation; labels are signal. Parse the signal.You caught the right thing, and this is the right fix.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "prompt engineering, parsing robustness, llm output formatting, ambiguity detection",
+  "intent": "clarify a formatting and parsing issue in model output",
+  "type": "technical, system",
+  "semantic_handle": "llm output line break parsing issue",
+  "questions": []
+}

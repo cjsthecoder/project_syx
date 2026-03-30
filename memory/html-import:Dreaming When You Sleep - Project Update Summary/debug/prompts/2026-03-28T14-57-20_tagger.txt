@@ -1,0 +1,188 @@
+# timestamp: 2026-03-28T14-57-20
+# project_id: html-import:Dreaming When You Sleep - Project Update Summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: query routing, rag pipeline, category selection, k tuning, prompt refactor, retrieval policy, Morpheus
+#intent: evaluate prompt design and simplify classifier responsibilities
+#type: technical, system
+#semantic_handle: query router prompt for retrieval category selection
+
+------USER------
+ok, the next step is we need to look at this prompt below, and see if it makes sense to just use it to return a category that we can use to select different values for k, etc.
+
+_SYS_PROMPT = """You are a fast query builder and router for RAG. Return strict JSON only. No prose.
+
+Decide if retrieval is helpful:
+- CHITCHAT is only for small-talk, greetings, jokes, or meta comments about this chat itself (e.g., "how are you", "haha", "thanks", "you're smart").
+- Any question, idea, explanation, or reflection about real-world tasks, systems, tools, workflows, data, projects, or documents is NOT CHITCHAT. Treat those as technical and set rag=true.
+
+Schema: {"route":"CHITCHAT|CODE|DOCS|OTHER","rag":true,"standalone":"","paraphrases":[],"hyde":"","entities":[],"topics":[],"reason":"","confidence":0.0}
+
+Routing rules:
+- route="CHITCHAT" → only if purely social or conversational.
+- route="CODE" → when the question involves implementation, programming, APIs, configuration, or execution details (e.g., "how do we implement…", "what function…", "which parameter…").
+- route="DOCS" → when the question refers to explanations, conceptual understanding, features, or descriptive information (e.g., "how does this work", "what does it mean", "explain the process…").
+- route="OTHER" → anything factual or reasoning-based that doesn’t fit CODE or DOCS, including planning, design ideas, or general topics.
+- standalone must be a short, self-contained search query (≤ 200 chars).
+- standalone should be optimized for semantic retrieval, not conversation.
+- Remove pronouns, deixis, and conversational phrasing.
+- Prefer explicit nouns, named entities, and concrete concepts.
+- Default to rag=true unless clearly small-talk.
+- Always include at least one topic. Topics describe the general area of knowledge (e.g., ["vector search", "ANN tuning", "dynamic parameters"]).
+- Topics describe the broad domain of knowledge.
+- standalone should be a concrete query that could plausibly retrieve stored memories.
+- If the turn involves variables, configs, or API parameters, infer the broader topic they belong to (e.g., "retrieval", "optimization", "search pipeline").
+- Never leave topics empty."""
+
+------ASSISTANT------
+Yes, conceptually it makes sense, but not in its current form.Right now this prompt is trying to do 
+three different jobs at once, and that is exactly the kind of overreach 
+that caused earlier drift in Morpheus.Let me break this down cleanly and then give you a concrete recommendation.What This Prompt Is Doing TodayThis single prompt is attempting to:Decide whether retrieval is neededClassify the user intent into a routeRewrite the user query into a standalone search stringGenera
+...[middle omitted for tagging]...
+actor it into apure classifierwhose only responsibility is:decide CHITCHAT vs retrievalselect a coarse intent categoryemit stable topics for telemetry or later analysisOnce you do that:K selection becomes clean and deterministicA.4.3 remains policy-drivenNo semantic drift re-enters the systemIf you want, next step we can:rewrite this prompt into its minimal final formdefine the exact env mapping per categoryor add guardrails so this classifier can never affect the query path again
+
+------CURRENT TURN------
+------USER------
+ok, those catagories seem ok, for someone like me, not sure if they are good overall though.
+
+and by the way, as it stands now, if it is chitchat, it doesn't do a RAG query.
+
+------ASSISTANT------
+Yep, that all checks out, and you are right to pause on the category set.Let me separate the two points you made and tighten this up.1) CHITCHAT behaviorGood news first: your current behavior is already correct.If:route = CHITCHATrag = falseand you skip retrieval entirely, that is exactly what you want. Nothing to change there.CHITCHAT is not a retrieval problem and never should be. Lock that in as an invariant.2) Are those categories “good overall”?Your instinct is right.The set I gave is good foryoubecause you are technical, reflective, and often operating in design and research mode.For a general system, those labels are slightly overfit.So the right question is not “are these the right names?” but:What properties do we actually
+...[middle omitted for tagging]...
+semantic rewriting.6) What This Means for the PromptYour prompt should:decide CHITCHAT vs retrievalassign exactly one of these interaction modesemit topics as a coarse telemetry signalIt shouldnot:rewrite the querygenerate paraphrasesinvent entitiesjustify itself7) The Key Design WinOnce you frame categories this way:The classifier cannot accidentally change meaningRetrieval remains deterministicPolicy tuning becomes data-driven laterYou can add or merge categories without touching A.4.1–A.4.3That is exactly the separation you have been working toward.If you want, next we can:lock the final category namesrewrite the prompt in its minimal final formor define the exact env mapping table per category so it becomes code, not convention
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "chitchat, rag retrieval, category design, query routing, classifier prompt, retrieval policy",
+  "intent": "evaluate retrieval category design and confirm chitchat skips RAG",
+  "type": "technical, system",
+  "semantic_handle": "query routing categories for RAG skipping",
+  "questions": [
+    {
+      "question": "What properties should the category set optimize for?",
+      "topic": "category design",
+      "resolution": "remind_user"
+    }
+  ]
+}

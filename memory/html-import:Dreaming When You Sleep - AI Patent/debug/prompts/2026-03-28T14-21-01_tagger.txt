@@ -1,0 +1,161 @@
+# timestamp: 2026-03-28T14-21-01
+# project_id: html-import:Dreaming When You Sleep - AI Patent
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: linkedin, patents pending, working prototype, ai context, memory lifecycles, public claims
+#intent: ask for safe linkedin wording after filing provisional patents
+#type: technical, planning
+#semantic_handle: LinkedIn claim language for AI patent work
+
+------USER------
+this probably is the biggest deal, 12 months unemployed is neutralized by “built and filed patents”
+
+and I have no idea what you can say to a patent examiner so that isn't a great example.  but I get it.
+
+any of those sentences would be fine with me though.  Can I just add one thing, like this:
+“I’ve developed a novel approach to managing AI context and memory lifecycles. I have a working prototype and patents pending.”
+
+------ASSISTANT------
+Yes, youcansay that — and it’s a very strong sentence — but I recommendone small adjustmentto keep it maximally safe and credible.Your version isalmostperfect. The only risk is the phrase“I have a working prototype”combined with“patents pending”.
+ That pairing is usually
+...[middle omitted for tagging]...
+u can say it.Your wording is solid.If you want maximum safety with no downside, use the“supported by a working prototype”version.And you’re right: thisdoesneutralize the unemployment narrative. It reframes the year as independent innovation — which is exactly what it was.
+
+------CURRENT TURN------
+------USER------
+ok, we have some time to decide, but I think that will help.  Also, by saying working prototype it shows I have kept up programming skills, and even gone into the advanced.  The job interview is also going to be tricky, then the whole hiring process to have those patents not fall under their work agreement
+
+------ASSISTANT------
+You are thinking about exactly theright risk, and it is a real one. The good news is that it ismanageableif you handle the interview and onboarding correctly.I’ll break this into four clear parts.1. The real risk you are worried about (and it is valid)Most tech employment agreements contain some version of:“Inventions createdduring employment”“Inventions related to the company’s business”“Inventions developed using company resources”The danger zone isnotthe interview.The danger zone isafter you start, if you keep evolving the same system without carving it out.Your situation is actuallybetterthan most people’s because:You built itbeforeemploymentYou can document thatYou are filingbeforeemploymentYou have Git history, timestamps, and provisionalsThat gives you leverage.2. What to say in interviews (and what not to say)✅ What youcansay safelyHigh-level, non-enabling, value-focused statements.Examples:“I’ve developed a novel approach to AI context and memo
+...[middle omitted for tagging]...
+mory lifecycles, supported by a working 
+prototype. Patents pending.”That reframes the last year as:Independent R&DSystems-level innovationAdvanced engineering workHiring managers understand this immediately.Also important:You donotneed to commercializeYou donotneed issued patentsPending provisionals are enough to demonstrate senior technical ownership6. One final, practical ruleAfter you start a new job:Do not continue developing Morpheus on company hardwareDo not commit code during work hoursDo not mix reposDo not reuse internal codeTreat it like a separate company, even if dormant.If you later want to revive it, do it cleanly.Bottom lineYou are doing this the right way.Filing provisionals before employment is the key moveHigh-level interview language is safeExhibit A exclusion protects ownership“Patents pending” is absolutely appropriate after filingYou are not overthinking this. You are thinking like someone who has actually built something valuable.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "employment agreements, patents pending, working prototype, ai context, memory lifecycles, interview language, ownership carve-out",
+  "intent": "evaluate job interview and employment agreement risks for patent ownership",
+  "type": "technical, planning",
+  "semantic_handle": "Employment risk for AI patent and prototype claims",
+  "questions": []
+}

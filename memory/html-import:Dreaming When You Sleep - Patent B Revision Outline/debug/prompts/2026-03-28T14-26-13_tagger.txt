@@ -1,0 +1,171 @@
+# timestamp: 2026-03-28T14-26-13
+# project_id: html-import:Dreaming When You Sleep - Patent B Revision Outline
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Cursor, patent a, patent checklist, code requirements, method-style embodiment
+#intent: ask whether Cursor can draft a patent section from existing code and requirements in one prompt
+#type: technical
+#semantic_handle: Cursor drafting a patent section from requirements
+
+------USER------
+is this something Cursor could do in one prompt because it has access to code/requirements?
+
+------ASSISTANT------
+Yes. This is actuallya very good task for Cursor, and it is one of the few cases where asingle, well-scoped promptis appropriate.Because:Cursor can seeyour current Patent A textCursor can seerequirements / code / structureYou already did theprior-art reasoning outside the toolThe task isconstrained, additive, and non-creativeThis is 
+...[middle omitted for tagging]...
+guageMy recommendation✔️ Yes, do this in Cursor✔️ Yes, one prompt is enough✔️ Review the output once for:accidental “introspection”extra verbs like “decide,” “evaluate,” or “learn”hidden absolutes like “always” or “only”If any of those show up, they are easy one-line edits.You are absolutely in the right phase to use Cursor for this.
+
+------CURRENT TURN------
+------USER------
+this is what it generated, looks like we need to edit it though.
+
+Example Method Embodiment (optional, non-limiting)
+In one embodiment, a method for autonomous memory consolidation and long-term knowledge management includes:
+1) receiving, via a User Interaction Interface, interaction inputs and generating corresponding outputs using an Artificial Intelligence Model, wherein recent interaction inputs and outputs are maintained in an Active Interaction Window used for real-time response generation;
+2) upon satisfaction of a boundary condition, transferring interaction data that exits the Active Interaction Window into Short-Term Memory (STM) as rolled-off interaction data;
+3) autonomously triggering one or more Maintenance Phases that are non-inference and non-interactive, wherein Memory Consolidation is performed outside inference over previously stabilized interaction data in STM;
+4) during the one or more Maintenance Phases, invoking a Memory Consolidation Engine to process the rolled-off interaction data and produce one or more consolidated memory artifacts, wherein the one or more consolidated memory artifacts comprise a fixed consolidated memory artifact (snapshot);
+5) integrating the consolidated memory artifacts into Long-Term Memory (Persistent Knowledge Store / Long-Term Memory) for governed retention and later access; and
+6) during later inference, optionally retrieving selected stored memory segments from one or more of STM and Long-Term Memory using an Inference Orchestration Engine, assembling a combined prompt using a Prompt Assembly Engine, and submitting the combined prompt to the Artificial Intelligence Model to generate a response, wherein retrieval during inference is read-only with respect to stored memory and does not modify stored consolidated memory artifacts.
+
+------ASSISTANT------
+You’re right. This isvery close, but it needs asmall tightening passto better align with the invariants you have established and to remove two subtle examiner-risk issues.I’ll break this into three parts:What isalready goodWhat specifically needs editing and whyAclean rewritten versionyou can drop in1. What is already goodThis output is fundamentally solid:✔ Correct lifecycle ordering✔ Explicit separation of inference vs maintenance✔ Fixed snapshot language present✔ Read-only retrieval during inference stated✔ No agent or task-execution leakage✔ Terminology matches Patent AYou absolutely did the right thing running this through Cursor.2. What needs editing and whyThere arethree small but important issues.Issue 1: “one or more consolidated memory artifacts comprise a fixed consolidated memory artifact”This phrasing is slightly awkward and can confuse an examiner.Risk:Sounds like multiple artifacts might or might not be fixedWeakens your “fixed snapshot” invariantFix:Say directly 
+...[middle omitted for tagging]...
+ifact into Long-Term Memory (Persistent Knowledge Store) for 
+governed retention and subsequent access; andduring later inference, optionally 
+retrieving selected stored memory segments from one or more of STM and 
+Long-Term Memory using an Inference Orchestration Engine, assembling a 
+combined prompt using a Prompt Assembly Engine, and submitting the 
+combined prompt to the Artificial Intelligence Model to generate a 
+response, wherein retrieval during inference is read-only with respect 
+to stored memory and does not modify the fixed consolidated memory 
+artifact.Examiner-readiness verdictAfter this edit:✔ §102 separation is strong✔ §103 combinations are harder✔ Language cleanly tracks your System Invariants✔ This reads like asupporting embodiment, not a claim trapYou are invery good shapefor Patent A at this point.If you want, the next low-effort, high-value step would be:aone-paragraph Abstractor afinal consistency sweep checklistbefore assembling the full provisional package
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent drafting, example method embodiment, memory consolidation, long-term memory, Patent A",
+  "intent": "review and refine generated patent embodiment language",
+  "type": "technical",
+  "semantic_handle": "Editing a patent method embodiment draft",
+  "questions": []
+}

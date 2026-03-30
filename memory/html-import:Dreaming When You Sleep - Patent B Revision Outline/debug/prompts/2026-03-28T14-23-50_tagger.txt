@@ -1,0 +1,167 @@
+# timestamp: 2026-03-28T14-23-50
+# project_id: html-import:Dreaming When You Sleep - Patent B Revision Outline
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: conditional follow-on processing actions, patent drafting, section naming, examples, questions, research
+#intent: refine section naming and structure to make examples explicitly non-limiting
+#type: technical, planning
+#semantic_handle: non-limiting examples in follow-on processing section
+
+------USER------
+ok, what if we use this? Conditional Follow-On Processing Actions. then we include a paragraph something like , here are some examples, paragraph on questions, then the paragraphs on research (which make sense after questions), but we want to make it clear these are examples?
+
+------ASSISTANT------
+Yes. That is actually thecleanest, most patent-correct wayto do this.You’re describing exactly how good specs handleexamples without narrowing.What you want is ageneric section, followed byexplicitly labeled non-limiting examples.Below is arecommended structure and wordingthat does exactly what you want and is examiner-safe.Section TitleConditional Follow-On Processing ActionsOpening Paragraph (Generic, Non-Limiting)Start the section with a paragraph that clearly e
+...[middle omitted for tagging]...
+turingYou could later add:Contradiction resolution exampleConfidence-driven reanalysis exampleTopic expansion exampleAll without changing the core claim.RecommendationYes, do exactly this.Next steps I recommend:Lock this section structureThen move toStructured Insight Artifacts, which will unify:questionsresearch outputscontradictionsinsightsIf you want, I can now rewrite theentire sectionin final form using this structure so you can drop it straight into the draft.
+
+------CURRENT TURN------
+------USER------
+can you write the entire Conditional Follow-On Processing Actions, in this format as recommended?
+
+------ASSISTANT------
+Here is thecomplete, patent-ready sectionwritten exactly in the format you described.It is generic first, then clearly labelednon-limiting examples, with careful language to avoid lock-in.You can drop this in as a full replacement section.Conditional Follow-On Processing ActionsIn the disclosed system, the 
+autonomous introspective analysis framework is further configured to 
+conditionally initiate one or more follow-on processing actions based on
+ conditions identified during post-consolidation reasoning. Follow-on 
+processing actions are not limited to any particular type of operation 
+and may be initiated to expand contextual understanding, refine the 
+scope of detected conditions, resolve uncertainty or inconsistency, or 
+otherwise support further knowledge synthesis
+...[middle omitted for tagging]...
+resolution of uncertainty or inconsistency,
+ or inform subsequent introspective analysis or user review. Results of 
+such processing may be incorporated as derived knowledge artifacts and 
+used in later autonomous reasoning cycles or presented for optional 
+review. Research and context expansion are provided as non-limiting 
+examples of follow-on processing actions that may be performed by the 
+system.This section now clearly establishes that:Follow-on actions areconditionalThe category isgenericQuestions areone exampleResearch isone exampleNeither is requiredAdditional examples can be added later without restructuringNext in outline order, the clean continuation is:→Structured Insight ArtifactsThat section will tie everything together and lock the architecture in place.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "conditional follow-on processing actions, patent drafting, non-limiting examples, questions, research, structured insight artifacts",
+  "intent": "ask for section drafting",
+  "type": "technical, planning",
+  "semantic_handle": "patent section for conditional follow-on processing actions",
+  "questions": []
+}

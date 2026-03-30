@@ -1,0 +1,167 @@
+# timestamp: 2026-03-28T14-21-38
+# project_id: html-import:Dreaming When You Sleep - Research Proposal Paths
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: OpenAI, Anthropic, Google, Google DeepMind, Stanford HAI, research proposals, partnership intake
+#intent: find official channels and programs for proposing research ideas to AI labs
+#type: research
+#semantic_handle: AI lab research proposal channels
+
+------USER------
+ok, I took a week off this project.  but I am back.  first, can you find online any place I could float this idea to OpenAI, Anthropic, or even Google?  Any information on the programs they have for proposed research or something like that?
+
+------ASSISTANT------
+Here
+ are the most legitimate, official paths I can find right now to “float”
+ an idea, plus the programs that explicitly accept research proposals or
+ applications.Reality check before you send anything. Most big AI labs are cautious about unsolicited invention-style submissions (legal/IP risk). The channels thatdowork are (a) partnerships intake forms, (b) formal proposal programs, 
+or (c) applying into a residency/fellowship
+...[middle omitted for tagging]...
+evidence artifactsthat do not disclose secret sauce (charts, latency/token savings, demo video).. If you have IP considerations, use language like: “Happy to share implementation details under a mutual NDA.”If you want, paste your 1-paragraph
+ description of the idea and who you want to target (OpenAI vs Anthropic
+ vs Google), and I’ll reshape it into a tight “partnership intake” 
+submission plus a matching 1-page brief outline.
+
+------CURRENT TURN------
+------USER------
+ok, so it seems like step 1 would be to make a video demo?  I think I need to add some code, gui displays what is going on, but that isn't hard.
+
+------ASSISTANT------
+Yes.
+ A short demo video is usually the highest leverage first artifact, 
+because it lets you show “this is real” without handing over source 
+code.Here’s a practical path that fits your situation.Step 1: Build a demo that proves 3 thingsIt works: long conversation, then later recall is correct and fast.It is controlled: you can show what gets stored, what gets pruned, and why.It is efficient: tokens sent to the LLM drop, latency drops, or accuracy improves.Step 2: Make the GUI show “what’s happening” without exposing internalsAim for a simple “control room” overlay:.Live counters(top bar). Context tokens sent this turn. Retrieved memory chunks count. Time per stage (ingest, retrieve, compose, call LLM). Cache hit or miss.Pipeline view(left column). Ingest → Tag → Score → Store. Retrieve → 
+...[middle omitted for tagging]...
+e.Step 5: Make two versions of the video.Public safe cut (2 to 3 minutes): no proprietary details, only outcomes and high-level flow..Private cut (5 to 7 minutes): deeper metrics and internals, only shared under NDA or after serious interest.What to do next, immediately. Pick one scenario for the demo:. Personal assistant continuity (preferences, commitments, project details).. Engineer workflow (requirements, decisions, later retrieval).. “Memory sleep cycle” consolidation before and after.. Add 5 key metrics to display live:. Input tokens, output tokens, retrieved chunks, latency, and “memory hits”.If you tell me what you currently 
+have for the UI stack (web app, desktop, terminal, obs overlay, etc.), I
+ can give you a concrete layout and a shot-by-shot script you can record
+ in one take.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "demo video, gui, code, memory system, llm latency, context tokens",
+  "intent": "plan a demo artifact and interface for presenting a project",
+  "type": "design",
+  "semantic_handle": "demo video and gui for memory system",
+  "questions": []
+}

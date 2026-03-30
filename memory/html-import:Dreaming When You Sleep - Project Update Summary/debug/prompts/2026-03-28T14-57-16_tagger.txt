@@ -1,0 +1,260 @@
+# timestamp: 2026-03-28T14-57-16
+# project_id: html-import:Dreaming When You Sleep - Project Update Summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+(none)
+
+------USER------
+(none)
+
+------ASSISTANT------
+(none)
+
+------CURRENT TURN------
+------USER------
+here is a summary of where we are on this project.  just read it and say READY when done.
+
+Current State Summary (Query + RAG Pipeline)
+What Changed and Why It Worked
+1. Query string construction was fixed and simplified
+* The RAG query string is now built from:
+    * the current user prompt, and
+    * optional semantic metadata derived from recent turns
+* We removed accidental behavior where:
+    * only truncated prior turns were used
+    * the actual user question was partially or fully ignored
+* Debug files confirmed that the correct query string is now what gets embedded.
+Result: Retrieval accuracy improved dramatically once the actual question reliably reached the embedding step.
+
+2. Consistent tagging unlocked downstream improvements
+* A model mismatch in LangChain was causing inconsistent tagging.
+* Fixing the model path produced:
+    * stable topics
+    * stable intent
+    * stable type
+    * reliable semantic handles
+* Once tagging stabilized, retrieval quality jumped immediately.
+Key insight: Most earlier “retrieval problems” were actually metadata instability problems.
+
+3. Semantic handles replaced brittle context hacks
+* Instead of truncating or heuristically summarizing recent turns:
+    * we now generate a semantic_handle during message rollover
+    * this handle is stored and reused later
+* The semantic handle is:
+    * short
+    * durable
+    * meaning-focused
+    * safe to embed into query strings
+Effect: Follow-up questions like “How do we do that?” now retrieve relevant memory without relying on fragile text chopping.
+
+4. Retrieval now intentionally over-fetches
+* K values were increased intentionally.
+* The philosophy is now:
+    * maximize recall early
+    * filter later
+* A.4.1 and A.4.2 are doing their jobs correctly.
+* A.4.3 will be responsible for pruning and selection.
+This is working as designed.
+
+5. Debug artifacts replaced logging
+* Logging alone was insufficient.
+* A toggleable, env-controlled debug file system now captures:
+    * user prompt
+    * derived query string
+    * classifier output
+    * retrieval candidates with scores
+    * final prompt sent to the model
+* This provided the breakthrough needed to diagnose hidden failures.
+
+What the Query String Looks Like Now
+The query string is built conditionally from available signals:
+* Always includes the current user prompt
+* Optionally includes:
+    * semantic_handle
+    * intent
+    * type
+Example pattern:
+
+<user_prompt>
+Context: <semantic_handle>
+Intent: <intent>
+Type: <type>
+Rules:
+* If a field is missing, it is omitted entirely.
+* No placeholder text.
+* No fabricated context.
+This keeps embeddings clean and semantically dense.
+
+Next Planned Steps (Immediate, Not Cleanup)
+1. Revisit the query categorization prompt
+* The existing query-builder / router prompt still adds value.
+* Its role going forward:
+    * classify the user request (lookup, plan, design, research, etc.)
+    * not rewrite the query string
+* We want to simplify and clarify this prompt so it:
+    * outputs stable categories
+    * avoids over-generation
+    * focuses on intent and complexity
+
+2. Map categories to tunable retrieval policies
+Instead of hard-coded logic:
+* Category → env-configured values such as:
+    * BASE_TOP_K
+    * RETRIEVAL_MULTIPLIER
+    * max snippets after A.4.3
+* This allows:
+    * higher K for complex or research-style prompts
+    * lower K for simple lookups
+* A.4.3 will handle final pruning regardless.
+
+3. Keep retrieval unified and deterministic
+* One embedding per query
+* Same vector used across Daily and LTM
+* Same base retrieval parameters
+* Differences handled only through:
+    * metadata
+    * later-stage selection rules
+
+4. Proceed toward A.4.3 (selection and pruning)
+Now that:
+* query strings are correct
+* tagging is consistent
+* retrieval is recall-biased and stable
+…A.4.3 can be implemented cleanly as a policy-driven filter, not a workaround.
+
+Key Architectural Principle Locked In
+* Query construction = semantic anchoring
+* Retrieval = recall
+* Selection = policy
+* Generation = separate concern
+This separation is now working in practice, not just in theory.
+
+------ASSISTANT------
+READY
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "query string construction, rag pipeline, semantic handles, retrieval policies, a.4.3 selection and pruning, langchain, debug artifacts",
+  "intent": "summarize project state and confirm readiness",
+  "type": "technical, system",
+  "semantic_handle": "query + rag pipeline architecture summary",
+  "questions": []
+}

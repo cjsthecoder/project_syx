@@ -1,0 +1,165 @@
+# timestamp: 2026-03-28T14-08-29
+# project_id: html-import:Dreaming When You Sleep - 4.4.1
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: linkedin, profile views, comments, federal contracting, social media algorithm
+#intent: interpret engagement signals
+#type: technical, research
+#semantic_handle: linkedin engagement from federal contracting audience
+
+------USER------
+there have been 5 comments, and about 30 people have looked at my profile, from the ones I can see it is a wide range of people mostly in federal contracting type jobs.
+
+------ASSISTANT------
+That actually confirms the diagnosis almost perfectly.What you are seeing isclassic “authority curiosity” behavioronLinkedIn.Let me break down what the numbers mean together, because they are more informative than likes.What the 5 comments signalFive comments on ~6,800 views is low by social standards, butnormal for career-risk content.The important part iswhocomments, not how many:People comfortable being publicly visiblePeople far
+...[middle omitted for tagging]...
+ instantly.Bottom lineYour data tells a very clean story:The algorithm trusted the postThe audience found it relevantThe topic triggered professional caution, not dismissalPeople vetted you quietlyThat is exactly what high-signal industry posts look like.If you want, we can design a second post that:Pulls one concrete exampleKeeps the same safetyIntentionally converts some of those silent readers into repeat viewersJust say the word.
+
+------CURRENT TURN------
+------USER------
+about a year ago I posted this one, and got about 76,000 views.  but it seemed driven by likes.  where there is a 181, but I remember that some of the early ones were 500+ people, so I assumed it grew because of that.  102 comments, I don't know how many views though.
+
+
+
+I recently discovered that there is a company that automates the application process. Their tag line is "Apply to hundreds of tech jobs in 30 seconds of work." I guess that explains why I have seen job postings 10 minutes old, that had more than 100 applications.
+
+So it appears that over the years HR departments bought Applicant Tracking System software seemingly to make their jobs easier. And we are living in the next phase, gaming that software. Flooding the applications with resumes making it nearly impossible to get through, even if you are a legit good match. Let's be serious, if it doesn't already the logical next step for the automatic application process is to update the resume on the fly, including all the keywords to get past the ATS and to a recruiter.
+
+Part of me wants to stop looking for a job now, and make an Automatic Application Detector. But, I feel like it would be short lived, since someone will no doubt respond with an Automatic Application Detector, Detector.
+
+------ASSISTANT------
+That comparison is actually really clean, because the two posts are being rewarded bydifferent parts of the same system.Think of it as LinkedIn running two engines in parallel.I will map them side by side using what you observed.Post A: ATS automation post76,000 views | 181 likes | 102 commentsThis one rode theengagement cascade.Why it took off:1) You named a concrete villainATS systemsAutomated job applicationsResume keyword gamingThat is emotionally legible and safe to agree with.People could click “like” without risk because:It criticizes tools, not institutionsEveryone job hunting feels wrongedThere is no professional downside to agreementThat unlocks rapid early likes.2) It triggered identity-level outrageThis line is the ignition point:“Apply to hundreds of tech jobs in 30 seconds of work.”That makes people feel:CheatedDevaluedAngry at the systemOutrage content produces:LikesComments“This happened to me”DogpilingOnce early engagement spikes, LinkedIn’s system shifts the post intohigh-velocity amplification mode
+...[middle omitted for tagging]...
+iews.About your Automatic Application Detector jokeThat line did two things right:It acknowledged the arms raceIt showed technical self-awarenessThat is why the post felt human and got comments.If you ever wanted to revive that thread today, a follow-up like:A year later, we are clearly in an 
+application arms race. ATS vs automation vs AI-generated resumes. The 
+question is whether this helps companies hire better engineers or just 
+better keyword generators.That would likely perform again, because the problem is worse now.Bottom lineYour older post succeeded because:It invited public agreementIt rewarded performanceIt activated frustration loopsYour newer post succeeded because:It invited private evaluationIt rewarded thoughtIt activated credibility checksYou did not lose reach quality.You shiftedwhich signal the algorithm is optimizing for.If you want, we can deliberately design posts that:Start as authorityThen pivot into safe engagementWithout blowing your credibilityThat is a powerful combo when done carefully.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "linkedin, applicant tracking systems, automated job applications, job search, social media algorithm",
+  "intent": "analyze engagement differences in linkedin posts",
+  "type": "technical, research",
+  "semantic_handle": "linkedin post performance and application arms race",
+  "questions": []
+}

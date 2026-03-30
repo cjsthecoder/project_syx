@@ -1,0 +1,162 @@
+# timestamp: 2026-03-28T14-15-22
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Morpheus, Cursor, schema validation, validation policy, renumbering
+#intent: choose how to resolve schema field questions
+#type: technical
+#semantic_handle: Validation policy for schema field questions
+
+------USER------
+ok, 23 questions, but none complicated, just like how to handle each field in the schema check, stuff like that.  So, better this time, I even caused a couple because when I renumbered I missed one. haha (stupid human in the loop)
+
+------ASSISTANT------
+That is actually agood sign.A small cluster of ~20 straightforward questions after a major structural change usually means:Cursor understood the refactorThe spec is internally consistentThe only remaining questions are low level (field behavior, 
+...[middle omitted for tagging]...
+e atomic requirement update.If you prefer Option A and want to walk through all 23 in this chat, I can do that immediately.Which do you want?A: answer all 23 one by oneorB: create a universal validation policy that answers everything automatically
+
+------CURRENT TURN------
+------USER------
+it worked on the first try, not even little errors this time!  The only thing I see I might change are a few log messages to debug, and maybe add 1 or 2.
+
+I am thinking though, one way we could improve this is to search the project's main RAG file, and include that in the prompt.  Just to give it even more context.  I need to think about that though, maybe we did that in context already
+
+------ASSISTANT------
+Fantastic.When a new agent worksperfectly on the first integration run, withzero structural questions, it means:The requirements were rock solidThe renumbering eliminated ambiguityThe JSON validation policy prevented Cursor from inventing alternate pathsThe architecture now fully matches the pipelineThis is exactly the behavior we want.Now, about improving Idea Agent context with RAGYour instinct is correct:We can increase idea quality by giving the Idea Agent more project-specific knowledge.But before adding additional retrieval, let’s check what’s already happening.Does the dream_context already include project RAG?Yes — in fact,4.1.3 Dream Context Builderalready includes:snippets from daily memorysnippets from the long term memory filesnippets from
+...[middle omitted for tagging]...
+ogy and your AGI design goals.Concrete plan to upgrade dream_context with RAGAdd a new requirement:FR-4.1.3.X Project RAG EnrichmentThe Dream Context Builder SHALL perform a RAG retrieval pass over the project’s long term memory store or project RAG index.The retrieval SHOULD:Select top-K relevant documents (configurable, default K = 5)Filter noise by similarity thresholdInsert retrieved snippets under=== PROJECT RAG CONTEXT ===The builder SHALL ensure this appearsbeforeIdea Agent processing.If you want, I can:Insert this requirement into the documentUpdate the Dream Context Builder specDraft the retrieval logicOr update Idea Agent prompt to take advantage of this new sectionIf you'd like to proceed now, just say:“Add RAG enrichment to dream_context.”
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "dream_context, project RAG, Idea Agent, prompt context, long term memory, retrieval enrichment",
+  "intent": "improve agent context with project-specific retrieval",
+  "type": "technical",
+  "semantic_handle": "RAG enrichment for dream context",
+  "questions": [
+    {
+      "question": "Should the Dream Context Builder perform a RAG retrieval pass over the project’s long term memory store or project RAG index?",
+      "topic": "project RAG",
+      "resolution": "answer_local"
+    }
+  ]
+}

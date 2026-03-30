@@ -1,0 +1,157 @@
+# timestamp: 2026-03-28T14-58-34
+# project_id: html-import:Dreaming When You Sleep - Project Update Summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: DELTAS.md, DELTA-A.4.3, policy-driven candidate selection, pruning, retrieval flow, context assembly
+#intent: write a requirement section in an existing document format
+#type: technical
+#semantic_handle: DELTA-A.4.3 requirement section for pruning
+
+------USER------
+DELTAS.mdFilecan you write the requirement formatted as this document is, for 4.3?
+
+------ASSISTANT------
+Below is adrop-in requirement sectionforDELTA-A.4.3, written to match the tone, structure, and rigor of the existing DELTAS document. It is designed to slotimmediately after DELTA-A.4.2with no stylistic drift.I am intentionally not inventing future behavior beyond what you have already locked in architecturally.DELTA-A.4.3 — Policy-Driven Candidate Selection and PruningStatusPlannedAffected RequirementsFR-2.3-3 — Retrieval FlowFR-2.3.1.7 — Retrieval Order and Context AssemblyFR-2.5.3 — Retrieval Logic UpdateIntentApply deterministic,
+...[middle omitted for tagging]...
+ectness.Implementation NotesSelection logic SHOULD be isolated in a dedicated module or function.Instrumentation hooks SHOULD be placed immediately before and after selection to record:Total candidates pre-selectionCandidates retained post-selectionA.4.3 MUST be fully implemented before A.4.4 is introduced.If you want, next we can:WriteDELTA-A.4.4in the same formatTightenRETRIEVAL_KvsMAX_KEEPlanguage even furtherAdd a shortnon-goal sectionto make reviewer intent unambiguousReference document used for formatting and consistency:DELTAS
+
+------CURRENT TURN------
+------USER------
+ok, first, I forgot to mention do this in canvas.  Also, lets remove the shall nots, that is at best going to confuse Cursor.
+
+also we need to include this note, where it makes sense:
+note max_keep exists as a per-route policy input and is currently only recorded/telemetry
+
+------ASSISTANT------
+Done. I moved it into canvas, removed the SHALL NOT language, and integrated theMAX_KEEP telemetry notein the policy section where it naturally belongs.The requ
+...[middle omitted for tagging]...
+w-on requirement that formalizesinstrumentation and telemetry expectationsas its own deltaBut structurally, A.4.3 is now in good shape and won’t fight you later.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "DELTAS.md, DELTA-A.4.3, canvas, max_keep, telemetry, policy-driven candidate selection",
+  "intent": "revise a requirement section and add policy note",
+  "type": "technical",
+  "semantic_handle": "DELTA-A.4.3 requirement revision in canvas",
+  "questions": []
+}

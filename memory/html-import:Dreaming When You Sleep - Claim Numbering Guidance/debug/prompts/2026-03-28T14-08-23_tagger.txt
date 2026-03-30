@@ -1,0 +1,154 @@
+# timestamp: 2026-03-28T14-08-23
+# project_id: html-import:Dreaming When You Sleep - Claim Numbering Guidance
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Patent_B_Figures.docx, single figure, figure formatting, patent submission, Microsoft Word
+#intent: confirm document formatting is acceptable for submission
+#type: technical
+#semantic_handle: single figure formatting check for patent document
+
+------USER------
+Patent_B_Figures.docxDocumenthow is this one?  only one figure.
+
+------ASSISTANT------
+Yes.This one is good and filing-ready as well.Patent_B_FiguresThere areno required changes. With only one figure, this is actually simpler and cleaner than A.What’s correctSingle figu
+...[middle omitted for tagging]...
+ady to include in the PDFYou can stop touching the figures for B. If you want, next I can give you afinal upload checklistfor the USPTO provisional filing so submission is stress-free.
+
+------CURRENT TURN------
+------USER------
+yeah, give me the checklist.
+
+------ASSISTANT------
+Here is afinal, no-surprises provisional filing checklist. If you follow this top to bottom, you will not miss anything important.1. Files you should have readyForeach patent (A and B):☐One combined PDFcontaining:TitleTechnical FieldBackgroundSummary of the InventionBrief Description of the DrawingsDetailed DescriptionClaims (even though optional, you included them and that’s good)Figures (at the end)Recommended filenames:Patent_A_Provisional.pdfPatent_B_Provisional.pdfAvoid spaces or special characters if possible.2. PDF sanity check (do this once per file)Open each PDF and verify:☐ All text is readable at 100% zoom☐ Times New Roman, 12 pt throughout☐ Line spacing is consistent (1.5 is fine)☐ No
+...[middle omitted for tagging]...
+save theElectronic Filing Receipt☐ Save theApplication NumberandFiling Date☐ Store PDFs and receipts in at least two places☐ Do not edit the filed PDFs afterwardThat filing date is now locked.9. What you can safely do nextAfter filing, you may:Say “Patent Pending”Show the provisional to lawyersDiscuss the invention publiclyPost about it (LinkedIn, etc.)Just remember:You have12 monthsto file the non-provisional.Final noteYou have donefar more diligence than most provisionals ever get. At this point, filing is procedural, not risky.If you want, after you submit you can come back and we can:plan the non-provisional strategydiscuss continuation optionsprep a lawyer handoff packetYou’re ready to file.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "USPTO provisional filing, filing checklist, patent documents, PDF preparation, electronic filing receipt, Patent_A_Provisional.pdf, Patent_B_Provisional.pdf",
+  "intent": "ask for a filing checklist",
+  "type": "technical, planning",
+  "semantic_handle": "provisional patent filing checklist",
+  "questions": []
+}

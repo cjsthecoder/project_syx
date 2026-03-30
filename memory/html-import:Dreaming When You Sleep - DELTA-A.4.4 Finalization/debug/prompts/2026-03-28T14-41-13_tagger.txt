@@ -1,0 +1,300 @@
+# timestamp: 2026-03-28T14-41-13
+# project_id: html-import:Dreaming When You Sleep - DELTA-A.4.4 Finalization
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: A.4.1, canonical retrieval entry point, Daily, LTM, FAISS, settings.embedding_model
+#intent: review updated requirement and acknowledge readiness
+#type: technical
+#semantic_handle: canonical retrieval requirement for Morpheus memory queries
+
+------USER------
+ok, it screwed it up again.  First, here is the updated requirement for reference, just read it and say ready.
+
+### A.4.1 — Canonical Retrieval Entry Point
+
+#### Status
+
+Accepted
+
+#### Intent
+
+Introduce a single, canonical retrieval entry point that queries both Daily and LTM memories using identical logic and produces a unified set of ranked retrieval candidates.
+
+This step establishes the foundation for shared ranking, thresholding, and telemetry in later sub-deltas.
+
+#### State
+
+* The system SHALL define a single retrieval function responsible for all RAG memory queries.
+* This function SHALL accept:
+
+  * A normalized query string.
+  * A list of memory sources to query (at minimum: Daily and LTM).
+  * A retrieval configuration object (source-level limits and future ranking/threshold parameters).
+* The canonical retrieval function MUST compute the query embedding exactly once (usingsettings.embedding_model) and reuse the same query vector across all queried sources.
+* Candidate retrieval MUST NOT be controlled by route configuration (e.g.,meta_namespaces.json); route/policy inputs are deferred to later stages (A.4.3+).
+* Retrieval-stage limits SHALL be controlled only by:
+  *BASE_TOP_K*RETRIEVAL_MULTIPLIERwith per-source query limit:
+  *PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)#### Retrieval Behavior
+
+* The canonical retrieval function SHALL:
+
+  * Query Daily and LTM memories using the same semantic search mechanism, driven by the shared query vector.
+  * Normalize all retrieved results into a single, canonical candidate shape containing:
+
+    * Source identifier (dailyorltm)
+    * Retrieved text
+    * Associated metadata (tags, timestamp, route, intent, type)
+    * Raw similarity score from the underlying vector search (cosine similarity in the range 0.0–1.0)
+  * Apply no namespace boosts or route-based eligibility pruning at this stage.
+
+* The function SHALL NOT:
+
+  * Apply source-specific branching logic.
+  * Apply ranking or thresholding decisions at this stage.
+  * Apply fallback behavior when no candidates meet a similarity threshold (thresholding does not occur in this step).
+  * Inject retrieved content directly into the model prompt.
+  * Apply route-basedrag_korscore_thresholdvalues at retrieval time.
+
+#### Source Semantics
+
+* Daily and LTM memories SHALL be treated as equivalent retrieval sources at the API level.
+* Differences between sources (recency, priority, trust) SHALL be expressed only through metadata and scoring adjustments in later steps.
+* For the purposes of unified retrieval,ltmSHALL include all content embedded in the project’s main FAISS index, regardless of origin (uploads, sleep summaries, dream artifacts, or other long-lived memory sources).
+* Fordailycandidates, canonical metadata SHALL be sourced authoritatively fromdaily.json(not inferred from embedded text). A stable daily entry identifier MUST exist for each daily vector so candidates can be deterministically joined todaily.json.
+* Forltmcandidates, missing metadata fields are allowed and SHALL be left absent/null. No parsing from retrieved text is performed in this step.
+
+#### Ordering Guarantees
+
+* The canonical retrieval function SHALL preserve:
+
+  * The original retrieval order returned by the underlying vector search for each source.
+  * Source attribution for every retrieved candidate.
+
+* A.4.1 does not define a cross-source ordering rule for the combined candidate set; deterministic ordering is defined by A.4.2.
+
+#### Output Contract
+
+* The function SHALL return a flat list of retrieval candidates with no filtering beyond source-level query execution limits (PER_SOURCE_Kper queried source).
+* An empty result set from one source SHALL NOT block retrieval from other sources.
+* Failure to query one source SHALL degrade gracefully and SHALL NOT abort the overall retrieval operation.
+* On error querying a source, the system SHALL trigger a best-effort rebuild/repair for that source and return an empty candidate set for that source for the current request (no automatic retry within the request).
+* If either Daily or LTM is out of sync withsettings.embedding_model, the system SHALL follow rebuild-on-error / no-retry semantics for that source only.
+
+#### New Invariants
+
+* All RAG retrieval passes through a single code path.
+* Daily and LTM are no longer queried via separate, source-specific logic.
+* Retrieval consistency is guaranteed across memory tiers prior to ranking and selection.
+
+------ASSISTANT------
+READY
+
+------CURRENT TURN------
+------USER------
+its still calling this code on the daily path, just read it and say ready
+
+def retrieve_daily_candidates(project_id: str, query_vector: Sequence[float], top_k: int) -> List[Dict[str, Any]]:
+    """
+    DELTA-A.4.1: Canonical Daily retrieval candidates (raw top-K, no thresholding, no boosting).
+
+    Returns a list of candidate dicts in the same order returned by the underlying vector search.
+    Each candidate includes authoritative metadata sourced from daily.json via the in-memory cache'smeta_by_idmapping, keyed by stabledaily_entry_id.
+    """
+    if top_k <= 0:
+        return []
+    if not query_vector:
+        return []
+    settings = get_settings()
+    # Warm lazily on first use for a project (non-blocking; return empty for this request).
+    with _CACHE_LOCK:
+        cache = _CACHE.get(project_id)
+    if cache is None:
+        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_warm")
+        return []
+    with _CACHE_LOCK:
+        cache = _CACHE.get(project_id)
+    if cache is None or cache.vs is None:
+        return []
+    # If runtime model changed vs cache, rebuild but do not retry this request (return empty).
+    if cache.embedding_model != settings.embedding_model:
+        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_model_mismatch")
+        return []
+    try:
+        results = cache.vs.similarity_search_with_score_by_vector(query_vector, k=top_k)  # type: ignore[attr-defined]
+    except Exception as e:
+        logger.warning("DailyRAG: candidate retrieve failed project=%s: %s", project_id, e)
+        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_exception")
+        return []
+
+    out: List[Dict[str, Any]] = []
+    for doc, dist in results:
+        cos = cosine_from_l2_distance(dist)
+        md = getattr(doc, "metadata", None) or {}
+        eid = md.get("daily_entry_id")
+        entry = None
+        try:
+            if eid is not None:
+                entry = cache.meta_by_id.get(str(eid))
+        except Exception:
+            entry = None
+        # Authoritative metadata from daily.json when available; otherwise best-effort from doc metadata.
+        created_at = (entry.get("created_at") if isinstance(entry, dict) else None)
+        route = (entry.get("namespace") if isinstance(entry, dict) else md.get("namespace"))
+        tags_meta = (entry.get("tags_meta") if isinstance(entry, dict) else None)
+        topics = (tags_meta.get("topics") if isinstance(tags_meta, dict) else None)
+        intent = (tags_meta.get("intent") if isinstance(tags_meta, dict) else None)
+        tag_type = (tags_meta.get("type") if isinstance(tags_meta, dict) else None)
+        out.append(
+            {
+                "source": "daily",
+                "text": getattr(doc, "page_content", "") or "",
+                "score": float(cos),
+                "metadata": {
+                    "id": str(eid) if eid is not None else None,
+                    "timestamp": created_at,
+                    "route": (str(route).lower() if isinstance(route, str) else route),
+                    "tags": (entry.get("tags") if isinstance(entry, dict) else None),
+                    "topics": topics,
+                    "intent": intent,
+                    "type": tag_type,
+                    "tags_meta": tags_meta,
+                    "keep": (entry.get("keep") if isinstance(entry, dict) else None),
+                    "day_sequence": (entry.get("day_sequence") if isinstance(entry, dict) else md.get("day_sequence")),
+                    "pair_ids": (entry.get("pair_ids") if isinstance(entry, dict) else None),
+                    "source": (entry.get("source") if isinstance(entry, dict) else "daily"),
+                },
+            }
+        )
+    return out
+
+------ASSISTANT------
+READY
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "daily retrieval, canonical retrieval entry point, retrieve_daily_candidates, settings.embedding_model, daily.json, meta_by_id",
+  "intent": "review code and acknowledge readiness",
+  "type": "technical",
+  "semantic_handle": "daily candidate retrieval code path",
+  "questions": []
+}

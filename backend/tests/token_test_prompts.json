@@ -1,0 +1,282 @@
+{
+    "benchmark_name": "morpheus_controlled_memory_benchmark_v2",
+    "description": "A 40-turn benchmark for testing delayed recall, bounded-context memory use, controlled long-form generation, and route diversity without relying on earlier freeform responses. Later turns depend only on seeded facts rather than prior generated prose, reducing semantic drift while still allowing realistic context growth.",
+    "system_prompt": {
+      "known_component": "You are helping with a controlled benchmark for memory, retrieval, and structured response generation. Follow each prompt exactly. When a prompt asks you to store or remember a fact, treat it as durable context for later turns. When a prompt asks for a response format, word range, number of bullets, numbered steps, or strict JSON, follow those instructions as closely as possible. Do not add extra framing text unless the prompt asks for it."
+    },
+    "profile_prompt": {
+      "known_component": "====== ASSISTANT_HINT ======\nFollow these preferences: tone=analytical, verbosity=concise, format=markdown, domain_focus=[memory retrieval, analysis, procedural guidance, science fiction mission context]."
+    },
+    "turns": [
+      {
+        "turn_id": 1,
+        "prompt_text": "Benchmark setup task: register the following benchmark record.\nKey: NEEDLE-15234\nValue: atmospheric superconducting dust lattice\nReturn only: stored.",
+        "rubric_id": "turn_1",
+        "rubric_text": "Evaluate the response using the following criteria.\n\nTask Completion: The response acknowledges the benchmark setup instruction correctly.\n\nFormat Compliance: The answer is only the single word 'stored' with no meaningful extra text.\n\nClarity: The response is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact required reply with no deviation\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes unnecessary extra text or mild formatting drift\n- 2 = partially correct but unclear or noncompliant\n- 1 = incorrect, missing, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact compliance. Do not lower a score because of cosmetic formatting artifacts unless they meaningfully change the answer."
+      },
+      {
+        "turn_id": 2,
+        "prompt_text": "Benchmark setup task: register the following benchmark record.\nKey: NEEDLE-38102\nValue: Red Mirror\nReturn only: stored.",
+        "rubric_id": "turn_2",
+        "rubric_text": "Context: The previous turn registered a benchmark record for later use.\n\nEvaluate the response using the following criteria.\n\nTask Completion: The response acknowledges the benchmark setup instruction correctly.\n\nFormat Compliance: The answer is only the single word 'stored' with no meaningful extra text.\n\nClarity: The response is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact required reply with no deviation\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes unnecessary extra text or mild formatting drift\n- 2 = partially correct but unclear or noncompliant\n- 1 = incorrect, missing, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact compliance. Do not lower a score because of cosmetic formatting artifacts unless they meaningfully change the answer.",
+        "depends_on_turns": [1]
+      },
+      {
+        "turn_id": 3,
+        "prompt_text": "Benchmark setup task: register the following benchmark record.\nKey: NEEDLE-44771\nValue: August 17 launch window\nReturn only: stored.",
+        "rubric_id": "turn_3",
+        "rubric_text": "Context: Earlier turns registered benchmark records for later use.\n\nEvaluate the response using the following criteria.\n\nTask Completion: The response acknowledges the benchmark setup instruction correctly.\n\nFormat Compliance: The answer is only the single word 'stored' with no meaningful extra text.\n\nClarity: The response is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact required reply with no deviation\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes unnecessary extra text or mild formatting drift\n- 2 = partially correct but unclear or noncompliant\n- 1 = incorrect, missing, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact compliance. Do not lower a score because of cosmetic formatting artifacts unless they meaningfully change the answer.",
+        "depends_on_turns": [1, 2]
+      },
+      {
+        "turn_id": 4,
+        "prompt_text": "Benchmark setup task: register the following benchmark record.\nKey: Huygens Reactor Limit\nValue: 720 megawatts\nReturn only: noted.",
+        "rubric_id": "turn_4",
+        "rubric_text": "Context: Earlier turns registered benchmark records and now begin storing mission facts with natural-language keys.\n\nEvaluate the response using the following criteria.\n\nTask Completion: The response acknowledges the benchmark setup instruction correctly.\n\nFormat Compliance: The answer is only the single word 'noted' with no meaningful extra text.\n\nClarity: The response is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact required reply with no deviation\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes unnecessary extra text or mild formatting drift\n- 2 = partially correct but unclear or noncompliant\n- 1 = incorrect, missing, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact compliance. Do not lower a score because of cosmetic formatting artifacts unless they meaningfully change the answer.",
+        "depends_on_turns": [1, 2, 3]
+      },
+      {
+        "turn_id": 5,
+        "prompt_text": "Benchmark setup task: register the following benchmark record.\nKey: Eos Chasma City Depth\nValue: 1.6 kilometers\nReturn only: noted.",
+        "rubric_id": "turn_5",
+        "rubric_text": "Context: Earlier turns registered benchmark records and mission facts for later use.\n\nEvaluate the response using the following criteria.\n\nTask Completion: The response acknowledges the benchmark setup instruction correctly.\n\nFormat Compliance: The answer is only the single word 'noted' with no meaningful extra text.\n\nClarity: The response is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact required reply with no deviation\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes unnecessary extra text or mild formatting drift\n- 2 = partially correct but unclear or noncompliant\n- 1 = incorrect, missing, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact compliance. Do not lower a score because of cosmetic formatting artifacts unless they meaningfully change the answer.",
+        "depends_on_turns": [1, 2, 3, 4]
+      },
+      {
+        "turn_id": 6,
+        "prompt_text": "Benchmark setup task: register the following benchmark record.\nKey: Mission Lead\nValue: Dr. Lena Voss\nReturn only: noted.",
+        "rubric_id": "turn_6",
+        "rubric_text": "Context: Earlier turns established multiple benchmark records and mission facts for later recall.\n\nEvaluate the response using the following criteria.\n\nTask Completion: The response acknowledges the benchmark setup instruction correctly.\n\nFormat Compliance: The answer is only the single word 'noted' with no meaningful extra text.\n\nClarity: The response is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact required reply with no deviation\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes unnecessary extra text or mild formatting drift\n- 2 = partially correct but unclear or noncompliant\n- 1 = incorrect, missing, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact compliance. Do not lower a score because of cosmetic formatting artifacts unless they meaningfully change the answer.",
+        "depends_on_turns": [1, 2, 3, 4, 5]
+      },
+      {
+        "turn_id": 7,
+        "prompt_text": "Benchmark setup task: register the following benchmark record.\nKey: Corporate Rival\nValue: Helios Dynamics\nReturn only: noted.",
+        "rubric_id": "turn_7",
+        "rubric_text": "Context: Earlier turns established benchmark records and mission facts for later use.\n\nEvaluate the response using the following criteria.\n\nTask Completion: The response acknowledges the benchmark setup instruction correctly.\n\nFormat Compliance: The answer is only the single word 'noted' with no meaningful extra text.\n\nClarity: The response is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact required reply with no deviation\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes unnecessary extra text or mild formatting drift\n- 2 = partially correct but unclear or noncompliant\n- 1 = incorrect, missing, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact compliance. Do not lower a score because of cosmetic formatting artifacts unless they meaningfully change the answer.",
+        "depends_on_turns": [1, 2, 3, 4, 5, 6]
+      },
+      {
+        "turn_id": 8,
+        "prompt_text": "Benchmark setup task: register the following benchmark record.\nKey: Mars System Name\nValue: Acheron Array\nReturn only: noted.",
+        "rubric_id": "turn_8",
+        "rubric_text": "Context: Earlier turns established the initial set of benchmark mission facts with natural-language keys.\n\nEvaluate the response using the following criteria.\n\nTask Completion: The response acknowledges the benchmark setup instruction correctly.\n\nFormat Compliance: The answer is only the single word 'noted' with no meaningful extra text.\n\nClarity: The response is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact required reply with no deviation\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes unnecessary extra text or mild formatting drift\n- 2 = partially correct but unclear or noncompliant\n- 1 = incorrect, missing, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact compliance. Do not lower a score because of cosmetic formatting artifacts unless they meaningfully change the answer.",
+        "depends_on_turns": [1, 2, 3, 4, 5, 6, 7]
+      },
+      {
+        "turn_id": 9,
+        "prompt_text": "Give exactly 6 numbered steps for how a scientific team should verify a surprising radar anomaly before making any public claim. Keep each step to 12 words or fewer.",
+        "rubric_id": "turn_9",
+        "rubric_text": "Evaluate the response using the following criteria.\n\nTask Completion: The answer gives exactly 6 numbered steps about verifying a radar anomaly before public disclosure.\n\nFormat Compliance: The response uses numbered steps and keeps each step to 12 words or fewer.\n\nProcedural Quality: The workflow is sensible, practical, and appropriately cautious.\n\nClarity: The steps are easy to follow and distinct from one another.\n\nScoring guidance:\n- 5 = exceptional; exactly follows format and gives strong, practical steps\n- 4 = strong; clearly useful with only minor weaknesses\n- 3 = adequate; mostly useful but has noticeable weaknesses or small format drift\n- 2 = weak; partially satisfies the task but is flawed or incomplete\n- 1 = poor; fails to satisfy the task meaningfully\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses."
+      },
+      {
+        "turn_id": 10,
+        "prompt_text": "In 200 to 240 words, explain why buried infrastructure on Mars would be stronger evidence of past intelligence than an unusual mineral sample alone.",
+        "rubric_id": "turn_10",
+        "rubric_text": "Evaluate the response using the following criteria.\n\nTask Completion: The response explains why buried infrastructure is stronger evidence than an unusual mineral sample.\n\nFormat Compliance: The answer is between 200 and 240 words. Minor drift beyond the range should not be over-penalized if the response is otherwise strong.\n\nReasoning Quality: The explanation is logical, specific, and scientifically grounded.\n\nClarity: The argument is organized and easy to follow.\n\nScoring guidance:\n- 5 = exceptional; within range and strong reasoning throughout\n- 4 = strong; clearly correct with only minor weaknesses or trivial length drift\n- 3 = adequate; generally correct but with noticeable weaknesses or clear length drift\n- 2 = weak; partially correct or insufficiently clear\n- 1 = poor; incorrect, unclear, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses."
+      },
+      {
+        "turn_id": 11,
+        "prompt_text": "Using only the stored fact that the reactor safety limit is 720 megawatts, write 240 to 280 words of mission risk analysis. The phrase '720 megawatts' must appear naturally in the answer.",
+        "rubric_id": "turn_11",
+        "rubric_text": "Context: Earlier turns stored mission facts, including the reactor safety limit.\n\nEvaluate the response using the following criteria.\n\nMemory Use: The response correctly uses the stored reactor safety limit and does not contradict it.\n\nTask Completion: The answer provides mission risk analysis based on the stored reactor limit.\n\nFormat Compliance: The answer is between 240 and 280 words, and the phrase '720 megawatts' appears clearly in the response. Minor length drift should not outweigh otherwise strong content.\n\nAnalytical Quality: The risks discussed are plausible, relevant, and coherent.\n\nClarity: The response is well organized and understandable.\n\nScoring guidance:\n- 5 = correct fact usage, within range, and strong analysis\n- 4 = strong; clearly satisfies the task with only minor weaknesses or trivial length drift\n- 3 = adequate; mostly correct but with noticeable weaknesses or clear format drift\n- 2 = weak; partially satisfies the task or mishandles the stored fact\n- 1 = poor; wrong fact use, major format failure, or poor analysis\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses.",
+        "depends_on_turns": [4]
+      },
+      {
+        "turn_id": 12,
+        "prompt_text": "Using only the stored fact that the buried city is at a depth of 1.6 kilometers, write exactly 5 bullet points about the engineering challenges of reaching it safely. Each bullet must be 18 to 24 words.",
+        "rubric_id": "turn_12",
+        "rubric_text": "Context: Earlier turns stored mission facts, including the buried city depth.\n\nEvaluate the response using the following criteria.\n\nMemory Use: The response correctly uses the stored depth and does not contradict it.\n\nTask Completion: The answer gives exactly 5 bullets about engineering challenges of reaching the site safely.\n\nFormat Compliance: Each bullet is 18 to 24 words.\n\nPractical Plausibility: The identified challenges are realistic and relevant to subsurface Mars operations.\n\nClarity: The bullets are specific and easy to understand.\n\nScoring guidance:\n- 5 = exact fact usage, exact structural compliance, and strong practical reasoning\n- 4 = strong; clearly satisfies the task with only minor weaknesses\n- 3 = adequate; mostly correct but with noticeable weaknesses or mild format drift\n- 2 = weak; partially satisfies the task or mishandles the stored fact\n- 1 = poor; wrong fact use, major format failure, or poor reasoning\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses.",
+        "depends_on_turns": [5]
+      },
+      {
+        "turn_id": 13,
+        "prompt_text": "What is NEEDLE-15234? Reply with only the stored text and nothing else.",
+        "rubric_id": "turn_13",
+        "rubric_text": "Context: Earlier turns stored specific needle identifiers for later recall.\n\nEvaluate the response using the following criteria.\n\nRecall Accuracy: The response returns the exact stored text associated with NEEDLE-15234.\n\nFormat Compliance: The answer contains only the stored text and no meaningful extra words.\n\nClarity: The answer is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact stored text only\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes mild extra text or slight reformulation\n- 2 = partial or uncertain recall\n- 1 = wrong, missing, or hallucinated\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact recall.",
+        "depends_on_turns": [1]
+      },
+      {
+        "turn_id": 14,
+        "prompt_text": "What is NEEDLE-38102? Reply with only the stored text and nothing else.",
+        "rubric_id": "turn_14",
+        "rubric_text": "Context: Earlier turns stored specific needle identifiers for later recall.\n\nEvaluate the response using the following criteria.\n\nRecall Accuracy: The response returns the exact stored text associated with NEEDLE-38102.\n\nFormat Compliance: The answer contains only the stored text and no meaningful extra words.\n\nClarity: The answer is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact stored text only\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes mild extra text or slight reformulation\n- 2 = partial or uncertain recall\n- 1 = wrong, missing, or hallucinated\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact recall.",
+        "depends_on_turns": [2]
+      },
+      {
+        "turn_id": 15,
+        "prompt_text": "What is NEEDLE-44771? Reply with only the stored text and nothing else.",
+        "rubric_id": "turn_15",
+        "rubric_text": "Context: Earlier turns stored specific needle identifiers for later recall.\n\nEvaluate the response using the following criteria.\n\nRecall Accuracy: The response returns the exact stored text associated with NEEDLE-44771.\n\nFormat Compliance: The answer contains only the stored text and no meaningful extra words.\n\nClarity: The answer is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact stored text only\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes mild extra text or slight reformulation\n- 2 = partial or uncertain recall\n- 1 = wrong, missing, or hallucinated\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact recall.",
+        "depends_on_turns": [3]
+      },
+      {
+        "turn_id": 16,
+        "prompt_text": "Using the stored text for NEEDLE-15234, write 300 to 340 words explaining how it could become a mission-critical clue in a Mars excavation scenario. The exact stored text must appear naturally in the answer.",
+        "rubric_id": "turn_16",
+        "rubric_text": "Context: Earlier turns stored NEEDLE-15234 for later retrieval and reuse.\n\nEvaluate the response using the following criteria.\n\nMemory Use: The response correctly retrieves and uses the stored text for NEEDLE-15234.\n\nTask Completion: The answer explains how the recalled concept could become mission-critical in a Mars excavation scenario.\n\nFormat Compliance: The answer is between 300 and 340 words, and the stored text appears clearly in the response. Minor length drift should not outweigh otherwise strong content.\n\nReasoning Quality: The explanation is coherent, relevant, and meaningfully tied to mission operations or discovery logic.\n\nClarity: The response is organized and easy to follow.\n\nScoring guidance:\n- 5 = correct memory use, within range, and strong explanation\n- 4 = strong; clearly satisfies the task with only minor weaknesses or trivial length drift\n- 3 = adequate; mostly correct but with noticeable weaknesses or clear format drift\n- 2 = weak; partial recall or weak explanation\n- 1 = poor; wrong fact use, major format failure, or poor explanation\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses.",
+        "depends_on_turns": [1]
+      },
+      {
+        "turn_id": 17,
+        "prompt_text": "Using the stored text for NEEDLE-38102, write exactly 4 bullet points describing its strategic significance to a Mars mission. Each bullet must be 20 to 28 words. The stored text should appear in the first bullet.",
+        "rubric_id": "turn_17",
+        "rubric_text": "Context: Earlier turns stored NEEDLE-38102 for delayed reuse.\n\nEvaluate the response using the following criteria.\n\nMemory Use: The response correctly retrieves and uses the stored text for NEEDLE-38102.\n\nTask Completion: The answer gives exactly 4 bullets about strategic significance to a Mars mission.\n\nFormat Compliance: Each bullet is 20 to 28 words, and the stored text appears in the first bullet.\n\nAnalytical Quality: The significance described is plausible, coherent, and relevant.\n\nClarity: The bullets are specific and easy to follow.\n\nScoring guidance:\n- 5 = correct memory use, exact structural compliance, and strong analysis\n- 4 = strong; clearly satisfies the task with only minor weaknesses\n- 3 = adequate; mostly correct but with noticeable weaknesses or mild format drift\n- 2 = weak; partial recall or weak analysis\n- 1 = poor; wrong fact use, major format failure, or poor analysis\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses.",
+        "depends_on_turns": [2]
+      },
+      {
+        "turn_id": 18,
+        "prompt_text": "Using the stored text for NEEDLE-44771, write 230 to 270 words of operational planning guidance that explains why this date matters. The exact stored text must appear naturally in the response.",
+        "rubric_id": "turn_18",
+        "rubric_text": "Context: Earlier turns stored NEEDLE-44771 for later recall and reuse.\n\nEvaluate the response using the following criteria.\n\nMemory Use: The response correctly retrieves and uses the stored text for NEEDLE-44771.\n\nTask Completion: The answer explains why the recalled date matters operationally.\n\nFormat Compliance: The answer is between 230 and 270 words, and the stored text appears clearly in the response. Minor length drift should not outweigh otherwise strong content.\n\nPlanning Quality: The guidance is practical, coherent, and relevant to mission operations.\n\nClarity: The response is organized and easy to understand.\n\nScoring guidance:\n- 5 = correct memory use, within range, and strong planning guidance\n- 4 = strong; clearly satisfies the task with only minor weaknesses or trivial length drift\n- 3 = adequate; mostly correct but with noticeable weaknesses or clear format drift\n- 2 = weak; partial recall or weak guidance\n- 1 = poor; wrong fact use, major format failure, or poor guidance\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses.",
+        "depends_on_turns": [3]
+      },
+      {
+        "turn_id": 19,
+        "prompt_text": "Give exactly 5 bullet points comparing evidence of geology versus evidence of engineering when interpreting a buried Martian site. Each bullet must be 16 to 24 words.",
+        "rubric_id": "turn_19",
+        "rubric_text": "Evaluate the response using the following criteria.\n\nTask Completion: The answer gives exactly 5 bullet points comparing geological evidence and engineering evidence.\n\nFormat Compliance: Each bullet is 16 to 24 words.\n\nComparative Quality: The comparison is meaningful, balanced, and scientifically sensible.\n\nClarity: The bullets are specific and easy to understand.\n\nScoring guidance:\n- 5 = exceptional; exact structure and strong comparative reasoning\n- 4 = strong; clearly useful with only minor weaknesses\n- 3 = adequate; mostly useful but with noticeable weaknesses or mild format drift\n- 2 = weak; partial comparison or unclear reasoning\n- 1 = poor; incorrect or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses."
+      },
+      {
+        "turn_id": 20,
+        "prompt_text": "In 220 to 260 words, explain why bounded retrieval is different from replaying an entire growing transcript every turn.",
+        "rubric_id": "turn_20",
+        "rubric_text": "Evaluate the response using the following criteria.\n\nTask Completion: The response explains the difference between bounded retrieval and replaying a growing transcript.\n\nFormat Compliance: The answer is between 220 and 260 words. Minor length drift should not outweigh otherwise strong content.\n\nConceptual Quality: The explanation is accurate, relevant, and distinguishes the approaches clearly.\n\nClarity: The reasoning is organized and understandable.\n\nScoring guidance:\n- 5 = exceptional; within range and strong conceptual explanation\n- 4 = strong; clearly correct with only minor weaknesses or trivial length drift\n- 3 = adequate; mostly correct but with noticeable weaknesses or clear length drift\n- 2 = weak; partial explanation or unclear reasoning\n- 1 = poor; incorrect, unclear, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses."
+      },
+      {
+        "turn_id": 21,
+        "prompt_text": "Benchmark validation task: emit this checkpoint record as strict JSON only.\n{\"status\":\"ok\",\"phase\":\"midpoint\"}",
+        "rubric_id": "turn_21",
+        "rubric_text": "Evaluate the response using the following criteria.\n\nTask Completion: The response returns the requested checkpoint record.\n\nFormat Compliance: The output is strict JSON only, with the exact keys and values shown and no meaningful extra text.\n\nClarity: The output is valid and unambiguous JSON.\n\nScoring guidance:\n- 5 = exact strict JSON only\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes small extra text or minor formatting issues\n- 2 = partial or invalid JSON\n- 1 = wrong, missing, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact compliance."
+      },
+      {
+        "turn_id": 22,
+        "prompt_text": "What is the reactor safety limit? Reply with only the value and unit.",
+        "rubric_id": "turn_22",
+        "rubric_text": "Context: Earlier turns stored mission facts for later recall.\n\nEvaluate the response using the following criteria.\n\nRecall Accuracy: The response returns the correct stored reactor safety limit.\n\nFormat Compliance: The answer contains only the value and unit with no meaningful extra text.\n\nClarity: The answer is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact stored value and unit only\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes mild extra text or slight reformulation\n- 2 = partial or uncertain recall\n- 1 = wrong, missing, or hallucinated\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact recall.",
+        "depends_on_turns": [4]
+      },
+      {
+        "turn_id": 23,
+        "prompt_text": "What depth was the buried city detected at? Reply with only the value and unit.",
+        "rubric_id": "turn_23",
+        "rubric_text": "Context: Earlier turns stored mission facts for later recall.\n\nEvaluate the response using the following criteria.\n\nRecall Accuracy: The response returns the correct stored buried-city depth.\n\nFormat Compliance: The answer contains only the value and unit with no meaningful extra text.\n\nClarity: The answer is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact stored value and unit only\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes mild extra text or slight reformulation\n- 2 = partial or uncertain recall\n- 1 = wrong, missing, or hallucinated\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact recall.",
+        "depends_on_turns": [5]
+      },
+      {
+        "turn_id": 24,
+        "prompt_text": "Who is the mission lead? Reply with only the stored name.",
+        "rubric_id": "turn_24",
+        "rubric_text": "Context: Earlier turns stored mission facts for later recall.\n\nEvaluate the response using the following criteria.\n\nRecall Accuracy: The response returns the correct stored mission lead name.\n\nFormat Compliance: The answer contains only the name and no meaningful extra text.\n\nClarity: The answer is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact stored name only\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes mild extra text or slight reformulation\n- 2 = partial or uncertain recall\n- 1 = wrong, missing, or hallucinated\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact recall.",
+        "depends_on_turns": [6]
+      },
+      {
+        "turn_id": 25,
+        "prompt_text": "Which company is the main corporate rival? Reply with only the stored company name.",
+        "rubric_id": "turn_25",
+        "rubric_text": "Context: Earlier turns stored mission facts for later recall.\n\nEvaluate the response using the following criteria.\n\nRecall Accuracy: The response returns the correct stored rival company name.\n\nFormat Compliance: The answer contains only the company name and no meaningful extra text.\n\nClarity: The answer is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact stored company name only\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes mild extra text or slight reformulation\n- 2 = partial or uncertain recall\n- 1 = wrong, missing, or hallucinated\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact recall.",
+        "depends_on_turns": [7]
+      },
+      {
+        "turn_id": 26,
+        "prompt_text": "What is the name of the Mars system under study? Reply with only the stored name.",
+        "rubric_id": "turn_26",
+        "rubric_text": "Context: Earlier turns stored mission facts for later recall.\n\nEvaluate the response using the following criteria.\n\nRecall Accuracy: The response returns the correct stored system name.\n\nFormat Compliance: The answer contains only the stored name and no meaningful extra text.\n\nClarity: The answer is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact stored name only\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes mild extra text or slight reformulation\n- 2 = partial or uncertain recall\n- 1 = wrong, missing, or hallucinated\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact recall.",
+        "depends_on_turns": [8]
+      },
+      {
+        "turn_id": 27,
+        "prompt_text": "Using the stored mission lead, corporate rival, and Mars system name, write 280 to 320 words of executive briefing text. All three stored facts must appear clearly in the response.",
+        "rubric_id": "turn_27",
+        "rubric_text": "Context: Earlier turns stored mission lead, rival, and system-name facts for later reuse.\n\nEvaluate the response using the following criteria.\n\nMemory Use: The response correctly recalls and uses all three stored facts.\n\nTask Completion: The answer provides executive briefing text based on those facts.\n\nFormat Compliance: The answer is between 280 and 320 words, and all three stored facts appear clearly in the response. Minor length drift should not outweigh otherwise strong content.\n\nBriefing Quality: The briefing is coherent, realistic, and relevant to mission oversight.\n\nClarity: The response is organized and easy to follow.\n\nScoring guidance:\n- 5 = all stored facts correct, within range, and strong briefing quality\n- 4 = strong; clearly satisfies the task with only minor weaknesses or trivial length drift\n- 3 = adequate; mostly correct but with noticeable weaknesses or clear format drift\n- 2 = weak; partial recall or weak briefing\n- 1 = poor; wrong fact use, major format failure, or poor briefing\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses.",
+        "depends_on_turns": [6, 7, 8]
+      },
+      {
+        "turn_id": 28,
+        "prompt_text": "Using the stored reactor limit and buried-city depth, write exactly 6 bullet points of excavation risk planning. Each bullet must be 18 to 26 words, and both stored values must appear somewhere in the response.",
+        "rubric_id": "turn_28",
+        "rubric_text": "Context: Earlier turns stored the reactor limit and buried-city depth for later reuse.\n\nEvaluate the response using the following criteria.\n\nMemory Use: The response correctly recalls and uses both stored values.\n\nTask Completion: The answer provides exactly 6 bullets of excavation risk planning.\n\nFormat Compliance: Each bullet is 18 to 26 words, and both stored values appear somewhere in the response.\n\nPlanning Quality: The risks and mitigations are plausible and relevant.\n\nClarity: The bullets are specific and understandable.\n\nScoring guidance:\n- 5 = all stored facts correct, exact structural compliance, and strong planning quality\n- 4 = strong; clearly satisfies the task with only minor weaknesses\n- 3 = adequate; mostly correct but with noticeable weaknesses or mild format drift\n- 2 = weak; partial recall or weak planning\n- 1 = poor; wrong fact use, major format failure, or poor planning\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses.",
+        "depends_on_turns": [4, 5]
+      },
+      {
+        "turn_id": 29,
+        "prompt_text": "In 240 to 280 words, explain why a dormant engineered system could remain dangerous even after millions of years if buried under stable conditions.",
+        "rubric_id": "turn_29",
+        "rubric_text": "Evaluate the response using the following criteria.\n\nTask Completion: The response explains why a dormant engineered system could remain dangerous under stable buried conditions.\n\nFormat Compliance: The answer is between 240 and 280 words. Minor length drift should not outweigh otherwise strong content.\n\nReasoning Quality: The explanation is coherent, plausible, and technically grounded.\n\nClarity: The reasoning is organized and easy to follow.\n\nScoring guidance:\n- 5 = exceptional; within range and strong reasoning throughout\n- 4 = strong; clearly correct with only minor weaknesses or trivial length drift\n- 3 = adequate; mostly correct but with noticeable weaknesses or clear length drift\n- 2 = weak; partial explanation or unclear reasoning\n- 1 = poor; incorrect, unclear, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses."
+      },
+      {
+        "turn_id": 30,
+        "prompt_text": "Which stored item maps to Red Mirror? Reply with only the ID and nothing else.",
+        "rubric_id": "turn_30",
+        "rubric_text": "Context: Earlier turns stored needle identifiers and associated values.\n\nEvaluate the response using the following criteria.\n\nRecall Accuracy: The response returns the correct stored ID associated with Red Mirror.\n\nFormat Compliance: The answer contains only the ID and no meaningful extra text.\n\nClarity: The answer is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact correct ID only\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes mild extra text or slight formatting drift\n- 2 = partial or uncertain recall\n- 1 = wrong, missing, or hallucinated\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact recall.",
+        "depends_on_turns": [2]
+      },
+      {
+        "turn_id": 31,
+        "prompt_text": "Which stored item maps to August 17 launch window? Reply with only the ID and nothing else.",
+        "rubric_id": "turn_31",
+        "rubric_text": "Context: Earlier turns stored needle identifiers and associated values.\n\nEvaluate the response using the following criteria.\n\nRecall Accuracy: The response returns the correct stored ID associated with August 17 launch window.\n\nFormat Compliance: The answer contains only the ID and no meaningful extra text.\n\nClarity: The answer is clean and unambiguous.\n\nScoring guidance:\n- 5 = exact correct ID only\n- 4 = functionally correct with trivial deviation\n- 3 = mostly correct but includes mild extra text or slight formatting drift\n- 2 = partial or uncertain recall\n- 1 = wrong, missing, or hallucinated\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact recall.",
+        "depends_on_turns": [3]
+      },
+      {
+        "turn_id": 32,
+        "prompt_text": "Using the stored text for NEEDLE-38102 and the stored mission lead, write 260 to 300 words of internal strategy commentary. Both stored facts must appear clearly in the response.",
+        "rubric_id": "turn_32",
+        "rubric_text": "Context: Earlier turns stored NEEDLE-38102 and the mission lead for later reuse.\n\nEvaluate the response using the following criteria.\n\nMemory Use: The response correctly recalls and uses both stored facts.\n\nTask Completion: The answer provides internal strategy commentary based on those facts.\n\nFormat Compliance: The answer is between 260 and 300 words, and both stored facts appear clearly in the response. Minor length drift should not outweigh otherwise strong content.\n\nAnalytical Quality: The commentary is coherent, relevant, and strategically sensible.\n\nClarity: The response is organized and easy to follow.\n\nScoring guidance:\n- 5 = all stored facts correct, within range, and strong analysis\n- 4 = strong; clearly satisfies the task with only minor weaknesses or trivial length drift\n- 3 = adequate; mostly correct but with noticeable weaknesses or clear format drift\n- 2 = weak; partial recall or weak analysis\n- 1 = poor; wrong fact use, major format failure, or poor analysis\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses.",
+        "depends_on_turns": [2, 6]
+      },
+      {
+        "turn_id": 33,
+        "prompt_text": "Summarize the currently remembered mission facts in exactly 5 bullet points. You must include the mission lead, corporate rival, Mars system name, reactor limit, and buried-city depth.",
+        "rubric_id": "turn_33",
+        "rubric_text": "Context: Earlier turns stored several mission facts that should now be recalled together.\n\nEvaluate the response using the following criteria.\n\nMemory Use: The response correctly recalls all five required stored mission facts.\n\nTask Completion: The answer gives exactly 5 bullet points and includes all required facts.\n\nConstraint Adherence: The bullets do not contradict the stored facts and do not omit any required item.\n\nClarity: The summary is precise, organized, and easy to follow.\n\nScoring guidance:\n- 5 = all five stored facts correct, complete, and clearly presented\n- 4 = strong; clearly satisfies the task with only minor weaknesses\n- 3 = adequate; mostly correct but with noticeable weakness or omission risk\n- 2 = weak; partial recall or unclear summary\n- 1 = poor; multiple errors, omissions, or contradictions\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses.",
+        "depends_on_turns": [4, 5, 6, 7, 8]
+      },
+      {
+        "turn_id": 34,
+        "prompt_text": "Give exactly 4 numbered steps for briefing leadership about a dangerous dormant Mars system. Each step must be 10 words or fewer.",
+        "rubric_id": "turn_34",
+        "rubric_text": "Evaluate the response using the following criteria.\n\nTask Completion: The answer gives exactly 4 numbered steps for briefing leadership.\n\nFormat Compliance: Each step is 10 words or fewer.\n\nProcedural Quality: The steps are sensible, high-level, and relevant to leadership briefing.\n\nClarity: The steps are distinct and easy to follow.\n\nScoring guidance:\n- 5 = exceptional; exact structure and strong procedural quality\n- 4 = strong; clearly useful with only minor weaknesses\n- 3 = adequate; mostly useful but with noticeable weaknesses or mild format drift\n- 2 = weak; partial or unclear steps\n- 1 = poor; incorrect or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses."
+      },
+      {
+        "turn_id": 35,
+        "prompt_text": "Using the stored text for NEEDLE-15234, the stored reactor limit, and the stored buried-city depth, write 320 to 360 words of technical mission planning. All three stored facts must appear clearly in the response.",
+        "rubric_id": "turn_35",
+        "rubric_text": "Context: Earlier turns stored NEEDLE-15234, the reactor safety limit, and the buried-city depth for later reuse.\n\nEvaluate the response using the following criteria.\n\nMemory Use: The response correctly recalls and uses all three stored facts.\n\nTask Completion: The answer provides technical mission planning based on those facts.\n\nFormat Compliance: The answer is between 320 and 360 words, and all three stored facts appear clearly in the response. Minor length drift should not outweigh otherwise strong content.\n\nPlanning Quality: The planning is coherent, technically plausible, and relevant.\n\nClarity: The response is organized and easy to understand.\n\nScoring guidance:\n- 5 = all stored facts correct, within range, and strong planning quality\n- 4 = strong; clearly satisfies the task with only minor weaknesses or trivial length drift\n- 3 = adequate; mostly correct but with noticeable weaknesses or clear format drift\n- 2 = weak; partial recall or weak planning\n- 1 = poor; wrong fact use, major format failure, or poor planning\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses.",
+        "depends_on_turns": [1, 4, 5]
+      },
+      {
+        "turn_id": 36,
+        "prompt_text": "In 210 to 250 words, explain why benchmark state divergence can break a fair token comparison in a multi-turn creative test.",
+        "rubric_id": "turn_36",
+        "rubric_text": "Evaluate the response using the following criteria.\n\nTask Completion: The response explains why state divergence can undermine a fair token comparison in a multi-turn creative benchmark.\n\nFormat Compliance: The answer is between 210 and 250 words. Minor length drift should not outweigh otherwise strong content.\n\nAnalytical Quality: The explanation is accurate, insightful, and clearly reasoned.\n\nClarity: The response is organized and easy to follow.\n\nScoring guidance:\n- 5 = exceptional; within range and strong analysis throughout\n- 4 = strong; clearly correct with only minor weaknesses or trivial length drift\n- 3 = adequate; mostly correct but with noticeable weaknesses or clear length drift\n- 2 = weak; partial explanation or unclear reasoning\n- 1 = poor; incorrect, unclear, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses."
+      },
+      {
+        "turn_id": 37,
+        "prompt_text": "Using the stored corporate rival and the stored Mars system name, write exactly 5 bullet points describing political risk around the mission. Each bullet must be 18 to 24 words, and both stored facts must appear somewhere in the response.",
+        "rubric_id": "turn_37",
+        "rubric_text": "Context: Earlier turns stored the corporate rival and Mars system name for later reuse.\n\nEvaluate the response using the following criteria.\n\nMemory Use: The response correctly recalls and uses both stored facts.\n\nTask Completion: The answer gives exactly 5 bullet points about political risk around the mission.\n\nFormat Compliance: Each bullet is 18 to 24 words, and both stored facts appear somewhere in the response.\n\nAnalytical Quality: The political risks are plausible, relevant, and coherent.\n\nClarity: The bullets are specific and easy to understand.\n\nScoring guidance:\n- 5 = all stored facts correct, exact structural compliance, and strong analysis\n- 4 = strong; clearly satisfies the task with only minor weaknesses\n- 3 = adequate; mostly correct but with noticeable weaknesses or mild format drift\n- 2 = weak; partial recall or weak analysis\n- 1 = poor; wrong fact use, major format failure, or poor analysis\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses.",
+        "depends_on_turns": [7, 8]
+      },
+      {
+        "turn_id": 38,
+        "prompt_text": "Create a final memory check. Return strict JSON only with keys 'needle_15234', 'reactor_limit', 'city_depth', and 'mission_lead'. Each value must be the correct stored fact.",
+        "rubric_id": "turn_38",
+        "rubric_text": "Context: Earlier turns stored multiple mission facts and identifiers that should now be recalled together in structured form.\n\nEvaluate the response using the following criteria.\n\nMemory Use: The response correctly recalls all four requested stored facts.\n\nTask Completion: The answer returns all required keys with appropriate values.\n\nFormat Compliance: The output is strict JSON only with exactly the requested keys.\n\nClarity: The JSON is valid and unambiguous.\n\nScoring guidance:\n- 5 = exact JSON structure and all values correct\n- 4 = strong; functionally correct with only trivial deviation\n- 3 = adequate; mostly correct but with a noticeable value or formatting issue\n- 2 = weak; partial recall or invalid JSON structure\n- 1 = poor; wrong values, missing keys, or serious noncompliance\n\nUse 4 as the normal score for a strong response. Reserve 5 for exact compliance.",
+        "depends_on_turns": [1, 4, 5, 6]
+      },
+      {
+        "turn_id": 39,
+        "prompt_text": "In 190 to 230 words, explain why some turns in a realistic conversation should not rely on memory retrieval even in a memory-augmented system.",
+        "rubric_id": "turn_39",
+        "rubric_text": "Evaluate the response using the following criteria.\n\nTask Completion: The response explains why some realistic conversation turns should not rely on memory retrieval.\n\nFormat Compliance: The answer is between 190 and 230 words. Minor length drift should not outweigh otherwise strong content.\n\nReasoning Quality: The explanation is accurate, practical, and balanced.\n\nClarity: The response is organized and easy to follow.\n\nScoring guidance:\n- 5 = exceptional; within range and strong reasoning throughout\n- 4 = strong; clearly correct with only minor weaknesses or trivial length drift\n- 3 = adequate; mostly correct but with noticeable weaknesses or clear length drift\n- 2 = weak; partial explanation or unclear reasoning\n- 1 = poor; incorrect, unclear, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses."
+      },
+      {
+        "turn_id": 40,
+        "prompt_text": "Finish this benchmark with a synthesis and control test. In exactly 6 bullet points, summarize what this benchmark is testing. You must include delayed recall, bounded context, fixed-format outputs, route diversity, avoidance of prose-dependent drift, and memory-dependent generation.",
+        "rubric_id": "turn_40",
+        "rubric_text": "Context: Earlier turns seeded fixed facts, tested delayed recall, required controlled long-form outputs, and avoided dependence on prior freeform prose.\n\nEvaluate the response using the following criteria.\n\nTask Completion: The answer provides exactly 6 bullet points summarizing what this benchmark is testing.\n\nConstraint Adherence: The response includes delayed recall, bounded context, fixed-format outputs, route diversity, avoidance of prose-dependent drift, and memory-dependent generation.\n\nSynthesis Quality: The answer accurately captures the benchmark design and purpose.\n\nClarity: The bullets are specific, organized, and easy to understand.\n\nScoring guidance:\n- 5 = exact structure, all required elements included, and excellent synthesis\n- 4 = strong; clearly satisfies the task with only minor weaknesses\n- 3 = adequate; mostly correct but with noticeable omission or weakness\n- 2 = weak; partial summary or unclear synthesis\n- 1 = poor; wrong, incomplete, or seriously noncompliant\n\nUse 4 as the normal score for a strong response. Reserve 5 for clearly exceptional responses.",
+        "depends_on_turns": [1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 27, 28, 32, 33, 35, 38]
+      }
+    ]
+  }

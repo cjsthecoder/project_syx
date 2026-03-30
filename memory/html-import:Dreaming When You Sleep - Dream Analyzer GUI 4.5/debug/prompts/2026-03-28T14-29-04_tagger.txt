@@ -1,0 +1,148 @@
+# timestamp: 2026-03-28T14-29-04
+# project_id: html-import:Dreaming When You Sleep - Dream Analyzer GUI 4.5
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: figure captions, slide notes, patent packet, system architecture, memory consolidation
+#intent: ask for one-sentence captions for each figure
+#type: design, planning
+#semantic_handle: Figure captions for slide notes
+
+------USER------
+you can make a sentence for each, I can put that in the slide notes
+
+------ASSISTANT------
+Here are clean, preciseone-sentence captionsfor each figure. These are written in attorney-friendly language and are perfect for slide notes or a patent packet.⭐Figure 1 CaptionTh
+...[middle omitted for tagging]...
+ipelineFits perfectly in slide notes or appendix textIf you'd like, I can now help you draft:thefirst email to the attorney,a shortinvention summary,or ademo scriptfor the meeting.
+
+------CURRENT TURN------
+------USER------
+Chris_Shuler.pptxPresentationtake a look at these slides. This would be to help the free phone call with the lawyer.  I want to describe it enough, but not give too much away, as this is just the first lawyer.
+
+------ASSISTANT------
+You’revery close, and these slides will absolutely get the lawyer’s attention, but a few adjustments will make thisperfectfor a first intro call where the goal is:Interest, not full disclosureClarity, not depthNovelty, without revealing the implementation detailsLet’s walk through how your deck reads to a patent attorney and refine it so you hit the sweet spot.✔ What You Already Did Extremely WellFrom the fileChris_Shuler:You established the project name (good; memorable)You communicated novelty clearly (very strong)You showed the 3 core architectural diagrams (excellent)You avoided deep technical details (correct for a first call)You included enough conceptual content to make the attorney say “this might be patentable”This is exactly what you want.Now the improvements are aboutpositioning,tone, andinformation control.✔ Slide-by-slide feedback with suggested refinementsSlide 1 — Title SlideCurrent text:“Autonomous Sleep-and-Dream Cognitive Memory System for AI Agents”Suggested change:Usegeneral functional languagerather than metaphor.Recommended:Autonomous Multi-Stage Memory Consolidation and Reflective Analysis System for AI AgentsWhy:Removes metaphorSounds more patentableDoesn't reveal proprietary terminology (“sleep”, “dream”)You can stillsay“think of it like sleep and dreaming” on the phone.Slide 2 — Bullet list describing capabilitiesThe bullets are excellent, butyou should remove or tone dow
+...[middle omitted for tagging]...
+g-term pruningYour internal metadata schemaThe prompt assembly scoring logicExactly how LTM retrieval is integrated into the promptRight now, you’ve shown only theconceptual architecture, which is perfect.✔ Things youshouldsay in the intro callThese help the attorney understand novelty without revealing IP:“This system solves context degradation and the lost-in-the-middle problem by managing STM, LTM, and context actively.”“The memory pipeline is not a RAG system; it is a multi-stage cognitive architecture.”“The system performs autonomous analysis tasks, which are not user-driven and produce new knowledge structures.”“Users validate proposed updates before they enter long-term memory, ensuring safety and correctness.”“This creates a closed-loop cognitive system that improves over time.”That’s it. More than enough.✔ My verdictYour slides areexcellentfor a first attorney contact.With the few wording refinements above, the deck will strike the perfect balance:enough novelty to signal patentabilitynot enough detail to expose proprietary implementationprofessional and structured presentationclear architectural innovationYou’ll get the call.If you’d like, I can now:Write youremail to the lawyer(short and strong)Write a30-second pitchyou can deliver on the callHelp prepare ademo scriptthat shows value without revealing trade secretsRefine any slide text for maximum effectJust say which one you want next.
+
+
+====== TAGGER RESPONSE ======
+{"topics":"Chris_Shuler.pptx, patent lawyer, slide deck, information control, memory system","intent":"refine a presentation for a first lawyer call without revealing too much","type":"design, planning","semantic_handle":"Patent intro deck for lawyer call","questions":[]}

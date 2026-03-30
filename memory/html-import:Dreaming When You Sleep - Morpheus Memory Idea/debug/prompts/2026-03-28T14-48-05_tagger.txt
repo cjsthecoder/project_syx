@@ -1,0 +1,159 @@
+# timestamp: 2026-03-28T14-48-05
+# project_id: html-import:Dreaming When You Sleep - Morpheus Memory Idea
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Artem, videos, memory consolidation, implementation roadmap, duplicate memories, stability signal
+#intent: discuss incremental implementation of a memory stability mechanism
+#type: design, technical
+#semantic_handle: incremental memory stability implementation
+
+------USER------
+ok, well, I think all of this is doable, and is the next logical step.  But there is a lot of work to do before I get here....
+
+I like it though.  I really need to watch more of those videos, hahaha
+
+------ASSISTANT------
+Makes sense as a “next layer” rather than something you bolt on midstream.A low-effort path that keeps you moving without taking on a big 
+...[middle omitted for tagging]...
+ct the mechanism and map it to one of these stepping stones so it 
+turns into an implementable feature instead of just “cool neuroscience.”
+
+------CURRENT TURN------
+------USER------
+can you create a summary of this new idea, use as much detail as needed.  I will capture it and add it to my list of future upgrades.
+
+------ASSISTANT------
+Future Upgrade: Memory Strength via Importance and Stability, with Repetition Reinforcement and Dedup ConsolidationProblem this upgrade solves. Current pruning reduces prompt size by removing extraneous conversation text, but it does not prevent long-term memory bloat.. Over time, the same ideas, decisions, and themes reappear many times, creating duplicated memories.. Without a dedup and consolidation mechanism, LTM becomes:. Larger than needed.. Harder to retrieve from (noise increases).. More expensive to maintain.. More likely to surface outdated or redundant variants of the same idea.Core conceptIntroduce explicit, numeric memory persistence controls that mimic biological memory selection:.importance ∈ [0, 1]: should this memory exist in long-term storage at all..stability ∈ [0, 1]: how resistant this memory is to revision, summarization, and deletion..Keep: human override flag
+ that prevents deletion (equivalent to forcing importance and stability 
+to maximum plus a “never delete” rule).This maps to a two-stage brain-like process:. Online or light sleep: fast “bookmarking” tags important events (like awake sharp-wave ripple tagging).. Deep sleep: slower consolidation selects, merges, stabilizes, and prunes (like sleep replay consolidation).Data model additions (proposed)Per Memory item:.memory_id.text(or structured content).embedding.topic_id(nullable until assigned).importance.stability.keep.created_at.last_seen_at(last time it was referenced or matched).last_retrieved_at(optional).reinforcement_count(how many times this concept repeats).duplicate_of(points to canonical memory if this item is a duplicate).canonical_id(
+...[middle omitted for tagging]...
+y < 0.50: eligible for removal after time, unless recently retrieved or referenced.Recommended additional gates:. Retrieval protection: if recently retrieved or referenced, do not delete even if low stability.. Dependency protection: never delete a memory that is referenced unless the reference is migrated.. Cluster safety: never delete the last memory in a concept cluster without a canonical replacement summary.Tombstone buffer to prevent irreversible mistakesDeletion should be a two-step process:. Tombstone: remove full text, keep minimal stub (id, timestamp, topic, canonical pointer, 1-line summary).. Hard delete: only after one additional deep sleep cycle and only if still unused and unreferenced.Implementation strategy (low risk incremental)Phase 1: Schema only. Add importance, stability, duplicate pointers, reinforcement_count, last_seen_at.Phase 2: Link-only dedup. On ingest or light sleep:. if similarity hit, set duplicate_of and increment canonical reinforcement_count.. do not merge text yet.Phase 3: Canonical consolidation. Weekly deep sleep:. summarize top clusters into canonicals. tombstone older duplicatesPhase 4: Full policy tuning. Add superseded detection, contradiction checks, theme scoring, and more advanced stability updates.Expected outcomes. Memory growth slows dramatically because repeated ideas reinforce canonicals instead of creating full copies.. Retrieval improves because the system surfaces a small set of canonical memories per concept.. Long-term forgetting becomes controlled, explainable, and reversible.. System behavior becomes closer to biological selection: fast tagging plus slow consolidation.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "memory strength, importance, stability, dedup consolidation, canonical memories, tombstone buffer, implementation phases",
+  "intent": "summarize a future upgrade idea for saving to a project list",
+  "type": "technical, design",
+  "semantic_handle": "memory strength and consolidation upgrade summary",
+  "questions": []
+}

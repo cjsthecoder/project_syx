@@ -1,0 +1,171 @@
+# timestamp: 2026-03-28T14-46-23
+# project_id: html-import:Dreaming When You Sleep - Text
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: terminology document, Morpheus_Patent_Terms.txt, active interaction window, memory lifecycle patent
+#intent: request paste-ready terminology text
+#type: technical
+#semantic_handle: Paste-ready terminology additions for patent document
+
+------USER------
+Morpheus_Patent_Terms.txtDocumentcan you give me just the text I can paste in here?
+
+------ASSISTANT------
+Here isjust the text, ready to paste directly into your terminology document.This includesonly the additions or refinements implied by the final drawings, keeping everything consistent and avoiding over-definition.You donotneed to add sleep or dream as form
+...[middle omitted for tagging]...
+hing here creates new patent scope riskEverything aligns with the finalized drawingsAll added terms aresupporting terminology, not claim driversSleep and Dream remaindescriptive phases, not formal system primitivesYou are clean and consistent at this point.
+
+------CURRENT TURN------
+------USER------
+ok, here is what I have for next.  I am going to quit for today, but just want to think about it.  
+
+2.2 Core diagrams (done)
+☐ System-level block diagram ☐ Memory lifecycle flow ☐ Consolidation pipeline flow ☐ Context assembly flow ☐ Introspective loop flow
+(These can be reused across all three.)
+2.3 Example execution trace
+☐ One concrete example of:
+* interactions
+* consolidation
+* context building
+* synthesis
+* review
+* integration
+This example will appear in all provisionals.
+
+For this, we are going to do screenshots as I go from screen to screen?
+
+------ASSISTANT------
+Short answer:yes, screenshots are appropriate, butnot by themselves.They need to be usedselectivelyand paired with anarrative execution trace.Let me frame this so you can think about it calmly overnight.What “Example Execution Trace” actually means (in patent terms)An example execution trace isnot:a debug loga code walkthrougha stack tracea UI demoItis:A concrete, end-to-end illustration 
+of how the system behaves in one representative scenario, referencing 
+the figures and terminology already defined.Its job is to:anchor abstract diagrams to realitydemonstrate enablementshow the lifecycle without narrowing claimsCorrect structure for your execution traceYou should think of it astext-first, withscreenshots as optional evidence.High-level structureExample Execution Trace: Project-Level Interaction LifecycleInitial InteractionActive Interaction WindowShort-Term M
+...[middle omitted for tagging]...
+eractionone screenshot per agentone screenshot per log eventImportant: screenshots do NOT lock you inBecause:your terminology abstracts UIyour text describes behavior, not layoutyour figures are examples, not requirementsEven if the UI changes later, the patent stands.What you shouldnotdoDon’t annotate logsDon’t include raw JSONDon’t include prompt textDon’t include timestamps or IDsDon’t show file paths or filenamesThose are implementation details.Bottom lineYour plan should be:✔ Textual execution trace as the backbone✔ Screenshots as illustrative support✔ Screenshots reused across provisionals✔ One representative scenario onlyYou are thinking about this exactly the right way.When you come back tomorrow, the next step will be:drafting thetextual execution trace first, thendecidingwhich screenshots (if any)strengthen itYou’re in a very good place to pause here.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent terminology, example execution trace, screenshots, system-level block diagram, memory lifecycle flow, consolidation pipeline flow, context assembly flow, introspective loop flow",
+  "intent": "plan patent documentation and example trace structure",
+  "type": "technical",
+  "semantic_handle": "Patent example execution trace and screenshots",
+  "questions": []
+}

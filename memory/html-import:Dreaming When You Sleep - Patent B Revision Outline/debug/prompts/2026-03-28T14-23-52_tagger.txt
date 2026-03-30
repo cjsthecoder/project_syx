@@ -1,0 +1,169 @@
+# timestamp: 2026-03-28T14-23-52
+# project_id: html-import:Dreaming When You Sleep - Patent B Revision Outline
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: conditional follow-on processing actions, patent drafting, non-limiting examples, questions, research, structured insight artifacts
+#intent: ask for section drafting
+#type: technical, planning
+#semantic_handle: patent section for conditional follow-on processing actions
+
+------USER------
+can you write the entire Conditional Follow-On Processing Actions, in this format as recommended?
+
+------ASSISTANT------
+Here is thecomplete, patent-ready sectionwritten exactly in the format you described.It is generic first, then clearly labelednon-limiting examples, with careful language to avoid lock-in.You can drop this in as a full replacement section.Conditional Follow-On Processing ActionsIn the disclosed system, the 
+autonomous introspective analysis framework is further configured to 
+conditional
+...[middle omitted for tagging]...
+by the 
+system.This section now clearly establishes that:Follow-on actions areconditionalThe category isgenericQuestions areone exampleResearch isone exampleNeither is requiredAdditional examples can be added later without restructuringNext in outline order, the clean continuation is:→Structured Insight ArtifactsThat section will tie everything together and lock the architecture in place.
+
+------CURRENT TURN------
+------USER------
+ok, I like that.  Should we add a couple more?  Idea agent (already exists)?  and then this one, - [ ] Memory Integration Agent
+Purpose: Automatically review the entire dream.json output (from Questions, Ideas, Research, Synthesis, etc.) and decide:
+Which items can be safely auto-accepted into LTM
+Which items require user approval
+Which items should be suppressed
+Which items should be rewritten or normalized
+Which items are duplicates or obsolete
+Which items are contradictory vs existing memory
+This keeps the user from being overwhelmed and makes Morpheus feel smart, not noisy.
+
+which is not implemented, but in my list of things to add.  
+
+Or is two enough?
+
+------ASSISTANT------
+Short answer:yes, add them, andyes, two is already enough, but addingone or two more strengthens the patent without riskif we do it the right way.The key is to add them asclearly labeled, non-limiting examplesand to avoid implying implementation or requirement.Here is the reasoning, then a concrete recommendation.Are Two Examples Enough?From a strict patent sufficiency standpoint,yes.You already have:Question-based follow-on processingResearch and context expansionThat is enough to establish:conditional triggeringautonomous actionplurality of behaviorspost-consolidation operationSo you are already safe.Why Adding One or Two Mor
+...[middle omitted for tagging]...
+yThey should look exactly like the existing two, for example:Idea-Oriented Follow-On Processing (Example)Memory Integration and Curation (Example)Each with one short paragraph, clearly labeled as illustrative.Final GuidanceYou are not overdoing itYou are future-proofing the inventionYou are not locking yourself inYou are strengthening dependent claim materialIf you want, next I can:Write those two example subsections in the same patent-ready style, orAdvise where to stop adding examples so it does not become bloatedMy recommendation is to addboth, then move on toStructured Insight Artifacts, which will absorb everything cleanly.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent drafting, conditional follow-on processing actions, idea agent, Memory Integration Agent, non-limiting examples, structured insight artifacts",
+  "intent": "advise on adding example subsections and patent section scope",
+  "type": "technical, planning",
+  "semantic_handle": "adding follow-on processing example sections",
+  "questions": []
+}

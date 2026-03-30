@@ -1,0 +1,263 @@
+# timestamp: 2026-03-28T14-56-19
+# project_id: html-import:Dreaming When You Sleep - Morpheus 4.0 dream cycle
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: default rag file, User Profile Codex, user profile, user identity context, Dream Orchestrator, Dream agents
+#intent: design user identity context retrieval from a default rag file
+#type: technical, design
+#semantic_handle: user identity context in default rag file
+
+------USER------
+we also have a default rag file that goes in every project, and it has user information, 
+User Profile Codex
+
+#name: Chris Shuler
+#pen-name: CJ Shuler
+
+=== TOPIC: Core Profile ===
+
+#topics: user profile, background, career, personal context
+
+#decisions: transition focus toward AI/ML while continuing creative writing projects
+
+#open_questions: how to balance technical projects with fiction publishing timeline
+
+#user_context: 56-year-old software engineer with aerospace background, AI/AGI researcher, aspiring fiction author
+
+Summary:
+Chris Shuler is an experienced software engineer, originally with a strong background in aerospace and satellite ground systems (NASA, DoD). He’s now pivoting toward AI/ML experimentation and AGI design, while also developing multiple fiction projects.
+
+=== TOPIC: Technical Skills ===
+
+#topics: software engineering, mission-critical systems, AI tools
+
+------ASSISTANT------
+Yes — that default RAG file isexactlywhat we need, and it turns your idea into something much cleaner and 
+more powerful than pulling user data from environment variables or 
+injecting a hardcoded block.Let me explain why this is ahuge advantageand how to use it correctly.1. You already solved the User Identity Context problem without knowing itEvery project starts with:a default RAG filewhich contains your user profilestored in the same structured, Sleep-friendly formatreadable via RAG retrievaland consistent across all Dream agentsThis me
+...[middle omitted for tagging]...
+Then attaches them to the top ofeveryDream agent prompt.8. SummaryUsing your default RAG file for user profile and project identity is:elegantscalableconsistentpowerfulpersonalfully aligned with your Sleep/Dream architectureexactly how a real cognitive layer should be builtYou accidentally designed the right foundation from the start.If you want, next we can draft:the Dream Context Block specthe RAG summary mini-agent promptthe 4.1.3 Idea Synthesis Agent requirementsthe code patch for Dream OrchestratorJust tell me what you want to do next.
+
+------CURRENT TURN------
+------USER------
+I am testing, 4.1.2 is working but I am wondering if we can make it better before we move on.  I am curious if we could improve this prompt (below)?  It basically just collects questions but we don't really say what types of questions to collect.  Or maybe we can derive questions?  The #6 section I think we could likely make better.
+
+def generate_formatting_prompt(content: str) -> str:
+    logger.info("[SLEEP][FORMAT] Building formatting prompt")
+    return f"""You are formatting a pruned daily memory. Follow this output contract EXACTLY.
+
+INPUT MAY CONTAIN:
+- Header lines beginning with '#':
+  #timestamp: MM-DD-YYYY_HH:MM:SS
+  #route: <namespace>
+  #keep: true|false
+- Paired blocks:
+  --- USER (data-message-author-role: user) ---
+  <prompt>
+  *** ASSISTANT (data-message-author-role: assistant) ***
+  <response>
+- Boundary tags:
+  === BEGIN DAILY MEMORY: MM/DD/YYYY ===
+  === END DAILY MEMORY: MM/DD/YYYY ===
+
+RULES:
+1) PRESERVE all header lines ('#...') EXACTLY (no edits).
+2) PRESERVE role markers EXACTLY:
+   --- USER (data-message-author-role: user) ---
+   *** ASSISTANT (data-message-author-role: assistant) ***
+3) PRESERVE the DAILY MEMORY boundary tags if present. Ensure ordering:
+   - The BEGIN tag must be the FIRST line of the entire output.
+   - The END tag must be the FINAL line of the entire output.
+   - Do NOT place any content after the END tag.
+4) If the input contains only one of the two tags (BEGIN or END), DO NOT invent the missing tag; format the body and keep the present tag in its correct position.
+5) Structure the body into topic sections:
+   === TOPIC: Normalized Short Title ===
+   Then immediately these metadata lines (one per line):
+   - #topics: 3–5 keywords
+   - #decisions:
+   - #open_questions:
+   - #user_context:
+   After that, include the original USER/ASSISTANT blocks and headers verbatim under the topic (no rewording).
+
+6) Appendices must appear BEFORE the END tag in this exact order:
+
+[Decisions Log]
+- One item per line prefixed with '- '
+
+[Open Questions]
+Return a single JSON object with this structure:
+
+{{
+  "questions": [
+    {{
+      "question": "<exact question text>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<ignore | remind_user | answer_local | answer_remote>"
+    }}
+  ]
+}}
+
+Rules for JSON:
+- Deduplicate items.
+- Group questions by their originating Topic block.
+- Extract the exact question text without rewriting.
+- The topic field must contain the normalized Topic title (from the === TOPIC: ... === header).
+- The resolution field must classify the preferred method for resolving the question based on the entire daily memory:
+  - "ignore" for questions that should not be included in the final output because they are rhetorical, obsolete, duplicates, or already answered in the daily memory. These questions must be classified internally but omitted from the returned JSON.
+  - "remind_user" for questions requiring a user choice or creative decision.
+  - "answer_local" for questions that can likely be answered using the daily summary or existing project memory.
+  - "answer_remote" for questions requiring external factual or technical research.
+- If no open questions exist, return {{ "questions": [] }}.
+- Return the JSON object EXACTLY as shown with no surrounding explanation.
+
+7) Return ONLY the formatted output. No explanations.
+
+Here is the pruned content:
+{content}
+"""
+
+------ASSISTANT------
+Yes — we can make this significantly better, and4.1.2 will immediately benefitbecause the quality of question detection affects the quality of 
+dream.txt, the usefulness of Dreaming overall, and the eventual value of
+ the Idea Synthesis Agent.Right now, section6)essentially says:extract questions that appear as literal questions in the USER textclassify themThat’s fine for Version 1, but it is 
+missing three extremely powerful types of “open questions” that humans 
+naturally expect a reasoning system to notice.Let’s break this down and then I will
+ propose an improved version of section 6 that makes your entire Dream 
+pipeline more intelligentwithout breaking anything.What the current prompt does well✓ Finds literal?questions from the user✓ Classifies them✓ Removes “ignore” ones✓ Associates them with topic sectionsThis already works.But we can achieve more.What the current prompt fails to pick upHere are the missing categories:1. Questions implied by indecision or ambiguityExample phrases:“I’m not sure what to do here”“We could do X or Y”“I need to think about whether…”“Not sure how we should structure…”“This part still needs thought”These areimplicit open questions.The system does not detect them today.2. Questions the assistant raises but does not resolveSometimes the assistant writes:“Possible options include…”“We need to decide whether…”“This depends on what you want…”These representdesign forks, and Dream should treat them as o
+...[middle omitted for tagging]...
+ision.
+  • "answer_local"forquestions likely answerableusingtoday's memoryorexisting project RAG.
+  • "answer_remote"forfactual, technical,orresearch-driven questions requiring external sources.
+
+- If no open questions exist,return{"questions": [] }.
+
+- Return ONLY the JSONobjectexactlyasshownwithno additional explanations.Why this is safeThe task is still narrowly definedOutput is exactly the same structure as beforeYou’re only expanding extraction rulesYou’re not changing the formatting of the memoryYou’re not affecting Sleep’s determinismYou are giving LLM a constrained pattern listNo multi-step reasoning required5.1 will handle this flawlessly.The immediate benefitsYou will now extract:✓ Decision forks✓ Design uncertainty✓ Assistant-suggested decisions✓ TODO-style future questions✓ Clarifications needed✓ Underspecified areas✓ Ambiguous requirements✓ ContradictionsDream will now see:✓ 2x–10x more intelligent questions✓ Better coverage✓ More actionable insights✓ More things to research✓ More natural Dream results4.1.2 will produce:✓ Richer dream.txt✓ More realistic agent behavior✓ Better grounding for idea agents✓ More meaningful insightsThis makes Dreamactually usefulinstead of “just answering what Chris asked.”If you want, I can now:generate the updated full formatting promptpatch this into your codehelp you test the new extractiongenerate example outputsor move on to designing the Idea Synthesis AgentTell me what you want next.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "prompt engineering, question extraction, open questions, formatting prompt, daily memory, dream pipeline",
+  "intent": "improve a formatting prompt and expand open question detection",
+  "type": "technical, design",
+  "semantic_handle": "improving open question extraction in formatting prompt",
+  "questions": []
+}

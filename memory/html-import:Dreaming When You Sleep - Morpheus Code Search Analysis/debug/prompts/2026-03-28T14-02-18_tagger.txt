@@ -1,0 +1,195 @@
+# timestamp: 2026-03-28T14-02-18
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: DELTA-A.3, ambiguity classifier, self-contained, roll-off pair, assistant text, inference
+#intent: evaluate why the ambiguity step is under-firing and whether it remains useful
+#type: technical, design
+#semantic_handle: ambiguity classifier under-firing in A.3
+
+------USER------
+ok, A.3 is implemented, it seems to work, but there doesn't seem to be a way to get ambiguity to be true.  I even tried a new project and rolled off first pair with the question "what were we talking about?"  it's answer, basically we haven't talked about anything was enough to set flag to false.  
+
+If we have a step that is always false, its a useless step?
+
+------ASSISTANT------
+Great question. This isexactlythe right moment to interrogate whether a step is doing real work or just looking busy.Short answer first:No, it is not useless yet.Butyes, in its current framing it is under-firing, and that’s expected given what you’re seeing.Let me explain why this is happening, why it doesn’t invalidate A.2/A.3, and what thecorrectadjustment is.Why ambiguity is always coming back falseYou already diagnosed most of it yourself.The core reasonYour ambiguity classifier is being shownboth:the user messagethe assistant messageAnd the a
+...[middle omitted for tagging]...
+signal propagatesAnchoring logic doesn’t break anythingThe system tolerates “always false” cleanlyNow you cansafelymake the classifier stricter.That is exactly how this should evolve.One-sentence takeawayThe ambiguity step isn’t useless — it’s just being too generous about what “self-contained” means.If you want, next we can:Rewrite the ambiguity prompt toforbid inferenceDecide whether to exclude assistant text from the checkOr add a second, cheap lexical gatebeforethe modelBut you are not in a bad state.You’re in theexpectedfirst iteration state.
+
+------CURRENT TURN------
+------USER------
+here is the current prompt, can we improve it?
+
+_PROMPT = """You are an ambiguity classifier for conversational memory.
+
+Your task is to determine whether the CURRENT conversation pair
+(RESPONSE to USER MESSAGE) depends on the IMMEDIATELY PRECEDING
+conversation pair to be correctly interpreted.
+
+A pair is ambiguous ONLY if important meaning in the current user message
+or assistant response cannot be understood WITHOUT the immediately prior
+exchange.
+
+Do NOT consider:
+- General background knowledge
+- Domain or story familiarity
+- Named characters, places, or concepts introduced in this pair
+- Earlier chapters, documents, or prior sessions
+
+Do NOT assume access to anything except the current user message and
+assistant response.
+
+You must NOT attempt to resolve ambiguity.
+You must NOT rewrite, summarize, or reinterpret content.
+You must ONLY classify whether the immediately previous conversational turn
+is required for correct interpretation.
+
+Bias toward marking ambiguous ONLY when unresolved references clearly
+depend on the immediately prior exchange.
+
+CURRENT USER MESSAGE:
+<<<USER_MESSAGE>>>
+
+CURRENT ASSISTANT MESSAGE:
+<<<ASSISTANT_MESSAGE>>>
+
+Respond using EXACTLY the following format:
+
+AMBIGUOUS: true | false
+REASON: <one short sentence explaining why>
+"""
+
+------ASSISTANT------
+Yes. The prompt is doingexactlywhat it asks, and that is the problem. It isoverly permissiveand explicitly tells the model to be conservative. You accidentally trained it to almost never fire.Let me show you why, then give you a corrected version that keeps the same shape but actually does work.Why the current prompt under-firesThese lines are the killers:“A pair is ambiguous ONLY if…”“Bias toward marking ambiguous ONLY when…”“depends on the IMMEDIATELY PRECEDING conversation pair…”You have stacked three constraints that push the model to say false:ONLY ifONLY when clearly dependsMust require the immediately prior exchangeCombined with the assistant response present, the model concludes:“The assistant already answered, so it does not require prior context.”The model is beingobedient, not stupid.The real issue is this sentence:“cannot be understood WITHOUT the immediately prior exchange”For memory, that is the wrong bar.You do not want “understood”.You want “unambiguously grounded”.The correct
+...[middle omitted for tagging]...
+as for memory.Why this will now fire in the cases you care aboutThis will now flag as ambiguous:User: “Why won’t that work?”Assistant: “Because time travel violates causality.”Reason:“that” is never namedassistant did not restate the proposalBut this will still be non-ambiguous:User: “Why won’t the time-travel device work?”Assistant: “Because time travel violates causality.”Because the referent is explicit.Important reassuranceIf this still fires less than you expect, that is fine.You want:few false positivesalmost zero false negatives on referential languageYou are tuningmemory quality, not conversational flow.Bottom lineThe step is not uselessThe prompt was just asking the wrong questionThis revision aligns it with retrieval semanticsYour architecture does not need to changeIf you want, next we can:Add a tiny lexical pre-check before the modelOr instrument stats to see firing rates over timeOr tune the bias sentence even furtherBut this revision alone should immediately make A.2 come alive.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "ambiguity classifier, prompt engineering, conversational memory, self-contained classification",
+  "intent": "ask for prompt improvement",
+  "type": "technical, design",
+  "semantic_handle": "ambiguity classifier prompt revision",
+  "questions": []
+}

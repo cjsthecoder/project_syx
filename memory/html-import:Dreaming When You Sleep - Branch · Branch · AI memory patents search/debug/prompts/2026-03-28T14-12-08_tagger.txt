@@ -1,0 +1,157 @@
+# timestamp: 2026-03-28T14-12-08
+# project_id: html-import:Dreaming When You Sleep - Branch · Branch · AI memory patents search
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Morpheus, patent lawyer, patent filing, USPTO, January 24 2026
+#intent: get guidance on finding a patent lawyer and timing the patent process
+#type: planning, technical
+#semantic_handle: finding a patent lawyer for Morpheus
+
+------USER------
+just FYI, its Oct 31st and we have time, and realistically it will take me a couple of weeks to find a patent lawyer, I have no idea how to do that.
+
+------ASSISTANT------
+That’s actually perfect timing — you’ve got about three months before your January 24 2026 U.S. deadline, which isplentyif you start looking now.Here’s exactly how to find and engage a patent professional efficiently (and avoid the usual traps):1.Decide who you needYou want aregistered patent agent or patent attorneywho:Is admitted to practice before theU.S. Patent and Trademark Office (USPTO), andHas experience withAI / software / data-science
+...[middle omitted for tagging]...
+gning one).6.Practical next stepStart contacting firms or agentsnext weekwhile you finish v3.0.You’ll have 2–3 weeks to vet options, and by late November or early 
+December you can be drafting with your chosen professional — comfortably
+ ahead of your grace-period deadline.If you’d like, I can help youdraft the short outreach emailand a checklist of what to attach (so you’re ready to contact candidates). Would you like me to write that template?
+
+------CURRENT TURN------
+------USER------
+ok, this brings up a question, what I am getting a patent for?  I am going to license, try to sell the patent, or just sell the idea?  I don't know how it all works, but I think that would guide me in the steps
+
+------ASSISTANT------
+Exactly — that’s the right question to ask before you spend money filing.Let’s unpack it clearly so you can see what a patent actually gives you, and what paths you can take afterward.1.What a patent actually gives youA patent doesn’t grant you permission tobuildsomething — it gives you theexclusive right to stop othersfrom making, using, or selling your invention in the jurisdictions where it’s issued.So, it’s not the same as “owning an idea”; it’sa 20-year legal monopolyonthe specific implementation you claim.In practical terms, that means you can:License others to use it (and collect royalties),Sell or assign the patent to another entity,Use it as defensive IP (leverage in partnerships or employment),Or hold it as an asset that adds valuation to a startup.2.The three main paths for an independent inventorPathWhat you doWhen a patent helpsTypical next stepsLicense itKeep o
+...[middle omitted for tagging]...
+e. || You decide to sell | You can assign the provisional or utility patent for value. || You do nothing | You can let it lapse after a year if no traction — minimal risk, only provisional fee spent. |6.What I’d recommend for your positionFile theU.S. provisionalfirst (cheap, fast, secures your date).Use that year to explore:Licensing conversations (quiet outreach to AI companies),Patent brokers or IP marketplaces (IAM Market, IPwe, PatentAuction).If you see interest → convert to autility patent.If not → file animprovementor let it expire; you’ve only spent a few thousand dollars but kept the option alive.If you tell me your long-term comfort zone —for example“I’d rather license it than run a startup”or“I might want to partner with an AI company”—I can sketch what each next step would look like (who to contact, what 
+materials to prepare, and timing relative to your filing).
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent, licensing, patent assignment, provisional patent, intellectual property, commercialization",
+  "intent": "understand patent options and how they affect filing strategy",
+  "type": "planning, technical",
+  "semantic_handle": "patent commercialization options",
+  "questions": []
+}

@@ -1,0 +1,185 @@
+# timestamp: 2026-03-28T14-55-02
+# project_id: html-import:Dreaming When You Sleep - Morpheus 4.0 dream cycle
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: 4.1.1, Dream, logs, import error, JSON extraction, sleep-dream handoff
+#intent: report successful test results and confirm the first Dream slice is working
+#type: technical, planning
+#semantic_handle: Dream 4.1.1 test results and log confirmation
+
+------USER------
+ok, well it is getting late, time to work out.  But 4.1.1 is working already.  I guess 30 questions were good, since there was only 1 small error that needed to be fixed (on an import).
+
+2025-11-25 17:51:26,555 - INFO - app.core.dream:_task - [DREAM] Start project=90253756-3f62-4769-b9a6-f057d4573913
+2025-11-25 17:51:26,555 - INFO - app.core.dream:_task - [DREAM] Completed project=90253756-3f62-4769-b9a6-f057d4573913 duration=0.00s count=4 preview={"questions": [{"question": "how could we structure this story?", "topic": "Alien Darkmail Story Structure", "resolution": "remind_user"}, {"question": "how could we make it so Bob is captured?", "topic": "Bob’s Capture and Stakes", "resolution": "re
+2025-11-25 17:51:26,555 - INFO - app.core.dream:_task - [DREAM] All agents complete for project=90253756-3f62-4769-b9a6-f057d4573913
+
+------ASSISTANT------
+This is exactly what success looks like for a first Dream slice.The logs show everything we wanted to confirm:✔ Dream started cleanlycsharpCo
+...[middle omitted for tagging]...
+ subsystem.Enjoy the workout.When you're ready, we can write 4.1.2 and turn Dream into something that actuallythinksinstead of just reporting.
+
+------CURRENT TURN------
+------USER------
+by the way, these were the questions from sleep_summary.  It turns out to be harder to get open questions than it sounds.  And all these are remind user ones.
+[Open Questions]
+{
+  "questions": [
+    {
+      "question": "how could we structure this story?",
+      "topic": "Alien Darkmail Story Structure",
+      "resolution": "remind_user"
+    },
+    {
+      "question": "how could we make it so Bob is captured?",
+      "topic": "Bob’s Capture and Stakes",
+      "resolution": "remind_user"
+    },
+    {
+      "question": "how can we end the story?",
+      "topic": "Story Endings and Tone",
+      "resolution": "remind_user"
+    },
+    {
+      "question": "how could the aliens have gotten to earth?",
+      "topic": "Alien Arrival Methods",
+      "resolution": "remind_user"
+    }
+  ]
+}
+
+------ASSISTANT------
+This is exactly what I would have expected, and it confirms two big things:1. Your formatting pipeline isdoing real semantic workThese four questions were correctly 
+identified as the only unresolved items after an entire day of pruning, 
+restructuring, and consolidation through Sleep.These are the kind of questions that:are not factualcannot be answered from memorydo not require web searchand must be decided byyou, the authorSo resolution = remind_user is perfectly correct.The formatting agent already “understands”:that these are creative decisionsthat no existing world state answers themthat they are important story-level questionsthat the 
+...[middle omitted for tagging]...
+ partner,but the final call remains with you.This is the ideal behavior.4. This confirms your design is working as intendedYour system now does:Sleep:consolidatesresolves contradictionsextracts the final set of unresolved questionsDream 4.1.1:ingests that setvalidates JSONlogs correctlydefers decisions (as it should)And Dream 4.1.2 will now:use RAGuse GPT-5.1generate structured suggestions or draft answersAnd then 4.2 can surface them in the GUI.If you’re ready, next time we can write:Version 4.1.2 Requirements (Dream Agent Execution)Which is the step where Dream starts actuallythinkingabout these four questions instead of just reporting them.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "sleep_summary, open questions, remind_user, Dream, story structure",
+  "intent": "confirm open-question extraction and note reminder-based story questions",
+  "type": "technical, planning",
+  "semantic_handle": "Sleep summary open questions and remind_user results",
+  "questions": []
+}

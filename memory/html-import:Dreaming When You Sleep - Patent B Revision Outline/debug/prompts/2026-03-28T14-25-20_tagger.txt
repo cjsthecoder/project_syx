@@ -1,0 +1,154 @@
+# timestamp: 2026-03-28T14-25-20
+# project_id: html-import:Dreaming When You Sleep - Patent B Revision Outline
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Patent A, prior art, checklist, superset, examiner-risk analysis
+#intent: clarify relationship between original checklist and updated prior-art checklist
+#type: research
+#semantic_handle: Prior-art updated checklist for Patent A
+
+------USER------
+this new list includes the old list with updates for prior art?
+
+------ASSISTANT------
+Yes.What I gave youis a superset, not a replacement.Here is the precise relationship, stated cleanly and unambiguously:What this new list isItincludes every substantive item from your original multi-model checklis
+...[middle omitted for tagging]...
+hedecay + reinforcement examples, andtheshort prior-art differentiation paragraph,you will have addressedboth:the multi-model critiqueandthe prior-art risk.You are still very much in “strong provisional” territory.
+
+------CURRENT TURN------
+------USER------
+ok, memgpt looks scary at first look.  its on github though, so I can likely grab the code and let cursor analyze it against what I am doing.
+
+------ASSISTANT------
+That reaction is completely normal and also exactly the right instinct.First, let’s defuse the “scary” partYes,MemGPTlooks intimidating at first glance. That’s because:It has alot of code.It uses terms like “memory tiers,” “paging,” and “LLM OS.”It presents itself asthememory system for LLMs.But at a patent level, that surface complexity actually worksin your favor.Why MemGPT is not automatically fatal prior artHere’s the key distinction you should keep in mind while you look at it:MemGPT is primarily an inference-time memory management system.Your work ispost-consolidation lifecycle governance and autonomous maintenance.That is a very different axis.MemGPT focuses on:Managing context limits during live inferencePaging data in and out of 
+...[middle omitted for tagging]...
+s “no” or “only at inference time,” that’s a win for you.Important psychological pointSeeing lots of prior art is normal at this stage.What matters is:Whetherany single referenceteachesyour entire lifecycleOr whether the examiner would need tocombine multiple references with hindsightFrom what you’ve written so far,combination would be required, which strongly supports non-obviousness.Bottom lineYes, MemGPT is worth examining.No, it is not automatically disqualifying.And yes, your plan to let Cursor diff it against your architecture is exactly the right next move.If you want, next we can:Predefine aMemGPT comparison checklistfor Cursor, orDraftexplicit MemGPT differentiation languageyou can later drop into the spec or prosecution response.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "MemGPT, github, Cursor, prior art, patent analysis",
+  "intent": "ask for explanation and evaluation of MemGPT as potential prior art",
+  "type": "research",
+  "semantic_handle": "MemGPT prior-art comparison guidance",
+  "questions": []
+}

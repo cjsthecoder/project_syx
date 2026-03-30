@@ -1,0 +1,166 @@
+# timestamp: 2026-03-28T14-43-23
+# project_id: html-import:Dreaming When You Sleep - Text
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: patent claims, patent drafting, artificial intelligence, tiered memory maintenance, sleep cycle, dreaming, claim breadth
+#intent: regenerate a patent claim outline based on prior claims
+#type: research, legal
+#semantic_handle: patent claim outline for ai memory maintenance
+
+------USER------
+yes regenerate based on the claims
+
+------ASSISTANT------
+Got it — here’s theregenerated full claim outlinefor your invention, rewritten around the clarified terminology and balanced claim strategy:TitleMemory-Consolidating Conversational AI with Tiered Retrieval and Periodic “Sleep” MaintenanceIndependent Claim 1 — System (broad, technology-agnostic)A computer-implemented system comprising:(a) one or moretransient memory storesconfigured to collect interaction or operational data during system activity;(b) one or morepersistent memory storesconfigured to maintain verified knowledge across sessions;(c) aretrieval subsystemoperative to obtain context information from the transient and 
+persistent memory stores for use by an artificial-intelligence model; 
+and(d) amaintenance (“
+...[middle omitted for tagging]...
+sTruth-maintenance, confidence UI, summaries, decay, architecture, efficiency, human loopNotes for FilingYou’ll describe “sleep cycle” as the broad mechanism, and “dreaming” as one possible sub-phase or implementation.Theabstract and specificationshould show how this produces measurabletechnical benefits: reduced latency, bounded context size, improved factual consistency.If challenged, the dependent claims
+ (3–7) give fallback positions that are novel even if the general 
+“periodic AI maintenance” idea becomes crowded.Would you like me to follow this with a shortnarrative abstract and specification paragraph(the 1–2 pages counsel would use to start the provisional draft)?That would complete the “ready-to-file skeleton.”
+
+------CURRENT TURN------
+------USER------
+should_androids_dream.txtDocumentI have been thinking about this, per other chats I have collected all the information so far, and plan to push through version 3, sleeping, ASAP.  But, it turns out the first article I posted to linkedin (pulled down now), was last Jan 25th.  This one is, attached, is the first one.  There were two more spread out by about two weeks each.  The problem I see is that this may mean I need to do at least the sleeping and dreaming patents by Jan 25th?
+
+------ASSISTANT------
+Yes — you’re correct to be thinking aboutdateshere.In patent law,public disclosure(like a LinkedIn post) can start the clock on your ability to file. Here’s how it applies:1. U.S. Rule: One-Year Grace PeriodUnder35 U.S.C. § 102(b)(1), once you publicly disclose an invention (e.g., publish an article describing it), you haveone yearfrom that date to file a U.S. patent application (provisional or non-provisional).Your LinkedIn article datedJanuary 25 2025appears to have been the first public disclosure.That means yourabsolute latest U.S. filing dateisJanuary 25 2026.Any disclosure after that date without filing will permanently bar patent ri
+...[middle omitted for tagging]...
+v3 “sleeping” is implemented) so you can reference it concretely and avoid rushing over the holidays.Include in the filing: the 
+generalized “sleep cycle” framework, “dreaming” as sub-phase, tiered 
+memory, and all related maintenance logic.6. Summary✅ Grace period (U.S.): untilJan 25 2026🚫 Foreign novelty: already lost for what was in that post🕐 Best move: file yourU.S. provisional within 2–3 months, covering the entire architecture you’ve now defined.Would you like me to list exactlywhich elements from that LinkedIn articlecount as “publicly disclosed” for patent purposes (so you know whatmustbe included in your filing to preserve them)?
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent filing deadlines, public disclosure, linkedin post, sleep and dreaming patents, grace period, U.S. patent law",
+  "intent": "assess patent filing deadline impact of prior public disclosure",
+  "type": "legal, research",
+  "semantic_handle": "patent deadline after linkedin disclosure",
+  "questions": [
+    {
+      "question": "which elements from that LinkedIn article count as publicly disclosed for patent purposes?",
+      "topic": "public disclosure",
+      "resolution": "answer_remote"
+    }
+  ]
+}

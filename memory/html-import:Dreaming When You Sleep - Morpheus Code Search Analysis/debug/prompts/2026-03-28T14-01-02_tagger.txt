@@ -1,0 +1,733 @@
+# timestamp: 2026-03-28T14-01-02
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Morpheus, daily rag, ltm, faiss, similarity search, tagged data
+#intent: ask for explanation of retrieval behavior and code search flow
+#type: technical
+#semantic_handle: Morpheus retrieval and tagged data search behavior
+
+------USER------
+ok, I have a problem in Morpheus, when it searches the daily RAG, it uses something that maximizes the return and when it searches LTM it does not.  But I can't figure out what in this code is doing the search.  First, can you look at this code and explain what it is doing to get the best results from tagged data?
+
+"""
+Copyright (c) 2025 Christopher Shuler. All rights reserved.
+
+This source code is part of the Morpheus project and is proprietary.
+
+Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
+
+Use of this software requires explicit written permission from the copyright holder.
+"""
+from __future__ import annotations
+"""
+RAG manager for building FAISS indices per project (V2).
+
+Policy:
+- Embedding model: text-embedding-3-large (configurable)
+- Chunking: RecursiveCharacterTextSplitter(size=chunk_size, overlap=chunk_overlap)
+- Metadata per chunk: project_id, filename, page_number (if pdf), chunk_id, timestamp
+- Recreate FAISS index per upload (fresh build from uploads dir)
+"""
+
+import os
+import time
+from datetime import datetime
+from typing import List, Tuple, Optional, Dict, Any
+import json
+import logging
+
+try:
+    # Newer split package
+    from langchain_text_splitters import RecursiveCharacterTextSplitter  # type: ignore
+except Exception:
+    # Fallback to legacy import path
+    from langchain.text_splitter import RecursiveCharacterTextSplitter  # type: ignore
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+
+from .config import get_settings
+import os
+from .database import get_session
+from .db_models import File as FileRow
+from sqlmodel import select
+
+logger = logging.getLogger(__name__)
+def _load_route_config() -> Dict[str, Dict[str, Any]]:
+    """Load route configuration from backend/app/config/meta_namespaces.json.
+    Returns dict keyed by route name with namespaces, rag_k, score_threshold.
+    """
+    try:
+        base_dir = os.path.join(os.path.dirname(__file__), "..", "config")
+        path = os.path.abspath(os.path.join(base_dir, "meta_namespaces.json"))
+        if not os.path.isfile(path):
+            logger.debug("Route config not found at %s; using defaults", path)
+            return {}
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return data
+    except Exception as e:
+        logger.debug("Failed loading route config: %s", e)
+    return {}
+
+
+def _load_namespace_globs_map(project_id: str) -> Dict[str, List[str]]:
+    """Load per-project namespace map (namespace -> [globs]) from memory/{project}/namespace_map.json.
+    Returns empty dict if missing.
+    """
+    try:
+        base = os.path.join("memory", project_id)
+        path = os.path.join(base, "namespace_map.json")
+        if not os.path.isfile(path):
+            logger.info("Namespace map missing for project=%s; defaulting to 'general' for all files", project_id)
+            return {}
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return {str(ns): list(v) for ns, v in data.items() if isinstance(v, list)}
+    except Exception as e:
+        logger.warning("Failed to load namespace map for project=%s: %s", project_id, e)
+    return {}
+
+
+def _resolve_namespace(project_id: str, uploads_rel_path: str, ns_map: Optional[Dict[str, List[str]]] = None) -> str:
+    """Resolve namespace for a given file path relative to uploads/ using case-insensitive, first-match-wins globs."""
+    import fnmatch
+    if ns_map is None:
+        ns_map = _load_namespace_globs_map(project_id)
+    path_l = uploads_rel_path.replace("\\", "/").lower()
+    for ns, patterns in ns_map.items():
+        for pat in patterns:
+            pat_l = str(pat).replace("\\", "/").lower()
+            if fnmatch.fnmatch(path_l, pat_l):
+                return ns
+    return "general"
+
+try:
+    import tiktoken  # type: ignore
+except Exception:
+    tiktoken = None  # token counting optional until installed
+
+
+def _read_file_text(path: str) -> List[Tuple[str, dict]]:
+    """Return list of (text, metadata) chunks at file-level (before splitting)."""
+    name = os.path.basename(path)
+    _, ext = os.path.splitext(name)
+    ext = ext.lower()
+    if ext in {".txt", ".md"}:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        return [(content, {"filename": name})]
+    elif ext == ".pdf":
+        try:
+            from pypdf import PdfReader
+        except Exception as e:
+            raise RuntimeError(f"pypdf not available: {e}")
+        reader = PdfReader(path)
+        chunks: List[Tuple[str, dict]] = []
+        for i, page in enumerate(reader.pages):
+            text = page.extract_text() or ""
+            chunks.append((text, {"filename": name, "page_number": i + 1}))
+        return chunks
+    else:
+        return []
+
+
+def _count_tokens(text: str) -> int:
+    if not tiktoken:
+        return len(text.split())
+    try:
+        enc = tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        enc = tiktoken.get_encoding("cl100k_base")
+    return len(enc.encode(text))
+
+
+def _trim_to_tokens(text: str, max_tokens: int) -> str:
+    if not tiktoken:
+        return text
+    enc = tiktoken.get_encoding("cl100k_base")
+    ids = enc.encode(text)
+    if len(ids) <= max_tokens:
+        return text
+    ids = ids[:max_tokens]
+    return enc.decode(ids)
+
+
+def rebuild_faiss_index(project_id: str) -> str:
+    """Rebuild FAISS index for a project from uploads directory.
+
+    Returns the directory where the index is saved.
+    """
+    settings = get_settings()
+    uploads_dir = os.path.join("memory", project_id, "uploads")
+    faiss_dir = os.path.join("memory", project_id, "faiss")
+    os.makedirs(faiss_dir, exist_ok=True)
+
+    files = []
+    if os.path.isdir(uploads_dir):
+        for root, _, names in os.walk(uploads_dir):
+            for name in names:
+                files.append(os.path.join(root, name))
+
+    texts: List[str] = []
+    metadatas: List[dict] = []
+    collected = []
+    # For per-file stats
+    file_token_sums: Dict[str, int] = {}
+    file_page_max: Dict[str, int] = {}
+    ns_map = _load_namespace_globs_map(project_id)
+    for f in files:
+        uploads_rel = os.path.relpath(f, uploads_dir).replace("\\", "/")
+        file_ns = _resolve_namespace(project_id, uploads_rel, ns_map)
+        for raw_text, meta in _read_file_text(f):
+            collected.append((raw_text, meta, file_ns))
+            fname = meta.get("filename") or os.path.basename(f)
+            file_token_sums[fname] = file_token_sums.get(fname, 0) + _count_tokens(raw_text)
+            pg = int(meta.get("page_number") or 1)
+            file_page_max[fname] = max(file_page_max.get(fname, 1), pg)
+
+    if not collected:
+        # No files -> clear any existing index
+        try:
+            for n in os.listdir(faiss_dir):
+                os.remove(os.path.join(faiss_dir, n))
+        except Exception:
+            pass
+        return faiss_dir
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
+    )
+
+    now_iso = datetime.utcnow().isoformat()
+    for raw_text, base_meta, file_ns in collected:
+        for i, chunk in enumerate(splitter.split_text(raw_text)):
+            texts.append(chunk)
+            m = {
+                "project_id": project_id,
+                "filename": base_meta.get("filename"),
+                "page_number": base_meta.get("page_number"),
+                "chunk_id": i,
+                "timestamp": now_iso,
+                "namespace": file_ns,
+            }
+            metadatas.append(m)
+
+    embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
+    # Normalize L2 to make cosine similarity computable via L2 distance relation
+    try:
+        vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metadatas, normalize_L2=True)
+    except TypeError:
+        # Older versions may not support normalize_L2
+        vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metadatas)
+    # Save index
+    vs.save_local(faiss_dir)
+
+    # Backfill file token/page stats in DB
+    try:
+        with get_session() as session:
+            for fname, tok_sum in file_token_sums.items():
+                row = session.exec(
+                    select(FileRow).where((FileRow.project_id == project_id) & (FileRow.filename == fname))
+                ).first()
+                if row:
+                    row.token_count = int(tok_sum)
+                    row.page_count = int(file_page_max.get(fname, row.page_count or 1))
+                    row.embedding_status = 'indexed'
+                    session.add(row)
+            session.commit()
+    except Exception:
+        pass
+    return faiss_dir
+
+
+def load_faiss_index(project_id: str) -> Optional[FAISS]:
+    """Load FAISS index for project if exists and non-empty."""
+    settings = get_settings()
+    faiss_dir = os.path.join("memory", project_id, "faiss")
+    if not os.path.isdir(faiss_dir):
+        logger.debug(f"RAG: index directory missing for project '{project_id}' at {faiss_dir}")
+        return None
+    try:
+        embeddings = OpenAIEmbeddings(model=settings.embedding_model, api_key=settings.openai_api_key)
+        try:
+            vs = FAISS.load_local(faiss_dir, embeddings, allow_dangerous_deserialization=True)
+        except TypeError:
+            # Fallback for older versions without allow_dangerous_deserialization
+            vs = FAISS.load_local(faiss_dir, embeddings)
+        # Heuristic: if docstore empty, treat as no index
+        if not getattr(vs, "docstore", None) or len(vs.docstore._dict) == 0:  # type: ignore
+            logger.debug(f"RAG: loaded index for '{project_id}' but docstore is empty")
+            return None
+        logger.debug(f"RAG: loaded index for '{project_id}' with {len(vs.docstore._dict)} documents")
+        return vs
+    except Exception as e:
+        logger.debug(f"RAG: failed to load index for '{project_id}': {e}")
+        return None
+
+
+def _cosine_from_l2_dist_sq(d2: float) -> float:
+    # For unit vectors: d^2 = 2(1 - cos)
+    return max(0.0, min(1.0, 1.0 - (d2 / 2.0)))
+
+
+def retrieve_context(
+    project_id: str,
+    query: str,
+    top_k: int,
+    snippet_max_tokens: int,
+    score_threshold: float,
+    context_max_tokens: int,
+    route_namespaces: Optional[List[str]] = None,
+    namespace_boost: Optional[float] = None,
+) -> Dict[str, Any]:
+    """Retrieve top-k snippets and assemble a single Context: block string.
+
+    Returns dict with keys:
+      - context_text: combined context block prefixed with "Context:"
+      - snippets: list of snippet strings (with headers)
+      - tokens_used: approximate token count
+      - hit_count: number of hits at/above threshold
+      - hit_avg: average similarity of hits
+      - hits: list of per-snippet metadata dicts
+        (each with snippet, filename, page_number, score)
+    """
+    vs = load_faiss_index(project_id)
+    if not vs:
+        logger.debug(f"RAG: no index available for project '{project_id}', skipping retrieval")
+        return {"context_text": "", "snippets": [], "tokens_used": 0}
+
+    try:
+        # similarity_search_with_score returns (Document, distance)
+        results = vs.similarity_search_with_score(query, k=top_k)
+    except Exception:
+        results = []
+    logger.debug(f"RAG: query='{query[:120]}...' top_k={top_k} got {len(results)} results (pre-filter)")
+
+    filtered: List[Tuple[str, dict, float]] = []
+    details = []
+    scored: List[Tuple[str, dict, float, float]] = []  # (content, meta, cos, dist)
+    passed_cosines: List[float] = []
+    rn_set = set(route_namespaces or [])
+    nb = float(namespace_boost or 1.0)
+    for doc, dist in results:
+        # dist is L2 distance; FAISS in LangChain returns distance (not squared) sometimes;
+        # use d^2 approximation for cosine if needed
+        d = float(dist)
+        d2 = d * d
+        # try both interpretations and pick the higher cosine within bounds
+        cos_a = _cosine_from_l2_dist_sq(d2)
+        cos_b = _cosine_from_l2_dist_sq(d) if d >= 0 else 0.0
+        cos = max(min(cos_a, 1.0), min(cos_b, 1.0))
+        # Namespace boost before thresholding
+        try:
+            ns = (doc.metadata or {}).get("namespace")
+            if ns and ns in rn_set and nb > 1.0:
+                cos = min(1.0, cos * nb)
+        except Exception:
+            pass
+        if cos >= score_threshold:
+            filtered.append((doc.page_content, doc.metadata or {}, cos))
+            passed_cosines.append(cos)
+        scored.append((doc.page_content, doc.metadata or {}, cos, d))
+        details.append({
+            "file": (doc.metadata or {}).get("filename"),
+            "page": (doc.metadata or {}).get("page_number"),
+            "cos": round(cos, 3),
+            "dist": round(d, 4),
+        })
+    logger.debug(f"RAG: filtered {len(filtered)} >= threshold {score_threshold}; details={details}")
+
+    # Build context respecting token caps
+    tokens_used = 0
+    pieces: List[str] = []
+    for i, (content, meta, score) in enumerate(filtered):
+        trimmed = _trim_to_tokens(content, snippet_max_tokens)
+        snippet_tokens = _count_tokens(trimmed)
+        if tokens_used + snippet_tokens > context_max_tokens:
+            break
+        header = f"Snippet {i+1} (score={score:.2f}, file={meta.get('filename')}, page={meta.get('page_number')})\n"
+        pieces.append(header + trimmed)
+        tokens_used += snippet_tokens
+
+    if not pieces:
+        # Fallback: if nothing passed threshold, include the best-scoring snippet
+        if scored:
+            best = sorted(scored, key=lambda t: t[2], reverse=True)[0]
+            content, meta, cos, _ = best
+            trimmed = _trim_to_tokens(content, snippet_max_tokens)
+            tokens_used = _count_tokens(trimmed)
+            header = f"Snippet 1 (fallback, score={cos:.2f}, file={meta.get('filename')}, page={meta.get('page_number')})\n"
+            context_text = "Context:\n---\n" + header + trimmed
+            logger.debug("RAG: fallback applied - included top-scoring snippet despite threshold")
+            hits = [
+                {
+                    "snippet": trimmed,
+                    "filename": meta.get("filename"),
+                    "page_number": meta.get("page_number"),
+                    "score": float(cos),
+                }
+            ]
+            return {
+                "context_text": context_text,
+                "snippets": [header + trimmed],
+                "tokens_used": tokens_used,
+                "hit_count": len(passed_cosines),
+                "hit_avg": (sum(passed_cosines) / len(passed_cosines) if passed_cosines else 0.0),
+                "hits": hits,
+            }
+        logger.debug("RAG: no snippets selected after token capping and no fallback available")
+        return {
+            "context_text": "",
+            "snippets": [],
+            "tokens_used": 0,
+            "hit_count": len(passed_cosines),
+            "hit_avg": (sum(passed_cosines) / len(passed_cosines) if passed_cosines else 0.0),
+            "hits": [],
+        }
+
+    # Build hits metadata aligned with pieces
+    hits = []
+    for (content, meta, score) in filtered[: len(pieces)]:
+        trimmed = _trim_to_tokens(content, snippet_max_tokens)
+        hits.append(
+            {
+                "snippet": trimmed,
+                "filename": meta.get("filename"),
+                "page_number": meta.get("page_number"),
+                "score": float(score),
+            }
+        )
+
+    context_text = "Context:\n---\n" + "\n\n---\n".join(pieces)
+    logger.debug(f"RAG: built context block tokens_used={tokens_used} snippets={len(pieces)}")
+    return {
+        "context_text": context_text,
+        "snippets": pieces,
+        "tokens_used": tokens_used,
+        "hit_count": len(passed_cosines),
+        "hit_avg": (sum(passed_cosines) / len(passed_cosines) if passed_cosines else 0.0),
+        "hits": hits,
+    }
+
+
+def merge_daily_and_main(
+    project_id: str,
+    query: str,
+    main_top_k: int,
+    main_snippet_max_tokens: int,
+    main_threshold: float,
+    daily_top_k: int,
+    daily_threshold: float,
+    daily_weight: float,
+    daily_max_tokens: int,
+    global_context_max_tokens: int,
+    dedupe_exact: bool,
+    dedupe_near: bool,
+    dedupe_similarity_threshold: float,
+    prefer_daily: bool,
+    topics: Optional[List[str]] = None,
+    preferred_namespace: Optional[str] = None,
+    topic_boost: Optional[float] = None,
+    decision_boost: Optional[float] = None,
+    question_boost: Optional[float] = None,
+    route_namespaces: Optional[List[str]] = None,
+    namespace_boost: Optional[float] = None,
+) -> Dict[str, Any]:
+    """Retrieve from daily and main, apply weights/dedupe/budgets, return labeled context.
+    Returns dict with keys: context_text, tokens_used.
+    """
+    from .daily_rag import retrieve_daily
+    logger.debug(
+        "DailyRAG: starting merged retrieval project=%s main_k=%s daily_k=%s thresholds(main=%.3f,daily=%.3f)", 
+        project_id, main_top_k, daily_top_k, main_threshold, daily_threshold
+    )
+    # main
+    main = retrieve_context(
+        project_id,
+        query,
+        main_top_k,
+        main_snippet_max_tokens,
+        main_threshold,
+        global_context_max_tokens,
+        route_namespaces=route_namespaces,
+        namespace_boost=namespace_boost,
+    )
+    main_snips = main.get("snippets", [])
+    main_hits = int(main.get("hit_count", 0))
+    main_avg = float(main.get("hit_avg", 0.0))
+    # daily
+    daily_results = retrieve_daily(project_id, query, daily_top_k, daily_threshold)
+    logger.debug("DailyRAG: daily results pre-cap=%s", len(daily_results))
+    daily_hits = int(len(daily_results))
+    daily_avg = float(sum(s for _, s, _ in daily_results)/daily_hits) if daily_hits else 0.0
+    # build daily text chunks within daily_max_tokens
+    tokens_used_daily = 0
+    daily_texts: List[str] = []
+    rn_set = set(route_namespaces or [])
+    nb = float(namespace_boost or 1.0)
+    for text, score, ns in daily_results:
+        # apply namespace boost before token cap and weighting
+        try:
+            if ns and ns in rn_set and nb > 1.0:
+                score = min(1.0, score * nb)
+        except Exception:
+            pass
+        trimmed = _trim_to_tokens(text, main_snippet_max_tokens)
+        t = _count_tokens(trimmed)
+        if tokens_used_daily + t > daily_max_tokens:
+            break
+        daily_texts.append(trimmed)
+        tokens_used_daily += t
+    logger.debug("DailyRAG: daily included=%s tokens=%s", len(daily_texts), tokens_used_daily)
+    # dedupe (exact, and optionally near-duplicate)
+    daily_before_exact = len(daily_texts)
+    main_before_exact = len(main_snips)
+    def _hash(s: str) -> str:
+        return s.strip()
+    merged_daily = []
+    seen_hashes = set()
+    for s in daily_texts:
+        h = _hash(s)
+        if dedupe_exact and h in seen_hashes:
+            continue
+        seen_hashes.add(h)
+        merged_daily.append(s)
+    merged_main = []
+    for s in main_snips:
+        h = _hash(s)
+        if dedupe_exact and h in seen_hashes:
+            continue
+        merged_main.append(s)
+        seen_hashes.add(h)
+    exact_removed = (daily_before_exact + main_before_exact) - 0  # will adjust after building merged_* lists
+    if dedupe_near:
+        def sig(text: str) -> set:
+            toks = (text or "").lower().split()
+            return set(toks)
+        def jaccard(a: set, b: set) -> float:
+            if not a or not b:
+                return 0.0
+            return len(a & b) / len(a | b)
+        kept_daily = []
+        sigs = []
+        for s in merged_daily:
+            sa = sig(s)
+            if any(jaccard(sa, sb) >= dedupe_similarity_threshold for sb in sigs):
+                continue
+            kept_daily.append(s)
+            sigs.append(sa)
+        merged_daily = kept_daily
+        kept_main = []
+        for s in merged_main:
+            sa = sig(s)
+            if any(jaccard(sa, sb) >= dedupe_similarity_threshold for sb in sigs):
+                continue
+            kept_main.append(s)
+            sigs.append(sa)
+        merged_main = kept_main
+        # compute removals
+    exact_removed = (daily_before_exact + main_before_exact) - (len(merged_daily) + len(merged_main))
+    before_near_total = len(merged_daily) + len(merged_main)
+    # after near stage, merged_* already updated
+    near_removed = max(0, before_near_total - (len(merged_daily) + len(merged_main)))
+    # simple topic and namespace boosting via ordering (no metadata docstore available here)
+    def _boost_score(text: str) -> float:
+        score = 1.0
+        if topics:
+            for t in topics:
+                if t and (t.lower() in (text or "").lower()):
+                    score *= (topic_boost or 1.0)
+                    break
+        # namespace heuristic removed in V2.5 (route-based boosting now applied earlier)
+        return score
+
+    merged_main.sort(key=lambda s: _boost_score(s), reverse=True)
+    merged_daily.sort(key=lambda s: _boost_score(s), reverse=True)
+
+    # assemble labeled context respecting global cap
+    pieces: List[str] = []
+    tokens_used = 0
+    if merged_daily:
+        daily_block = "Context (Daily):\n---\n" + "\n\n---\n".join(merged_daily)
+        td = _count_tokens(daily_block)
+        if tokens_used + td <= global_context_max_tokens:
+            pieces.append(daily_block)
+            tokens_used += td
+    if merged_main and tokens_used < global_context_max_tokens:
+        main_block = "Context (Main):\n---\n" + "\n\n---\n".join(merged_main)
+        tm = _count_tokens(main_block)
+        if tokens_used + tm > global_context_max_tokens:
+            # trim main block to fit
+            remain = global_context_max_tokens - tokens_used
+            main_block = _trim_to_tokens(main_block, remain)
+            tm = _count_tokens(main_block)
+        pieces.append(main_block)
+        tokens_used += tm
+    context_text = "\n\n".join(pieces) if pieces else ""
+    logger.debug("DailyRAG: merged context tokens=%s blocks(daily=%s,main=%s)", tokens_used, 1 if merged_daily else 0, 1 if merged_main else 0)
+    # Also return the selected texts for optional telemetry events
+    return {
+        "context_text": context_text,
+        "tokens_used": tokens_used,
+        "daily_texts": merged_daily,
+        "main_texts": merged_main,
+        "main_hits": main_hits,
+        "main_avg": main_avg,
+        "daily_hits": daily_hits,
+        "daily_avg": daily_avg,
+        "total_hits": int(main_hits + daily_hits),
+        "dedupe_exact_removed": int(max(0, exact_removed)),
+        "dedupe_near_removed": int(max(0, near_removed)),
+        "main_threshold": float(main_threshold),
+        "daily_threshold": float(daily_threshold),
+    }
+
+
+# Legacy FAISS sidecar namespace map support removed in V2.5; namespaces are embedded during indexing.
+
+------ASSISTANT------
+Below is a straight architectural read of what this code is doing, with emphasis on why yourdaily RAG feels like it “maximizes return”while LTM feels weaker, and where the actual retrieval intelligence lives.I am not proposing fixes yet. This is purely an explanation pass.High-level summaryThere arethree different “optimization layers”in this file, and onlytwo of them actually affect similarity ranking:FAISS vector similarityPost-retrieval score shaping and filteringCross-source merging, weighting, and fallback logicThe reason Daily RAG feels stronger is thatit benefits from layers 2 and 3 more aggressively, whil
+...[middle omitted for tagging]...
+nothing else:Daily RAG feels better because it is recall-first and budget-limited, while LTM is threshold-first and recall-limited.Same embeddings.Same FAISS.Different policy.What this implies for MorpheusYou are not missing a mysterious search function.You already built the intelligence. It lives in:• Namespace resolution• Cosine reconstruction• Boost-before-threshold• Merge orchestrationLTM simply does not get to play the same game yet.When you are ready, the fix is not “better FAISS”.It ismaking LTM participate in the same post-retrieval economy as Daily.Say the word when you want to walk through that refactor.
+
+------CURRENT TURN------
+------USER------
+ok, first question.  Is there anything we can do to improve matching even more?
+
+------ASSISTANT------
+Yes. There are several concrete ways to improve matching further, and the key point is thatnone of them require changing FAISS or embeddings. You are already near the ceiling on raw vector quality. The remaining gains are fromsignal shaping and retrieval policy.I will structure this from lowest risk to highest leverage.1. Improve the query itself before embeddingRight now, the query goes in raw:pythonCopy codevs.similarity_search_with_score(query, k=top_k)That assumes the user phrased the question in embedding-friendly language.You can improve matching by adding aquery normalization stage:• Strip conversational filler• Expand abbreviations• Extract implicit topics• Rewrite into a compact, noun-heavy formThis can be done deterministically or with a cheap nano-model.Why it helps:• Embeddings are much better at topic matching than intent matching• LTM content is structured, not conversationalThis alone often yields a noticeable bump.2. Multi-query embedding without extra cost explosionInstead of one query vector, generate2–4 semantically adjac
+...[middle omitted for tagging]...
+his can outperform raw cosine similarity by a large margin.Cost control:• Short text• Small model• Only on LTMThis is optional, but very effective.8. Cluster-aware selection instead of flat rankingRight now you select linearly until token budget is full.Instead:• Cluster results by semantic similarity• Pick top item per cluster• Then fill remaining budgetThis increases conceptual coverage.Daily RAG accidentally benefits from this due to how notes are written. LTM does not.Most important takeawayYou are not limited by embeddings.Your system already has:• High-quality chunking• Namespace-aware metadata• Normalized vectors• Manual cosine reconstructionThe biggest remaining gains come fromdelaying discard decisionsandletting multiple weak signals reinforce each other.That aligns perfectly with the Morpheus sleep and consolidation metaphor.Next logical step, if you want:• Decide whether LTM should become recall-first like Daily• Or whether it should remain precision-first but smarterBoth paths are valid, but they lead to different architectures.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "FAISS, embeddings, query normalization, multi-query retrieval, reranking, ltm, daily rag",
+  "intent": "ask for ways to improve retrieval matching",
+  "type": "technical",
+  "semantic_handle": "Improving retrieval matching in Morpheus",
+  "questions": []
+}

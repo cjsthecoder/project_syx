@@ -1,0 +1,162 @@
+# timestamp: 2026-03-28T14-10-14
+# project_id: html-import:Dreaming When You Sleep - 4.4.1
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: canvas, DELTA file, A.4.4.1, A.4.4.2, minimal chunk adjacency, full-chunk retrieval
+#intent: clarify whether a section was newly added or already existing and confirm requirement status
+#type: technical
+#semantic_handle: status of A.4.4.1 and A.4.4.2 in the canvas
+
+------USER------
+you added this after 4.4.2 just because it was in the file?  4.4.1 is already done, is this new, or just old?
+
+### A.4.4.1 — Minimal Chunk Adjacency and Full-Chunk Retrieval
+
+------ASSISTANT------
+Good catch. Short answer:it’s old, not new.What happened is simply this:A.4.4.1was already in the DELTA file as a complete
+...[middle omitted for tagging]...
+:4.4.1 ✅ done4.4.2 🧠 specified, ready to implement4.4.3 🔜 next when you want itNothing accidentally regressed or reopened.
+
+------CURRENT TURN------
+------USER------
+this is a Cursor question on this requirement.  I think it makes sense to de-dupe if it means something like, we already have the chunk somewhere else in the list, not de-duping the overlap?
+
+4. **Output shape + determinism**: DELTAS.md says the output is a “set of requested chunk identifiers” and that identifiers may 
+appear multiple times across candidates. For correctness/determinism, should A.4.4.2 output be:
+   - a **list** preserving a deterministic order (e.g. iterate kept candidates in order, then emit before…central…after), allowing duplicates, or
+   - a **set** of unique identifiers (dedupe early)?
+   If it’s a list, what is the required within-candidate order:beforechunks from nearest→farthest or farthest→nearest, and shouldcentralalways appear in-line?
+
+------ASSISTANT------
+Your instinct is right, and the distinction you’re making is theimportantone.Short answer first, then the rationale:A.4.4.2 should output a deterministiclist, not a set.It should allow duplicates at this stage.Deduplication belongs in 4.4.3 and refers to duplicate chunk identifiers, not overlap trimming.Now let’s be precise so Cursor doesn’t invent behavior.1. List vs setCorrect choice:listA.4.4.2 is aplanner, not a normalizer.Its job is to expressintent, not to enforce uniqueness.If you emit a set here, you:lose ordering informationblur the boundary with 4.4.3make debugging much hardermake expansion behavior less explainableA list preserves:rank influenceexpansion sequencingdeterminismDuplicates are not a bug at this stage. They a
+...[middle omitted for tagging]...
+dentical expansion plans.That matters.5. What to tell Cursor (clean answer)You can answer Cursor very directly:A.4.4.2 should output a deterministiclist, not a set.Duplicates are allowed at this stage.Deduplication of repeated(doc_id, chunk_index)identifiers occurs in A.4.4.3.Within each candidate, emit chunks in this order:central, thenbeforenearest→farthest, thenafternearest→farthest.That closes the ambiguity cleanly and keeps stage boundaries intact.Bottom lineYou are correct: dedup here is aboutidentical chunks, not overlapThat dedup happens later4.4.2 should stay simple, explicit, and verboseLists preserve intent; sets erase itThis is a really good question from Cursor, and your intuition already landed on the right side of it.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Cursor, DELTAS.md, A.4.4.2, deduplication, deterministic list, chunk identifiers",
+  "intent": "clarify output shape, ordering, and deduplication rules for a requirement",
+  "type": "technical",
+  "semantic_handle": "A.4.4.2 output ordering and deduplication",
+  "questions": []
+}

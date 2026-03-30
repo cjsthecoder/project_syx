@@ -1,0 +1,160 @@
+# timestamp: 2026-03-28T14-03-37
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: generate_formatting_prompt, daily memory, dream memory, daily pair, pruning prompt, sleep cycle, tags
+#intent: clarify and revise formatting prompt to handle memory wrappers and tag constraints
+#type: technical
+#semantic_handle: wrapper-aware formatting prompt for memory blocks
+
+------USER------
+if anything changes in generate_formatting_prompt, also generate the new prompt text for that.
+
+------ASSISTANT------
+Yes — a few thingsdo need to changeingenerate_formatting_prompt, but the good news is that the changes arepurely clarifying and constraining, not conceptual.Below is afully updated prompt textthat is consistent with:BEGIN/END DAILY MEMORYorBEGIN/END DREAM MEMORYwrappersBEGIN/END DAILY PAIRatomic blocksPre-existing tags (#topics,#intent,#type) being authoritativeYour new pruning behaviorThis is adrop-in replacement.Updatedgenerate_formatting_prompttextpythonCopy codedefgenerate_formatting_prompt(content:str) ->str:
+    logger.info("[SLEEP][FORMAT] Building formatting prompt")returnf"""You are formatting a pruned memory file during a sleep cycle
+...[middle omitted for tagging]...
+e explanations or commentary.
+- Do NOT add or remove content beyond the rules above.
+
+Here is the pruned memory content:{content}"""What changed (quick sanity check)Explicit support forDAILY vs DREAM memory wrappersExplicit support forDAILY PAIR blocksTags are nowread-only inputs, never regeneratedTopic headers arederived, not inventedAppendices are constrained to prevent hallucinationThis keeps your pipeline clean:Tag → Prune → Format → Dream → CompressNo step now contradicts another.If you want, next logical step (not now, later) is:teaching the dream prompt to clusterby tags first, semantics secondBut you’re structurally solid at this point.
+
+------CURRENT TURN------
+------USER------
+ok, I made the changes and it is running sleep now.  I just realized it has been a while since it ran, so there are many projects it needs to process.  
+
+So, back to the the last conversation.  Where I thought we landed was, we are already pulling the data together in the right order, so really now we can start to look at improving the RAG retrieval?
+
+------ASSISTANT------
+Yes. That’s exactly where you landed, and your intuition is right.At this point thedata plumbing is correct. You are no longer fighting structure, loss, or mis-ordering. What remains isquality of retrieval, not correctness of memory.Let me anchor where you are, then outline what improving RAGactuallymeans in your system.Where you are now (important checkpoint)You have already solved the hard, foundational problems:• Daily memory is structured, tagged, atomic• Tags survive sleep and pruning• LTM and Daily are converging structurally• Memory is injected via a system layer, not as chat• Order is intentional and role-aware, not accidental• The model sees:InstructionsBackground memoryActive conversationUser intentThat meansretrieval quality now dominates behavior.What “improving RAG retrieval” really 
+...[middle omitted for tagging]...
+ll of these at once. This is just the roadmap.Addretrieval telemetry• log which chunks were retrieved• log which tags matched• log how many tokens were injectedIntroducesimple re-ranking• vector score + tag overlap bonus• daily bonus over LTM• exact topic match boostReduceover-retrieval• cap per-topic• drop near-duplicates• prefer one strong chunk over three weak onesOnly later: shared retrieval logic for Daily + LTM• same scorer• different weightsOne reassuring thingYou didnotpaint yourself into a corner.The structure you built supports:• re-ranking• hybrid scoring• future compression• multi-agent retrievalMost systems break before they get here.You’re right to pause and say:“Ok, now we can make it better instead of just making it work.”Yes. This is the right moment to shift to retrieval quality.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "RAG retrieval, daily memory, LTM, retrieval telemetry, re-ranking, memory system",
+  "intent": "confirm current project direction and shift focus to retrieval quality",
+  "type": "technical",
+  "semantic_handle": "RAG retrieval improvement in memory system",
+  "questions": []
+}

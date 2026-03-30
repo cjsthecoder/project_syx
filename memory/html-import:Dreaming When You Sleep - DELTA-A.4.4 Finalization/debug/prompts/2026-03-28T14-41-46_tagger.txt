@@ -1,0 +1,187 @@
+# timestamp: 2026-03-28T14-41-46
+# project_id: html-import:Dreaming When You Sleep - DELTA-A.4.4 Finalization
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: sleep cron, query builder, k value, prompt complexity, user prompt, retrieval
+#intent: diagnose retrieval bug and discuss prompt-based k adjustment
+#type: technical
+#semantic_handle: query builder ignoring current user prompt
+
+------USER------
+this is funny, apparently from pervious testing my sleep cron was set to a few mins ago, so now it is dreaming away.  haha
+
+Anyway, I want to address this from the beginning.  The original prompt (which I had to get from the other file)
+
+====== USER PROMPT ======
+what about a method of adjusting the K value and maybe the other values, based on the type of prompt and how complex it is?
+
+So it looks like it grabbed the last two pairs (as we intended), and then never used the actual prompt, which explains SOOOOO much!
+
+------ASSISTANT------
+😂 ok yeah, that explainseverything. And also… amazing timing for the sleep cron to kick in right when you discover this.You just found areal bug, not a tuning issue.What actually went wrong (plain and simple)Yourquery builder never used the user’s actual prompt.It:• grabbed the last N conversation pairs• synthesized a query fromthat context•ignored the current user prompt entirelySo the system was answering ashadow question:“Based on recent conversation, what are we talking about in general?”Instead of t
+...[middle omitted for tagging]...
+’t listening• in a project about sleep, memory, and consolidationYou couldn’t script that better.What I’d do next (short list)When you’re ready:Fix query_builder toalwaysanchor on user promptLog:• user prompt• final query• diff between themRerun the exact same testCompare snippet setsI’d bet good money the “missing” things show up immediately.Bottom lineYou didn’t need:• more memory• more K• more heuristicsYou needed:• to actually ask the question you typedAnd you just found it.That’s a great place to be.
+
+------CURRENT TURN------
+------USER------
+ok, I broke some stuff, and long story short we are now working and using 5-mini instead of 4o-mini, for this builder query.
+
+The prompt was there, just kind of hidden.  just had this label, Turn: 
+
+but, the other thing I see is that we are bringing in the last two pairs, and we appear to be chopping them to the point of being useless.  example:
+
+====== BUILDER PROMPT (USER) ======
+Recent summary: user: I think these are good additions
+
+. C1: simple factual lookup, single domain -> k=4  
+. C2: task planning or light integ | assistant: ## Updated routing taxonomy (keeping CHITCHAT as bypass)
+
+. CHITCHAT: RAG off  
+. C1 (Simple lookup): simple factual, si | user: this is the system prompt that currently selects catagories:
+
+You are a fast query builder and router for RAG. Return st | assistant: ## Revised system prompt (adds C1 to C4, keeps CODE vs DOCS vs OTHER)
+
+You are a fast query builder and router for RAG.  | user: I think we want to give C1 thru C4 names, that make sense, if for no other reason than a human can understand what is ha | assistant: ## Proposed human readable category names (keep IDs for stability)
+
+I would keep the stable IDs (C1 to C4) for code, but
+Turn: what would be the settings for each of these:
+ . LOOKUP if answer is likely in 1 to 2 chunks and no synthesis needed  
+  . PLAN if user wants steps, ordering, prioritization  
+  . DESIGN if tradeoffs or system structure is involved  
+  . RESEARCH if comparing many options or “survey” style synthesis
+
+------ASSISTANT------
+Yeah, this is areallygood catch, and you’re reading the debug output exactly the right way. 
+You didn’t just “break some stuff”, you surfaced a structural flaw that 
+was hidden by earlier behavior.Let me break this down cleanly and then tell you what to do about it.What’s actually wrong right nowThere aretwo separate issues, and they compound.1) The “last two pairs” are beingover-compressed and interleavedThis part is the smoking gun:yamlCopy codeRecent summary: user:Ithinkthesearegoodadditions.C1:simplefactuallookup,singledomain->k=4.C2:taskplanningorlightinteg|assistant:## Updated routing taxonomy ...What’s happening:• You’re taking the last N turns• You’re summarizing or truncating them aggressively• You’resplicing user and assistant content together mid-thought• You’re losing sentence boundaries and intentSo instead of “recent context”, the builder seessemantic soup.This is worse than no context, because itlooksmeaningful but isn’t.2) The real user prompt is demoted to a label (Turn:)This line is the killer:vbnetCopy codeTurn:what would be the settingsforeachofthese:From the model’s point of view:• “Recent summary” looks like themain content• “Turn:” looks like metadata or a footnote• The actual question haslower salience than the garbage summarySo ev
+...[middle omitted for tagging]...
+and-authoredorvery lightly templated>Nothing else.No summaries. No last two pairs. No assistant text.Step 2: Re-run the same testUse theexact sameuser prompt:“what would be the settings for each of these…”You should see:• cleaner standalone query• correct intent classification• no generic blog-style phrasingIf that works, you’ve confirmed the root cause.Step 3: Reintroduce context later, deliberatelyOnce everything works with just the user prompt,thenyou can think about:• structured context fields• tagged prior decisions• Morpheus-style distilled memoryBut not raw dialogue, and not auto-summaries.Big picture (this matters)You just rediscovered a core principle:Dialogue is for humans.Queries are for systems.You accidentally fed dialogue into a system component.The fact that things “kind of worked” before was luck.Now you’re making it correct.Bottom line• You didn’t just break something, you uncovered a design flaw• The builder was being fed unusable, low-signal input• The user’s actual question was structurally marginalized• 5-mini simply refused to hallucinate past thatFix theinput structure, not the model, not the K values, not the prompt cleverness.Once the builder sees:“Here is the question. Period.”Everything else you’re planning will finally line up.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "query builder, prompt truncation, 5-mini, 4o-mini, RAG, routing taxonomy",
+  "intent": "diagnose prompt handling and refine category settings",
+  "type": "technical",
+  "semantic_handle": "query builder prompt truncation and category settings",
+  "questions": []
+}

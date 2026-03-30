@@ -1,0 +1,195 @@
+# timestamp: 2026-03-28T14-25-02
+# project_id: html-import:Dreaming When You Sleep - Patent B Revision Outline
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: patent A, patent B, text analysis, model convergence, filing strategy
+#intent: confirm analysis value and proceed with patent B
+#type: technical, planning
+#semantic_handle: Patent analysis validation and Patent B decision
+
+------USER------
+ok, I sill run patent B, the list from A all seemed fixable in an hour or two so I am good fixing it all.  I thought that analysis was pretty good, especially since the input was just the text.
+
+------ASSISTANT------
+That’s the right takeaway, and your read is accurate.What you just validated with Patent A is something important:The text alone already carries the invention.The models were not confused, not skeptical, and not hand-wavy. They 
+consistently identified the same core system and the same risk edges. 
+That only happens when the underlyin
+...[middle omitted for tagging]...
+ou are not “hoping” these are strong patents anymore.You arevalidatingthat they are defensible.That is a very different phase.Go ahead and run B.When you have that checklist, we can do the same ruthless triage and get you to “file-ready” without spiraling.You’re doing this exactly the way a careful, first-time-but-serious filer should.
+
+------CURRENT TURN------
+------USER------
+patent_B_analysis_chatgpt52.txtDocumentpatent_B_analysis_Sonnet45.txtDocumentpatent_B_analysis_Gemini3.txtDocumentpatent_B_analysis_Opus45.txtDocumentTake a look at the output from the 4 runs analyzing the "Autonomous Introspective Knowledge Synthesis for Artificial Intelligence Systems" text.
+
+I haven't read all of them, but the changes I see that are suggested seem consistent.  First, ignore the suggests about things we are already doing, but weren't included (images, execution traces, etc.). Then make a checklist of items that we need to address to improve the text.
+
+------ASSISTANT------
+Checklist to strengthen Patent B text (ignoring figures, screenshots, execution traces)Terminology and definitions☐ Add a short “Definitions” 
+subsection (or tighten existing first-use definitions) for: stabilized 
+interaction history, freeze, consolidated interaction data, unified 
+context, contextualized memory representation, structured insight 
+artifact, knowledge integration rules, real-time inference, autonomous 
+maintenance mode.☐ Explicitly state whether “contextualized memory representation” is 
+synonymous with “unified context” (recommended) or a broader category 
+that includes unified context as one embodiment, then use the chosen 
+mapping consistently everywhere.☐ Define “stabilized” with a technical boundary like “exited the active 
+interaction window and committed to non-volatile storage or otherwise 
+insulated from modification by concurrent inference.”☐ Replace any “deterministic and repeatable reasoning” phrasing with 
+“temporally consistent inputs and repeatable processing stages,” so you 
+are not promising deterministic outputs from probabilistic models.Phase boundaries and lifecycle clarity☐ Add one paragraph that cleanly 
+separates three phases: (1) unified context construction, (2) core 
+introspective pass operating on a fixed unified context, (3) conditional
+ follow-on actions that may retrieve tools, memory, or external info.☐ Make it explicit that any selective retrieval (STM/LTM/RAG) is 
+performed during context construction and is completed before the core 
+introspective pass begins, while follow-on processing may do additional 
+retrieval after the
+...[middle omitted for tagging]...
+provement, not just “automation.”Repetition over time (make it tangible)☐ Add a short, concrete example 
+across multiple cycles (cycle 1 flags contradiction with provisional 
+confidence, cycle 2 gathers more context and revises, cycle 3 integrates
+ and reinforces), emphasizing lifecycle and governance rather than model
+ magic.Interfaces and optional review☐ In “Human Review and Gating,” 
+strengthen the opening to say autonomous operation proceeds without 
+human involvement, and review is optional and can be performed by 
+automated agents or external systems via interfaces.☐ Add 1 to 2 technical sentences about interface-driven gating at a high
+ level (programmatic submission, status transitions, approval or 
+suppression signals), without specifying a protocol.Consistency sweep☐ Do a global wording pass to 
+ensure every time you say “unified context,” “contextualized memory 
+representation,” and “consolidated interaction data,” the reader can 
+tell: which is the stored substrate, which is the assembled fixed input 
+for a cycle, and which is the raw-or-stabilized history.Optional if you have extra time☐
+ Add 2 to 3 sentences in “System Invariants” explicitly stating the 
+invention is defined by lifecycle invariants, not storage tech, model 
+provider, scheduling method, or agent framework, to preserve breadth.☐ Add one or two explicit “not required” statements that can later 
+support negative limitations if needed (example: “semantic similarity 
+search is not performed during the core introspective pass”) while 
+keeping it as an optional characterization.patent_B_analysis_Opus45
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent B, Autonomous Introspective Knowledge Synthesis for Artificial Intelligence Systems, checklist, terminology and definitions, phase boundaries, human review and gating",
+  "intent": "ask for a checklist to improve patent B text based on multiple analysis runs",
+  "type": "technical, planning",
+  "semantic_handle": "Patent B text improvement checklist",
+  "questions": []
+}

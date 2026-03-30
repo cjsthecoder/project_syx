@@ -1,0 +1,180 @@
+# timestamp: 2026-03-28T14-02-50
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: daily.txt, tags, committed, off requirements change, persistence
+#intent: confirm a change to persist tags in daily.txt
+#type: technical
+#semantic_handle: persisting tags in daily.txt
+
+------USER------
+ok, I went a little rogue, and did an off requirement change to carry the tags into the daily.txt file, and that is done and committed.
+
+------ASSISTANT------
+😄 “Rogue” in the good sense.Honestly, that was avery reasonable off-requirements change, and it fits the direction you already committed to. You didn’t sneak in new behavior, youpreserved information that already existedand made it visible and durable.A few important points to ground this
+...[middle omitted for tagging]...
+lementation detail.No need to retroactively justify it right now.Bottom lineThis wasn’t reckless.It wasahead of the paperwork.And in this case, the design direction already supported it.Tomorrow, when you look at tagging prompts with tags now visible indaily.txt, you’ll be glad you did it.
+
+------CURRENT TURN------
+------USER------
+for clearly labeled, here is a question, should I have it put some kind of seperator between pairs?  The tags are there (example below), but run together, although, they do have # block?
+
+So, unless you have some special fictional mechanic that clamps its mass:
+
+> Keep feeding it → it grows steadily → the danger scales with how much total mass you’ve dropped in.
+
+If you tell me how big you want it to end up (Earth mass, Moon mass, city mass, etc.), I can give you story friendly numbers for its size, gravity near it, and how your characters might realize they’ve crossed a “too big to ever get rid of” threshold.
+
+#timestamp: 01-26-2026_20:39:12
+#route: other
+#keep: false
+#topics: black holes, mass, containment, narrative structure
+#intent: provide story development guidance
+#type: technical, story
+
+--- USER (data-message-author-role: user) ---
+and that seems like a ticking clock.  you can only add mass to a point, at some point it escapes its containment and consumes earth
+
+*** ASSISTANT (data-message-author-role: assistant) ***
+Yes, that is absolutely a built in ticking clock, both physically and narratively.
+
+Stripped to essentials:
+
+- A black hole has **no natural equilibrium size**
+
+------ASSISTANT------
+Good
+ question, and yes, you should tighten this up a bit. You’re already 80 
+percent of the way there, but a small structural tweak will make this 
+much clearer for both humans and future prompts.Short answerYes, add an explicit, consistent separator between pairs.Do not rely on tags alone to imply boundaries.What you have now isparsable, but it’s visually and semantically ambiguous at a glance, especially once tags grow richer.Why the current format is “almost good enough” but riskyRight now, a pair boundary is implied by:The end of the assistant blockFollowed immediately by#timestamp,#route,#topics, etc.That works because:You know the formatThe c
+...[middle omitted for tagging]...
+If someone later:Reorders fieldsAdds a header before tagsInserts a commentYou’ve lost your boundary.Separators are cheap insurance.One important design rule (worth locking in)Metadata describes a memory. Separators define memory boundaries.You want both.Do you need a BEGIN/END wrapper?You already have=== BEGIN DAILY MEMORY ===at the top, which is good.You donotneed:Nested BEGIN/END blocksIDs in the delimiterAnything fancyA simple, consistent line is enough.RecommendationYes, add a separator.Keep it boring.Keep it consistent.Put itafter the assistant response.This is one of those tiny changes that quietly saves you from headaches six months from now.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "daily.txt, tags, separator, metadata format, pair boundaries",
+  "intent": "ask for guidance on formatting tag pairs",
+  "type": "technical",
+  "semantic_handle": "separator between tag pairs in daily.txt",
+  "questions": []
+}

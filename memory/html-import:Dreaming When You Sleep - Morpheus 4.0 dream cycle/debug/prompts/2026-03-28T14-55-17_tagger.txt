@@ -1,0 +1,203 @@
+# timestamp: 2026-03-28T14-55-17
+# project_id: html-import:Dreaming When You Sleep - Morpheus 4.0 dream cycle
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: MAX_WORKERS, Dream tasks, ThreadPoolExecutor, Sleep, threading, project concurrency, 4.1.2 requirements
+#intent: clarify threading and concurrency design for future agents
+#type: technical, design
+#semantic_handle: Dream task concurrency and threading model
+
+------USER------
+ok, but we plan to add agents soon, so MAX_WORKERS=1 will bite us and that means we do need to think about this
+
+------ASSISTANT------
+You are right to think ahead here. If we are serious about adding more agents and bumpingMAX_WORKERSabove 1, we need to design the threading model now instead of bolting it on later.The good news is we can keep this sane with a couple of clear rules.I would set things up like this in the requirements.1. WhatMAX_WORKERSreally meansWe should defineMAX_WORKERSin 4.1.2 as:Number of concurrentDream jobs per project set, not number of parallel agents per question.So:One Dream task = one project’s nightly 
+...[middle omitted for tagging]...
+ next project.Within a single Dream task, all 
+questions and Dream Agents run sequentially in Version 4.1.2. No per 
+question multithreading is used in this version.Dream tasks must never read or write memory for another project.Dream tasks must treat RAG as read only. All index rebuilds and writes occur only in Sleep.If you like, next step I can write the full 4.1.2 requirements block with these threading constraints, plus thedream_llm.py,dream_research.py, anddream_prompts.pypieces we talked about.
+
+------CURRENT TURN------
+------USER------
+you are right, we are just reading the RAG, not updating it.
+
+can you make the 4.1.2 requirements based on the md formatting we have been using (below).  I think for now, I think we just have it do two prompts.  One to decide whether or not to use the research part. then the second will be like "answer_question". taking the research the RAG and the question in.  The output I am thinking will go in dream.txt, and will be json in a format like this (if this makes sense):
+[Open Questions]
+{
+  "questions": [
+    {
+      "question": "how could we structure this story?",
+      "topic": "Alien Darkmail Story Structure",
+      "answer": "prompt response"
+    },
+
+md example:
+# Version 4.0 Overview
+
+## Dream Cycle High Level Description
+
+Version 4.0 introduces the Dream Cycle as a new phase executed after the Sleep Cycle. Dreaming is responsible for analyzing the consolidated memory artifact sleep_summary.txt and producing structured insight outputs. Version 4.0 does not implement research or multi agent reasoning. It establishes the conceptual boundaries for Dream, introduces the Dream Orchestrator, and prepares the system for extension in Version 4.1 and beyond.
+
+Goals of Version 4.0:
+
+* Define Dream as a post Sleep maintenance phase.
+* Introduce the Dream Orchestrator as the execution space for nightly agents.
+* Ensure Dream runs under controlled conditions without modifying sleep_summary.txt.
+* Establish dream.txt as the unified nightly output file.
+* Provide the user GUI element Analyze Dreams when dream.txt has content.
+
+---
+
+# Version 4.1 Requirements
+
+## 4.1.1 JSON Extraction of Open Questions
+
+* Sleep must generate a fully formatted sleep_summary.txt file that contains a final[Open Questions]appendix with a JSON object.
+* The JSON object must include a field "questions" which is a list of objects, each containing:
+
+  * question
+  * topic
+  * resolution
+* The formatting prompt must filter out all questions with resolution set to "ignore" before returning the JSON.
+* Dream Orchestrator Integration (4.1.1 scope):
+
+------ASSISTANT------
+Here
+ is a 4.1.2 section in the same markdown style as the rest of your doc, 
+wired to what you described: two prompts (decide + answer), using RAG, 
+with a simple dream.txt JSON output.You can paste this right under 4.1.1.4.1.2 Open Questions Dream Agent (RAG Answer Generation)Scope and preconditions:Version 4.1.1 is implemented and Dream already receives(project_id, sleep_summary_text)from Sleep after RAG rebuild.sleep_summary.txt contains a valid[Open Questions]JSON block with a"questions"list of{ question, topic, resolution }objects (with"ignore"already filtered out).No GUI changes are implemented in 4.1.2. The Analyze Dreams button remains driven by the stubbed/dream/statusfrom 4.1.1.Dream LLM and research abstraction:Dream must not use the existing LangChain basedllm.pymodule.Createbackend/app/core/dream_llm.py:Provides a thin wrapper over the OpenAI Responses API.Must expose a function such as:dream_llm_call(prompt: str, max_output_tokens: int) -> strUsesDREAM_MODEL,DREAM_TEMPERATURE, andDREAM_MAX_TOKENSenvironment variables (with defaults:gpt-5.1,1.0,32000).This module must not contain Dream specific business logic, only low level model calls and basic error handling.Createbackend/app/core/dream_prompts.py:Contains pure functions that build prompt strings only (no model calls):build_research_decision_prompt(question: str, topic: str) -> strbuild_answer_question_prompt(question: str, topic: str, local_context: str, remote_context: Optional[str]) -> strPrompts must instru
+...[middle omitted for tagging]...
+ remain in memory.Threading and executor behavior (4.1.2 scope):MAX_WORKERScontrols the maximum number of concurrent Dream tasks (projects) in the shared ThreadPoolExecutor created in 4.1.1.For a given project, Sleep must submit at most one Dream task and block onfuture.result()before moving to the next project.Within a single Dream task for a 
+project, all open questions must be processed sequentially in 4.1.2. No 
+per question multithreading is used in this version.Dream tasks must treat RAG as read only and must not read or write any files belonging to other projects.Logging and error handling:For each project, Dream must continue to log:[DREAM] Start project=...[DREAM] Completed project=... duration=...s count=...[DREAM] All agents complete for project=...On invalid decision JSON, log:[DREAM][WARN] project=... question=... invalid research decision JSON, defaulting to local-onlyOn invalid answer JSON, log:[DREAM][ERROR] project=... question=... invalid answer JSONOn RAG retrieval failure, log:[DREAM][ERROR] project=... question=... RAG retrieval failedand continue with emptylocal_context.All failures for individual questions must be isolated; processing of remaining questions must continue.RAG and memory integration constraints in 4.1.2:Dream must not modify sleep_summary.txt.Dream must not modify or rebuild any RAG indexes.Dream must not yet write 
+dream_accepted.txt or dream_all.txt; user review and integration into 
+long term memory are deferred to Version 4.2 and later.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Version 4.1.2, Dream Orchestrator, RAG, dream.txt, JSON output, prompt design",
+  "intent": "draft requirements in markdown format",
+  "type": "technical, design",
+  "semantic_handle": "Dream 4.1.2 requirements for RAG question answering",
+  "questions": []
+}

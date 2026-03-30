@@ -1,0 +1,159 @@
+# timestamp: 2026-03-28T14-11-38
+# project_id: html-import:Dreaming When You Sleep - Branch · Branch · AI memory patents search
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: patent claim, sleep cycle, dreaming, maintenance cycle, claim breadth, integration phase
+#intent: clarify patent terminology and claim scope
+#type: research
+#semantic_handle: patent language for sleep cycle and dreaming
+
+------USER------
+would we want to be specific about the sleep cycle steps (including dreaming)?  or more generic, like a maintenance sleep cycle?  although maybe this is generic enough? “dream” = integration phase
+
+------ASSISTANT------
+Excellent and subtle question — this is exactly the kind of judgment call that determines whether a patent isbroad and defensibleortoo narrow to survive evolution.Here’s the breakdown:1. What you’re really protectingYourinventive conceptisn’t just “having a sleep cycle.”It’s thespecific ordered workflowthat turns ephemeral conversational data into verified, 
+confidence-scored long-term knowledge — a loop that most AI systems
+...[middle omitted for tagging]...
+ the claim verbs open (“one or more of pruning, deduplication, summarization, verification, and integration”).That combination gives youmaximum breadthwhile preserving thenarrative identityof the system.If you’d like, I can now regenerate yourclaim outlineandfeature matrixwith this structure — i.e., “sleep cycle” as the broad mechanism, “dreaming” as a defined sub-phase in the specification.Would you like me to do that next?
+
+------CURRENT TURN------
+------USER------
+ok, I am new to this patent stuff.  are we basically trying to make it generic enough that it gets accepted?  It makes sense to me the the more details the easier it would be to make something that doesn't violate it.  Like if we say, dreaming does these 3 steps, and someone makes a new version that says, our dreaming does these 4 steps
+
+------ASSISTANT------
+Exactly — that’s the tension at the heart of patent drafting, and you’ve spotted it early.Here’s how it really works under U.S. and international practice, stripped of lawyer-speak:1. Breadth vs. DefensibilityThink of a patent as having two layers:Claims= the fence line (what others can’t do without infringing)Specification= the blueprint (howyoudo it; proof you invented it)If you draw the fencetoo tight(lots of exact steps, names, and sequences), others can step just 
+outside it — change one verb or reorder a loop — and avoid infringement.If you draw ittoo wide(“an AI that improves itself periodically”), the examiner will say it’sobviousorabstract, or that prior art already covers it.So:The goal is a broad independent claim that captures the inventive pattern or mechanism,and detailed dependent claims + embodiments that p
+...[middle omitted for tagging]...
+erein the sleep cycle includes a dreaming phase executing steps (i)–(iv).”Adds specificity; strengthens validity if the broad one falls.SpecificationDetailed story of how you do it (daily index, FAISS, summaries, confidence UI).Enables you to later file continuations or improvements.5. Where “generic enough” really meansYou’re not watering it down to sneak past the examiner; you’re writing it so:Itreads onyour prototypeandfuture variants.It’sanchored by a real computer improvement(not a “mental process”).It’shard to design aroundwithout re-inventing the core idea.If
+ you’d like, I can now show you what this balance looks like concretely —
+ one broad independent claim and one detailed dependent version 
+(“dreaming” subphase).That will make the trade-off crystal clear.Do you want me to draft that side-by-side comparison next?
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent drafting, claim breadth, patent claims, patent specification, dream phase, sleep cycle",
+  "intent": "ask for explanation of patent breadth versus specificity",
+  "type": "research",
+  "semantic_handle": "patent breadth versus specific claim drafting",
+  "questions": []
+}

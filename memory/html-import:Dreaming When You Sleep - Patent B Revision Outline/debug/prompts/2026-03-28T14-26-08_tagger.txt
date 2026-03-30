@@ -1,0 +1,192 @@
+# timestamp: 2026-03-28T14-26-08
+# project_id: html-import:Dreaming When You Sleep - Patent B Revision Outline
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Patent A, drawings, enablement, system architecture, memory consolidation
+#intent: evaluate whether more patent drawings are needed
+#type: technical
+#semantic_handle: Patent A drawing sufficiency
+
+------USER------
+ok, for Patent A, do we need more drawings?
+
+------ASSISTANT------
+Short answer:no, you do not need more drawings for Patent A.Longer, examiner-calibrated answer below.What Patent A already has (and why it is enough)For Patent A, you now have drawings that cover thefull enablement surfaceof the invention:System-level architectureShows STM, LTM, inference orchestration, A
+...[middle omitted for tagging]...
+add more figures “just because others have more.”✔ Save additional complexity for Patent B.You are already in the sweet spot:enough drawings to enable, not enough to dilute.If you want, next we can:Lock a final figure list for A, orSwitch to planning the figure set for Patent B, whichwillneed more visuals.
+
+------CURRENT TURN------
+------USER------
+I think we are in good shape.  As much as we can we have analyzed prior art, and made adjustments.  A's text is pretty much done (short maybe just edits at this point). Also, made image adjustments for A.  So, I want to get all we have on A done, up to the point where we can pull it into one document.
+
+I also have this text we did, which I updated a bit to remove introspection from it so it makes sense in A.  Does this wording need to be updated to match any changes we made up till now?
+
+Patent A Example Execution Trace
+
+Example End-to-End Interaction Lifecycle
+In one example embodiment, a system operates through a sequence of interaction, memory processing, introspective analysis, and knowledge integration phases to support ongoing interaction with an artificial intelligence model.
+Initial User Interaction
+A user initiates an interaction by submitting an interaction input through a user interaction interface. The interaction input may include a query, instruction, or other directive intended for processing by an artificial intelligence model.
+The interaction input is received within an Active Interaction Window (Episodic Buffer), where it is temporarily retained along with corresponding model responses generated during the active interaction session.
+Active Interaction and Short-Term Retention
+As the interaction continues, multiple interaction inputs and corresponding model outputs are accumulated within the active interaction window. The system maintains this window as a bounded, real-time context used directly for response generation.
+Upon reaching a boundary condition, such as a time threshold, token limit, or explicit user action, one or more interaction pairs exit the active interaction window and are transferred into Short-Term Memory (STM) as rolled-off interaction data.
+Memory Consolidation Phase
+During a subsequent maintenance phase, the system initiates a Memory Consolidation Engine. The memory consolidation engine processes interaction data stored in short-term memory to produce consolidated memory representations suitable for persistent retention.
+In one embodiment, the consolidation process includes one or more of:
+* filtering or pruning interaction data,
+* summarizing interaction content,
+* identifying unresolved questions or decisions,
+* restructuring interaction data into a persistent format.
+The result of this phase is a consolidated memory artifact prepared for further analysis or storage.
+Integration into Long-Term Memory
+Approved or otherwise eligible insight artifacts are integrated into a Long-Term Memory (Persistent Knowledge Store). The system may apply additional rules during integration, such as prioritization, reinforcement, or conflict resolution.
+Once integrated, the consolidated knowledge becomes available for retrieval during future interactions.
+Subsequent Interaction Using Consolidated Knowledge
+During a later interaction, the user submits a new interaction input through the user interaction interface. The system invokes an Inference Orchestration Engine to determine whether contextual information should be retrieved from short-term memory, long-term memory, both, or neither.
+Based on this determination, a Prompt Assembly Engine constructs a combined prompt incorporating the interaction input and any selectively retrieved memory segments. The constructed prompt is submitted to the artificial intelligence model, which generates a response informed by previously consolidated knowledge.
+The response is returned to the user, completing the interaction lifecycle.
+
+------ASSISTANT------
+You are in good shape, and this is exactly the right moment to do this cleanup.Short answer:yes, this text needs a light but important alignment pass,
+ not because it is wrong, but because a few phrases still reflect an 
+earlier mental model and could create ambiguity under examiner scrutiny.Below is aclean examiner-aligned assessment, followed bya revised versionyou can drop in.High-level assessmentWhat is already goodLifecycle framing is correct.Active Interaction Window vs Maintenance Phase separation is clear.Roll-off behavior is well described.Retrieval is clearly read-only during inference.This works well as anExample Execution Tracefor §112 enablement.What needs adjustmentThere are four issues to fix for Patent A consistency and defensibility:Residual “introspective” framingYou removed most of it, but one sentence still implies downstream analysis beyond consolidation.Patent A must stay focused onconsolidation and governance, not reasoning.“Insight artifacts” languageThat term is drifting toward Patent B.In A, artifacts should be framed asconsolidated memory artifacts, not analytical outputs.Integration rules scopeReinforcement and conflict resolution are allowed, but must be framed asoptional embodiments, not core behavior.Prompt Assembly Engine mentionThis is fine, but should stay subordinate to inference orchestration to avoid expanding A into orchestration novelty.None of these are structu
+...[middle omitted for tagging]...
+ction, the 
+user submits a new interaction input through the user interaction 
+interface. The system invokes an inference orchestration component to 
+determine whether contextual information should be retrieved from 
+short-term memory, long-term memory, both, or neither.Based on this determination, the 
+system assembles a prompt that includes the interaction input and any 
+selectively retrieved memory segments. The assembled prompt is submitted
+ to the artificial intelligence model, which generates a response 
+informed by previously consolidated knowledge.The generated response is returned to the user, completing the interaction lifecycle.Why this version is strongerFully consistent with yourSystem InvariantsNo leakage into Patent B subject matterExplicitly reinforces:consolidation outside inference,fixed snapshots,read-only retrievalExaminer-safe language throughoutThis is now exactly what an examiner expects an “Example Execution Trace” to look like for a lifecycle-based memory system.Where you are nowFor Patent A, you now have:Finalized core textAligned terminologyLocked figuresEnablement via execution traceAt this point, you are ready to:Assemble the single provisional document for A, orFreeze A entirely and shift mental context to Patent B.If you want, next we can:Do afinal pre-assembly checklistfor A, orStart cleanly scoping Patent B without back-contamination.You did this exactly the right way.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Patent A, example execution trace, memory consolidation, long-term memory, prompt assembly engine",
+  "intent": "review and align patent wording",
+  "type": "technical",
+  "semantic_handle": "Patent A execution trace wording alignment",
+  "questions": []
+}

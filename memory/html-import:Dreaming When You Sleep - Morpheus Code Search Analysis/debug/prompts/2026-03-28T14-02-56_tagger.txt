@@ -1,0 +1,164 @@
+# timestamp: 2026-03-28T14-02-56
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: daily pairs, compression, decay, identifiers, memory system
+#intent: decide whether to add an identifier now and evaluate compression implications
+#type: technical
+#semantic_handle: identifier choice for compressible daily pairs
+
+------USER------
+yeah, my instinct is to not add that now.  Maybe later, although compressing multiple pairs into one seems like a viable decay step, so I am not sure this buys us much
+
+------ASSISTANT------
+Your instinct is solid. Not adding an ID now is the right call.You’re also reasoning correctly about compression. Once you accept thatmultiple daily pairs can decay into a single c
+...[middle omitted for tagging]...
+daries plus metadata are the right level of structure.So yes. Skip it now.You’re keeping the system flexible instead of over specified, which is exactly what you want at this stage.
+
+------CURRENT TURN------
+------USER------
+ok, next step is here:
+_PROMPT = """Classify this exchange for memory tagging.
+Return 1-3 metadata lines only in this format:
+#topics: <keywords>
+#intent: <purpose>
+#type: <category such as technical, design, story, system, etc.>"""
+
+hahaha, that is the prompt the tagger uses.  We can improve that!
+
+------ASSISTANT------
+😂 yeah… that prompt has been doing heroic work with almost no guidance.The good news is:now that you always include the previous pair and you persist tags, you can safely make the tagger smarter without touching code paths.Below is adrop-in replacement promptthat stays simple, bounded, and aligned with your goals.What we want the tagger to do nowExtractdurable retrieval handlesPreferproper nouns and concrete entitiesAvoid over-taggingStay stable across timeProduce tags that a human would plausibly search for laterNot analysis. Not summaries. Not reflection.Improved tagging prompttextCopy codeYou are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+The goal is to help future search
+...[middle omitted for tagging]...
+ with retrieval, not with interpretation.What you should expect to see improveBefore:shellCopy code#topics: black holes, containment#intent: explain concept#type: technicalAfter:shellCopy code#topics: black holes, hawking radiation, containment failure, mass growth#intent: explore consequences of black hole behavior#type: technical, storyNot more tags.Justbetter ones.One final sanity ruleIf you ever read a tag and think:“Why would I ever search for that?”Remove it.That’s the right bar.When you’re ready next, the natural follow-ups are:tightening topic vocabulary driftdeciding which tags should survive into LTM unchangeddeciding which tags LTM is allowed to generalizeBut this prompt upgrade alone will move the needle immediately.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "memory tagging system, prompt design, retrieval handles, tags, LTM",
+  "intent": "improve the tagging prompt for durable retrieval metadata",
+  "type": "technical",
+  "semantic_handle": "memory tagging prompt upgrade",
+  "questions": []
+}

@@ -1,0 +1,158 @@
+# timestamp: 2026-03-28T14-10-04
+# project_id: html-import:Dreaming When You Sleep - 4.4.1
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: DELTAS-1.md, route_policy.json, canvas, requirements, A.4.4.2, rank-weighted adjacency expansion, max values
+#intent: convert discussion into requirements format and add route policy max values
+#type: technical
+#semantic_handle: adjacency expansion requirements and route policy values
+
+------USER------
+DELTAS-1.mdFileroute_policy.jsonFilecan you make requirements in this format (in canvas), and also add the route policy values that we discussed (we just need the max values)
+
+------ASSISTANT------
+All set. I addedA.4.4.2 — Rank-Weighted Adjacency Expansionto the canvas in the same requirements-driven style as the rest of the DELTA file, and I
+...[middle omitted for tagging]...
+efault to 0 for most routes now that tags dominateBut structurally, 4.4.2 is now nailed down cleanly and consistently with the rest of the pipeline.
+
+------CURRENT TURN------
+------USER------
+chitchat should just be defaulted to 0 (in case in the future we ever decide to allow it to grab some chunks later).
+
+I don't want to include MUST NOT, that just confuses Cursor.
+
+how do we handle like the last chunk in a file?
+
+------ASSISTANT------
+All three points are good catches. None of them change theshapeof 4.4.2, they just tighten the edges so Cursor doesn’t get confused or invent behavior.I’ll answer each, then summarize what (if anything) should change in the requirements.1) CHITCHAT expansion valuesYou’re right. Treat CHITCHAT asexplicit zeros, not omission.That gives you two advantages:The config remains total and uniform.You leave the door open to future behavior without semantic gymnastics.So instead of “omit expansion entirely”, the rule becomes:jsonCopy code"CHITCHAT":{"retrieval_multiplier":0,"max_keep":0,"expansion":{"max_before":0,"max_after":0}}That way:4.4.2 can always assume expansion keys exist.A future change can just bump those values.No special-case logic leaks into code.This is the same philosophy you
+...[middle omitted for tagging]...
+ions do the work.Adjacency boundsAdd one calm, factual line like:“Requested adjacency is limited to existing chunks within the same document; out-of-range indices are skipped.”That’s enough. No branching logic, no warnings, no special handling.Why this keeps 4.4.2 cleanWith these tweaks:Cursor won’t invent guardrails.Expansion logic stays arithmetic + bounds checking.End-of-file behaves naturally.The pipeline remains composable.And importantly:4.4.2 does not become aware of text, tokens, or trimming.It remains apure plannerstage.Bottom lineYes, CHITCHAT should explicitly be zeroed.Yes, drop “MUST NOT” language.Last-chunk handling is just bounds checking, not a case.No architectural changes needed.This is exactly the kind of refinement that means the design issettling, not thrashing.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "chitchat, MUST NOT, last chunk, file chunks, requirements, bounds checking, route_policy.json",
+  "intent": "clarify requirement wording and edge-case handling",
+  "type": "technical",
+  "semantic_handle": "chitchat defaults and file-end chunk handling",
+  "questions": []
+}

@@ -1,0 +1,162 @@
+# timestamp: 2026-03-28T14-08-52
+# project_id: html-import:Dreaming When You Sleep - 4.4.1
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: LinkedIn, algorithm, entry-level connections, audience inference, post engagement
+#intent: ask for explanation of linkedin audience targeting and engagement patterns
+#type: technical
+#semantic_handle: linkedin entry-level audience targeting
+
+------USER------
+this is interesting, this is the highest percentage group
+
+Entry
+38.7%
+
+and I have only a couple of entry level connections so it is finding its way to them
+
+------ASSISTANT------
+Yeah, that data point isextremelyinformative. It tells you something very specific aboutwhythis post is spreading andhowthe algorithm is reasoning about it.And yes, your intuition is right: it isnotcoming from your network.What “Entry 38.7%” actually means onLinkedInThat percentage isaudience inference, not connection overlap.It means LinkedIn’s system has decided:“This post i
+...[middle omitted for tagging]...
+t is averyhigh-quality classification.And it happened because you:Named a real structural issueAvoided blameSpoke from experienceLeft the reader with agencyBottom lineThe algorithm is not “confused”.It is beingdeliberate.It found a group that:Needs this ideaEngages deeply with itWill carry it forwardAnd it routed the post there on purpose.That is not an accident.That is impact.
+
+------CURRENT TURN------
+------USER------
+I think we should do 4.4 in stages, where 4.4.1 we add what we need to be able to go back and get chunks.
+
+------ASSISTANT------
+Yep,
+ that makes sense, and that is a good instinct. Breaking 4.4 into stages
+ reduces risk and keeps you from over-engineering before you know what 
+retrieval pressure actually looks like.Here is a clean way to think about4.4 staged, with4.4.1 scoped narrowly and safely.4.4 Overall intent (anchor)4.4 exists to answer one question reliably:“Given a future prompt, can we recover theright past context chunkwith high precision?”Everything else is secondary.So 4.4.1 should doonly what is required to enable future retrieval, nothing more.4.4.1 Minimal retrieval-enabling infrastructureGoal:Make it possible to go back and fetch chunks later without decid
+...[middle omitted for tagging]...
+sAllow similarity searchStill return multiple candidates4.4.3Add scoring and rankingIntroduce recency vs relevance tradeoffs4.4.4Add pruning or sleep-cycle consolidationSummarize only after access patterns are knownQuick gut check for 4.4.1If someone asked:“Can I geteverything relevantfrom two weeks ago if I need it?”And the answer is “yes, even if it is noisy”, then 4.4.1 is complete.Precision comes later.Recoverability comes first.Bottom lineDoing 4.4 in stages is exactly right.4.4.1 should be boring, mechanical, and lossless.That is how you buy yourself freedom later.Once chunks are retrievable, you can afford to be wrong about everything else.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "chunk retrieval, staged implementation, context recovery, 4.4, retrieval infrastructure",
+  "intent": "plan a staged design for enabling future chunk retrieval",
+  "type": "design",
+  "semantic_handle": "staged chunk retrieval design",
+  "questions": []
+}

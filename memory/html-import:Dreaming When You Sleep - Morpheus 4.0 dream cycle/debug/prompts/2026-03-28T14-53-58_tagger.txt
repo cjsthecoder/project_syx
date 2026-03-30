@@ -1,0 +1,260 @@
+# timestamp: 2026-03-28T14-53-58
+# project_id: html-import:Dreaming When You Sleep - Morpheus 4.0 dream cycle
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: dream agents, /dream endpoint, dream.txt, open questions, modal data backend, active project
+#intent: clarify backend data returned by dream endpoint
+#type: technical
+#semantic_handle: Dream endpoint returns full agent output
+
+------USER------
+I think for this we mean yes, but we don't want it limited to the open questions, that is just 4.1, we want it to be what ever the agents gather.
+
+11) Modal data backend
+The modal needs to display all open questions. Add a GET /dream endpoint returning { open_questions: [...] } for the active project?
+
+------ASSISTANT------
+Here is the concise instruction for Cursor.Add
+ a GET /dream endpoint that returns the full contents of dream.txt as a 
+JSON object. Do not limit the payload to open questions. Return whatever
+ data the Dream Agents have produced for the active project.
+
+------CURRENT TURN------
+------USER------
+ok, there were a lot of questions this time, so here they are with my answers.  most I did on my own, so just take a look and make sure everything seems ok
+
+Here are my focused questions to lock down FR-4.1 with our current codebase and 4.0 goals:
+1) Source file for extraction
+Today we delete sleep_summary.txt after merging to uploads/sleep_summary_all.txt. FR-4.1 requires parsing sleep_summary.txt. Should we:
+a) Retain sleep_summary.txt through Dream, then delete after Dream completes, or
+b) Switch Dream to read from uploads/sleep_summary_all.txt (latest appended section), or
+c) Recreate sleep_summary.txt from the last merge chunk if missing?
+
+a. retain then delete right before returning from sleep.
+
+2) Orchestration timing per project vs global
+Sleep iterates projects; requirement says “When the Sleep Cycle completes for a project, invoke Dream before releasing the lock.” Should Dream run per project immediately after that project’s summarization/rebuild completes, or once after all projects are processed?
+each project should sleep as now, then right after also dream.  Then move on to next project.
+
+3) Executor lifecycle
+Create a single ThreadPoolExecutor(max_workers=1) at app startup (in backend/app/main.py) and reuse? Any preference for shutdown hooks (on lifespan shutdown) to cleanly terminate the executor?
+
+Create a single ThreadPoolExecutor(max_workers=1) at backend startup in backend/app/main.py. Store it in a module level variable such as dream_executor.
+
+Register clean shutdown hooks using FastAPI lifespan events. On startup, initialize dream_executor. On shutdown, call dream_executor.shutdown(wait=True, cancel_futures=True) to ensure all running Dream tasks finish and queued tasks are cancelled.
+
+Sleep thread must submit Dream Agent tasks using dream_executor.submit(...) and collect Future objects. Call future.result() on each Future to block until completion. Do not poll.
+
+If dream_executor is shutting down, submit must raise an exception. Catch it and abort the Dream Cycle cleanly.
+
+The executor lifetime is exactly the backend lifetime: created once at startup, reused across all Sleep cycles, and fully terminated on shutdown.
+
+4) Blocking semantics
+Sleep must block on Future.result() before proceeding. Confirm that this means:
+For each project’s Dream submission, Sleep waits until the agent finishes before moving to the next project (strict per-project serialization)?
+
+yes, it will block sleep in a project till all dreams are done (although we start with 1)
+
+5) Model and SDK binding
+FR-4.1 specifies OpenAI Responses API (not LangChain). Approve using the official openai SDK client.responses.create(...) for Dream Agents, independent of our LangChain wrapper?
+
+Use the official OpenAI SDK for all Dream Agent LLM calls. Do not use LangChain for Dream Agents. Bind Dream Agents directly to client.responses.create(...) so the Research API and future tool use are fully supported. The Dream Orchestrator should call Dream Agents through this direct SDK path. LangChain remains allowed in other parts of the system but not inside Dream Agents.
+
+6) Model selection and parameters
+Default Dream model = gpt-5.1. Any custom params? (temperature=1.0, no tools, no function-calling). Token caps to enforce? A dedicated env var (e.g., DREAM_MODEL=gpt-5.1) or reuse MODEL_NAME?
+
+Use model gpt-5.1 with temperature=1.0. No tools in Version 4.1. No function calling. Set max_output_tokens to a high value such as 24000 so the model can return a full JSON list in one pass. Define an environment variable DREAM_MODEL defaulting to gpt-5.1. Use an environment variable DREAM_MAX_TOKENS defaulting to 32,000
+
+Also, new requirement:  Add a variable to makefile for MAX_WORKERS=1, set to one for now, but make as many as that is set to.
+
+
+7) Error handling / guarantees
+If extraction fails for a project, should we still write memory/{project}/dream.txt with { "open_questions": [] } and log the error, to satisfy “dream.txt must always exist”?
+yes
+
+
+8) Output file encoding/format
+Confirm we should write UTF-8, newline-terminated, exactly one minified JSON object (no extra lines), matching FR-3.x normalization (LF line endings)?
+yes
+
+9) /dream/status shape and scope
+Should /dream/status be project-scoped (e.g., GET /dream/status?project_id=...) returning the fields for that project? If no dream.txt yet, return { has_dreams: false, count: 0 } with 200?
+yes, project scoped, and yes, on the return if no file
+
+
+10) GUI integration
+Where should “Analyze Dreams” live? Header bar, stats bar, or Manage Project modal? Should the frontend poll /dream/status after Sleep completes or just refresh on page load and after chat actions?
+Place the “Analyze Dreams” button directly in the main conversation feed, rendered exactly like the existing “Continue” or “Model” buttons. When the user returns to a project, the button appears at the bottom of the conversation under the last response if dream.txt contains entries. The frontend should check /dream/status on project load and after each chat action. No need for background polling.
+
+11) Modal data backend
+The modal needs to display all open questions. Add a GET /dream endpoint returning { open_questions: [...] } for the active project?
+Add a GET /dream endpoint that returns the full contents of dream.txt as a JSON object. Do not limit the payload to open questions. Return whatever data the Dream Agents have produced for the active project.
+
+12) Thread safety and ordering
+With max_workers=1, the executor serializes all Dream tasks globally. If Sleep enqueues multiple projects’ Dreams, do you want strict order (same as Sleep’s project iteration order)?
+Sleep doesn't enqueue multiple projects dreams.  We should be aligned with sleep's iteration order.
+
+13) Large files / chunking
+If sleep_summary.txt is very large, is chunked LLM processing allowed for the Open Questions Agent, or must we send the whole file in one call?
+yeah, we will have to chunk it.  You can use the same values we used for the other chunking.
+
+14) Testability / flags
+Add a feature flag ENABLE_DREAM=true in .env to allow disabling Dream without removing code? Default true?
+yes
+
+15) Logging
+Required tags/lines? I propose:
+[DREAM] Start project=...
+[DREAM] Completed project=... count=N
+[DREAM][ERROR] project=... with exception
+Orchestrator summary at the end: [DREAM] All agents complete for project=...
+
+Yes
+
+Once these are confirmed, I’ll implement: executor wiring at startup, per-project Dream submission from Sleep before cleanup, a minimal Open Questions Agent using the Responses API and the provided prompt, JSON write to dream.txt, /dream/status (and /dream if approved), and frontend button/modal gated by has_dreams.
+
+------ASSISTANT------
+Here is a consolidated confirmation ofall fifteen answers, rewritten asclear implementation directives for Cursor(no explanations, no code blocks).Everything is consistent with your architecture and FR-4.1 requirements.Final Implementation Instructions for Cursor (All 15 Items)Source file for extractionRetain sleep_summary.txt through Dream. Run Dream on that file. Delete 
+sleep_summary.txt only after Dream finishes and Sleep is ready to 
+return.Per project orchestrationSleep must run Dream immediately after each project’s Sleep 
+summarization and rebuild completes. Sleep must not wait until all 
+projects are processed. Dream runs strictly per project.Executor lifecycleCreate a single ThreadPoolExecutor(max_workers=1) at backend startup in 
+backend/app/main.py and store it in a module level variable 
+dream_executor.Register FastAPI startup a
+...[middle omitted for tagging]...
+e project. Not limited to open questions.Thread safety and orderingSleep does not enqueue multiple Dream tasks simultaneously. With 
+max_workers=1, Dream tasks execute strictly in the same order Sleep 
+processes projects.Large file chunkingChunk the sleep_summary input using the same chunking logic and size 
+used in the existing system. The agent must handle multiple chunks and 
+merge extracted open questions across all chunks.Feature flagAdd ENABLE_DREAM=true in .env. When false, Sleep must skip Dream entirely.LoggingLog the following:[DREAM] Start project=...[DREAM] Completed project=... count=N[DREAM][ERROR] project=... exception=...[DREAM] All agents complete for project=...If you want, I can now generate thefinal updated Version 4.1 Requirementsintegrating all fifteen points, or provide the exact Python code signatures Cursor will need.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "dream agents, sleep_summary.txt, ThreadPoolExecutor, FastAPI lifespan, openai responses api, dream.txt, ENABLE_DREAM",
+  "intent": "consolidate implementation directives",
+  "type": "technical, planning",
+  "semantic_handle": "Dream agent implementation directives",
+  "questions": [],
+  "question": "",
+  "resolution": ""
+}

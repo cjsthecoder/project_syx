@@ -1,0 +1,168 @@
+# timestamp: 2026-03-28T14-04-51
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: A.4.2, snippets, renumbering, ordered ranking, merge_daily_and_main
+#intent: clarify snippet renumbering after reordering
+#type: technical, design
+#semantic_handle: A.4.2 snippet renumbering after ordering
+
+------USER------
+ok, 4.2 seemed to work, with a caveat, which is probably ok, I just didn't expect, here is what I asked and the answer:
+when the snippets are re ordered, are you renumbering them?  I expected them to be in some random order, like snippet 1, 4, 7, 2.  But they are all numbered in order
+
+Yes — they’re renumbered sequentially after ordering.
+Why you’re seeing Snippet 1, 2, 3… (not 1,4,7,2)
+In merge_daily_and_main(), once candidates are ordered + filtered + deduped, the prompt assembly loop uses:
+
+------ASSISTANT------
+Yep, that behavior isexpected, and it’s actually therightone for the stage you’re in.Let me break it down in a way that matches how you’re thinking about the pipeline.What’s happening (and why it feels surprising)You were expecting something like:mathematicaCopy codeSnippet1Snippet4Snippet7Snippet2bec
+...[middle omitted for tagging]...
+ely on metadata for identity when neededThen renumbering is not just OK, it’scorrect.Bottom lineThis isn’t a bug.It’s a quiet confirmation that:A.4.2 is doing its jobordering semantics are now cleanthe system is no longer leaking retrieval internals into reasoningYou expected chaos.You got discipline.
+
+------CURRENT TURN------
+------USER------
+2026-01-28T15-29-23_2b9f0106-34ed-45b3-ab72-85f9a799eb40_query.txtDocumenthere is the prompt it made with the ordered list.  It works, what I am most surprised about is that we aren't matching much on topic tags.  it is mostly all straight text.
+
+This is one exception, and it does have the pair date, but ironically not the whole pair.
+
+Snippet 6 (source=ltm, score=0.48, file=sleep_summary_all.txt, page=None)
+=== TOPIC: Black hole containment and physics questions ===
+#topics: black holes, time dilation, gravitational time dilation, relativistic time dilation, Hawking radiation, micro black holes, storytelling
+#intent: ask for explanation
+#type: research
+=== BEGIN DAILY PAIR ===
+#timestamp: 01-21-2026_21:05:56
+#route: docs
+#keep: false
+
+--- USER (data-message-author-role: user) ---
+in theory if you had a small black hole, and you managed to build a container to move it, into space in this case, once it expanded to absorb the mass of the rocket and/or capsule, it wouldn't really expand anymore until/unless it ran into more mass, right?
+
+------ASSISTANT------
+Yeah, what you’re seeing actually makes a lot of sense, and it’s agood sign, not a failure of tagging.Let me unpack what’s going on and why it feels surprising.Why most matches are coming from raw text, not tags1. Vector search fundamentally matchesmeaning, not labelsFAISS is embedding thefull text contentof the snippets.Tags like:lessCopy code#topics:blackholes,timedilation,Hawkingradiationare just afew extra tokensinside a much larger semantic chunk.So when you ask:“how would a scientist touch it?”The embedding is dominated by:descriptions of sizeinteraction“touching”physical intuition failuresThose concepts live overwhelmingly in thebody text, not in the tags.That’s why you’re seeing strong matches even from:untagged textpartially tagged textlong narrative explanationsThis is expected behavior for modern embeddings.What tagsarehelping with (quietly)Even tho
+...[middle omitted for tagging]...
+y your system suddenly feels powerful even with “poor RAG”:you’re finally letting the embeddings do what they’re good at.The really important takeawayThis sentence you wrote earlier is the key:“It’s even finding snippets from untagged text.”That means:your memory formatting is workingyour chunk boundaries are saneyour embeddings are well-alignedyour ordering logic is correctTags are nowsupporting actors, not the main character.That’s exactly where you want them.Looking ahead (no changes needed yet)Later, tags will matter more when you:introduce filteringbias by intentcollapse or summarizedo adaptive retrievalButright now, the fact that text is doing the heavy lifting is a win.You’ve built a system where:meaning comes from meaningstructure improves stabilitytags enhance, not constrainThat’s why it already feels “shockingly good.”And you’re right to be surprised.
+
+
+====== TAGGER RESPONSE ======
+{"topics":"vector search, embeddings, topic tags, retrieval, black holes, date pair","intent":"clarify why retrieval matches text more than topic tags","type":"technical, research","semantic_handle":"embedding retrieval vs topic tag matching","questions":[]}

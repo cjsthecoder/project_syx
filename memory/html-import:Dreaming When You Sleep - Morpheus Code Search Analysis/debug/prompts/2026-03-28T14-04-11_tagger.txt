@@ -1,0 +1,175 @@
+# timestamp: 2026-03-28T14-04-11
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: migration compatibility, output ordering, canonical retrieval, A.4.1, daily candidates, LTM
+#intent: clarify canonical retrieval output ordering behavior
+#type: technical, design
+#semantic_handle: canonical retrieval flat list ordering
+
+------USER------
+one more question
+
+Migration / compatibility behavior (output ordering): A.4.1 requires a flat list while also saying “no cross-source ordering/merging occurs” and “preserve per-source order.” For the returned flat list, what is the required concatenation order:
+Daily candidates first, then LTM candidates, or
+LTM first, then Daily, or
+return grouped (not flat) despite the delta text?
+
+------ASSISTANT------
+Great
+ catch. This is one of those questions where wording ambiguity hides a 
+real architectural decision, so let’s lock it down cleanly.Correct answerReturn a flat list, concatenated as:Daily candidates first, then LTM candidates.Per-source order is preserved within each segment.Why this is the right choice1. “Flat list” is the correct abstraction
+...[middle omitted for tagging]...
+aller to reinvent merging logicUndermine the point of A.4.1Mental model to keepA.4.1 answers:“What did we find?”A.4.2 will answer:“Which of these matter more?”A.4.3 will answer:“How do we present them to the model?”Daily-first flat list is the cleanest possible answer at this layer.You’re asking exactly the right questions at exactly the right time.
+
+------CURRENT TURN------
+------USER------
+it seems to be working, and we are definetly getting a lot more back now.  Also, it may have been there before, but we can see it now. we get this Snippet line, with values.  Could we tweak, or add to the prompt to use the score to weight the value of that text?
+
+Snippet 5 (score=0.82, file=sleep_summary_all.txt, page=None)
+You can go three main plot directions:
+
+1. **Containment Thriller**  
+   - The micro black hole is trapped in magnetic fields / cryogenic infrastructure.  
+   - They must stop it from drifting into Earth’s core or growing via exotic matter capture.  
+   - Time pressure: every hour, its influence zone widens.
+
+2. **Communication / First Contact**  
+   - The black hole radiates Hawking radiation that is *not thermal*. It’s encoded.  
+   - Pattern analysis reveals prime sequences, images, or a compressed language.  
+   - The collider has effectively “dialed” a channel in quantum gravity that others use.
+
+------ASSISTANT------
+Yes, you can do this, and you should.But the key ishowyou do it so you do not accidentally teach the model bad habits.Right now the model is seeing:arduinoCopy codeSnippet5(score=0.82, file=…, page=…)
+<text>That score isvisible but semantically inertunless you explicitly tell the model what it means and how to use it.The right way to use scores in promptsYou donotwant the model to “math with” the score.Youdowant the model to use it as aconfidence signal.Think of the score ascredibility, notweight.What the model should understandYou want to teach it exactly this mental rule:Higher score → more likely directly relevantLower score → background, inspiration, or weak associationNever treat low-sc
+...[middle omitted for tagging]...
+cross strong hitsWithout that instruction, the model often treats all snippets as equal prose.Your example, reinterpreted correctlyWith the guidance above, the model will naturally read:“Snippet 5 (score=0.82)”as:“This is probably central, I should anchor my answer here.”Whereas ascore=0.31snippet becomes:“Useful flavor, but not decisive.”That is exactly what you want.One quiet win you just unlockedBecause you standardized similarity earlier (A.4.1), this instruction now worksacross Daily and LTM uniformly.That was not possible before.Bottom lineYes, tweak the prompt.Do it once, globally.Frame score asconfidence, not math.This is one of those 3-line changes that punches way above its weight.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "prompt engineering, retrieval scoring, snippet weighting, confidence signal",
+  "intent": "ask for explanation and prompt design guidance",
+  "type": "technical, design",
+  "semantic_handle": "using snippet scores in prompts",
+  "questions": []
+}

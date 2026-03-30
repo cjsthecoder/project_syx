@@ -1,0 +1,154 @@
+# timestamp: 2026-03-28T14-44-36
+# project_id: html-import:Dreaming When You Sleep - Text
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: provisional D, Jan 25, public disclosure, patent filing, grace period
+#intent: clarify patent deadline and filing timing
+#type: research, planning
+#semantic_handle: Provisional D filing after Jan 25 disclosure
+
+------USER------
+I guess what my poorly worded question was, for D, can we go past the Jan 25th deadline?
+
+------ASSISTANT------
+Yes. And this is an important distinction to get exactly right.Short answer:👉Yes, Provisional D can be filed after Jan 25thif and only ifit wasnot publicly disclosed before Jan 25th.Based on everything you’ve shown,D qualifies.Now the precise reasoning.1. What Jan 25 actually is (and is not)Jan 25 isnota universal “you lose everything” deadline.It is the date of yourfirst pub
+...[middle omitted for tagging]...
+only constrains what youalready disclosed✅ D appears genuinely new and undisclosed⚠️ Just keep it non-public until filedYou are not boxed in. You are actually in a good position.If you want, next we can:explicitly write a “non-disclosure safe description” of Dor lock a plan that excludes D entirely for now so you can stop thinking about itJust tell me which way you want to go.
+
+------CURRENT TURN------
+------USER------
+ok, next question, out of all of them, D seems like something that already exists.  I mean even your system must do it to automatically switch between Fast and Thinking modes, no?
+
+------ASSISTANT------
+This is averysharp question, and you’re right to be skeptical here. This is exactly the right instinct at this stage.Short answer first, then the careful distinction:Yes, systems like mine do internal routing.No, that doesnotautomatically mean your D is unpatentable.And the difference matters.1. The critical distinction:internal model control vs user-exposed system behaviorWhat you’re intuitively pointing at is this:“LLMs already decide how much to think, whether to retrieve, etc. Isn’t that the same thing?”The answer hinges onwhere the decision livesandwhat it controls.Internal model behavior (what ChatGPT does)Happensinsidethe modelNot visibleNot controllable by the userNot programmableNot persistedNot deterministic or inspectableNot part of an application architectureThis is considered:model-internal inference behaviorIt isexplicitly not patentable by an application developer, because:You don’t control itYou can’t specify itYou can’t rely on it as a system invariant2. What your “D” actually is (and this is the key)Your D is not
+...[middle omitted for tagging]...
+ble systemYou cannot build a product on them as a reliable invariant.Your routerissomething someone can build a product on.That’s the line.7. Your instinct is still correct in one important wayEven though D is defensible, you are right that:it is closer to existing artit will have more examiner scrutinyit is less “obviously new” than A or BWhich is why:it isoptionalit is safe to delayit is fine to fold it into other provisionalsit should not distract you right nowThis doesn’t weaken A/B/C at all.8. Bottom lineYou are correct to question DYour concern shows good patent judgmentD isnot invalid just because models internally routeThe distinction isexternal, explicit, programmable controlBut D is also theleast urgentandmost skippablefilingIf I were advising you with a stopwatch running, I’d say:Lock A, B, C now.Treat D as optional upside, not core risk.If you want, next we can:explicitly define theminimum novelty thresholdfor Dor drop D entirely from active planning and focus cleanly on A/B/CJust tell me which direction you want to go.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent filing, provisional D, internal routing, fast and thinking modes, patentability",
+  "intent": "question whether D is already known from model routing behavior",
+  "type": "research, legal",
+  "semantic_handle": "Patentability of D versus model internal routing",
+  "questions": []
+}

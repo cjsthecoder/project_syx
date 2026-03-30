@@ -1,0 +1,162 @@
+# timestamp: 2026-03-28T15-04-04
+# project_id: html-import:Dreaming When You Sleep - Theory of Mind
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Morpheus, user profile, health data, health project, dream agent, AppleWatch
+#intent: design a health memory and profile update system
+#type: design, technical
+#semantic_handle: health profile integration in Morpheus
+
+------USER------
+It has been a while since we talked about this, the whole theory of mind ideas, and the so Morpheus can 'know' the user.  We talked about a user profile, maintained by the system (mainly a dream agent), etc.
+
+One thing I also have is a project in ChatGPT on health, and we discuss a lot of health topics, what I am doing what is working, etc.  What I thought is that would be a great addition to the profile.  A health section.  probably connected to a health project.  But, we could discuss things, and then the health dream agent could analyze discussion, and update profile, stuff like "User is doing strength training 5 days a week now."  And maybe that removes an entry "User is doing strength training 3 days a week now".  Plus there could be test results, maybe even agents could pull in information from outside, like AppleWatch data.
+
+------ASSISTANT------
+This is a very good extension. And it isqualitatively differentfrom writing preferences or project interests.Health data is:longitudinalquantitativebehavioralidentity-adjacenthigh sensitivitySo it forces you to get the architecture right.Let’s break this carefully.1. Conceptually: Health as a First-Class Identity DomainRight now your identity model includes things like:Writing projectsAI architecture interestsLong-term goalsAdding health means identity now spans:Cognitive patternsCreative interestsPhysical behaviorPhysio
+...[middle omitted for tagging]...
+Data is objectiveTrends matter more than wordsSelf-perception is often wrongThat makes it the perfect testbed for:Identity updatesConfidence scoringConflict resolution between data and narrativeIf Morpheus can handle health correctly,it can probably handle anything.This is a strong direction.The key question now is:Do you want Morpheus to merelyrememberyour health…Or to eventually become a longitudinal reasoning engine about it?Because those are two very different design commitments.And you are getting close to that fork.
+
+------CURRENT TURN------
+------USER------
+I am not sure how you define this, longitudinal reasoning engine, but the memory of my health would be there to facilitate better responses specific to me.  Combining my health, legitimate studies online, and my goals, etc.
+
+------ASSISTANT------
+Good — that clarification helps a lot.When I said “longitudinal reasoning engine,” I meant something heavier, like:Modeling causal relationships over monthsPredicting future statesDetecting subtle physiological driftActively recommending program changesThat’s closer to a quantified-self AI coach.What you’re describing is lighter and more aligned with your existing architecture:Health memory exists to contextualize responses.That’s very different — and much cleaner.1. Health as Context, Not AuthorityYou want health memory to function like:Writing profile → shapes creative adviceAI career profile → shapes technical adviceHealth profile → shapes training/nutrition/recovery adviceSo when you ask:Should I increase protein?The system knows:Your fat loss goal (15%)Your history of gaining fat with higher proteinYour Zone 2 volumeYour age (56)Your recovery sensitivityThat produces advice tailored toChris, not generic fitnes
+...[middle omitted for tagging]...
+ot controlling you.It is amplifying your own experimental mindset.That’s philosophically aligned with everything else you’re building.7. This Actually Strengthens Theory of MindBecause health affects:Cognitive sharpnessPatienceRisk toleranceEnergyIf the system knows you are:OvertrainedUndersleptCutting caloriesIt can modulate how it engages with you.That is not medical advice.That is capacity modeling.And that is advanced ToM.You’re not building a quantified-self oracle.You’re building a system that knows:What you are trying to optimizeWhat has worked for youWhat tends to backfireWhat trade-offs you acceptThat’s sophisticated but grounded.If anything, this domain might be the cleanest demonstration of your architecture working as intended.The interesting question now is:How much autonomy does the health agent get?Only summarize?Or ever proactively flag drift?That’s where the philosophical boundary starts to matter.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Morpheus, health memory, longitudinal reasoning, theory of mind, health agent, quantified self",
+  "intent": "clarify health memory architecture and agent autonomy",
+  "type": "design, technical",
+  "semantic_handle": "health memory as contextual user profile",
+  "questions": [
+    {
+      "question": "How much autonomy does the health agent get?",
+      "topic": "health agent",
+      "resolution": "remind_user"
+    }
+  ]
+}

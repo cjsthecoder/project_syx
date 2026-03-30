@@ -1,0 +1,159 @@
+# timestamp: 2026-03-28T14-05-36
+# project_id: html-import:Dreaming When You Sleep - Claim Numbering Guidance
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: patent drafting, document structure, word heading levels, what this system is not, system invariants
+#intent: check patent document paste and section structure
+#type: technical, legal
+#semantic_handle: patent document structure check
+
+------USER------
+Patent_A.docxDocumentcan you just check I did the paste up to What the system is not, correctly?  before I go too far.  All I could really do is using Word heading levels to show the depth
+
+------ASSISTANT------
+Yes.
+ You did the paste correctly, and structurally this is in very good 
+shape. I will walk through it at a patent-drafting level and point out 
+only the things that matter, not cosmetic Word issues.High-level assessment• The section ordering is correct• The headings align with USPTO expectations• The substance is consistent and coherent• Nothing you pasted creates risk or confusion• You did not accident
+...[middle omitted for tagging]...
+ou have pasted is wrong.Bottom lineYou are safe to keep going.You did not mis-paste, misplace, or
+ structurally break anything up through “What this system is not”. Using
+ Word heading levels instead of indentation is exactly the right move.If you want, next we can:• Map each remaining placeholder to the text you already have• Identify any true gaps• Trim redundancy before the provisional PDF is finalized
+
+------CURRENT TURN------
+------USER------
+ok, the original template labels are close but get to be different.  Should I use the text ones, or the template?  (I don't care, just want it correct)
+
+------ASSISTANT------
+Short answer:use the text-based section titles, not the template labels.That is the correct choice legally and practically.Here is why, and then I will give you a simple rule you can follow without thinking about it again.Why the text-based labels are better1. Patent law cares about substance, not template symmetryThe USPTO doesnotrequire:Specific section namesMatching a canned templateOne-to-one correspondence between labelsIt requires:Clear disclosureLogical organizationEnablement and possessionYourtext-based headings reflect the actual invention, whil
+...[middle omitted for tagging]...
+under:SummaryBrief Description of the DrawingsDetailed DescriptionClaimsThat is all that matters structurally.Do not do thisDo not try to force your text to match the templateDo not rename good technical sections just to mirror placeholdersDo not worry about exact heading namesFinal reassuranceWhat you have now:Would be accepted as a provisionalWould support a non-provisionalWould not raise examiner objectionsClearly shows possession as of filing dateChoosing the text-based labels is themore correctchoice.You are past the point where templates are useful.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent drafting, document structure, template labels, section headings, Word heading levels",
+  "intent": "ask which section labels to use in a patent document",
+  "type": "technical, legal",
+  "semantic_handle": "patent section label choice",
+  "questions": []
+}

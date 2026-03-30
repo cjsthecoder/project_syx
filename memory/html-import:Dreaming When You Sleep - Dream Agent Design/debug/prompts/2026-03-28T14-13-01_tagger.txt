@@ -1,0 +1,157 @@
+# timestamp: 2026-03-28T14-13-01
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Idea Agent, dream json, questions.json, sleep_summary.txt, DreamEntries, orchestrator
+#intent: define a self contained agent contract for json output
+#type: technical, design
+#semantic_handle: self contained Idea Agent json contract
+
+------USER------
+ok, I think this is numbering thing more than any, but I want the Idea Agent to be self contained.  So, it may be 2 prompts or many more, but we go in with the context we made, and we go out with the json we defined.
+
+------ASSISTANT------
+Yes, that makes sense. Idea Agent is a black box:Input → contextOutput → final dream JSONEverything else is its own internal business.Here is a tight requirements slice for4.1.3.2 Idea Agent, with that contract.4.1.3.2 Idea Agent (Dream Insight Generator)FR-4.1.3.2.1 External ContractIdea Agent is invoked once per Sleep 
+cycle for a project, after sleep_summary.txt is written and RAG work is 
+done, before the Sleep lock is releasedDreaming_When_You_Sleep_-_Morph….Input to the Agent (from the orchestrator):project_iddate (string, month/day/year)full text of sleep_summary.txtOutput from the Agent:A single structured JSON object in memory th
+...[middle omitted for tagging]...
+turn a valid JSON structure withitems: [].FR-4.1.3.2.5 Safety and Non IntegrationIdea Agent must not modify sleep_summary.txt, daily.txt, or RAG indexes.Idea Agent only reads:sleep_summary.txtand only writes:questions.jsondream.jsonAll integration into daily.txt or other memory layers happens in later versions, not in 4.1.3.2.If this matches what you had in mind for a self contained Idea Agent (single call in, final json out), next step I can do is:write the concreteIdea Agent promptthat will take sleep_summary and produce those DreamEntries, ordefine theexact JSON examplesfor questions.json and dream.json so it is easy to hand to Cursor.
+
+------CURRENT TURN------
+------USER------
+what would idea agent be writing into questions.json?
+
+------ASSISTANT------
+Here is the clear answer:questions.json should contain only the extracted open questions plus their classification, nothing else.Idea Agent writes questions.json as aworking filethat other Dream steps (future research agents) can use. It isnotthe full dream output. It is simply the structured list of all questions from sleep_summary.Below is exactly what goes into questions.json, in the precise form defined by the requirements we built.What Idea Agent Writes into questions.jsonPurposequestions.json is anightly snapshotof all open questions, extracted and classified, so that:Later dream steps can process themResearch agents can use themThe system has a clean, isolated list of unresolved itemsdream.json remains focused on user facing insight pairsFile LocationbashCopy codememory/{project}/dream/questions.jsonThe file is overwritten every night.File StructurearduinoCopy code{"questions": [
+    {"id":"uuid-string","text":"Exact question as written in sleep_summary","sourc
+...[middle omitted for tagging]...
+lationship between aliens and humans ...","classification":"user_decision_required"},{"id":"q-17c2e4aa","text":"Should the Sleep cycle integrate the active chat window?","source_context":"... this may be something we want to fix later though ...","classification":"needs_external_research"},{"id":"q-92ab14e1","text":"Do we need a ThreadPoolExecutor for Dream Agents?","source_context":"... should we use a thread pool of one ...","classification":"answerable_from_context"}]}Summaryquestions.json containsexactly:The list of open questionsTheir classificationTheir origin snippetUnique IDsItdoes notcontain:insightsresearch suggestionsresponsesassistant reasoninguser facing narrativeThose appearonly in dream.jsonwhen Idea Agent synthesizes the final dream pairs.If you want next, I can:Produce thefull final JSON schema for questions.jsonWrite theIdea Agent promptthat creates questions.json and dream.jsonWrite the Markdownrequirements filefor 4.1.3.2Just tell me which you want.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "questions.json, Idea Agent, dream.json, sleep_summary.txt, DreamEntries",
+  "intent": "ask what gets written into questions.json",
+  "type": "technical, design",
+  "semantic_handle": "questions.json contents for Idea Agent",
+  "questions": []
+}

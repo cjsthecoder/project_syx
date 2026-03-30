@@ -1,0 +1,194 @@
+# timestamp: 2026-03-28T13-59-20
+# project_id: html-import:Dreaming When You Sleep - Morpheus 3.0 summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Morpheus, FastAPI, LangChain, RAG, memory pruning, project management, model selection
+#intent: define version 3 product goal
+#type: technical, planning
+#semantic_handle: Version 3 goal for Morpheus
+
+------USER------
+ok, I had to stop to commit everything in 2.8, which I realized I never did.  So, lets start at the top of the requirements.
+
+## Project Overview
+Morpheus is a modular system that provides a web-based chat interface backed by a FastAPI server and LangChain for LLM integration.  
+
+**Version 1 Goal:** Establish a working chatbot with a GUI and stable backend interfaces that can be extended later with RAG, memory pruning, and multi-project support.  
+**Version 2 Goal:** Add persistent Project Management, File Upload + RAG initialization, and dynamic Model Selection.
+
+what should 3 Goal be?
+
+------ASSISTANT------
+Here’s a strong version-3 goal statement that fits your architecture and progression perfectly:Versi
+...[middle omitted for tagging]...
+adding a new layer of cognitive depth:InteractionMemoryConsolidationReflection[11-10-2025 00:41 EST]
+
+------CURRENT TURN------
+------USER------
+can you put our requirements in a file in md format?  
+
+use this as example formatting:
+
+## Version 2 — Project Management and Model Selection
+
+### Overview
+Version 2 introduces persistent **Project Management**, **File Upload + RAG Initialization**, and a **Dynamic Model Selector**.  
+These upgrades make Morpheus a multi-project, persistent knowledge system.
+
+## Version 2.3 — Rolling Context → Daily RAG Bridge
+
+### Purpose
+Extend Morpheus’ working memory by continuously off-loading the oldest prompt/response pairs from the live chat buffer and database into a persistent daily RAG file.
+This yields an effectively unlimited context window while isolating transient data from the long-term project memory (merged later during 3.0 sleep cycle).
+
+### Functional Requirements
+
+#### FR-2.3.1 — Rolling Window by Pair Count
+Maintain an in-memory deque of the most recent N prompt/response pairs.
+
+- Configurable limit:CHAT_HISTORY_LIMIT_PAIRS=10(replacesCHAT_HISTORY_LIMITfrom V2.2)
+- On each new completed exchange:
+  - Insert the pair[user, assistant]at the end of the deque
+  - If deque > N, remove the oldest pair
+  - Delete the correspondingChatMessagerecords from the database for that pair (pair-level prune)
+  - Concatenate prompt + response text and hand off to the embedding pipeline (→ FR-2.3-2)
+- Unpaired trailing messages:
+  - On startup/load, if a trailing unpaired user message exists, delete it
+  - If an orphan assistant message is detected, delete it as well (rare)
+
+------ASSISTANT------
+Here’s the properly formatted markdown file forVersion 3 — Sleep Cycle and Memory Consolidation, following your established documentation style:Version 3 — Sleep Cycle and Memory ConsolidationOverviewVersion 3 introducesautonomous long-term memory consolidationthrough a nightlySleep Cyclethat prunes, summarizes, and rebuilds each project’s RAG automatically.This version transforms Morpheus from a reactive chat system into one 
+that maintains knowledge over time, preparing the foundation forVersion 4 — Dreaming.Version 3.0 — Sleep CyclePurposeEnable Morpheus to perform a nightly 
+background process that consolidates each project’s short-term daily 
+memory into structured long-term knowledge.The Sleep Cycle executes automatically at a configured hour, loc
+...[middle omitted for tagging]...
+nuploads/for transparency.Log[SLEEP] Completed project {id}.FR-3.0.7 — Sleep Report GenerationGeneratesleep_report.txtinlogs/with summary statistics:total projects processedentries pruned / kepttotal durationstart and finish timestampsAppend cumulative entries across runs.FR-3.0.8 — Manual Trigger EndpointsPOST /sleep/start→ run Sleep Cycle immediately.GET /sleep/status→ report last run time and counts.Must respectsleep.lockwhen active.Acceptance CriteriaSleep lock prevents concurrent user actions.Each project with adaily.txtis pruned, formatted, and rebuilt.Resultingsleep_summary.txtappears in uploads and RAG is successfully rebuilt.Logs show clear[SLEEP] → [MERGE] → [UNLOCK]sequence.sleep_report.txtaccurately summarizes the cycle.[11-10-2025 00:44 EST]
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Morpheus, Version 3, sleep cycle, memory consolidation, RAG, markdown",
+  "intent": "format project requirements in markdown",
+  "type": "technical, planning",
+  "semantic_handle": "Markdown requirements file for Version 3",
+  "questions": []
+}

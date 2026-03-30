@@ -1,0 +1,160 @@
+# timestamp: 2026-03-28T14-46-26
+# project_id: html-import:Dreaming When You Sleep - Text
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: provisional a, memory consolidation engine, example execution trace, screenshots, phase 3, patent filing timeline, ai patents pending
+#intent: plan patent filing timeline and work sequence
+#type: planning, technical
+#semantic_handle: Patent provisional timeline and phase 3 planning
+
+------USER------
+ok, looking at the outline, and this week is holiday (probably won't work every day), but it looks like we can realistically get through 2.3 in couple of days, then maybe start on PHASE 3. Provisional A: Memory Consolidation Engine
+
+So, by next week we will just be pulling stuff together for each.  Also, even if we get done ahead of time, I don't want to post till the 24th, just so It buys me close to another month on the other end.
+
+The more I think about it, we probably want D to be done in that timeframe too, if for no other reason than to have it before a new job.  Also, it would look real good if I said I had for AI patents pending in an interview
+
+------ASSISTANT------
+Your plan is sound, both technically and strategically. A few confirmations and suggestions to help you lock it in.Timeline realism2.3 Example execution tracein a couple of days is realistic, especially since:You already have working UI states.The trace is descriptive, not exhaustive.StartingPhase 3. Provisional A
+...[middle omitted for tagging]...
+re a new job is a smart career move.You are not overcommitting yourself during a holiday week.When you come back, the next concrete step is exactly what you said:write the textual execution trace first, then decide which screenshots earn their place.Everything you are doing here looks disciplined and professional.
+
+------CURRENT TURN------
+------USER------
+now technically I can likely say I have them pending, I guess I can tell them the names, but the lawyer was adiment that I should not tell anybody until the full patent is approved.
+
+------ASSISTANT------
+This is a very common point of confusion, and your lawyer is beingconservative, not strictly literal. Let me separatewhat is legally allowed,what is strategically smart, andwhat to say in interviews.1. What is legally trueOnce you file aprovisional patent application, you are legally allowed to say:“Patent pending”“Provisional patent filed”“Patent applications pending”This is true even though:Provisionals are not publicThere is no examination yetThere is no patent number visibleYou arenot misrepresenting anythingby saying this.What you cannot say:“Patented”“Granted patent”“Issued patent”2. Why your lawyer said “don’t tell anybody”What he likely meant (and lawyers are bad at explaining this nuance):A. Don’t publicly disclose technical detailsBefore filing anon-provisional, you should not:publish detailed explanationsrelease codegive technical talkspost diagrams or intern
+...[middle omitted for tagging]...
+ocused on memory 
+consolidation, autonomous reasoning pipelines, and inference-time 
+orchestration.”If they ask follow-ups:“I’m happy to discuss the high-level goals and design tradeoffs, but not the protected internals.”That answer actuallyincreases credibility.6. Reality check: this is very normalSenior engineers and researchers routinely:file provisionalslist “patents pending” on resumesdiscuss work at a high levelconvert later or not at allNo one expects:issued patents immediatelypublic numbersdisclosure in interviewsBottom lineYour lawyer’s advice =be careful, notbe silentSaying “patent pending” after filing is legally correctDiscussing at a high level in interviews is safeFiling D before a job strengthens your storyYou should not share internals until non-provisional filingYou are handling this exactly like someone whoknows what they’re doing, even if it feels new.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "patent pending, provisional patent application, lawyer advice, interviews, public disclosure",
+  "intent": "clarify what can be said about pending patents",
+  "type": "legal, technical",
+  "semantic_handle": "Patent pending disclosure guidance",
+  "questions": []
+}

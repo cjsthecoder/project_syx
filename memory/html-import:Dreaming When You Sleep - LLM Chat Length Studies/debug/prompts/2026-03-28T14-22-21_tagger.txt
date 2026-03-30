@@ -1,0 +1,163 @@
+# timestamp: 2026-03-28T14-22-21
+# project_id: html-import:Dreaming When You Sleep - LLM Chat Length Studies
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: team memory, rag, tiered retrieval, citations, runbooks, provenance
+#intent: design a retrieval workflow that falls back from local memory to team memory when confidence is low
+#type: design
+#semantic_handle: Tiered retrieval with team memory fallback
+
+------USER------
+yeah you are right.  even a 2 or 3 turn chat, that quickly solved an issue would be a huge win over anything that exists now.  with the exception of, 'ask the old timer and hope he remembers...'
+
+And yeah, this could be a search, that returned results as discussed, but could also be part of normal prompt building that happens.  In addition to searching RAG, search someone elses.  I guess it would be like "if my RAG has little or nothing, try the team...'
+
+------ASSISTANT------
+Yep.
+ That becomes a tiered retrieval system: personal memory first, then 
+team memory, then only after that do you fall back to “reason it out 
+from scratch.”Tiered retrieval for workRetrieval orderMy project memory(highest relevance, lowest noise)My othe
+...[middle omitted for tagging]...
+ey can verify it quickly.If you want to add this to your idea list, the short spec is:“Tiered retrieval: local RAG first, then permissioned team RAG when 
+local confidence is low. Keep outputs separated with clear provenance so
+ the model can blend safely.”
+
+------CURRENT TURN------
+------USER------
+I could also see that in the context of Family Memory.
+
+------ASSISTANT------
+Yes. “Family Memory” is the same pattern as “team memory,” just with different privacy and UX priorities.Family Memory use cases that are immediately valuable.House and repairs: model numbers, filter sizes, paint colors, warranty info, what was fixed last time.Medical logistics: appointment summaries, meds list, insurance calls, who said what (with strong privacy controls).Travel: what worked, 
+...[middle omitted for tagging]...
+eFamily memory should bias toward:.Facts and provenanceover synthesis.Opt-in sharingover automatic ingestion.Easy deletionand “do not store” flagsIf you want to capture it as an idea-list item:“Family Memory: a permissioned shared knowledge base for home, health 
+logistics, and life admin. Tiered retrieval returns prior answers 
+instantly with sources, with strict privacy scopes and redaction.”
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "family memory, shared knowledge base, privacy controls, tiered retrieval, provenance",
+  "intent": "extend the memory retrieval idea to a family context with privacy and sharing concerns",
+  "type": "design",
+  "semantic_handle": "Family memory with permissioned tiered retrieval",
+  "questions": []
+}

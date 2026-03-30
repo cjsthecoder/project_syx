@@ -1,0 +1,160 @@
+# timestamp: 2026-03-28T14-08-26
+# project_id: html-import:Dreaming When You Sleep - 4.4.1
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+(none)
+
+------USER------
+(none)
+
+------ASSISTANT------
+(none)
+
+------CURRENT TURN------
+------USER------
+I posted the text below on linkedin.  Its strange because it is up to 6800 views, even though only 1 person liked it, and that was days after I posted.  So, I am curious what is about this post that made it spread.  Or what the algorithm is that spread it.  It must be based on the content, and that makes me think it is AI based.
+
+After many years working on NASA and DoD contracts, one thing is clear: Federal contracts reward spending, not efficiency.
+ * Cost-plus encourages higher costs
+ * Fixed-price gives no incentive to deliver for less
+ * Cutting budgets blindly hurts quality and safety
+
+In the interest of offering a constructive cost saving idea:
+If a contractor delivers the same mission for less money without sacrificing quality, reward them not with cash, but with automatic contract extensions.
+ * Saving money buys time. 
+ * Time buys stability. 
+ * Stability enables efficiency.
+
+I'm Curious how others on federal contracts have seen this play out.
+
+------ASSISTANT------
+Yeah, that pattern actually makes sense, even though it feels weird on the surface.Short version: this spread becauseLinkedIn measured attention, not approval.Here is what is likely happening under the hood.1) Views ≠ likes onLinkedInA “view” is counted when your post appears in someone’s feed long enough to be rendered. No click, no like required.LinkedIn cares about:Dwell timeScroll pausesRead completionRe-readsProfile clicks after viewingSomeone can disagree, feel uneasy, or just think “huh” and still trigger distribution.Your post ishigh-dwell, low-like content, which is a known pattern.2) You hit a high-friction topic people do not like publiclyFederal contracting inefficiency is:Widely experiencedPolitically sensitiveCareer-risky to endorse publiclyA like is apublic signal.Reading is private.People working cost-plus contracts, primes, or fed-adjace
+...[middle omitted for tagging]...
+ofiles stop scrolling when they see it.That is the key signal.One subtle thing you did very rightYou ended with:I'm Curious how others on federal contracts have seen this play out.That is anopen invitation without forcing engagement.It invites thought, not performance.People think.They do not comment.The system notices.Bottom lineYour post spread because:It targets a shared but risky truthIt rewards reading more than likingIt fits an internal “expert critique + solution” templateIt generates long, silent attentionIf you wanted more visible engagement, we could tweak it.If your goal was reach into the fed and contractor ecosystem, it already worked.If you want, next step could be:A follow-up post that reframes this as a questionOr a short concrete example from your NASA experience without naming programsThat usually converts silent readers into commenters.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "linkedin, post engagement, social media algorithm, federal contracts, nasa, doD contracts, ai",
+  "intent": "ask for explanation",
+  "type": "technical, research",
+  "semantic_handle": "linkedin post reach without likes",
+  "questions": []
+}

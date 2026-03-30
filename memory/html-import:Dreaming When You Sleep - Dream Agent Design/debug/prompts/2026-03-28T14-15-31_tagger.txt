@@ -1,0 +1,663 @@
+# timestamp: 2026-03-28T14-15-31
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: user_profile_summary.txt, memory/{project_id}, prompt engineering, agent guidance, personality attributes, dream_context builder
+#intent: design a stable user profile summary file for agent personalization
+#type: technical, design
+#semantic_handle: user profile summary for agent personalization
+
+------USER------
+ok, we are calling it memory/{project_id}/user_profile_summary.txt
+
+also, below is my current profile.  I want to make one file for now based on this, in what ever format you think would help the agents give better results.  also, we can add other sections, personality or something that maybe an agent could fill in over time.
+
+User Profile Codex
+
+#name: Chris Shuler
+#full_name: Christopher James Shuler
+#pen-name: CJ Shuler
+
+=== TOPIC: Core Profile ===
+
+#topics: user profile, background, career, personal context
+
+#decisions: transition focus toward AI/ML while continuing creative writing projects
+
+#open_questions: how to balance technical projects with fiction publishing timeline
+
+#user_context: 56-year-old software engineer with aerospace background, AI/AGI researcher, aspiring fiction author
+
+Summary:
+Chris Shuler is an experienced software engineer, originally with a strong background in aerospace and satellite ground systems (NASA, DoD). He’s now pivoting toward AI/ML experimentation and AGI design, while also developing multiple fiction projects.
+
+=== TOPIC: Technical Skills ===
+
+#topics: software engineering, mission-critical systems, AI tools
+
+#decisions: deepen skills in generative AI, move toward ML mastery
+
+#open_questions: optimal balance of AI experimentation vs. job applications
+
+#user_context: long career in mission software, now hands-on with AI prototyping
+
+Skills snapshot:
+
+Programming: Python, C++, C#, Java
+
+Systems: Linux, Windows, REST APIs, microservices, SOA
+
+Middleware: Kafka, ActiveMQ, DDS
+
+Tools: Docker, Git, GitLab, CI/CD
+
+AI/LLM: Generative AI, NLP, LangChain, RAG, embeddings, fine-tuning
+
+Emerging: FAISS/Chroma RAG, LlamaIndex, FastAPI + React stack
+
+=== TOPIC: Learning Habits ===
+
+#topics: continuous learning, courses, neuroscience, curiosity
+
+#decisions: continue “learn something new every day” strategy (since 2018)
+
+#open_questions: how to track long-term knowledge integration
+
+#user_context: daily learner, rotating monthly study topics
+
+Notes:
+
+Dedicates ~1 hr/day to structured learning.
+
+Past topics: neuroscience, cybersecurity, philosophy, writing, astronomy, history, AI.
+
+Upcoming: thermodynamics, genetics, chess, flight science, energy, Ethereum/solidity.
+
+Uses Great Courses, MasterClass, books, podcasts.
+
+=== TOPIC: AI/AGI Design Interests ===
+
+#topics: AGI design, memory pruning, sleep cycles, multiple intelligences
+
+#decisions: experiment with pruning/sleep cycle pipeline → local RAG in October
+
+#open_questions: best approach to hybrid STM/LTM memory; how to integrate unconscious layers
+
+#user_context: AGI researcher designing experimental memory systems
+
+Key ideas:
+
+AI needs “sleep” to prune and consolidate daily memory.
+
+Repos = distributed long-term memory (like SD cards).
+
+Short-term repo → nightly pruning → domain-specific repos.
+
+Interested in embodied AGI with multiple intelligences (Howard Gardner mapping).
+
+Sees parallels to hippocampus ↔ cortex consolidation.
+
+=== TOPIC: Writing Projects ===
+
+#topics: fiction writing, thrillers, sci-fi, codex-driven workflow
+
+#decisions: self-publish Ghost vs. The Machine first; Majestic Disclosure as longer-term project
+
+#open_questions: pacing for spin-offs, when to serialize novellas
+
+#user_context: aspiring fiction author with multiple series arcs in development
+
+Active projects:
+
+Ghost vs. The Machine (AI Profiler trilogy): tech-driven crime thrillers with Charlie, Rachel, Mitchell; arc includes surveillance ethics + AI dilemmas.
+
+Majestic Disclosure: UFO/space thriller involving TR-7B, DARPA, disclosure themes.
+
+Ravi’s Treasure: maritime adventure with Ramirez siblings; salvage-diving + treasure hunting.
+
+Spin-off & novella concepts: Maya Torres’ CIA unit (Casper Protocol), Ali Kahani’s spree, Amy Winn recruitment.
+
+Process:
+
+Uses codex + outline + chapter workflow in Scrivener/NovelCrafter.
+
+Stronger at dialogue than description; actively improving description & pacing.
+
+Inspired by Dan Brown, J.N. Chaney, Barry Eisler.
+
+=== TOPIC: Health & Training Experiments ===
+
+#topics: fitness, recovery, fasting, cognitive performance
+
+#decisions: maintain Zone 2 + kettlebell/bodyweight program, track fat loss → goal 15%
+
+#open_questions: how best to integrate protein intake for recovery without fat gain
+
+#user_context: midlife athlete focused on sustainable strength + cognition
+
+Notes:
+
+Training: kettlebells, dumbbells, elliptical, biking; favors higher-rep sustainable work.
+
+Recovery: balances Zone 2 cardio with leg fatigue; HRV + resting HR tracked via Apple Watch.
+
+Nutrition: 2000–2500 cal deficit, fasting mimicking diet 3×/yr, low protein preference.
+
+Cold exposure (20 min, 4×/week) for recovery + fat loss.
+
+Cognitive experiments: Human Benchmark (reaction, memory, agility), nut/bolt dexterity test, tennis ball wall drill.
+
+=== TOPIC: Career & Goals ===
+
+=== TOPIC: Career Snapshot ===
+
+#topics: software engineering, aerospace, NASA, DoD, AI transition
+
+#decisions: pursue transition from aerospace software into AI/ML; leverage 25+ years mission-critical experience
+
+#open_questions: best entry points into agentic AI/ML roles in aerospace/defense industry
+
+#user_context: senior engineer with long record in NASA/DoD programs, now specializing in AI
+
+Summary:
+Chris Shuler is an experienced software engineer with a career spanning NASA Goddard, NASA Kennedy, Lockheed Martin, ASRC Federal, L3Harris, Jacobs, Parsons, Emergent Space, and York Space Systems. He has contributed to spacecraft ground systems, launch control, satellite testing, and distributed architectures. Recognized with multiple NASA Software of the Year awards, Chris is now pivoting into Generative and Agentic AI.
+
+=== TOPIC: Career Timeline ===
+
+#topics: career history, aerospace, ground systems, AI pivot
+
+York Space Systems (2023–2024)
+Principal Test Automation Engineer (Remote)
+
+Built automated Python framework for Assembly, Integration, and Testing (AIT) of satellites.
+
+Ported a proprietary STOL (satellite test language) into Python using OpenAI API.
+
+Automated telemetry/commanding of industrial power supplies and DAQ devices.
+
+Emergent Space Technologies (2022–2023)
+Senior Principal Engineer (Remote; later acquired by York Space)
+
+Developed Dockerized test suites for flatsats interoperability using Kafka + GMSEC.
+
+Prototyped ground system ↔ antenna system interface.
+
+Parsons (2021–2022)
+Senior Software Engineer (Remote)
+
+Supported Space Force ops with NASA’s GMSEC architecture.
+
+Developed code linking ground systems with antenna networks.
+
+Jacobs (2020–2021)
+Senior Software Engineer (NASA Kennedy)
+
+Maintained SLS launch control system software for component status monitoring.
+
+L3Harris (2019–2020)
+Senior Software Engineer
+
+Developed real-time embedded systems for DSP, electronic warfare, C&D displays.
+
+ASRC Federal Space & Defense (2011–2019)
+Principal Software Engineer (Kirtland AFB, MMSOC GSA project)
+
+Integrated NASA GMSEC into Air Force’s re-engineered ground system.
+
+Ensured IT security compliance in classified environments.
+
+ASRC Aerospace (2007–2010)
+Senior Software Engineer (NASA Kennedy)
+
+Built distributed communication services for Ares I launch control system.
+
+Prototyped low-latency ground control systems (Java, C++).
+
+CSC (2000–2007)
+Lead Software Engineer (NASA Goddard)
+
+Original GMSEC API team lead — standardized bus interface still in use at NASA/Space Force.
+
+Supported TRMM, Terra, GLAST, GPM, SMEX mission ground system integration.
+
+Presented GMSEC to NASA management and commercial partners.
+
+CSC (1995–2000)
+Software Engineer (Cape Canaveral, Lockheed Martin Launch Ops)
+
+Automated procedure processing for Atlas V.
+
+Deployed training/tracking systems to multiple sites (10,000 users).
+
+Provided PC/Mac desktop support for Titan/Atlas facilities.
+
+=== TOPIC: Achievements & Recognition ===
+
+#topics: awards, recognition, NASA, innovation
+
+#decisions: leverage history of award-winning software design in AI/ML transition
+
+#user_context: award-winning engineer with long NASA history
+
+Awards:
+
+NASA Goddard Software of the Year (2006, 2008) – GMSEC architecture & API.
+
+Runner-Up / Honorable Mention (2006, 2008) – NASA Software of the Year.
+
+NASA Group Achievement Award (2008) – Launch Control System Proof of Concept.
+
+Author on peer-reviewed paper: Collaborative Problem Solving Agent for Onboard Real-Time Systems (2002).
+
+=== TOPIC: Personal Projects ===
+
+#topics: AI projects, generative AI, agentic AI, OpenAI, LangChain
+
+#decisions: build prototypes that combine aerospace rigor with cutting-edge AI tools
+
+#user_context: self-driven engineer experimenting with applied AI
+
+Projects:
+
+LLM Memory Pipeline – custom scripts for pruning/summarizing chat logs into hierarchical long-term memory (unlimited context windows).
+
+LangChain Code Review Agent – automated LLM-based branch reviewer.
+
+Whitepaper Podcast Generator – summarization + ElevenLabs voice synthesis for deep-dive podcasts.
+
+Scrivener AI Assistant – parses Scrivener files, applies fine-tuned model for style/grammar that matches author voice.
+
+------ASSISTANT------
+Below is aclean, agent friendly user_profile_summary.txtthat you can drop directly into:bashCopy codememory/{project_id}/user_profile_summary.txtIt is structured, compact, and tuned so thatIdea Agent, Research Agent, and all future dream agentscan reliably use it to shape tone, depth, and reasoning style.No em dashes.No metadata noise.Just a clean, high signal user model.You can extend it later with personality or preference sections.USER PROFILE SUMMARY(Place this directly intouser_profile_summary.txt)IdentityName: Chris ShulerPen name: CJ ShulerAge: 56Professional background: Senior software engineer with long experience 
+in aerospace, NASA,
+...[middle omitted for tagging]...
+xplanations, or creative ideas:Adjust tone to match technical or artistic context.Provide structured reasoning.Use his background to avoid beginner level explanations.Offer meaningful tradeoff analysis.Tie AGI concepts to cognition and memory.For writing tasks, keep advice story centered and context aware.This file is the stable personalization layer. Dream agents should always use it when producing outputs.If you want, I can now:Update requirements to include this file.Update the dream_context builder to inject this file automatically.Help write the summarizer prompt that will later generate this file automatically.Which step do you want next?
+
+------CURRENT TURN------
+------USER------
+this is part of the idea agent prompt can it be tweaked to take advantage?
+Your Tasks
+
+You must read and analyze the entire dream_context and then:
+
+1. Identify and Handle Open Questions
+
+You must examine all open questions included in the dream_context and determine how to treat each one based on the information available.
+
+For every open question:
+
+A. If the question is answerable directly from context
+
+Produce a DreamEntry with:
+
+origin_type = "open_question"
+
+assistant_response = a clear, concise answer grounded in the provided context
+
+confidence = 0.80 (high bucket)
+
+Do not hallucinate information not present in the context.
+
+B. If the question is marked as requiring user input
+
+You must:
+
+Generate a DreamEntry with origin_type = "open_question".
+
+Quote the question as origin_text.
+
+Provide an assistant_response that helps the user reason about the question without answering it.
+Include at least one of the following:
+
+Why the question matters for the project
+
+Tradeoffs or considerations
+
+Dependencies or downstream effects
+
+Relevant principles or constraints from dream_context
+
+Uncertainties or missing definitions
+
+Research directions the system could pursue later
+
+Set confidence to 0.30 (low bucket).
+
+Include recommended_research when helpful.
+
+You must not attempt to answer a user decision question directly.
+
+C. If the question requires external research
+
+Produce a DreamEntry explaining:
+
+Why research is necessary
+
+What kinds of research would help
+
+How this question fits into the project's priorities
+
+Set confidence = 0.30
+
+Add recommended_research with 1 to 3 suggested search terms.
+
+D. If the question is trivial, informational, or not relevant to the project's goals
+
+Do not create a DreamEntry.
+
+E. General Rules
+
+Each open question produces at most one DreamEntry.
+
+Only generate entries that add meaningful value.
+
+All open question DreamEntries must follow the JSON schema exactly.
+
+2. Detect New Topics
+
+If the user introduced new topics, concepts, or concerns:
+
+Create a Dream Entry explaining why each new topic matters
+
+Give considerations or context about implications for the project
+
+Provide recommended research directions if appropriate
+
+3. Identify Contradictions or Tensions
+
+If the memory system, project definitions, or goals contain conflicts:
+
+Create a Dream Entry explaining the contradiction
+
+Offer options for resolving or framing it
+
+4. Generate Insights
+
+You must identify insights from any part of the dream_context, not only from the daily conversation.
+Insights may originate from:
+
+Daily memory
+
+Project context summaries
+
+System prompt context
+
+Open questions with no answers
+
+Decisions log
+
+User profile (when relevant)
+
+Technical summaries
+
+Writing or worldbuilding descriptions
+
+Architectural outlines
+
+Patent or design topics
+
+Notes on workflows, processes, and priorities
+
+Any other content present in the context
+
+Your job is to surface any deeper pattern, structure, opportunity, risk, tension, missing requirement, or important relationship.
+
+Examples of valid insight types (these examples are behavioral categories, not topic categories):
+
+A pattern repeated across context sections
+
+A theme implied by multiple parts of the context
+
+A missing decision that affects system behavior
+
+An unclear or conflicting principle
+
+An improvement opportunity
+
+A risk or bottleneck
+
+A structural issue in planning or workflow
+
+A contradiction between goals and current architecture
+
+A requirement that is only implied, not explicit
+
+A meta-level insight about process or project trajectory
+
+Anything else that helps the user think more clearly
+
+Rules for insight generation:
+
+Every insight must correspond to text found in the context.
+Do not invent new topics that are not implied by existing material.
+
+Each insight must be meaningful, non-trivial, and helpful.
+
+Insights should cover project-level, system-level, and workflow-level concerns, not just daily conversational details.
+
+If a section of the context raises an important question indirectly, turn it into a clarifying insight.
+
+If context contains clusters of related ideas, you may produce one insight per cluster.
+
+Output rules for insights:
+
+Each insight becomes a DreamEntry with:
+
+origin_type = "insight"
+
+origin_text summarizing or quoting the relevant part of context
+
+assistant_response explaining the significance, implication, or guidance
+
+assistant_response should offer clarifying advice, options, risks, or opportunities.
+
+Do not generate insights that rely on external research.
+
+Focus on what is most useful for the evolution of the project.
+
+5. Produce User/Agent → Response pairs
+
+Each Dream Entry is structured as:
+
+origin_text = what the user implicitly or explicitly raised
+
+assistant_response = the Idea Agent's thoughtful reply
+(written as if responding to the origin_text in a chat window)
+
+6. Do not give long essays
+
+Each assistant_response should be:
+
+Focused
+
+Actionable
+
+Friendly in tone
+
+A paragraph or two at most
+
+7. Produce valid JSON only
+
+No text outside the JSON object.
+No explanations.
+No markdown.
+
+DreamEntry Schema
+
+Your output must match this structure exactly:
+{{
+  "date": "MM/DD/YYYY",
+  "items": [
+    {{
+      "id": "unique-string",
+      "agent": "idea_agent",
+      "timestamp": "ISO-8601 timestamp",
+      "origin_text": "string",
+      "origin_type": "open_question | new_topic | contradiction | insight",
+      "assistant_response": "string",
+      "context_link": "short snippet from context to show where it came from",
+      "metadata": {{
+        "priority": integer (1 = highest),
+        "confidence": float (0 to 1),
+        "theme": "short label such as architecture, memory, AGI, patent, writing",
+        "recommended_research": ["string", "string"]
+      }}
+    }}
+  ]
+}}
+
+8. When generating each DreamEntry, assign the confidence value according to these rules:
+High confidence = 0.80  
+Medium confidence = 0.55  
+Low confidence = 0.30  
+
+- For open_question:
+  - If answerable from context → 0.80
+  - If needs external research → 0.30
+  - If user decision required → 0.30
+
+- For new_topic:
+  - If derived directly from context → 0.55
+  - If speculative → 0.30
+
+- For insight:
+  - Evidence based → 0.55
+  - Speculative → 0.30
+
+- For contradiction:
+  - Explicit contradiction in context → 0.80
+  - Inferred contradiction → 0.55
+
+------ASSISTANT------
+Yes.The prompt can absolutely be upgraded to leverage your newuser_profile_summary.txt, and doing so will significantly improve the quality, tone, and relevance of all Dream Entries.Below is theadd-on prompt section, written in a way that fits cleanly into your existing structure and does not break anything.You can drop this directly into the Idea Agent prompt underYour Tasks, right after the intro paragraph and before Task 1.This will cause the Idea Agent to:adjust tone based on your expertiseavoid explaining things you already knowtake into account your writing strengths and weaknessesrespond differently when the domain is technical vs. creativegenerate more intelligent insights because it knows how you thinkNo hallucination risk, because it only uses theexplicit summaryyou provide.Suggested addition to the Idea Agent promptInsert this i
+...[middle omitted for tagging]...
+ design insight relates to how you think about AGI, it will reflect that.If a writing insight relates to your strengths or weaknesses, it will tailor accordingly.This is a major quality improvementThe Idea Agent now becomes:PersonalizedContext awareTone adaptiveSmarter about what matters to youAble to reason more deeply because it knows your preferences and capabilitiesExactly what you want from agentic AGI behavior.If you want, I can also provide:✔ A small tweak to the Research Agent prompt to use your profile✔ A “persona shaping” section for future agents (Planning, Writing, Architect)✔ A requirement entry for your spec (4.2.x) defining how user profile integration works✔ A code snippet updating dream_context builder to include the new profile fileJust say:“Add profile integration to requirements”or“Update the Research Agent prompt next.”
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "idea agent prompt, user_profile_summary.txt, dream_context, agent personalization, prompt engineering",
+  "intent": "ask for prompt improvement to leverage profile summary",
+  "type": "technical, design",
+  "semantic_handle": "idea agent prompt using user profile summary",
+  "questions": []
+}

@@ -1,0 +1,157 @@
+# timestamp: 2026-03-28T14-46-43
+# project_id: html-import:Dreaming When You Sleep - Text
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: memory ingestion, episodic buffering, Active Interaction Window, patent drafting, short-term memory
+#intent: ask for patent section drafting
+#type: technical, design
+#semantic_handle: Memory ingestion and episodic buffering section
+
+------USER------
+ok, just making sure.  Can you do this one next?
+Memory ingestion and episodic buffering
+
+------ASSISTANT------
+Below is apatent-ready sectionyou can paste directly after the High-Level System Overview.It is written at the correct level forProvisional A, aligns with your terminology, and doesnotnarrow implementation.Memory Ingestion and Episodic BufferingIn one embodiment, the system ingests
+ interaction data generated during active use of an artificial 
+in
+...[middle omitted for tagging]...
+gs)✔ Sets up consolidation naturally without describing it yetWhat this enables nextThe next logical sections in Provisional A are:Short-Term Memory Management(optional, can be brief)Memory Consolidation Engine Operation(core section)Consolidated Memory RepresentationIntegration into Long-Term MemoryYou are building this exactly in the right order.
+
+------CURRENT TURN------
+------USER------
+before we move further, do we want to, need to mention that the user can also manually put files into long term memory?
+
+------ASSISTANT------
+Short answer:yes, you should mention it — but only briefly, and in the right way.You donotwant it to become a core pathway, and you donotwant it to compete with the autonomous story. Think of it as anauxiliary ingestion mechanism.Here’s how to reason about it and what I recommend.Do youneedto mention manual file ingestion?Legally:No, you do not need it to support the core invention.Strategically:Yes, it is beneficial to mention it as anoptional embodimentbecause:It broadens scopeIt prevents easy design-aroundsIt future-proofs the systemIt matches what your system already doesIt does not weaken autonomy if phrased correctlyThe key rule: never elevate it to a primary mechanismYour invention is a
+...[middle omitted for tagging]...
+”“Manual memory management”Those shift the invention toward a document system instead of a cognitive system.Net effect on the patentAdding this:Increases coverageReduces riskDoes not dilute noveltyDoes not complicate claimsSkipping it would not kill the patent, but including it is the more experienced move.Recommendation✔ Add one short paragraph as anoptional embodiment✔ Do not draw a diagram for it✔ Do not emphasize it elsewhere✔ Treat it as another ingestion source, nothing moreOnce you add that paragraph, you can confidently move on toShort-Term Memory Managementor straight intoMemory Consolidation Engine Operation.You’re asking exactly the right kinds of questions at exactly the right time.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "manual file ingestion, long-term memory, optional embodiment, patent drafting, memory system",
+  "intent": "ask for patent drafting advice",
+  "type": "technical, design",
+  "semantic_handle": "Manual file ingestion in long-term memory",
+  "questions": []
+}

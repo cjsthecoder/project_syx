@@ -1,0 +1,157 @@
+# timestamp: 2026-03-28T14-07-50
+# project_id: html-import:Dreaming When You Sleep - Claim Numbering Guidance
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: patent formatting, word headings, uspTO, claims, provisional patent, non-provisional patent, readability
+#intent: ask whether blank lines between headings are acceptable for patent document formatting
+#type: technical
+#semantic_handle: Patent heading spacing in Word
+
+------USER------
+when we reformatted A, it removed the spacing between the headings.  Is it ok, to put a blank like between them?  its hard to read.
+
+------ASSISTANT------
+Yes. It is not only ok, it isrecommended.What happened to you is very common 
+when moving into patent-style formatting. Word heading styles often 
+collapse spacing, which makes long specifications hard to read, even 
+though they 
+...[middle omitted for tagging]...
+after headings is fineOne blank line between claims is fineReadability mattersYou are not risking anything by doing thisIf a lawyer later reworks formatting, they will adjust styles anyway. Right now, clarity is the right choice.
+
+------CURRENT TURN------
+------USER------
+for the provisional, does an examiner even read it?
+
+------ASSISTANT------
+Short answer:no, not in the way people usually imagine.Here is the accurate breakdown.What happens to a provisional applicationA provisional patent application isnot examined.That means:No examiner is assigned.No prior art search is performed.No rejections are issued.No office action is written.No one evaluates novelty or obviousness at that stage.The USPTO essentially:checks that required parts are present,assigns a filing date,stores the document.That is it.So who ever reads it?During the provisional yearPractically no one at the USPTO reads it for substance.The only people likely to read it are:youa
+...[middle omitted for tagging]...
+essure.Why examiners later care (but only indirectly)When an examiner looks at your non-provisional, they may think:“This claim is broad. Do they actually get priority back to the provisional?”If the answer is clearly yes, they move on.If not, priority is denied for that claim, which can be fatal if prior art exists in the gap.Your work dramatically lowers that risk.Bottom lineNo examiner evaluates your provisional now.Yes, it will matter later.Its job is tolock in your invention date, not to win an argument.You have already done far more than necessary to satisfy that job.You can file with confidence.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "provisional patent, examiner, uspto, non-provisional patent, priority date",
+  "intent": "ask whether a provisional patent application is examined",
+  "type": "technical",
+  "semantic_handle": "Examination of provisional patent applications",
+  "questions": []
+}

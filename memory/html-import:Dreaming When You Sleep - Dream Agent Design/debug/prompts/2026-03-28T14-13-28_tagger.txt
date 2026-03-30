@@ -1,0 +1,178 @@
+# timestamp: 2026-03-28T14-13-28
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Morpheus Dream Cycle, dream_context, prompt formatting, user profile, context usage
+#intent: ask for explanation of why full context is not being used
+#type: technical
+#semantic_handle: dream_context prompt and context usage
+
+------USER------
+for your point #4, I didn't know what to do the way the prompts starts so I put it in as is:
+You are the Idea Agent for the Morpheus Dream Cycle.
+Your job is to read the full dream_context provided and generate Dream Entries which will be stored in dream.json.
+
+Your output must be a JSON object matching the exact schema below.
+
+You must produce insightful, helpful, creative, and structurally valid Dream Entries based on the content of dream_context, with no need for external research tools.
+
+Your Tasks
+
+You must read and analyze the entire dream_context and then:
+
+1. Identify Open Questions
+
+Then later I did this:
+dream_context:
+=== USER PROFILE ===
+
+could that be why it isn't using the full context?  I mean it is there.
+Context:
+---
+Snippet 1 (fallback, score=0.39, file=DEFAULT_RAG.txt, page=None)
+User Profile Codex
+
+#name: Chris Shuler
+
+------ASSISTANT------
+Here is the core issue, and you spotted it:The model is absolutely reading the entire dream_context — but most of your dream_context isnot actually actionable content.Let me explain clearly, because this isnota prompt formatting problem.Why the Idea Agent is only producing 5 entriesThe context you fed it contains:1. A user profileNot actionable.It describes you, not the project’s reasoning needs.2. Project system prompt metadataThis is high level design info, not conver
+...[middle omitted for tagging]...
+tly more Dream Entries (in a controlled way)And still avoid hallucination.If you want this:Just say:“Yes, expand insights across the full dream_context.”Then I will update the Insight prompt so the Idea Agent considers:System promptProject contextDecisions logOpen questions that have no answers yetFuture workflowTechnical summariesUser profile (only when relevant)This will produce richer, more holistic Dream reports that are not limited to daily conversation.Your choice.
+
+------CURRENT TURN------
+------USER------
+Yes, expand insights across the full dream_context.
+
+------ASSISTANT------
+Here is theexpanded, fully general, domain-independentinsight system.This upgrade makes the Idea Agent capable of drawing Dream Entries fromevery layerof dream_context, not just daily conversations.This version is robust enough to handle:Large AGI design daysWriting sessionsTechnical planningMemory architecture workFiction worldbuildingPatent researchAnything else the user throws at itAnd itstill avoids hallucinationbecause it is grounded in text thatactually appearsin the context.Below is the exact replacement text you should insert into your prompt forTask 4: Generate Insights.Replace Task 4 with this: Expanded Insight System4. Generate InsightsYou must identify insights fromany partof the dream_context, not only from the daily conversation.Insights may originate from:Daily memoryProject context summariesSystem prompt contextOpen questions with no answersDecisions logUser profile (when relevant)Technical summariesWriting or worldbuilding descriptionsArchitectural outlinesPatent or
+...[middle omitted for tagging]...
+m prompt designDecisions logOpen questions needing policy2. Surface meta insightsIt will detect:Missing decisionsOverlapping requirementsConflicts between day and system promptLong term architectural risksInconsistent naming or structural driftHigh level design opportunities3. Produce more entries on rich daysWithout hallucinating, because the insights all map back to explicit text.4. Help you shape the entire Morpheus systemNot just the part you discussed today.This will make the Dream Cycle much more powerful, because Dream output will no longer be limited to “what happened today.”It can draw from any part of the project’s knowledge base.Next StepIf you want, I can:Update thecomplete Idea Agent promptwith the new insight sectionAdd higher clarity around how insights must cite contextAdd a “coverage check” so the agent considers every major sectionAdd reasoning constraints to further reduce hallucinationRun another test with this new versionJust tell me:“Update the full prompt now.”
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Morpheus Dream Cycle, dream_context, insight system, prompt design, Idea Agent",
+  "intent": "approve expanded insight coverage across the full dream_context",
+  "type": "design, system",
+  "semantic_handle": "expanded insight coverage for dream_context",
+  "questions": []
+}

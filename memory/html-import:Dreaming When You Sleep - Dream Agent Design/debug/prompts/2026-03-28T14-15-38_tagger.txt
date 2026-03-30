@@ -1,0 +1,172 @@
+# timestamp: 2026-03-28T14-15-38
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: FR-4.1.3.X Project RAG Enrichment, Dream Context Builder, project RAG index, long-term memory store, Idea Agent, dream_context
+#intent: clarify requirement placement and pipeline insertion
+#type: technical, design
+#semantic_handle: project RAG enrichment requirement placement
+
+------USER------
+those changes are in and work, although it hard to prove the questions are different.  In anycase, let's go back to this one:
+FR-4.1.3.X Project RAG Enrichment
+
+The Dream Context Builder SHALL perform a RAG retrieval pass over the project’s long term memory store or project RAG index.
+
+The retrieval SHOULD:
+
+Select top-K relevant documents (configurable, default K = 5)
+
+Filter noise by similarity threshold
+
+Insert retrieved snippets under === PROJECT RAG CONTEXT ===
+
+The builder SHALL ensure this appears before Idea Agent processing.
+
+------ASSISTANT------
+Below
+ is a clean, production-ready version of the requirement, shaped to fit 
+exactly into your requirements hierarchy and consistent with the other 
+sections.I also include a short note onwherein the pipeline it belongs so Cursor will not ask follow-up questions.FR-4.1.3.X Project RAG E
+...[middle omitted for tagging]...
+ext constructionphase, not an agent.If you want, I can also:Write the implementation requirements for the helper function that retrieves these itemsAdd logging format rulesAdd a toggle for enabling or disabling RAG enrichmentAdd debug-file support to show retrieved RAG docs for inspection
+
+------CURRENT TURN------
+------USER------
+ok, the question is, what is the query?  now that I think about this, I don't know.  I guess it would be good to have some summary of the RAG that helped scope the questions, agents, etc.
+
+------ASSISTANT------
+Here is the key insight:There is no single perfect query, because the Idea Agent must processalltopics in the dream_context, not just one.So the Project RAG Enrichment step needs to retrievebroad, high-signal background knowledgethat supportsanyof the Idea Agent’s tasks:answering open questionsframing tradeoffsdetecting contradictionsgenerating insightstying together patterns across the projectThat means the retrieval query must bederived from the context itself, not from a fixed keyword.Below are three viable strategies, with one clear winner.Option A: Use the entire dream_context as the query(recommended)This approach is simple, powerful, and aligns with the pipeline’s purpose.AlgorithmAfter building the dream_context string (USER PROFILE, SYSTEM PROMPT, DAILY MEMORY, QUESTIONS, etc.),Pass that entire text to the RAG retrieval function as the query.Retrieve top-K results.ProsAutomatically adapts to each day’s topics.Ca
+...[middle omitted for tagging]...
+der SHALL use
+ the complete assembled dream_context string as the retrieval query for 
+the Project RAG Enrichment step.This query includes:User profile summaryProject system promptProject context summaryDaily memoryOpen questions and answersSleep summary all contentAny additional context sectionsThe retrieval SHALL therefore reflect all topics, concerns, and themes relevant to the current dream cycle.FR-4.1.3.X.B Retrieval BehaviorRAG retrieval SHALL:Use dream_context as the semantic queryReturn top-K relevant long-term memory entries (default K=5)Apply a similarity threshold to reduce noiseInclude retrieved snippets under === PROJECT RAG CONTEXT ===Include metadata when available (title, type, similarity score)If you want, I can also:Draft the code stub for the retrieval functionWrite a validator for the RAG context sectionAdjust the logging formatUpdate Dream Context Builder requirements to reflect the new architecture
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "project rag enrichment, dream context builder, retrieval query, long-term memory store, project rag context",
+  "intent": "clarify retrieval query and summary context",
+  "type": "technical, design",
+  "semantic_handle": "project rag retrieval query strategy",
+  "questions": []
+}

@@ -1,0 +1,170 @@
+# timestamp: 2026-03-28T14-00-19
+# project_id: html-import:Dreaming When You Sleep - Morpheus 3.0 summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: patents, invention disclosure, trade secrets, prompt templates, memory persistence
+#intent: ask about what details to include in a patent application
+#type: legal, technical
+#semantic_handle: Patent disclosure and implementation details
+
+------USER------
+ok, by the way, I learned that this "Who was the lighthouse keeper?" didn't work.  But when I added the name of the made up lighthouse it worked.
+
+So, question, kind of about patents.  Do we really want to put all these details in the application?  First someone could back engineer it, but Second, someone could change a few little things, accomplish the same thing, without doing what I did
+
+------ASSISTANT------
+You’re thinking like someone who’s already halfway to protecting a major invention — and you’re right to be careful.Here’s the straight answer from both astrategyandlegal-practicalperspective:1. You Don’t Need to Include Every DetailThe purpose of a patent is toteachyour invention — notreveal your full implementation.The filing must describeenoughfor a skilled person in the field to reproduce the inv
+...[middle omitted for tagging]...
+.Mark your internal optimizations (prompts, formats, filenames) as confidential trade secrets in your notes — don’t publish them.If you’d like, I can help you outline a“disclosure boundary map”— showing what to patent vs. what to keep secret — so when you start 
+drafting with the agent or attorney, you already know exactly what stays
+ private.Would you like me to make that next?[11-11-2025 11:21 EST]
+
+------CURRENT TURN------
+------USER------
+ok, for the record, the logs and the chat histories would have enough to reverse engineer it all
+
+------ASSISTANT------
+Yep
+ — very plausible. Logs, raw chat transcripts, and indexed artifacts are
+ basically a recipe book for your pipeline if someone gets hold of them.
+ Good that you spotted that risk — now you can protect the evidence you 
+need for a strong patent while minimizing leakage.Here’s a short, practical plan you can act on immediately.Preserve raw evidence, privatelyKeep original logs, chat transcripts,
+ sleep/summarize/dream outputs, and rebuild logs intact in a secure 
+private repo (encrypted, access limited).Use immutable archives (zip + sha256) with timestamps so you can prove chronology later.Do not publish raw artifactsDo not put raw transcripts, prompts, or detailed logs into any public venue (LinkedIn, repos, blog posts).Treat prompts, exact file formats, 
+...[middle omitted for tagging]...
+xisted on a date without 
+publishing it.Keep a changelog documenting what you redact and why.If you must publish something nowPublish only high-level results and
+ outcomes (e.g., “system retained new facts introduced in session and 
+retrieved them after consolidation”), not the exact text or log 
+snippets.Plan for follow-on protectionIf you later refine the tagger, 
+prompts, or chunking, keep those as trade secrets or consider a separate
+ continuation filing describing the ingestion/optimization layer.If you want, I can:draft a short “disclosure boundary map” (what to include in the patent vs what to keep secret), orcreate the redaction checklist and a template for the attorney-only evidence package.Which would be most useful right now?[11-12-2025 08:00 EST]
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "logs, chat histories, reverse engineering, patents, trade secrets",
+  "intent": "state reverse engineering risk for patent disclosure",
+  "type": "technical, legal",
+  "semantic_handle": "Reverse engineering risk from logs and transcripts",
+  "questions": []
+}

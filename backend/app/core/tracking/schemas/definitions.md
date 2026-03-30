@@ -61,7 +61,8 @@ Required top-level:
 - `final_context_tokens_est`
 - `final_context_clipped`
 - `main_total_tokens_reported`
-- `mini_total_tokens_reported_sum`
+- `mini_prompt_tokens_reported`
+- `mini_completion_tokens_reported`
 - `turn_total_tokens_reported`
 - `turn_usage_source`
 - `turn_usage_is_estimate`
@@ -117,7 +118,8 @@ Required top-level:
 - `final_context_tokens_est`
 - `final_context_clipped`
 - `main_total_tokens_reported`
-- `mini_total_tokens_reported_sum`
+- `mini_prompt_tokens_reported`
+- `mini_completion_tokens_reported`
 - `turn_total_tokens_reported`
 - `main_prompt_tokens_reported`
 - `main_completion_tokens_reported`
@@ -386,18 +388,25 @@ Required top-level:
 - How computed: Sum `total_tokens_reported` where `purpose=main`.
 - Invariants / tolerance: Exactly one main invocation required in v1.
 
-#### `mini_total_tokens_reported_sum`
+#### `mini_prompt_tokens_reported`
 - Type and units: int (tokens)
-- Exact meaning: Total interactive non-main invocation tokens for turn.
+- Exact meaning: Total interactive non-main prompt tokens for turn.
 - Where measured: `end_turn`, post invocation rollup.
-- How computed: Sum totals for non-main, non-maintenance invocations.
-- Invariants / tolerance: Must match internal interactive non-main rollup.
+- How computed: Sum `prompt_tokens_reported` for non-main, non-maintenance invocations.
+- Invariants / tolerance: Non-negative; contributes to `turn_total_tokens_reported`.
+
+#### `mini_completion_tokens_reported`
+- Type and units: int (tokens)
+- Exact meaning: Total interactive non-main completion tokens for turn.
+- Where measured: `end_turn`, post invocation rollup.
+- How computed: Sum `completion_tokens_reported` for non-main, non-maintenance invocations.
+- Invariants / tolerance: Non-negative; excluded from `turn_total_tokens_reported`.
 
 #### `turn_total_tokens_reported`
 - Type and units: int (tokens)
 - Exact meaning: Total interactive turn token usage.
 - Where measured: `end_turn`.
-- How computed: `main_total_tokens_reported + mini_total_tokens_reported_sum`.
+- How computed: `main_total_tokens_reported + mini_prompt_tokens_reported`.
 - Invariants / tolerance: Must match exact sum.
 
 #### `main_prompt_tokens_reported`

@@ -1,0 +1,170 @@
+# timestamp: 2026-03-28T14-25-53
+# project_id: html-import:Dreaming When You Sleep - Patent B Revision Outline
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: patent drawings, FIG. 1, system 100, system-level architecture, patent drafting, Patent A, Patent B
+#intent: ask for explanation and advice on updating patent figure text and reuse strategy
+#type: technical
+#semantic_handle: Patent figure alignment and reuse
+
+------USER------
+ok, this is an updated image.  I thought we were going to reuse the drawings across the two, but if we need to split that is ok.  here is the text we had before:
+
+FIG. 1 – System-Level Memory-Oriented Inference Architecture
+FIG. 1 illustrates a system-level architecture for an artificial intelligence system implementing structured short-term and long-term memory management, inference orchestration, and reflective memory consolidation.
+A user interaction interface (110) receives interaction input from a user and presents generated responses to the user. The user interaction interface (110) provides interaction input to an inference orchestration engine (160).
+The inference orchestration engine (160) analyzes the interaction input and determines selective retrieval decisions for memory access. Based on such decisions, the inference orchestration engine (160) retrieves relevant memory segments from a short-term memory store (140) and a long-term memory store (150).
+The short-term memory store (140) maintains active interaction memory representing recent interaction history. The long-term memory store (150) maintains consolidated knowledge accumulated over time. Retrieved memory segments from the short-term memory store (140) and the long-term memory store (150) are provided to the inference orchestration engine (160) and used to construct a combined prompt.
+The inference orchestration engine (160) provides the combined prompt to an artificial intelligence model (120). The artificial intelligence model (120) generates a response based on the combined prompt and returns the response to the user interaction interface (110) for presentation to the user.
+Interaction history generated during user interaction is stored in the short-term memory store (140). Periodically or asynchronously, interaction history and memory data are provided to a memory consolidation engine (180).
+The memory consolidation engine (180) processes memory data to produce consolidated memory representations. In some embodiments, the memory consolidation engine (180) includes or invokes an introspective analysis engine (190) configured to perform reflective analysis, insight extraction, question generation, or identification of candidate knowledge artifacts based on consolidated memory data.
+The introspective analysis engine (190) generates candidate knowledge artifacts, which may be provided to a human review interface (195). The human review interface (195) allows a human user to approve, reject, or modify proposed knowledge updates.
+Approved knowledge updates are stored in the long-term memory store (150) as consolidated knowledge. Consolidated memory data may also be fed back to the memory consolidation engine (180) for ongoing maintenance and refinement.
+Maintenance control signals may be exchanged between the artificial intelligence model (120) and the memory consolidation engine (180) to coordinate internal maintenance, optimization, or reflective processing.
+
+------ASSISTANT------
+This looks good, and you’re very close. The drawing itself ispatent-clean, and addingsystem 100was exactly the right move. What you need now is atight alignment passbetween the figure and the figure description so the examiner never has to reconcile ambiguity.I’ll break this into three parts:Is the drawing acceptable as-is?Whatmustchange in the FIG. 1 descriptionA clean, examiner-grade rewritten FIG. 1 text you can drop in1. Is the drawing acceptable now?Yes.This drawing is absolutely acceptable for a provisional and even for a non-provisional later.Specifically:Thesystem-level reference numeral (100)is correctThe arrow pointing to the whole syst
+...[middle omitted for tagging]...
+ge.
+ Maintenance control signals may be exchanged between the artificial 
+intelligence model(120)and the memory consolidation engine(180)to coordinate autonomous maintenance, optimization, or reflective processing independently of active user interaction.Final assessment✅ Drawing is good✅ System numeral usage is correct✅ Architecture is clear and defensible✅ Text now matches the visual semantics✅ No unnecessary narrowing✅ Examiner-friendlyIf you want, next we can:Decide whetherFIG. 1should be referenced by both A and B identically or slightly specializedOr do aquick examiner-style stress test: “If I wanted to reject this figure, how would I try?”
+
+------CURRENT TURN------
+------USER------
+do a quick examiner-style stress test
+
+------ASSISTANT------
+Perfect timing to do this. I’ll put on theUSPTO examiner hatand try to reject or weaken thisFIG. 1 + description, then tell you how strong your position is and where, if anywhere, you’re exposed.I’ll keep thisquick but sharp, the way an actual first Office Action reads.Examiner Stress Test: FIG. 1 + DescriptionExaminer GoalMap your system onto:generic LLM + RAG memory,known “agent frameworks,” orprior art with STM/LTM consolidation,and arguelack of novelty or obviousness.Attack Vector 1: “This is just RAG with background processing”Examiner argument:FIG. 1 shows an inference engine 
+retrieving STM/LTM and constructing prompts. That is well-known RAG. 
+Background consolidation is merely an obvious optimization.Your Defense (STRONG)You havethree concrete differentiatorsclearly supported by the figure and text:Temporal separationConsolidation happensoutside inferenceInference never modifies memoryThis is visually reinforced by:no arrows from inference → consolidationconsolidation receiving rolled-off data, not live contextGoverned lifecycleConsolidation producesfixed consolidated artifactsThese are not ephemeral summariesThey feed long-term storage and future cyclesBidirectional maintenance signalingMaintenan
+...[middle omitted for tagging]...
+rned artifactsperform lifecycle governanceExaminer outcome:❌ Weak analogyAttack Vector 6: “The figure is too abstract”Examiner argument:FIG. 1 is functional and abstract.Your Defense (ACCEPTABLE)For aprovisional, this is fine.You have:numbered componentsdata flow arrowsmemory separationoptional components clearly markedLater, if needed, you can add:a flow diagram (method claims)a maintenance-phase sequenceButright now, FIG. 1 is doing its job.Examiner outcome:⚠️ Not a rejection at provisional stageExaminer Verdict (Honest)If I were an examiner:Iwould cite prior artIwould initially question obviousnessIwould notsay this is anticipatedIwould notsay it’s the same as MemGPT, RAG, or agent frameworksIwould expectyou to argue lifecycle separation and governanceThat is exactly the position you want to be in.Bottom LineFIG. 1 passes an examiner stress test.Your strongest anchors are:temporal separationfixed consolidated artifactslifecycle governancenon-inference consolidationartifact-based outputs instead of actionsThere isno fatal flawhere.If you want, next we can:stress testclaims derived from this figuresimulate a§103 obviousness rejectionand draft a responseor do aPatent A vs Patent B claim-mapping sanity check
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "USPTO examiner, FIG. 1, patent drafting, obviousness rejection, claim mapping",
+  "intent": "stress test patent figure and description against examiner objections",
+  "type": "technical",
+  "semantic_handle": "Examiner stress test for patent FIG. 1",
+  "questions": []
+}

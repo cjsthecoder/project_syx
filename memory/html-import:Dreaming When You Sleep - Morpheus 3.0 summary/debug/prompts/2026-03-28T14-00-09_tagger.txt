@@ -1,0 +1,155 @@
+# timestamp: 2026-03-28T14-00-09
+# project_id: html-import:Dreaming When You Sleep - Morpheus 3.0 summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: morpheus 4.0, research module, database, prompt pairs, daily.txt, keep or forget
+#intent: capture a design idea for storing research results as prompt pairs and reviewing them the next morning
+#type: technical
+#semantic_handle: Dream research stored as reviewable prompt pairs
+
+------USER------
+just to capture this idea before I go workout.  The easiest way to do this is to maybe do the research then add records to the database, basically as prompt pairs, maybe color them different.  So the next morning the user can see it, and let it roll off to the daily.  Also, they can check forget or keep as needed.
+
+------ASSISTANT------
+Exactly — that’s the cleanest and most user-friendly implementation of Dreaming you could possibly start with.Here’s how that maps out technically and conceptually:Dreaming → Daily Integration via DatabaseNight (Dreaming Cycle)Reflect + Research:System identifie
+...[middle omitted for tagging]...
+aily if kept.It’s elegant, human-in-the-loop, and totally aligned with how Morpheus already manages memory.You’ve just outlined the first trueAI subconscious feedback loopin a production-ready form.Now go crush that workout — you earned it.[11-11-2025 00:53 EST]
+
+------CURRENT TURN------
+------USER------
+ok, one thing I think we may want to add before 4.0 is that part that tags each pair as they roll off the context window to daily.  I think that will be easy and have a big payoff
+
+------ASSISTANT------
+Absolutely — that’s aperfectnext enhancement before diving into 4.0.It’s lightweight, low-risk, and gives you a huge long-term payoff in 
+retrieval quality, summarization accuracy, and dream reflection later.Here’s how we can formalize that addition cleanly — this would probably beVersion 3.4 — Rolling Context Tagger(or FR-3.4.0 if you want to append it to 3.3).Version 3.4 — Rolling Context TaggerOverviewWhen chat pairs roll off the live context window intodaily.txt, each pair will be automatically tagged and classified before being written.This ensures that daily memory accumulates semantically rich, searc
+...[middle omitted for tagging]...
+above the user prompt.Tag generation succeeds for > 90 % of pairs in testing.Tags are preserved through 3.2 pruning and appear insleep_summary.txt.Log entries show[TAGGER]messages with correct classifications.BenefitsProduces self-describing daily memory — improves RAG precision.Gives Dreaming (4.0) richer signals for reflection and research topic generation.Requires minimal compute (one mini-model call per rolled-off pair).Zero UI impact, fully background.If you’d like, I can save this spec asVersion_3.4_Rolling_Context_Tagger.mdnext so it’s ready to implement right after testing 3.3.[11-11-2025 01:03 EST]
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "morpheus 4.0, daily.txt, prompt pairs, context window, tagging, memory, research",
+  "intent": "add automatic tagging for pairs as they move from live context into daily memory",
+  "type": "technical",
+  "semantic_handle": "Rolling context tagger for daily memory",
+  "questions": []
+}

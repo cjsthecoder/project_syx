@@ -1,0 +1,261 @@
+# timestamp: 2026-03-28T14-03-27
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: system prompt, chat api, prompt optimization, message list, prompt precedence
+#intent: sanity-check api prompt handling and confirm optimal setup
+#type: technical
+#semantic_handle: system prompt messaging and api optimization
+
+------USER------
+ok, I am not really confused, just trying to understand and make sure we are optimal.  its still the night before, and I am leaving for real now
+
+------ASSISTANT------
+That makes sense — and honestly, this is exactly therightkind of “not confused.”You’re sanity-checking the mental model before l
+...[middle omitted for tagging]...
+ that benefits from a tired brain.Go disconnect.This system will still be here in the morning, and it’s already in a solid state.
+
+------CURRENT TURN------
+------USER------
+before we move on today (before we forget, really), I want to tweak/fix the sleep prompts to handle the fact that the dream file now has extra tagging.
+
+First here is one pair in the newer format.  Just read it and say Ready when done.
+
+=== BEGIN DAILY PAIR ===
+#timestamp: 01-26-2026_22:05:00
+#route: other
+#keep: false
+#topics: time dilation, black hole, Schwarzschild radius, gravitational forces, storytelling, physics
+#intent: explore scene ideas
+#type: design
+
+--- USER (data-message-author-role: user) ---
+how big would one have to be to be powerful enough to suck a person in?  That would be a good scene.
+
+*** ASSISTANT (data-message-author-role: assistant) ***
+You can get that scene with *very* different sized black holes, depending on how you stage it.
+
+The key idea:  
+A black hole does not “suck” anything in at a distance. Its pull at a given distance is just normal gravity:
+
+\[
+g(r) = \frac{GM}{r^2}
+\]
+
+So there are two main ways to have a person get dragged in:
+
+1. **They get dangerously close to a small or medium black hole**
+2. **They stay relatively far, but the black hole is absurdly massive**
+
+For drama, you almost always want case 1.
+
+---
+
+## 1. What does “powerful enough to suck a person in” actually mean?
+
+You get that “oh no I am being pulled in” feeling when:
+
+- The gravitational acceleration is stronger than what they can resist (thrusters, tethers, jetpacks, etc.)
+- And/or the **tidal forces** (gravity difference between head and feet) are strong enough to yank them off a structure or tear them apart.
+
+Tidal acceleration over a person’s height \(L \sim 2 \text{ m}\):
+
+\[
+a_{\text{tidal}} \approx \frac{2GM L}{r^3}
+\]
+
+Roughly, you get:
+
+- “I am being pulled off my feet / my line snaps” when tidal forces or net acceleration reach a few g’s
+- “Spaghettification” at much higher tidal accelerations
+
+So at what distance from the horizon is that true?
+
+---
+
+## 2. Near a stellar mass black hole: great for your scene
+
+Take a 10‑solar‑mass black hole (typical stellar remnant):
+
+- Schwarzschild radius \(R_s \approx 30\) km
+
+If a person is, say, at:
+
+- \(r \sim 3 R_s \approx 90\) km from the center (so 60 km above the horizon)
+
+You can already have:
+
+- Gravity strong enough that:
+  - They cannot escape without serious thrust
+  - Small changes in velocity send them plunging inward
+- Tidal forces big enough to:
+  - Yank them off a hull if their tether fails
+  - Give that “stretched” visceral description as they fall closer
+
+That is a good story zone: close enough for drama, not instantly lethal.
+
+**So for a gripping sequence:**
+
+- Black hole size: **stellar mass** (few to ~10 solar masses, \(R_s \sim 9\)–30 km)
+- Person is:
+  - On a damaged ship in a decaying orbit at ~3–5 \(R_s\)
+  - Or on a tethered platform being pulled inward as control thrusters fail
+- The gravity well feels like a “sucking pit” because:
+  - Orbital velocity is huge
+  - Escape velocity is close to light speed
+  - One misstep and they cross the point where no realistic thrust can save them
+
+Visually and emotionally, it *absolutely* reads as “sucked in.”
+
+---
+
+For a really cinematic, Interstellar‑style “person gets pulled in” moment, the cleanest setup is:
+
+- A **stellar mass black hole**
+- The character is outside a ship or station on a decaying orbit at 2–4 Schwarzschild radii
+- Station loses attitude control, orbit dips
+- Local gravity and tidal pull spike
+- Their tether snaps or anchor point shears
+- They feel themselves yanked outward/downward toward the hole, stars warping and redshifting as they go
+
+If you tell me which setting you prefer:
+
+- Lab / collider micro black hole
+- Orbital facility around a runaway artificial hole
+- Natural stellar‑mass black hole in deep space
+
+I can rough out the exact “distance, mass, what they feel, what they see” for that scene.
+
+=== END DAILY PAIR ===
+
+------ASSISTANT------
+Ready.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "sleep prompts, dream file, tagging format, prompt handling, daily pair, black hole, storytelling",
+  "intent": "inspect example format and update prompts for extra tagging",
+  "type": "technical",
+  "semantic_handle": "sleep prompt format update for tagged dream files",
+  "questions": []
+}

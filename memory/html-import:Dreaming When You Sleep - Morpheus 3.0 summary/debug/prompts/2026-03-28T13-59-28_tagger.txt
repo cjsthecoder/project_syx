@@ -1,0 +1,189 @@
+# timestamp: 2026-03-28T13-59-28
+# project_id: html-import:Dreaming When You Sleep - Morpheus 3.0 summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Version 3.2, daily summarization pipeline, cleanup, Version_3.2_Summarization_Pipeline.md
+#intent: request file creation and add commented-out cleanup code
+#type: technical, planning
+#semantic_handle: Version 3.2 summarization file with cleanup comments
+
+------USER------
+ok, can you make the file.  And add a part to cleanup, to make the code to remove those two files, but comment them out till tested?
+
+------ASSISTANT------
+The requirements document forVersion 3.2 — Daily Summarization Pipelinehas been created.You can download it here:📄Version_3.2_Summarization_Pipeline.md[11-10-2025 01:22 EST]
+
+------CURRENT TURN------
+------USER------
+in the proof of concept we also did this prompt, when it concated a bunch of pruned files together,  can we still do this, I don't see how.
+
+def generate_topic_merge_prompt(content: str) -> str:
+    """Generate a prompt to merge multiple structured chat logs into a unified codex by topic."""
+    logger.info("Generating topic merge prompt")
+    return f"""You are given a combined file containing multiple structured chat logs.
+Each log may already include sections marked with headings like "=== TOPIC: … ===" 
+and metadata lines such as #topics, #decisions, and #open_questions.
+
+Your task is to reorganize the entire file into a unified codex by topic:
+
+1. Merge sections that cover the same or closely related themes into a 
+   single unified topic section.
+   - If topic headings differ slightly (e.g. "RAG buffer vs full RAG" and "Hybrid memory"), 
+     consolidate them.
+2. For each merged topic:
+   - Use this heading format: === TOPIC: unified short title ===
+   - Collect and merge all #topics, #decisions, and #open_questions lines from 
+     across the merged sections.
+     • Deduplicate overlapping items.
+     • Keep the most concise wording.
+   - Place the merged metadata directly under the heading.
+3. Under the metadata, include all USER and ASSISTANT exchanges from the original 
+   sections that 
+   belong to this topic.
+   - Keep them in chronological order where possible.
+   - Do not delete or rewrite content, only regroup it.
+4. If some sections do not fit any existing topic, create a new topic 
+   section for them.
+5. At the very end, add a "=== REFERENCES ===" section and preserve all 
+   URLs or references found in the original document.
+
+Return only the reorganized codex: topic headings, metadata, and grouped 
+Q&A, with references at the end.
+
+Here is the file content:
+{content}
+"""
+
+------ASSISTANT------
+Yes — that prompt still fits perfectly into the architecture, justone step later.In 3.2, we’re producingper-projectsummaries (sleep_summary.txt), but that merge prompt is meant forcross-project or multi-day consolidation— the “codex synthesis” step.Here’s how it fits conceptually:How It Fits3.2 (current)→ per-project summarization (each project’sdaily.txt→sleep_summary.txt)3.3 (next)→ rebuild each project’s RAG from those summaries3.4 (optional future)→ usegenerate_to
+...[middle omitted for tagging]...
+er synthesis, this merge is the natural first step — the system’s “memory integration.”Bottom LineYou don’t lose that capability; it just moves downstream in the pipeline:3.2 = produce structured memory3.3 = rebuild RAG3.4 = merge summaries into unified codex (via this prompt)So yes — keep thatgenerate_topic_merge_promptaround.It becomes your first “Dreaming-phase” tool, or possiblythe weekly consolidation jobthat merges everything across cycles.[11-10-2025 01:31 EST]
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "generate_topic_merge_prompt, daily summarization pipeline, codex synthesis, RAG, per-project summaries",
+  "intent": "ask for explanation of where the topic merge prompt fits in the pipeline",
+  "type": "technical, planning",
+  "semantic_handle": "topic merge prompt in summarization pipeline",
+  "questions": []
+}

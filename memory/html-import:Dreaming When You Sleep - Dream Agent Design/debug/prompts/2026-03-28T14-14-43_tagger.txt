@@ -1,0 +1,162 @@
+# timestamp: 2026-03-28T14-14-43
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Cursor, sequential execution, thread pool, dream pipeline, idea agent requirements, build_idea_prompt
+#intent: confirm removing a sequential execution requirement and prepare for idea agent requirements
+#type: technical
+#semantic_handle: Sequential execution requirement removed
+
+------USER------
+ok, I don't think we need this, and it will probably confuse Cursor.  Since it is already gone and sequential.
+NR-4.1.3.2.9 Sequential Execution Requirement
+The Idea Agent SHALL execute sequentially inside the dream pipeline.
+Concurrency MUST NOT be used inside individual dream cycles.
+Concurrency MAY be introduced at the sleep supervisor layer for running multiple dream cycles in parallel across projects.
+
+This documents your decision as a formal design rule.
+
+I am going to run through it real quick as a test, then we can get to the idea agent requirements
+
+------ASSISTANT------
+Understood. You made the correct call removing that requirement snippet.Why removing it was right:Cursor will push backif it sees non functional constraints that contradict the existing implementatio
+...[middle omitted for tagging]...
+mpt(dream_context:str)->strsince you created that function.============================================================Ping me when your quick test run finishes, and we’ll lock down the requirements.
+
+------CURRENT TURN------
+------USER------
+one more thing to keep in mind for requirements.  I was dumping the context to a file so we could see it.  I realized it was important and made it generate based on a flag.  I realized we were going to need it on the next steps too, so I made this env, GENERATE_DEBUG_FILES, that when true will write the files.  So, what ever idea agent outputs (json I think), will also want a write to file based on the flag function in there
+
+------ASSISTANT------
+Got it. This is an important architectural detail, and we’ll incorporate it cleanly into the Idea Agent requirements.Let me restate your design so we capture it precisely and weave it into the formal requirements.============================================================Your New Debug File Design============================================================• A new environment variable:iniCopy codeGENERATE_DEBUG_FILES=true|false• When true, the system writes intermediate debug artifacts:the dream_contextthe raw LLM output from Idea Agentthe parsed JSON (idea entries)later: raw output from Research Agent, merged dream output, etc.• When false, these files are not created, keeping the syste
+...[middle omitted for tagging]...
+bug files become:reproducible artifactstimestamped memory snapshotsdocumentation of dream evolutionlegal evidence of invention functionalityExcellent to have.============================================================We will incorporate this into the Idea Agent Requirements============================================================Once your quick test run is complete, we’ll draft:4.1.3.2 Idea Agent Requirementswith these sections:PurposeOverviewInputsOutputsPrompt ConstructionLLM InvocationJSON Parsing RulesError HandlingStorage RequirementsDebug File Behavior (including GENERATE_DEBUG_FILES)Logging RequirementsNotes / Future ExtensibilityLet me know when you're ready to start drafting.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "idea agent requirements, GENERATE_DEBUG_FILES, debug files, json parsing, file output",
+  "intent": "specify debug file behavior for idea agent outputs",
+  "type": "technical, design",
+  "semantic_handle": "Idea Agent debug file output requirement",
+  "questions": []
+}

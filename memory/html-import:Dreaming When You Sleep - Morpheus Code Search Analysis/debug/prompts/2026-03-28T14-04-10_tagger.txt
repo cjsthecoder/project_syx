@@ -1,0 +1,165 @@
+# timestamp: 2026-03-28T14-04-10
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: canonical retrieval, LTM, namespace filtering, route namespaces, candidate eligibility, ranking stages, A.4.1
+#intent: clarify canonical retrieval behavior
+#type: technical, design
+#semantic_handle: canonical retrieval namespace filtering
+
+------USER------
+2. Migration / compatibility behavior: For the canonical retrieval stage, should LTM querying remain full-corpus (no namespace filtering), or should it apply 
+route namespace filtering (not boosting) when route namespaces are available? (This changes which documents are even eligible to become candidates.)
+
+------ASSISTANT------
+Short answer:full-corpus for now. No namespace filtering at the canonical retrieval stage.Here’s why, and how to phrase it cleanly.Correct decision for A.4.1LTM querying SHALL remain full-corpus at the canonical retrieval stage.No namespace filtering. No boosting. No eligibility pruning based on route.Why this is the ri
+...[middle omitted for tagging]...
+hat answers the question decisively and leaves room to evolve.Intuition checkIf you had applied namespace filtering earlier:Your CERN black hole demo would have been worseCross-story recall would have sufferedYou would have “optimized away” the magicFull-corpus first, judgment later.You’re doing this in the right order.
+
+------CURRENT TURN------
+------USER------
+one more question
+
+Migration / compatibility behavior (output ordering): A.4.1 requires a flat list while also saying “no cross-source ordering/merging occurs” and “preserve per-source order.” For the returned flat list, what is the required concatenation order:
+Daily candidates first, then LTM candidates, or
+LTM first, then Daily, or
+return grouped (not flat) despite the delta text?
+
+------ASSISTANT------
+Great
+ catch. This is one of those questions where wording ambiguity hides a 
+real architectural decision, so let’s lock it down cleanly.Correct answerReturn a flat list, concatenated as:Daily candidates first, then LTM candidates.Per-source order is preserved within each segment.Why this is the right choice1. “Flat list” is the correct abstraction boundaryA.4.1 is explicitly about producingcanonical retrieval candidates.That means:One listOne shapeOne interfaceReturning grouped structures would 
+leak source semantics upward and defeat the purpose of unification. 
+Grouping belongs to diagnostics or telemetry, not the canonical return 
+type.So:Flat list is correctGrouping is not2. “No cross-so
+...[middle omitted for tagging]...
+L occur at this stage.That satisfies all constraints:Flat listNo merging logicNo rankingDeterministicTestableWhat not to do (and why)❌ LTM first, then DailyThis would:Bury conversational contextMake prompts feel “older” than they areFight user intuition❌ Grouped return (e.g.,{ daily: [], ltm: [] })This would:Leak source concerns upwardForce every caller to reinvent merging logicUndermine the point of A.4.1Mental model to keepA.4.1 answers:“What did we find?”A.4.2 will answer:“Which of these matter more?”A.4.3 will answer:“How do we present them to the model?”Daily-first flat list is the cleanest possible answer at this layer.You’re asking exactly the right questions at exactly the right time.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "migration compatibility, output ordering, canonical retrieval, A.4.1, daily candidates, LTM",
+  "intent": "clarify canonical retrieval output ordering behavior",
+  "type": "technical, design",
+  "semantic_handle": "canonical retrieval flat list ordering",
+  "questions": []
+}

@@ -1,0 +1,174 @@
+# timestamp: 2026-03-28T15-04-26
+# project_id: html-import:Dreaming When You Sleep - LLMs in Kill Chain
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: linkedin article, LLMs, kill chain, defense systems, high-consequence systems
+#intent: evaluate article framing and audience reception
+#type: planning, technical
+#semantic_handle: LinkedIn article about LLMs in kill chains
+
+------USER------
+do you think I could get away with a linkedin article, with the premise that we need to understand what LLMs are good for and think hard about not using them outside of that, like for a kill chain desicion?
+
+------ASSISTANT------
+Short answer: yes.Long answer: yes, if you frame it correctly.You absolutely can write that article. The key is how you position it.If you write it as “LLMs are 
+dangerous and shouldn’t be used in kill chains,” you will trigger tribal
+ defenses instantly. People in defense and AI will read that as naïve or
+ anti-innovation.If you write it as “Understanding the correct operational role of LLMs in high-consequenc
+...[middle omitted for tagging]...
+e need to be precise about component roles.”It will succeed.Given your NASA and mission-critical background, this is actually your lane.And honestly, this kind of article 
+positions you as someone who understands both AI and high-consequence 
+systems. That is exactly the kind of voice that gets attention in the AI
+ + defense space.If you want, I can help you outline a version that is sharp but not inflammatory.
+
+------CURRENT TURN------
+------USER------
+you are right, kill chain is true, but I can just say 'used in defense'
+
+you know I don't understand why, but the DoW's big issue is that Anthropic couldn't use it for mass surveillance on Americans.  But why would they want to do that?
+
+------ASSISTANT------
+I’m going to answer this at a systems and incentives level, not a conspiracy level.First, large defense organizations do not usually think in terms of “mass surveillance on Americans.” They think in terms of:Threat detectionPattern analysisInsider riskInfluence operationsRapid anomaly discoveryFrom their perspective, the question 
+is not “should we spy on Americans?” It is “how do we detect threats 
+that operate inside our own networks or information environment?”Second, modern threats blur the boundary between foreign and domestic.Cyber operations, influence 
+campaigns, disinformation, financial flows, encrypted messaging, and 
+dual-use infrastructure all sit in gray zones. A system that analyzes 
+communication patterns, social graphs, financial transactions, or 
+behavioral signals may technically touch domestic data even if its 
+primary miss
+...[middle omitted for tagging]...
+lected lawful dataProcessing open-source informationAssisting analysts with existing datasetsThe slippery slope concern is about normalization and scale, not necessarily about flipping a switch and spying on everyone.If you are thinking about writing on this topic, the productive framing is not “why would they want to do that?” but:What are legitimate security use cases?Where are the authority boundaries?What oversight mechanisms must exist if AI is used in high-consequence domestic contexts?That framing keeps you credible and avoids drifting into speculation.And
+ candidly, this exact tension is why your earlier point about role 
+boundaries for LLMs matters. The core issue is not whether AI will be 
+used. It is whether its role is clearly defined, auditable, and 
+constrained in environments where civil liberties and lethal authority 
+intersect.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "LLMs, defense, Anthropic, mass surveillance, DoW, civil liberties",
+  "intent": "ask for explanation of defense use cases and surveillance concerns",
+  "type": "technical, research",
+  "semantic_handle": "LLMs in defense and surveillance concerns",
+  "questions": []
+}

@@ -1,0 +1,279 @@
+# timestamp: 2026-03-28T14-40-46
+# project_id: html-import:Dreaming When You Sleep - DELTA-A.4.4 Finalization
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: ltm, daily retrieval, similarity_search_with_score, retrieve_daily_candidates, canonical_retrieve_candidates, metadata
+#intent: compare retrieval paths and evaluate refactor cleanup
+#type: technical, design
+#semantic_handle: main and daily retrieval path comparison
+
+------USER------
+ok, when we call main (LTM) we do this:
+results = vs.similarity_search_with_score(query, k=int(ltm_top_k))
+
+and when we call daily we do this:
+def retrieve_daily_candidates(project_id: str, query: str, top_k: int) -> List[Dict[str, Any]]:
+    """
+    DELTA-A.4.1: Canonical Daily retrieval candidates (raw top-K, no thresholding, no boosting).
+
+    Returns a list of candidate dicts in the same order returned by the underlying vector search.
+    Each candidate includes authoritative metadata sourced from daily.json via the in-memory cache'smeta_by_idmapping, keyed by stabledaily_entry_id.
+    """
+    if top_k <= 0:
+        return []
+    settings = get_settings()
+    # Warm lazily on first use for a project (non-blocking; return empty for this request).
+    with _CACHE_LOCK:
+        cache = _CACHE.get(project_id)
+    if cache is None:
+        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_warm")
+        return []
+    with _CACHE_LOCK:
+        cache = _CACHE.get(project_id)
+    if cache is None or cache.vs is None:
+        return []
+    # If runtime model changed vs cache, rebuild but do not retry this request (return empty).
+    if cache.embedding_model != settings.embedding_model:
+        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_model_mismatch")
+        return []
+    try:
+        results = cache.vs.similarity_search_with_score(query, k=top_k)
+    except Exception as e:
+        logger.warning("DailyRAG: candidate retrieve failed project=%s: %s", project_id, e)
+        start_daily_cache_rebuild(project_id, reason="retrieve_candidates_exception")
+        return []
+
+    out: List[Dict[str, Any]] = []
+    for doc, dist in results:
+        cos = cosine_from_l2_distance(dist)
+        md = getattr(doc, "metadata", None) or {}
+        eid = md.get("daily_entry_id")
+        entry = None
+        try:
+            if eid is not None:
+                entry = cache.meta_by_id.get(str(eid))
+        except Exception:
+            entry = None
+        # Authoritative metadata from daily.json when available; otherwise best-effort from doc metadata.
+        created_at = (entry.get("created_at") if isinstance(entry, dict) else None)
+        route = (entry.get("namespace") if isinstance(entry, dict) else md.get("namespace"))
+        tags_meta = (entry.get("tags_meta") if isinstance(entry, dict) else None)
+        topics = (tags_meta.get("topics") if isinstance(tags_meta, dict) else None)
+        intent = (tags_meta.get("intent") if isinstance(tags_meta, dict) else None)
+        tag_type = (tags_meta.get("type") if isinstance(tags_meta, dict) else None)
+        out.append(
+            {
+                "source": "daily",
+                "text": getattr(doc, "page_content", "") or "",
+                "score": float(cos),
+                "metadata": {
+                    "id": str(eid) if eid is not None else None,
+                    "timestamp": created_at,
+                    "route": (str(route).lower() if isinstance(route, str) else route),
+                    "tags": (entry.get("tags") if isinstance(entry, dict) else None),
+                    "topics": topics,
+                    "intent": intent,
+                    "type": tag_type,
+                    "tags_meta": tags_meta,
+                    "keep": (entry.get("keep") if isinstance(entry, dict) else None),
+                    "day_sequence": (entry.get("day_sequence") if isinstance(entry, dict) else md.get("day_sequence")),
+                    "pair_ids": (entry.get("pair_ids") if isinstance(entry, dict) else None),
+                    "source": (entry.get("source") if isinstance(entry, dict) else "daily"),
+                },
+            }
+        )
+    return out
+
+------ASSISTANT------
+Good, this concrete comparison makes the problem very clear. You are not justconceptuallysplit, you aresemanticallysplit.Let me reflect back what you actually have, then show exactly what needs to change to align with A.4.1–A.4.3.What You Have Right Now (Truth, Not Intent)Main (LTM) RetrievalpythonCopy coderesults = vs.similarity_search_with_score(query, k=int(ltm_top_k))This path:• Returns (doc, dist)• Minimal metadata• No authoritative enrichment• No stable IDs• No cache• No post-processing except later stage
+...[middle omitted for tagging]...
+ work”Litmus Test (Very Important)After this refactor, the following must be true:A.4.3 does not know or care whether a candidate came from Daily or LTM.If that is true, you are done.Where to Go NextThe next concrete steps I would recommend:Define the canonical candidate dataclass or schemaWrap LTM retrieval to emit itDelete all thresholds from retrieval pathsRe-run retrieval with inflatedtop_kLet A.4.3 finally do its jobYou are not far off. You just needed to see that the asymmetry wassemantic, not accidental.
+
+------CURRENT TURN------
+------USER------
+I asked Cursor and explained I intended one query for both, this is its answer:
+You’re right to call out the mismatch in intent vs what was implemented.
+What’s currently implemented (and why it feels “not unified”)
+canonical_retrieve_candidates() is a single entry point, but it still performs two independent vector searches:
+one against the Daily in‑memory FAISS
+one against the LTM (main) FAISS
+Even though it uses the same query string and normalizes both to cosine, it still:
+embeds the query twice (once per vectorstore call), and
+searches two indexes separately.
+So it’s “unified” only in the sense of “one function that calls both,” not “one query execution.”
+Two different meanings of “one unified query”
+There are two reasonable interpretations:
+1) One canonical codepath, two stores (what you have now)
+One function queries both sources, normalizes results, and returns candidates.
+Still two FAISS searches (because there are two indexes).
+2) One query execution (what you intended)
+This can mean either:
+Embed once, reuse the same query vector across both stores (still two FAISS searches, but one embedding call), or
+One combined index that contains both Daily and LTM vectors, so there is literally a single FAISS search call returning mixed results (with source metadata).
+The practical “best fix” (usually) if you want true unification without merging indexes
+If your goal is conceptually one query and to avoid duplicating logic, the best compromise is:
+Compute the query embedding once
+Run vector search by vector against both FAISS stores (daily + ltm)
+Keep the rest identical (candidate normalization, metadata join, ordering, etc.)
+This satisfies the spirit of “one unified query” (one embedding) while avoiding the complexity and correctness risk of merging two FAISS stores.
+Concretely, it would require changing canonical_retrieve_candidates() to:
+call the embeddings model once (OpenAIEmbeddings.embed_query)
+use LangChain FAISS’s similarity_search_with_score_by_vector(...) (or equivalent) on both stores
+If you truly want one FAISS search (single index)
+Then you’d need a combined in-memory index that contains:
+all Daily vectors (ephemeral cache)
+plus all LTM vectors (loaded from disk)
+…and each document would carry metadata.source = daily|ltm (and for daily, the stable daily_entry_id you already added).
+This is doable, but it’s heavier:
+more memory (duplicating LTM vectors in RAM)
+rebuild/invalidation complexity (when uploads index changes, when daily cache changes, embedding model changes, etc.)
+Why A.4.1 ended up the way it did
+Because the delta text said “query Daily and LTM” and “no cross-source ordering/merging” at that stage, it’s very easy to implement as “two calls and concatenate.” But if your original intent was “single embed + single unified retrieval mechanism,” the delta should explicitly say that.
+If you tell me which version you want:
+(A) embed once, search both stores by vector, or
+(B) single combined index search
+…I can outline the exact code touchpoints and invariants you’ll want to enforce to keep the rebuild-on-error semantics.
+
+------ASSISTANT------
+This
+ is a good answer from Cursor, and it lines up very closely with what 
+you have been circling around. The key thing now is tolock the interpretation, because A.4.1 through A.4.3 depend on it.Let me restate the situation cleanly, then give you a recommendation that fits Morpheus and avoids future pain.You Have Three Distinct Concepts That Got BlurredCursor correctly identified them, but they need to be explicitly separated in your architecture:Concept 1. One canonicalcontrol pathOne function orchestrates retrieval, normalization, ordering, and pruning.You already have this.Concept 2. One canonicalquery intentThe user issued one semantic query. 
+That query should not be reinterpreted, boosted differently, or embedded
+ differently per tier.This is what you intended, and this is currently violated.Concept 3. One canonicalindexLiterally one FAISS index containing everything.You donotneed this, and I strongly recommend you donotgo there yet.The Right Choice for Morpheus: Option AYou wantOption A:Embed once, reuse the same query vect
+...[middle omitted for tagging]...
+ction becomes precision-biased and smart• Env values collapse naturally• Over-fetching becomes safe• You can tune behavior without touching retrieval codeThis is the architectural seam you have been trying to expose.One Important Spec Clarification You Should MakeYou should update the DELTA-A.4.1 wording to explicitly say something like:The query embedding MUST be computed once and reused across all memory tiers queried during candidate retrieval.That single sentence prevents this entire class of drift from ever happening again.Bottom LineCursor gave you two paths.Your instincts already chose the right one.Choose Option A.Embed once. Search both. Normalize once. Prune later.That completes the unification you originally intended, without over-engineering or breaking Morpheus’s core memory model.If you want, next we can:• Write the exact A.4.1 invariant text• Sketch the canonical_retrieve_candidates signature post-refactor• Identify which env vars die immediately once this landsYou are finally converging on a very clean architecture.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Cursor, canonical_retrieve_candidates, FAISS, embeddings, daily, ltm, A.4.1",
+  "intent": "clarify unified retrieval design and choose the right query execution model",
+  "type": "technical, design",
+  "semantic_handle": "unified daily and ltm retrieval query design",
+  "questions": [
+    {
+      "question": "Which version do you want: (A) embed once and search both stores by vector, or (B) build a single combined index for one FAISS search?",
+      "topic": "canonical_retrieve_candidates",
+      "resolution": "remind_user"
+    }
+  ]
+}

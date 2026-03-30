@@ -1,0 +1,189 @@
+# timestamp: 2026-03-28T14-38-00
+# project_id: html-import:Dreaming When You Sleep - Memory toggle feature
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: rag, semantic retrieval, REQUIREMENTS.md, version 2.3, markdown headings, cosine similarity, score threshold
+#intent: debug document retrieval failure and improve matching for versioned docs
+#type: technical
+#semantic_handle: RAG versioned document retrieval bug
+
+------USER------
+we had this older bug I forgot about.  long story short, I included REQUIREMENTS.md in the RAG, and asked it "What features were added in version 2.3". and the response comes back DOC, and REQUIREMENTS.md, but doesn't find anything.  I am assuming for DOC we need better numbers...
+
+2025-11-03 14:16:19,308 - DEBUG - app.core.rag_manager:load_faiss_index - RAG: loaded index for 'ae89e301-f6a6-4b24-8a94-a159579f471c' with 260 documents
+2025-11-03 14:16:20,556 - DEBUG - app.core.rag_manager:retrieve_context - RAG: query='What are the changes in version 2.3?
+What features were added in version 2.3?
+Can you summarize the updates in version 2...' top_k=5 got 5 results (pre-filter)
+2025-11-03 14:16:20,556 - DEBUG - app.core.rag_manager:retrieve_context - RAG: filtered 0 >= threshold 0.5; details=[{'file': 'REQUIREMENTS.md', 'page': None, 'cos': 0.409, 'dist': 1.1828}, {'file': 'Dreaming_While_You_Sleep.txt', 'page': None, 'cos': 0.386, 'dist': 1.2282}, {'file': 'REQUIREMENTS.md', 'page': None, 'cos': 0.384, 'dist': 1.2323}, {'file': 'REQUIREMENTS.md', 'page': None, 'cos': 0.375, 'dist': 1.2491}, {'file': 'REQUIREMENTS.md', 'page': None, 'cos': 0.346, 'dist': 1.3082}]
+
+------ASSISTANT------
+Yep — that log tells the story perfectly.The system is doing the rightrouting(→route=DOCS,namespace=docs, and it’s hittingREQUIREMENTS.md), but it’s failing at thesemantic retrieval precisionlevel: cosine similarities are too low (0.34–0.41, below your0.5cutoff), so the filter drops everything.This happens because the embeddings can’t “connect” the phrase“version 2.3”to the text inside the file — which likely uses a Markdown heading like## Vers
+...[middle omitted for tagging]...
+ldto0.35.(Optional) Add lightweight regex normalization for version headers on ingest.That’s enough to make “What 
+features were added in version 2.3?” return the correct section 
+immediately — you’ll start seeing cosine scores in the 0.38–0.42 range 
+passing through, and retrieval will pull that Markdown section cleanly.Would you like me to show what the small regex normalization code would look like inside your Markdown embedding preprocessor?
+
+------CURRENT TURN------
+------USER------
+ok, I tried new values, the ones below, and got a good answer I expected.  So, what about the other values?  should I change those?  I am ok with sending some that may not be used, or taking a performance hit as long as results are good!
+
+{
+  "CODE": {
+    "namespaces": ["code", "config", "api"],
+    "rag_k": 8,
+    "score_threshold": 0.50
+  },
+  "DOCS": {
+    "namespaces": ["docs", "requirements", "notes"],
+    "rag_k": 10,
+    "score_threshold": 0.3
+  },
+  "OTHER": {
+    "namespaces": ["general", "project"],
+    "rag_k": 6,
+    "score_threshold": 0.50
+  },
+  "CHITCHAT": {
+    "namespaces": [],
+    "rag_k": 0,
+    "score_threshold": 0.0
+  }
+}
+
+------ASSISTANT------
+Nice — that’s exactly the right direction, and your instincts are solid:optimize for quality, not minimal latency.The new DOCS settings (rag_k=10,score_threshold=0.3) are perfect — that’s the sweet spot where Markdown embeddings tend to live.Let’s go through each section and make sure the rest are tuned to the same retrieval philosophy.🧩Recommended Route Config — Balanced for AccuracyjsonCopy code{"CODE":{"namespaces":["code","config","api"],"rag_k":10,"score_threshold":0.45},"DOCS":{"namespaces":["docs","requirements","notes"],"rag_k":10,"score_threshold"
+...[middle omitted for tagging]...
+erIf you ever want to reclaim some performance laterwithout hurting quality, you can add this rule in your retriever:pythonCopy codeifroute =="DOCS"andlen(daily_results) >1000:
+    k =min(k,8)That caps retrieval depth dynamically on massive doc sets.✅Summary RecommendationUse the updated config above.It slightly widens context for CODE and OTHER, and you already nailed DOCS.This setup will give the best recall/precision balance across all 
+project types — a few extra FAISS lookups per query (milliseconds) are 
+well worth the improved hit rate and accuracy.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "rag, retrieval configuration, namespaces, score_threshold, rag_k, docs",
+  "intent": "ask whether to change other RAG settings for better retrieval quality",
+  "type": "technical",
+  "semantic_handle": "RAG route configuration tuning",
+  "questions": []
+}

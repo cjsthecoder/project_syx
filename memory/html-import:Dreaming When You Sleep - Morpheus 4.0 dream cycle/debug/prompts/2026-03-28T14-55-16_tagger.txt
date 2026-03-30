@@ -1,0 +1,174 @@
+# timestamp: 2026-03-28T14-55-16
+# project_id: html-import:Dreaming When You Sleep - Morpheus 4.0 dream cycle
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: dream_prompts.py, dream.py, rag_manager.py, retrieve_context, threading, OpenAI Responses API, dream_research.py
+#intent: clarify requirements and design the Dream Agent execution flow
+#type: technical, design
+#semantic_handle: Dream agent prompts, RAG retrieval, and threading
+
+------USER------
+ok, also a dream_prompts.py we will need.  So, at that point, dream.py will be running in its own thread with the list of questions.  We will likely have a mini prompt to look at the question and see what to do, then research, grab from RAG pass that to a prompt, and get results based on the prompt.  
+
+we have a rag_manager.py, and we can call this:
+def retrieve_context(
+    project_id: str,
+    query: str,
+    top_k: int,
+    snippet_max_tokens: int,
+    score_threshold: float,
+    context_max_tokens: int,
+    route_namespaces: Optional[List[str]] = None,
+    namespace_boost: Optional[float] = None,
+) -> Dict[str, Any]:
+    """Retrieve top-k snippets and assemble a single Context: block string.
+
+    Returns dict with keys: context_text, snippets, tokens_used.
+    """
+
+I am on the fence as to whether we need to worry about the threading.  Since we have effectively blocked the main thread while sleep/dreaming.
+
+------ASSISTANT------
+Here is the clean architectural answer, tying together:dream_llm.pydream_research.pydream_prompts.pyrag_manager.retrieve_contextthreading concernsand the Dream Orchestrator flow for 4.1.2You are thinking about all the right parts; now we need to fit them into a consistent high level design.1. Yes — adddream_prompts.pyThis module will holdall prompt templates that Dream Agents use, including:local answer promptremote answer promptmerge prompt (if needed later)decision prompts for more complex agentsoptional helper prompt to classify or refine questions (future versions)Ea
+...[middle omitted for tagging]...
+>strEverything is cleanly separated.6. Summary of high-level decisions (so we can write requirements next)YES — create:dream_llm.pydream_research.pydream_prompts.pyYES — Dream runs per-question pipelines.YES — Use rag_manager.retrieve_context() directly in dream_research.py.NO — You do NOT need to worry about threading at this version (MAX_WORKERS=1 and Sleep lock protect you).YES — This must all be described in the 4.1.2 requirements.If you're ready, I can now draft:Version 4.1.2 Requirements: Dream Agent Execution + RAG + LLM + ResearchJust say:write 4.1.2 requirements.
+
+------CURRENT TURN------
+------USER------
+ok, but we plan to add agents soon, so MAX_WORKERS=1 will bite us and that means we do need to think about this
+
+------ASSISTANT------
+You are right to think ahead here. If we are serious about adding more agents and bumpingMAX_WORKERSabove 1, we need to design the threading model now instead of bolting it on later.The good news is we can keep this sane with a couple of clear rules.I would set things up like this in the requirements.1. WhatMAX_WORKERSreally meansWe should defineMAX_WORKERSin 4.1.2 as:Number of concurrentDream jobs per project set, not number of parallel agents per question.So:One Dream task = one project’s nightly Dream run.The ThreadPoolExecutor runs up toMAX_WORKERSDream tasks in parallel (across different projects).Inside a single Dream task for a project, we still process that project’s questions sequentially in 4.1.2.That gives you:Parallelism across projectsNo race conditions inside a single projectA clear story for scaling laterYou can add per question parallelism later as a separate internal pool if you really need it.2. Locking and safety rules to bake into 4.1.2I would capture these explicitly:Sleep
+...[middle omitted for tagging]...
+uld say:MAX_WORKERScontrols concurrency of Dream tasks across projects only.Within a single Dream task, all agents and questions run sequentially in 4.1.2.That both supports your future and prevents subtle bugs now.5. What to put in 4.1.2 requirementsI would add something like this:MAX_WORKERScontrols the maximum number of concurrent Dream tasks (projects) in the sharedThreadPoolExecutor.For a given project, Sleep must submit at most one Dream task and block on itsfuture.result()before moving to the next project.Within a single Dream task, all 
+questions and Dream Agents run sequentially in Version 4.1.2. No per 
+question multithreading is used in this version.Dream tasks must never read or write memory for another project.Dream tasks must treat RAG as read only. All index rebuilds and writes occur only in Sleep.If you like, next step I can write the full 4.1.2 requirements block with these threading constraints, plus thedream_llm.py,dream_research.py, anddream_prompts.pypieces we talked about.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "MAX_WORKERS, Dream tasks, ThreadPoolExecutor, Sleep, threading, project concurrency, 4.1.2 requirements",
+  "intent": "clarify threading and concurrency design for future agents",
+  "type": "technical, design",
+  "semantic_handle": "Dream task concurrency and threading model",
+  "questions": []
+}

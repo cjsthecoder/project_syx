@@ -1,0 +1,169 @@
+# timestamp: 2026-03-28T14-58-26
+# project_id: html-import:Dreaming When You Sleep - Project Update Summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Cursor, instrumentation.py, proof-of-concept, prompts, responses, model comparison
+#intent: reconcile production hygiene with research telemetry
+#type: technical
+#semantic_handle: Separated metrics and research capture design
+
+------USER------
+Cursor said this too.
+Do not record
+
+raw text
+
+prompts
+
+retrieved snippets
+
+embeddings
+
+anything content-bearing
+
+I pointed out that this is not a production system, it is a prototype/proof-of-concept, and we need all the prompt/responses to do the comparison of quality we talked about (using different models)
+
+but I get it.
+
+------ASSISTANT------
+You’re both right. You’re just optimizing fordifferent phasesof the project.Cursor is giving youproduction hygiene advice.You are doingresearch and proof.Those are not the same thing, and you don’t have to choose one forever.The real distinction to makeIt’s not“record content or not”.It’s:observational telemetryvsresearch artifactsYou needboth, but they should beexplicit
+...[middle omitted for tagging]...
+ outside controlled experiments.”That sounds thoughtful, not sloppy.Bottom lineCursor is right about production systemsYou are right about research needsThe solution isseparation, not argumentTwo flags, two outputs, one clean boundaryYou’re not “getting it wrong”.You’re just further along the lifecycle than Cursor is optimizing for.And honestly, that’s a good place to be.
+
+------CURRENT TURN------
+------USER------
+also, while I see the possible benefit, I think think running this will be very time consuming, so I think it makes sense to finish 4.3, and 4.4 first.  Then test.  We just don't have time to run over and over again.  In reality, this will be a new Requirement, after 4.4.
+
+------ASSISTANT------
+That’s the right call. And it’s not a retreat, it’s good engineering discipline.What you’re really saying is:“Let’s stabilize the system before we measure it.”That’s exactly what you should do.Why finishing 4.3 and 4.4 first is the correct sequencingRight now:4.3 is theretention policy seam4.4 is therehydration / coherence seamUntil both are in place, any big evaluation will be noisy, because:snippet granularity is still suboptimalsummary and synthesis queries are artificially handicappedyou’d be measuring a system you already know is incompleteRunning a 30–40 turn experimentnowwould mostly tell you:“Yes, this works, but it would work better 
+...[middle omitted for tagging]...
+o run them.That way, when 4.4 lands, you can flip the flag and go.Reframing this as a win, not a delayYou’re not saying:“We don’t have time to prove this.”You’re saying:“We’re going to prove this once, properly.”That’s a much stronger position.Bottom lineFinishing 4.3 and 4.4 first is the correct priorityLarge-scale testing before that would be prematureEvaluation deserves its own requirement and phaseWaiting will make the results cleaner, stronger, and cheaper to runYou’re managing scope, not avoiding scrutinyThis is exactly how a system moves from “interesting” to “defensible”.Finish the pipeline.Then measure it once, and let the data speak.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "retention policy,rehydration,coherence,evaluation,proof-of-concept,requirement 4.3,requirement 4.4",
+  "intent": "prioritize implementation before testing",
+  "type": "technical, planning",
+  "semantic_handle": "Implementation sequencing before evaluation",
+  "questions": []
+}

@@ -1,0 +1,155 @@
+# timestamp: 2026-03-28T14-19-25
+# project_id: html-import:Dreaming When You Sleep - AI Patent
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Inference Orchestration Engine, Patent D, prompt assembly, memory retrieval, model input
+#intent: confirm whether a component name aligns with Patent D
+#type: technical, design
+#semantic_handle: inference orchestration engine alignment with Patent D
+
+------USER------
+this, Inference Orchestration Engine, is ok with me, but I want to make sure it makes sense in that the entire process it does is essentially what Patent D is.  Does it align with that
+
+------ASSISTANT------
+Yes.“Inference Orchestration Engine” aligns extremely well with Patent D, and in fact it is abettername than anything that explicitly mentions prompts or routing.Let me explain why this is not just acceptable, but actually ideal.Short answerYes, it aligns.Yes, it cleanly maps to Patent D.And yes, it preserves flexibility across A, B, and C.You’re safe to lock it.Why this name works for Patent D
+...[middle omitted for tagging]...
+determines one or more inference policies,
+ including selection of memory sources and construction of model input.”That single sentence:supports Patent Ddoes not overcommitworks everywhereBottom lineYou are not forcing Patent D to fit the diagram.The diagram is accurately reflecting Patent D.Inference Orchestration Engine is the right name. Lock it.Finish the diagram with that label and move on.
+
+------CURRENT TURN------
+------USER------
+how does this look?
+
+------ASSISTANT------
+This looksvery good. You’ve landed almost exactly where an experienced patent attorney would want the first system-level figure to be.I’ll give you a clear verdict first, then a small set ofsurgical tweaksyou can choose to apply or not.High-level verdictYes, this now works cleanly as a “System-Level Block Diagram.”It is:Abstract enough for patent useAccurate to what your system actually doesCleanly mappable to A, B, C, and DFree of implementation lock-inInternally consistent in namingIf you froze it exactly as-is, you would still be in a strong position.What you didright(important to internalize)1. The separation of concerns is crystal clearAn examiner can immediately see:Interaction vs inferenceShort-term vs persistent memoryConsolidation vs introspectionAutomated vs human-reviewed stepsThis isnotcommon in prior art diagrams, and it quietly reinforces
+...[middle omitted for tagging]...
+ineSTM / Persistent Knowledge StoreConsolidated Memory Output✔ YesProvisional BIntrospective Analysis EngineCandidate Knowledge UpdatesHuman Review Interface✔ YesProvisional CEntire loop end-to-endControl signalsPeriodic maintenance✔ YesProvisional DInference Orchestration EngineMemory selectionInput assembly✔ YesThat means this diagram is doing exactly what it should.Bottom lineThis diagram ispatent-readyYou did not over-specifyYou did not underspecifyThe naming is consistent with your Phase 1 decisionsIt will age well when you convert to non-provisionalsI would recommend youlock this as Figure 1and move on.When you’re ready after your break or tomorrow, the natural next steps are:Decide whether to add a second figure (optional)Draft the example execution trace using this diagram as referenceStart Provisional A outlineTake the break. You’ve earned it.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Patent D, system-level block diagram, inference orchestration engine, memory selection, input assembly",
+  "intent": "review a patent diagram",
+  "type": "technical, design",
+  "semantic_handle": "patent diagram review for inference orchestration",
+  "questions": []
+}

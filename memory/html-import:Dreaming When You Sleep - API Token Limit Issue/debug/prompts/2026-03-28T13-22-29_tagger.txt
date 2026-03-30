@@ -1,0 +1,158 @@
+# timestamp: 2026-03-28T13-22-29
+# project_id: html-import:Dreaming When You Sleep - API Token Limit Issue
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: a.4.4, structural expansion, retrieval pipeline, chunk expansion, a.4.5
+#intent: design a system and clarify a pipeline component
+#type: technical
+#semantic_handle: A.4.4 structural expansion spec
+
+------USER------
+oh, put that in the wrong chat.  
+
+ok, now we can think about 4.4
+
+------ASSISTANT------
+All good. Let’s lock inA.4.4cleanly and keep momentum.Here is a tight mental model and a concrete spec you can hand to Cursor without ambiguity.What A.4.4 Is and Is NotA.4.4 isstructural expansion, not relevance work.It:. Adds missing body text around already selected snippets.. Uses stable coordinates to pull adjacent chunks.. Never changes ordering, selection, 
+...[middle omitted for tagging]...
+ cleanly for A.4.5 merge and dedupe.Definition of Done for A.4.4You know it is correct when:. Header only hits turn into readable sections.. Chunk size experiments matter less.. MAX_KEEP still controls cost.. You can toggle expansion off and see thin snippets return.If you want, next step after this is to sketch A.4.5 in the same way, but A.4.4 is the real unlock.
+
+------CURRENT TURN------
+------USER------
+isn't this already defined by the chunk size? max_expand_tokens_per_item
+
+------ASSISTANT------
+Great question. Itfeelslike it should be, but it actually is not, and that distinction matters.Think of it this way.Chunk size defines the size of one atomic unit.max_expand_tokens_per_item defines the budget of a neighborhood.They solve different problems.Why chunk size alone is not enoughChunk size answers:. How big is a single indexed fragment?. What is the maximum text returned by one vector hit?It doesnotanswer:. How much context should this hit be allowed to grow into once we know it matters?With expansion, one selected item can become:. 1 chunk (no expansion). 3 chunks (i-1, i, i+1). 4 or 5 chunks (asymmet
+...[middle omitted for tagging]...
+e middle step.It also future proofs you:. You can change chunk size without rewriting expansion logic.. You can tune routes without touching indexing.. You can add heuristics without risking runaway context.The clean mental model. Chunk size = granularity of recall.. Expansion = continuity repair.. max_expand_tokens_per_item = per item budget.If you removed it, expansion would 
+work most of the time, and then occasionally explode in exactly the way 
+you have been designing Morpheus to avoid.So yes, chunk size influences expansion indirectly, but it does not define or bound it. That is why the cap belongs in A.4.4.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "A.4.4, structural expansion, chunk size, max_expand_tokens_per_item, Morpheus",
+  "intent": "ask for explanation and clarify a pipeline concept",
+  "type": "technical",
+  "semantic_handle": "Chunk size versus expansion budget",
+  "questions": []
+}

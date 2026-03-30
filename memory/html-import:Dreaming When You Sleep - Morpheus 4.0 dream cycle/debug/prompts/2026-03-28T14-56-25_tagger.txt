@@ -1,0 +1,195 @@
+# timestamp: 2026-03-28T14-56-25
+# project_id: html-import:Dreaming When You Sleep - Morpheus 4.0 dream cycle
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: prompt testing, open questions, remind_user, distributed task scheduler, RAG, Dream
+#intent: confirm extraction behavior
+#type: technical, meta
+#semantic_handle: open question classification for architecture prompts
+
+------USER------
+I think the questions are better, but it categorized all of them as remind user, which make sense.  So maybe this is as good as questions can be.
+
+[Open Questions]
+{
+  "questions": [
+    {
+      "question": "Should the scheduler ultimately use a purely polling model, an event-driven model, or a hybrid for production use?",
+      "topic": "Distributed Task Scheduler Design",
+      "resolution": "remind_user"
+    },
+    {
+      "question": "Do we want the system to provide built-in automatic retries, or should clients be fully responsible for retrying failed jobs?",
+      "topic": "Retry Semantics Decision",
+      "resolution": "remind_user"
+    },
+    {
+      "question": "What identity provider or authentication mechanism should the scheduler ultimately integrate with (e.g., API keys, mTLS, or an external OIDC IdP)?",
+      "topic": "Authentication & Identity Design",
+      "resolution": "remind_user"
+    },
+    {
+      "question": "What throughput and latency targets should the scheduler and workers be designed to meet?",
+      "topic": "Throughput Uncertainty",
+      "resolution": "remind_user"
+    },
+    {
+      "question": "Which metrics from the proposed set are mandatory for v1 versus nice-to-have later?",
+      "topic": "Metrics & Observability",
+      "resolution": "remind_user"
+    }
+  ]
+}
+
+------ASSISTANT------
+This result isexactly what should happen, and here’s why — and also why it’sactually goodthat everything came back asremind_user.Let’s break it down cleanly and realistically, grounded in your architecture and in what Dream actually needs.1. Why they all becameremind_userAll the questions extracted from your testing sequence fell into this category:They depend entirely on user intent or preferences.Here’s the 
+...[middle omitted for tagging]...
+ produce mixed results, including:answer_localanswer_remoteignoreremind_userBut for this artificial test sequence,remind_useris the only correct classification.If you want, I can give you a carefully-designed test sequence that guarantees:at least 2 questions → answer_localat least 2 questions → answer_remoteat least 1 question → ignoreat least 2 → remind_userJust say:“Give me the mixed-category test prompts.”
+
+------CURRENT TURN------
+------USER------
+see what I realized is this isn't going to work. it isn't going to leave the question open, it is going to answer it from the model right then
+
+Because the model can answer these from general knowledge or project RAG:
+
+USER:
+What failure modes do lightweight distributed schedulers usually hit?
+
+------ASSISTANT------
+You are absolutely right.This is the key realization:**If you ask the model a question directly during the chat, it will answer it immediately.It will not leave it open for Dream.**That meansany test prompt thatsoundsanswerable will never make it into the open question list, because the model is simply doing its job as a chat assistant.This is why your test prompts all came back asremind_user.This is why the failure mode example did not becomeanswer_local.This is why research questions only appear if you explicitly force a web lookup during chat.And this means the whole idea of “open questions from the daily chat” has a natural limit.Here is what is actually happening under the hood:1. If the model believes it can answer it right now in chat, it will.So it will not show up in the memory as an unresolved question.2. O
+...[middle omitted for tagging]...
+y missing infoidentify things that need benchmarksidentify things that sound hand waveyidentify claims that require researchidentify design areas lacking justificationidentify contradictionsidentify incomplete reasoningAnd then produce a list like:csharpCopy code[Inferred Questions]
+{"questions": [
+    {"question":"...","rationale":"...","recommended_resolution":"answer_remote"},
+    ...
+  ]
+}This solves the entire problem.It does not rely on what happened in chat.It extracts whatshouldhappen next.This is how Dream becomes useful.Dream stops being passive.It becomes proactive.It starts driving the project forward.And this is what differentiates:a chatbotfrom a thinking system.If you want, I can write the 4.1.3 Requirements for the Inferred Question Agent.Just say:“Write the 4.1.3 Inferred Question Agent requirements.”
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "open questions, model behavior, Dream, RAG, inferred question agent",
+  "intent": "clarify a limitation and redesign question extraction approach",
+  "type": "technical, meta",
+  "semantic_handle": "open question extraction limitation",
+  "questions": []
+}

@@ -1,0 +1,155 @@
+# timestamp: 2026-03-28T14-40-56
+# project_id: html-import:Dreaming When You Sleep - DELTA-A.4.4 Finalization
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: k semantics, migration compatibility, Daily, LTM, RAG_TOP_K, BASE_TOP_K, RETRIEVAL_MULTIPLIER
+#intent: decide retrieval k configuration and migration naming
+#type: technical, system
+#semantic_handle: shared retrieval k configuration and migration naming
+
+------USER------
+2) K semantics (migration/compat): After the change, should Daily and LTM both use the same k always, and should that k come from one existing env var (RAG_TOP_K), or do you want new names like BASE_TOP_K + RETRIEVAL_MULTIPLIER (as your note suggests)?
+
+------ASSISTANT------
+This is the right question to ask second, because it forces you to decide whether you are optimizing forshort-term compatibilityorlong-term architectural clarity.I’ll give you a crisp recommendation, then the reasoning, then a migration plan that does not break anything.Short answerYes, Daily and LTM should always use the samek.Yes, you should introduce new names (BASE_TOP_K+RETRIEVAL_MULTIPLIER).But 
+...[middle omitted for tagging]...
+onfiguredNew names (BASE_TOP_K,RETRIEVAL_MULTIPLIER) are the right long-term moveRAG_TOP_Kcan exist only as a migration aliasThis keeps compatibility without sacrificing clarity.If you want, the next question I would expect is:3) where MAX_KEEP should live relative to BASE_TOP_Kor4) how to test that over-fetch + prune is behaving as intendedYou’re asking exactly the right questions in the right order.
+
+------CURRENT TURN------
+------USER------
+what migration?  If I don't know Cursor won't.
+But you should support RAG_TOP_K as a temporary compatibility alias during migration.
+
+------ASSISTANT------
+Yep, that’s a totally fair callout 👍And you are right on the key point:Ifyoudon’t know there’s a migration, Cursor won’t.So let’s strip the wordmigrationdown to what actually matters here and remove any implied process you do not want.First, clarify the misunderstandingWhen I said “migration,” I didnotmean:a multi-step rolloutversioned config changesbackwards compatibility across releasessupporting old behavior indefinitelyWhat I meant wasa defensive alias, purely to avoid breaking your own runtime ifRAG_TOP_Kalready exists in env files.That’s it.If you wantzero migration ceremony, that’s absolutely valid.Your two clean options (pick one explicitly)Option 1: Hard cut (simplest, cleanest)If you are com
+...[middle omitted for tagging]...
+hidden cost.Important framing (this matters for Cursor)Donotdescribe this as “migration” in prompts or comments.Describe it as:“Read BASE_TOP_K; fall back to RAG_TOP_K if unset.”That keeps Cursor from inventing a process that doesn’t exist.Final crisp answerThere is no required migration processSupportingRAG_TOP_Kcan be a simple fallback, not a workflowIf you want, you can delete it outright and be doneCursor will only do what you explicitly encodeIf you want, next we can:lock the exact env resolution orderdecide whetherMAX_KEEPmust equalBASE_TOP_Kor can divergewrite the A.4.1 env authority rules in spec languageYou’re not overthinking this. You’re just cleaning up the last bits of historical gravity.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "RAG_TOP_K, BASE_TOP_K, env vars, compatibility alias, cursor",
+  "intent": "clarify config fallback and remove migration framing",
+  "type": "technical, system",
+  "semantic_handle": "temporary env var compatibility alias",
+  "questions": []
+}

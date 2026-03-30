@@ -1,0 +1,165 @@
+# timestamp: 2026-03-28T14-54-04
+# project_id: html-import:Dreaming When You Sleep - Morpheus 4.0 dream cycle
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: dream thread, research agent, open questions, threadpoolexecutor, sleep, serialization
+#intent: design an execution model for answering questions with research
+#type: design, technical
+#semantic_handle: Dream and research agent execution model
+
+------USER------
+ok, I have been thinking about this design.  So, 4.1 we will have a list of questions.  then later, 4.2 or whatever, we are going to want to answer those questions.  Do research, etc.  So, how are we going to do that?  is the one dream thread going to spin up a thread for each question?
+
+------ASSISTANT------
+Here is the clean, scalable answer that keeps your architecture simple and future proof.No, the Dream thread shouldnotspin up a thread per question.That would break your serialization guarantees, complicate error 
+handling, and eventually conflict with how Sleep and Dream share the 
+same controlled execution environment.Instead, the correct model is:1. Dream Orchestrator runs in one thr
+...[middle omitted for tagging]...
+ents run in the same Dream thread.7. SummaryKeep one Dream threadAdd more agents, not more threadsResearch agent loops through questions sequentiallySleep stays strictly serialized per projectNo parallel question processing in 4.xThis is the correct, stable, scalable approach.If you want, I can sketch the Version 4.2 requirements for the Research Agent and how it plugs into this design.
+
+------CURRENT TURN------
+------USER------
+ok, I mean I get it but 20 questions will take 20 times longer your way.
+
+another problem I see if we extract the questions is that we will loose the context of the questions.
+
+For instance, this just happens to be the top of the current file.  You can see if we just send the question to Research that will be pretty useless.
+
+#open_questions: Town name for Starbucks trips? How hidden marginalia works? How Joe avoids suspicion with gold? Ampersand’s backstory? Library’s public policies?
+
+------ASSISTANT------
+You surfacedtwo real architectural problems:Sequential research = linear slowdownTwenty questions = twenty times longer.Extracted questions lose the surrounding context needed for good research, so research-only questions become nearly useless.Both issues are valid.And both can be solvedwithout breaking your single-threaded Dream modeland without ruining the clean future pipeline you’ve built.Let me show you the correct design.1. The correct fix is not per-question threadsParallelizing per question isnotthe right solution for the reasons listed earlier (file integrity, ordering, cost, complexity, etc).You do not need parallelism to fix this.The correct fix is tonot strip questions from their contextin the first place.2. The Open Questions Agent must return questions WITH their contextInstead of:iniCopy codeopen_questions= ["Town name...","How Joe avoids suspicion..."]You instead return structured objects including theirsource text,topic, andlocal context fragment.Example:swiftCopy code{"open_questions": [
+    {"questi
+...[middle omitted for tagging]...
+tion_index":17},
+  ...
+]This gives the Research Agent everything it needs.6. Updated Dream pipeline for 4.2:Sleep:Build sleep_summarySubmit Dream jobDream:Agent A: Extract open questions WITH context blocksAgent B: ResearchAgent takes the list of enriched objectsResearchAgent runs ONE large GPT-5.1 tool-enabled callProduces:proposed answerscitationscontextual insightsDream Orchestrator writes dream.txtGUI:Show each question with:question textcontext snippetproposed answer7. Summary of the solution to your two concerns:Concern 1: “20 questions will take 20 times longer your way”Solved withbatched researchandsingle large GPT-5.1 call.Concern 2: “Extracted questions lose context; research will be useless”Solved byextracting context blocksalong with the questions and passing them to ResearchAgent.If you want, I can update the Version 4.1 requirements to include:structured question-plus-context extractionupdated output formatgroundwork for 4.2 Research Agent batchingJust say “update 4.1 requirements” and I’ll patch the doc.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "open questions, context, research batching, dream pipeline",
+  "intent": "evaluate a design for researching extracted questions without losing context or adding per-question threads",
+  "type": "design, technical",
+  "semantic_handle": "Context-preserving research for extracted open questions",
+  "questions": []
+}

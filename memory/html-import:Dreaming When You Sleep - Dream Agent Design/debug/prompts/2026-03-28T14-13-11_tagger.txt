@@ -1,0 +1,161 @@
+# timestamp: 2026-03-28T14-13-11
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: sleep cycle, daily memory, active pairs, context flushing, dream review
+#intent: evaluate a memory consolidation change
+#type: design
+#semantic_handle: sleep-time flush of active pairs to daily memory
+
+------USER------
+ok, its a few hours later.  I screwed up, accidentally deleted almost all files in the project directory.  Had to restore, then had endless dependency issues, anyway back to running now.
+
+Before we continue, I had an idea, basically what happens now is the active pairs are kept in a database, so when you restart/connect they are there.  But, what if I made it so the very first thing sleep does is push all those pairs to the daily?  That would solve a lot of issues with it missing the context.  The only downside is that the next day the user won't see that, but if they want to see more they can look at the agent generated data.  
+
+What do you think?  Do you see a downside?
+
+------ASSISTANT------
+Short
+ answer: I think this is a good change as long as you handle duplicates 
+and timing cleanly. Conceptually it solves the “dreams are blind to the 
+last 10 pairs” problem in a very simple way.Let me break it down.What your change doesProposed behavior:On Sleep start:Load all active pairs from the DB buffer.Append them to daily.txt in order.Clear them from the active buffer.Continue with the current Sleep flow:Build sleep_summary from daily.Run Dream, etc.Effect:Sleep sees the full day, inc
+...[middle omitted for tagging]...
+t is a move, not a copy, to avoid duplicates.Add a tiny note in your requirements that:“At Sleep start, active STM pairs 
+are flushed into daily memory before consolidation, so the sleep_summary
+ covers the complete day.”Later, when the GUI for Dream 
+review exists, you can give users a nice way to see “what happened 
+yesterday” if they miss having those last 10 pairs on screen.If you want, next step I can help you phrase the FR for this behavior so it slots into the Sleep requirements cleanly.
+
+------CURRENT TURN------
+------USER------
+yeah, right now it pops them one at a time as a new one comes in, so we will just use that functionality.  And there will already be some kind of indicator a new button or something they can click to review the dream logs, so they will know.  I think this solves more problems than it creates.
+
+------ASSISTANT------
+Agreed. This really does solve more problems than it creates, and it aligns beautifully with the long term architecture.Here is the clean reasoning to confirm your instinct:Why This Is the Correct Change1. No more context lossYour Dream Agent will now see theentireday, every time.Before:Last 10 active pairs remained in DB.They never entered daily.txt.Sleep_summary never saw them.Dream never saw them.After this change:Sleep starts by flushing STM buffer to daily.sleep_summary sees everything.Dream sees everything.This fixes the biggest structural gap.2. You avoid major reengineering laterYou were already bumping into the 
+active context problem as Dream became more powerful. If you left this 
+unresolved, future ve
+...[middle omitted for tagging]...
+y.txt is accessible for debuggingThe chat window shrinking after sleep is intuitiveIf needed, you can add “Show yesterday’s chat” laterThis is not a blocker.Duplicate riskYour existing pop logic already prevents duplicates.Just make sure the flush uses the same pathway.SummaryThis change:Fixes missing contextReduces future engineering costKeeps Sleep fully deterministicImproves patent claritySimplifies Dream logicMatches human cognitive metaphorHas minimal UX downsideYou made the right call.If you want, I can now draft:The FR requirementfor this change (to add to Sleep section)A diagramof the new STM → daily → sleep_summary flowA short patch plandescribing how to modify your Sleep codeJust tell me which you want.
+
+
+====== TAGGER RESPONSE ======
+{"topics":"sleep, active pairs, daily memory, dream logs, context flushing","intent":"confirm a design change","type":"design","semantic_handle":"sleep-time flushing of active pairs","questions":[]}

@@ -1,0 +1,158 @@
+# timestamp: 2026-03-28T14-32-46
+# project_id: html-import:Dreaming When You Sleep - Local RAG integration plan
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: React, Shadcn/UI, Vite, Create React App, Next.js, REQUIREMENTS.md, TR-006
+#intent: choose frontend framework and UI library for the requirements
+#type: technical, planning
+#semantic_handle: React framework selection for Morpheus
+
+------USER------
+I don't know the answer to this either
+
+React Framework: The requirements mention React + Shadcn/UI. Should we:
+Use Create React App, Vite, or Next.js?
+Set up Shadcn/UI from scratch or use a template?
+What's your preference for the build tool?
+
+------ASSISTANT------
+Good — that’s another great question, and it’s worth answering carefully so we don’t end up refactoring later.ForMorpheus, here’s the reasoning and the clear decision:🔹 Step 1: Choose a React build tool⚙️ Options:Create React App (CRA)The old default, 
+...[middle omitted for tagging]...
+clean setup. Shadcn is modular, open source, and fits our “no lock-in” philosophy.Would you like me to append this decision as a new section (TR-006: Frontend Framework Selection) to yourREQUIREMENTS.mdso it’s locked in for Cursor and any contributors?
+
+------CURRENT TURN------
+------USER------
+what about this?   its worth noting I already told it to use fastapi for serving the react.
+
+FastAPI Static File Serving: For serving the React app, should we:
+Use FastAPI's built-in static file serving?
+Set up a catch-all route for React Router?
+Handle this in the main.py or create a separate module?
+
+------ASSISTANT------
+Excellent — that’s exactly the kind of architectural question we want tolock down nowso there are no later rewrites.Given that you’ve already decidedFastAPI will serve the React build, here’s the clean and future-proof answer for Morpheus:🔹 Summary Decision✅Use FastAPI’s built-in static file serving,✅Add a catch-all route for React Router,✅Do it insidemain.py(simple and centralized).🔹 WhyFastAPI already supports static files nativelyviaStaticFilesfromstarlette.staticfiles.Morpheus is not a multi-service s
+...[middle omitted for tagging]...
+ide routes.🔹 Optional (Later)If you ever modularize the backend, you can move this static-file logic to afrontend_router.py, but for Version 1 it’ssimpler and clearer inmain.py.✅ Recommended Answer for REQUIREMENTSDecision:Serve the React build using FastAPI’s built-inStaticFiles.Add a catch-all route inmain.pyfor React Router paths.This keeps deployment unified and satisfies TR-006 without extra modules.Would you like me to append this decision asTR-007: Static File Serving Strategyto yourREQUIREMENTS.md?
+
+
+====== TAGGER RESPONSE ======
+{"topics":"FastAPI, static file serving, React Router, main.py, REQUIREMENTS.md, TR-007","intent":"decide how FastAPI should serve the React frontend","type":"technical, planning","semantic_handle":"FastAPI static file serving strategy for React","questions":[]}

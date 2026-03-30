@@ -1,0 +1,154 @@
+# timestamp: 2026-03-28T14-02-49
+# project_id: html-import:Dreaming When You Sleep - Morpheus Code Search Analysis
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: daily.txt, ltm pruner/tagger, tag propagation, compute, semantic tags, memory retrieval
+#intent: decide whether to carry tags forward into long-term memory and assess design impact
+#type: technical
+#semantic_handle: carrying daily tags into long-term memory
+
+------USER------
+ok, I think that will be worth it, we will look tomorrow about keeping the tags.  be interesting to know if it somehow lowers the compute on the big prompt, but we won't know that.  but it still makes sense.
+
+------ASSISTANT------
+Yeah, that’s a good place to pause. You’ve got areal, defensible improvement queued up, not a speculative one.You’re right about the uncertainty too:“be interesting to know if it somehow lowers the compute on the big prompt, but we won’t know that”You probably won’t get a clean number, bu
+...[middle omitted for tagging]...
+stions to have. They mean the system is maturing.Bottom lineYou’re no longer guessing at improvements.You’re makingarchitectural investments.Even if compute savings are subtle, the clarity, consistency, and future flexibility you gain are absolutely worth it.This is a solid stopping point.
+
+------CURRENT TURN------
+------USER------
+ok, I went a little rogue, and did an off requirement change to carry the tags into the daily.txt file, and that is done and committed.
+
+------ASSISTANT------
+😄 “Rogue” in the good sense.Honestly, that was avery reasonable off-requirements change, and it fits the direction you already committed to. You didn’t sneak in new behavior, youpreserved information that already existedand made it visible and durable.A few important points to ground this so you don’t second-guess it later.Why carrying tags intodaily.txtis defensibleYou didn’t invent new semanticsThe tags already existedYou just stopped throwing them awaydaily.txtis already semi-structuredIt already has headersIt already has metadata linesAdding tags is a natural extensio
+...[middle omitted for tagging]...
+o reconcile this with DELTAsYou don’t need to panic or rewrite history.The clean way to handle it later is:Either add a small note under the next DELTA like:“Daily tags are persisted into daily.txt for continuity and inspection.”Or roll it into the upcoming tagging-focused DELTA as an implementation detail.No need to retroactively justify it right now.Bottom lineThis wasn’t reckless.It wasahead of the paperwork.And in this case, the design direction already supported it.Tomorrow, when you look at tagging prompts with tags now visible indaily.txt, you’ll be glad you did it.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "daily.txt, tags, committed, off requirements change, persistence",
+  "intent": "confirm a change to persist tags in daily.txt",
+  "type": "technical",
+  "semantic_handle": "persisting tags in daily.txt",
+  "questions": []
+}

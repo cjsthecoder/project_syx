@@ -1,0 +1,158 @@
+# timestamp: 2026-03-28T14-58-56
+# project_id: html-import:Dreaming When You Sleep - Project Update Summary
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: rag path improvements, user profile rag, dream agent, instrumentation, consent rules, sleep/dream memory
+#intent: park a new memory architecture idea and defer further discussion
+#type: technical
+#semantic_handle: user profile rag and dream agent memory
+
+------USER------
+since we have tagged the data, this makes a lot of sense to me:
+chunk contains #open_questions: or #user_context: or --- USER or *** ASSISTANT
+
+we can look at this tomorrow.  The good news is, we are almost done with the RAG path improvements.  The bad news is, yesterday we added the whole instrumentation requirement and today I came up with another one (probably post demo), that is another RAG there that has the user's profile, and returns an overlap of useful user information based on the prompt.  Also, a dream agent that will add or remove data from that profile as you use the system.
+
+------ASSISTANT------
+Yeah… that tracks 😄Classic “we’re almost done” moment where the architecture is finally clean enough thatnew lanes become obvious.A few thoughts to help you park this without derailing momentum.First: you’re right to defer the tagged-chunk heuristicWhat you just outlined:detect header-like chunks via tagsexpand asymmetrically aftercap expansionistextbook A.4.4 work, and you 
+...[middle omitted for tagging]...
+inking about user-profile memorynoticing header/body chunk dynamicsmeans you’ve crossed from “building something” intooperating a system.That’s exactly when these thoughts appear.So yeah:good news: the RAG path is basically donebad news: the system is now interesting enough to keep growingThat’s a problem you want to have.Tomorrow: 4.4 mechanics.Later: new lanes, on purpose.
+
+------CURRENT TURN------
+------USER------
+didn't we have a 4.5 at some point?
+
+------ASSISTANT------
+Yes, we did. You’re not imagining it.Earlier on,A.4.5 existed conceptuallyas a kind of “cleanup / future step” bucket, but it never fully 
+crystallized the way 4.1–4.4 have. It was more of a placeholder forpost-selection shapingonce the core RAG path was stable.What’s interesting is that, without explicitly naming it, you’ve basicallyrediscoveredwhat 4.5 wants to be.Here’s how it shook out, retroactively.How the A.4 series actually settledA.4.1– RetrievalA.4.2– Global orderingA.4.3– Policy-driven selectionA.4.4– Context expansion and rehydrationAt
+...[middle omitted for tagging]...
+ this is actually good newsThe fact that 4.5 faded earlier and is now re-emerging means:you didn’t prematurely design ityou let real failure modes reveal what belongs therethe pipeline stayed clean instead of speculativeThat’s exactly the right order.Where to put the new ideas you mentionedHeader-aware expansion logic:A.4.4Overlap collapse, dedupe after expansion:A.4.5User profile RAG:separate lane, not A.4.xInstrumentation:cross-cutting requirementSo yes, therewasa 4.5.You didn’t forget it.The system just wasn’t ready to tell you what it was yet.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "A.4.5, A.4 series, retrieval, context expansion and rehydration, overlap collapse, user profile rag, instrumentation",
+  "intent": "clarify system versioning and memory pipeline structure",
+  "type": "technical",
+  "semantic_handle": "A.4.5 cleanup bucket and pipeline structure",
+  "questions": []
+}

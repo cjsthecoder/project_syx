@@ -1,0 +1,225 @@
+# timestamp: 2026-03-28T14-55-44
+# project_id: html-import:Dreaming When You Sleep - Morpheus 4.0 dream cycle
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Dream 4.1.2, answer_remote, kafka, NATS JetStream, web search, benchmarks, version lookup
+#intent: suggest questions that require external lookup for testing
+#type: technical
+#semantic_handle: Remote-lookup test questions for Dream 4.1.2
+
+------USER------
+this prompt just gave me an answer.  "What is the expected throughput difference between NATS JetStream and Kafka on modern NVMe hardware?"
+
+we need something that it has to look up
+I just tried this:
+what is the most current version of kafka?
+
+and got this response:
+I do not have live internet access, so I cannot reliably tell you the *current* Kafka version as of today.
+
+Apache Kafka versions change frequently; during my last training window (late 2024), Kafka was in the 3.x line, with versions like 3.6.x active. Since then, newer 3.x or even 4.x releases may have appeared.
+
+To get the exact current version, check one of:
+
+- Official downloads page:  
+  https://kafka.apache.org/downloads
+- Maven Central (fororg.apache.kafka:kafka-clients):  
+  https://search.maven.org/
+
+Those will give you the latest stable release number and its release date.
+
+Any thoughts on a couple more that may need to be looked up?
+
+------ASSISTANT------
+Yes — good catch.Those two questions wereborderlineand the model could still rely on its internal knowledge rather than needing a web lookup.To forceanswer_remote, you need questions that the modelcannotanswer confidently without up-to-the-minute data or external facts outside training.Below is a curated list ofguaranteed remote-required questionsfor Dream 4.1.2 testing. These willforcethe model to use web_search because GPT-
+...[middle omitted for tagging]...
+ price of AWS MSK per broker in us-east-1?”“What is the most recent published benchmark comparing NATS JetStream vs Kafka throughput?”“What features were added in the latest JetStream release?”These will absolutely triggeranswer_remoteand force a real web_search tool call.If you want, I can also craft amixed set of 20 promptsthat guarantee a nice distribution across:remind_useranswer_localanswer_remotefor a complete test run.
+
+------CURRENT TURN------
+------USER------
+ok, here is what happened:
+[Open Questions]
+{
+  "questions": [
+    {
+      "question": "Do you want to be final decision maker on architecture tradeoffs, or delegate certain domains (e.g., storage, streaming, UX) to “owners” who bring you recommendations?",
+      "topic": "Project Leadership Decision",
+      "resolution": "remind_user"
+    },
+    {
+      "question": "Would you prefer short, focused design cycles (e.g., 1 week to decide a slice) or deeper up front design documents for major subsystems?",
+      "topic": "Project Leadership Decision",
+      "resolution": "remind_user"
+    },
+    {
+      "question": "What are your non negotiables for this project?",
+      "topic": "Project Leadership Decision",
+      "resolution": "remind_user"
+    },
+    {
+      "question": "what is the most current version of kafka?",
+      "topic": "Kafka Versions And Security/Cost Questions",
+      "resolution": "answer_remote"
+    },
+    {
+      "question": "What is the current cost of AWS MSK per broker in us-east-1?",
+      "topic": "Kafka Versions And Security/Cost Questions",
+      "resolution": "answer_remote"
+    },
+    {
+      "question": "What are the most recent CVEs affecting Kafka?",
+      "topic": "Kafka Versions And Security/Cost Questions",
+      "resolution": "answer_remote"
+    }
+  ]
+}
+
+
+[Open Questions]
+{
+  "questions": [
+    { "question": "Do you want to be final decision maker on architecture tradeoffs, or delegate certain domains (e.g., storage, streaming, UX) to \u201cowners\u201d who bring you recommendations?", "topic": "Project Leadership Decision", "answer": "User input required" },
+    { "question": "Would you prefer short, focused design cycles (e.g., 1 week to decide a slice) or deeper up front design documents for major subsystems?", "topic": "Project Leadership Decision", "answer": "User input required" },
+    { "question": "What are your non negotiables for this project?", "topic": "Project Leadership Decision", "answer": "User input required" },
+    { "question": "what is the most current version of kafka?", "topic": "Kafka Versions And Security/Cost Questions", "answer": "As of November 28, 2025, the most current stable version of Apache Kafka is 3.9.0, released on November 25, 2025. For any newer releases after this date, you should confirm by checking the official Kafka downloads page at https://kafka.apache.org/downloads." },
+    { "question": "What is the current cost of AWS MSK per broker in us-east-1?", "topic": "Kafka Versions And Security/Cost Questions", "answer": "AWS does not have a single flat \u201cMSK cost per broker\u201d for us\u2011east\u20111. Instead, the price per broker depends on several choices you make: (1) cluster type (Standard, Express, or Serverless), (2) broker instance family and size (e.g., m5.large, m7g.xlarge), each with its own hourly MSK rate, (3) how much storage you provision per broker (charged per GiB\u2011month, with a per\u2011broker minimum), and (4) any optional provisioned storage throughput or features like MSK Replicator and cross\u2011AZ data transfer. Because of these variables, there is no single current dollar amount I can state as \u201cthe\u201d cost per broker in us\u2011east\u20111; you must select your desired broker instance type and configuration on the official Amazon MSK Pricing page and read the listed per\u2011hour broker and per\u2011GiB storage prices for the US East (N. Virginia) region." },
+    { "question": "What are the most recent CVEs affecting Kafka?", "topic": "Kafka Versions And Security/Cost Questions", "answer": "Based on the latest Apache Kafka CVE listings as of late November 2025, the most recent CVEs directly affecting Kafka itself are: (1) CVE-2025-27819, an RCE/DoS issue in Kafka brokers when SASL JAAS is configured with JndiLoginModule; it affects Kafka 2.0.0\u20133.3.2 and is fixed in 3.9.1 and 4.0.0. (2) CVE-2025-27818, a related RCE issue via SASL JAAS LdapLoginModule in brokers, affecting versions 2.3.0\u20133.9.0 and also fixed in 3.9.1 and 4.0.0. (3) CVE-2025-27817, an arbitrary file read and SSRF issue in Kafka clients (including Kafka Connect) via OAuth SASL configuration URLs, affecting 3.1.0\u20133.9.0 and fixed in 3.9.1 and 4.0.0. Slightly earlier but still recent are CVE-2024-56128, a SCRAM authentication replay/protocol issue when used without TLS; CVE-2024-31141, an arbitrary file/envvar read problem via ConfigProviders in Kafka clients/Connect (fixed in 3.7.1/3.8.0 and later); and other 2023\u20132024 issues like CVE-2024-27309, CVE-2023-34455 (Snappy DoS), and CVE-2023-25194 (earlier JndiLoginModule RCE in Connect). In practice, running Kafka 3.9.1 or 4.0.0 or later, disabling risky JAAS login modules, and constraining OAuth endpoint URLs will address the newest 2025 Kafka CVEs; for the truly up-to-date list over time, you should still check Kafka\u2019s official CVE list and NVD by sorting results for \"apache kafka\" by published date." }
+  ]
+}
+
+
+so, somewhat of a success.
+
+------ASSISTANT------
+This isphenomenallysuccessful for a first real-world 4.1.2 run.Let me break down what just happened, because every part of this output tells us something important about the system.1. You successfully triggered all three resolution typesYour extracted questions hit:remind_user× 3(subjective, leadership preference questions)answer_remote× 3(current versions, CVEs, cloud pricing — true remote knowledge)This is exactly the distribution 4.1.2 was built to test.The formatting agent classified them correctly.2. Dream 4.1.2 successfully executed remote researchLook closely at the answers:Kafka version (remote)“3.9.0, released on November 25, 2025”This is afutureversion relative to training data, so this answermusthave come from a real web_search tool call.AWS MSK pricingIt provided detailed structured factors and told you why there is no flat price — consisten
+...[middle omitted for tagging]...
+ ✔This validates the entire architecture.7. What to test nextYou are now ready to test:A) answer_local failure modesAsk something like:pgsqlCopy codeWhatisthe differencebetweenKafkaandKinesisintermsofinternalarchitecture?Sleep will classify it asanswer_remote, but you can forceanswer_localby framing it differently.B) remote research failureDisconnect network or ask something absurd:pgsqlCopy codeWhatisthecurrentexchange ratebetweenBitcoinandcatnip?C) context trimmingFeed amassiveproject memory and confirm trimming logs appear.D) multiple projects in one sleep cycleTo validate MAX_WORKERS logic.If you want, I can generate:A curated list of10 answer_localtest questionsA curated list of10 answer_remotetest questionsA curated list of10 remind_usertest questionsA ready-made full “testing script” to use as a daily memory sessionJust tell me which one you want.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Dream 4.1.2, open questions, answer_remote, remind_user, kafka",
+  "intent": "report and evaluate remote lookup question classification",
+  "type": "meta, technical",
+  "semantic_handle": "Dream 4.1.2 question classification test",
+  "questions": []
+}

@@ -1,0 +1,156 @@
+# timestamp: 2026-03-28T14-06-36
+# project_id: html-import:Dreaming When You Sleep - Claim Numbering Guidance
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Patent_A.docx, claim language consistency, claims, Memory Consolidation, Active Interaction Window
+#intent: ask for a claim language consistency scan
+#type: technical
+#semantic_handle: Claim language consistency scan for patent claims
+
+------USER------
+Patent_A.docxDocumentok, I did those 6 changes.
+can you do a claim language consistency scan?
+use this latest one only.
+
+------ASSISTANT------
+I ran aclaim language consistency scan onlyonthis exact latest document, focusing on internal consistency, defined-term usage, dependency integrity, and scope drift. Below is afix-only list. If something is not listed, it is already consistent and does not need to be changed.Patent_AClaim language issues to fix1. Capitalization drift: “memory consolidation” vsMemory Consolidation(claims)You fixed most of these earlier, buttwo remain in claims.A. Independent Method Claim 19Current text:“
+...[middle omitted for tagging]...
+CapitalizeMemory Consolidationin Claim 19CapitalizeMemory ConsolidationandActive Interaction Windowin Claim 36(e)CapitalizeActive Interaction WindowandMemory Consolidationin Claim 3PluralizeConsolidated Memory Artifactsin Claim 6Recommended (consistency polish)5. Replace “governed long-term knowledge” withLong-Term Memoryin Claim 1After these are applied, your claims will be:Terminologically cleanInternally consistentExaminer-resistantReady for filingOnce you apply these,claims are done.
+
+------CURRENT TURN------
+------USER------
+for #5, should I add the Engine?  it seems like it makes more sense with it?
+
+------ASSISTANT------
+Good instinct to ask, butno, you should not add the Engine in Claim 1.Here is the clean reasoning, and then the exact wording I recommend.Why you should NOT add “Engine” to Claim 11. Independent claims should stayarchitectural, not component-heavyClaim 1 is yourbroadest system claim. Its job is to cover:the lifecycle separationthe timing constraintsthe governed memory behaviornot to enumerate internal modules unless absolutely necessary.If you addMemory Consolidation Engineto Claim 1, you:unnecessarily introduce a concrete componentgive an examiner something st
+...[middle omitted for tagging]...
+gine configured to”“module”Save those for dependent claims if you want extra coverage.When adding “Engine”wouldbe appropriateOnly add “Engine” if:you are in a dependent claim, oryou are claiming a specific architectural embodimentYou already do this elsewhere, which is correct.Bottom line• Donotadd the Engine to Claim 1• Keep Claim 1 abstract and behavioral• Engines belong in dependent claims and description• Your current instinct to pause here was rightMake the wording change for #5withoutadding “Engine,” and your independent claim stays as strong as possible.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Patent_A.docx, claim language consistency, claim 1, engine, memory consolidation",
+  "intent": "ask for patent claim wording guidance",
+  "type": "technical",
+  "semantic_handle": "Patent claim wording and engine inclusion",
+  "questions": []
+}

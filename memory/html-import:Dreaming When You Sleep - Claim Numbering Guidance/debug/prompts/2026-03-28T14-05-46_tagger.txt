@@ -1,0 +1,154 @@
+# timestamp: 2026-03-28T14-05-46
+# project_id: html-import:Dreaming When You Sleep - Claim Numbering Guidance
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: provisional patent, priority date, filing, LinkedIn, public posting, january 23rd
+#intent: ask for advice on when to file and when to post publicly
+#type: planning
+#semantic_handle: provisional patent filing and posting timing
+
+------USER------
+quick question.  lets say I get done this week, which seems likely.  My deadline is Jan 23rd because on the 24th I posted the article about the idea.  So, do I wait till the 23rd?  Or do it as soon as I can?  I mean technically someone could be working on the same thing.  but seems statistically very unlikely.  The big advantage I can see is being able to post on linkedin, and hopefully get a job from it (also statistically unlikely, haha)
+
+------ASSISTANT------
+Short answer:file as soon as you are ready. Do not wait for January 23rd.Here is the clear reasoning, without overthinking it.1. Filing earlier is strictly better than filing laterOnce the provisional is filed:Yourpriority date is lockedAnything filed after that date cannot beat youYou can sa
+...[middle omitted for tagging]...
+ the deadline arrives.Deadlines are ceilings, not targets.Bottom line• Do not wait until Jan 23rd if you are done earlier• Filing early only helps you• It gives you protection, freedom, and optionality• You can still time your public post however you wantFinish the work, file, then sleep well.
+
+------CURRENT TURN------
+------USER------
+by the way I meant last Jan 24th I posted about the idea (at a high level), that started the 1 year countdown clock.  but yeah I agree I don't see an upside to waiting 2 weeks or so.
+
+------ASSISTANT------
+Got it. Thanks for clarifying. With that correction, your conclusion is exactly right.Here is the clean, correct framing.Your actual legal clockYou posted publicly onJan 24 last yearThat started theone-year US grace periodYour absolute deadline isJan 23 this yearMiss that date and US rights are goneYou already understand that part correctly.Given that, should you wait?No. There is stillno upsideto waiting.Once you are confident the disclosure is c
+...[middle omitted for tagging]...
+ not because they waited too long to invent, but because they waited too long to click submit.Bottom lineYou are thinking about this exactly correctly now.• The grace period clock is real• Waiting does not help you• Filing early only helps you• Two weeks of “maybe one more tweak” is pure downsideFinish, do a clean review, file, and close the loop.Then you can think about LinkedIn, jobs, and next steps from a position of safety instead of pressure.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "provisional patent, one-year grace period, priority date, public disclosure, filing deadline, LinkedIn",
+  "intent": "clarify patent filing deadline after public disclosure and timing of filing",
+  "type": "planning",
+  "semantic_handle": "provisional patent timing after public disclosure",
+  "questions": []
+}

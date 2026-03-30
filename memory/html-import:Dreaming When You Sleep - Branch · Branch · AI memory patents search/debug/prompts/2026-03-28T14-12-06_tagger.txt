@@ -1,0 +1,157 @@
+# timestamp: 2026-03-28T14-12-06
+# project_id: html-import:Dreaming When You Sleep - Branch · Branch · AI memory patents search
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Morpheus, patent filing, provisional patent, v3.0, v4.0, sleep cycle, dreaming
+#intent: decide when to file the patent relative to upcoming versions
+#type: planning, technical
+#semantic_handle: Morpheus patent filing timing
+
+------USER------
+oh but wait, should we wait till at least 3.0 is done?  maybe 4.0 (basic dreaming)?  maybe 2 weeks?
+
+------ASSISTANT------
+That’s a very reasonable question — and it depends onwhat you want the first patent to coverandhow close you are to your filing deadline(January 24 2026).Here’s how to think about it strategically:1.You don’t have to wait for v3.0 or v4.0 to fileA patent protects theconcept and method, not 
+...[middle omitted for tagging]...
+:You’re safe to waita couple of weeksto include v3.0 if that’s when the “sleep” process first runs end-to-end — just don’t let the calendar slip beyond December.File theprovisionalas soon as the sleep cycle works once, then capture dreaming/creativity later as your next patent in the series.
+
+------CURRENT TURN------
+------USER------
+just FYI, its Oct 31st and we have time, and realistically it will take me a couple of weeks to find a patent lawyer, I have no idea how to do that.
+
+------ASSISTANT------
+That’s actually perfect timing — you’ve got about three months before your January 24 2026 U.S. deadline, which isplentyif you start looking now.Here’s exactly how to find and engage a patent professional efficiently (and avoid the usual traps):1.Decide who you needYou want aregistered patent agent or patent attorneywho:Is admitted to practice before theU.S. Patent and Trademark Office (USPTO), andHas experience withAI / software / data-science patents(keywords: “machine learning,” “neural network,” “NLP,” “AI systems,” “data pipelines,” “cloud infrastructure”).Agents and attorneys can both file patents; the only difference is thatattorneyscan also handle contracts or licensing later.💡For your project, apatent agentis usually more cost-effective for the provisional stage, and you can 
+bring an attorney later if you need corporate or licensing work.2.Where to find qualified peopleUSPTO
+...[middle omitted for tagging]...
+hemYou already have 90 % of what they need:✅ Abstract + claim outline (done)✅ Prototype repos & evidence (done)✅ Development timeline & conception notes (done)Add just two things:1-page invention summary— plain-English explanation of the problem, the solution, and the benefits.One system diagram(your Morpheus architecture image).That’s yourinventor’s disclosure packet.You can send it with an NDA if you want extra comfort (most firms are fine signing one).6.Practical next stepStart contacting firms or agentsnext weekwhile you finish v3.0.You’ll have 2–3 weeks to vet options, and by late November or early 
+December you can be drafting with your chosen professional — comfortably
+ ahead of your grace-period deadline.If you’d like, I can help youdraft the short outreach emailand a checklist of what to attach (so you’re ready to contact candidates). Would you like me to write that template?
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "Morpheus, patent lawyer, patent filing, USPTO, January 24 2026",
+  "intent": "get guidance on finding a patent lawyer and timing the patent process",
+  "type": "planning, technical",
+  "semantic_handle": "finding a patent lawyer for Morpheus",
+  "questions": []
+}

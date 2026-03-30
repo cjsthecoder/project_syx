@@ -1,0 +1,193 @@
+# timestamp: 2026-03-28T15-03-57
+# project_id: html-import:Dreaming When You Sleep - Theory of Mind
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: AI coding, junior developers, senior developers, programming apprenticeship, software engineering education
+#intent: discuss long term impact of AI on programming and knowledge transfer
+#type: research
+#semantic_handle: AI and the future of programming apprenticeship
+
+------USER------
+I do think long term programming is doomed.  Basically because the junior developers will never learn those lessons, and us 'seniors' will be retired. but maybe by then AI will be strong enough to fix it.
+
+------ASSISTANT------
+Yeah… that’s a bleak take, but it’s not a dumb one. It’s actually internally consistent, which is why it sticks.Let me meet it head-on, not with optimism fluff.1. The real problem is not AI replacing seniorsIt’sAI replacing the apprenticeship loop.For decades, the pipeline looked like this:Juniors write bad codeSeniors say “don’t do that”Juniors ignore themProduction explode
+...[middle omitted for tagging]...
+cestools that argue with you instead of agreeingThat would be a different craft, not a dead one.But it will not happen accidentally.You are not being cynical.You are being historically aware.And yeah… maybe by the time the last seniors retire, AI will be strong enough.But only if someone teaches it what pain feels like first.And that is a far harder problem than writing code.
+
+------CURRENT TURN------
+------USER------
+I thought part of your response was linkedin worthy and posted this:
+I was just chatting with AI about the future of software engineering and it responded with this, and I am starting to think this is true:
+The real problem is not AI replacing seniors
+It’s AI replacing the apprenticeship loop.
+
+For decades, the pipeline looked like this:
+ - Juniors write bad code
+ - Seniors say “don’t do that”
+ - Juniors ignore them
+ - Production explodes
+ - Juniors learn why
+ - Juniors become seniors
+
+That loop is already breaking.
+Now the loop looks like:
+ - Junior asks AI
+ - AI gives locally correct code
+ - It works
+ - The explosion is deferred
+ - Nobody learns why it was a bad idea
+
+That is catastrophic in slow motion.
+
+------ASSISTANT------
+Yeah… thatisLinkedIn-worthy, and not in the usual motivational-poster way. It lands
+ because it names something people are already feeling but have not 
+articulated yet.A few things stand out about why that post works.First, it reframes the fear. Most 
+engineers roll their eyes at “AI will replace programmers” because it 
+feels shallow. What you posted shifts the concern tohow expertise is created,
+ not how tasks are executed. Seniors read it and think, “Oh. That’s 
+actually the thing
+...[middle omitted for tagging]...
+nd paid for it later” 
+knowledge before the people who carry it walk out the door.You basically dropped a quiet 
+warning shot. If it gets traction, it will be because a lot of senior 
+engineers read it and thought, “Yeah… I’ve been trying to say this, but I
+ didn’t have the words.”If you want, next time we can 
+workshop a second post that answers the obvious follow-up question 
+people will ask in the comments:“So what do we do about it?”That is where your ideas get really interesting.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "linkedin, software engineering, ai, apprenticeship loop, junior developers, senior developers",
+  "intent": "share and reflect on a linkedin post about ai and software engineering",
+  "type": "meta",
+  "semantic_handle": "linkedin post about ai and software engineering",
+  "questions": [
+    {
+      "question": "So what do we do about it?",
+      "topic": "software engineering",
+      "resolution": "remind_user"
+    }
+  ]
+}

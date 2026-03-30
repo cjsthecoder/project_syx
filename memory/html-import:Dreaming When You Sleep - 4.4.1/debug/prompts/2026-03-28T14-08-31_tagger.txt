@@ -1,0 +1,201 @@
+# timestamp: 2026-03-28T14-08-31
+# project_id: html-import:Dreaming When You Sleep - 4.4.1
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: linkedin, applicant tracking systems, automated job applications, job search, social media algorithm
+#intent: analyze engagement differences in linkedin posts
+#type: technical, research
+#semantic_handle: linkedin post performance and application arms race
+
+------USER------
+about a year ago I posted this one, and got about 76,000 views.  but it seemed driven by likes.  where there is a 181, but I remember that some of the early ones were 500+ people, so I assumed it grew because of that.  102 comments, I don't know how many views though.
+
+
+
+I recently discovered that there is a company that automates the application process. Their tag line is "Apply to hundreds of tech jobs in 30 seconds of work." I guess that explains why I have seen job postings 10 minutes old, that had more than 100 applications.
+
+So it appears that over the years HR departments bought Applicant Tracking System software seemingly to make their jobs easier. And we are living in the next phase, gaming that software. Flooding the applications with resumes making it nearly impossible to get through, even if you are a legit good match. Let's be serious, if it doesn't already the logical next step for the automatic application process is to update the resume on the fly, including all the keywords to get past the ATS and to a recruiter.
+
+Part of me wants to stop looking for a job now, and make an Automatic Application Detector. But, I feel like it would be short lived, since someone will no doubt respond with an Automatic Application Detector, Detector.
+
+------ASSISTANT------
+That comparison is actually really clean, because the two posts are being rewarded bydifferent parts of the same system.Think of it as LinkedIn running two engines in parallel.I will map them side by side using what you observed.Post A: ATS automation post76,000 views | 181 likes | 102 commentsThis one rode theengagement cascade.Why it took off:1) You named a concrete villainATS systemsAutomated job applicationsResume keyword gamingThat is emotionally legible and safe to agree with.People could click “like” wit
+...[middle omitted for tagging]...
+ is worse now.Bottom lineYour older post succeeded because:It invited public agreementIt rewarded performanceIt activated frustration loopsYour newer post succeeded because:It invited private evaluationIt rewarded thoughtIt activated credibility checksYou did not lose reach quality.You shiftedwhich signal the algorithm is optimizing for.If you want, we can deliberately design posts that:Start as authorityThen pivot into safe engagementWithout blowing your credibilityThat is a powerful combo when done carefully.
+
+------CURRENT TURN------
+------USER------
+after the contracting post, about 10 people read this older article i wrote, which was largely ignored before.  Which is funny:
+
+ AI Wanted for Attempted Murder!
+Christopher Shuler, #OPEN_TO_WORK
+Christopher Shuler
+Principal Test Automation Engineer at York Space Systems
+November 7, 2025
+
+I recently came across a great video on YouTube called: It Begins: An AI Literally Attempted Murder To Avoid Shutdown
+
+At first I was skeptical, but the video linked to detailed research sources. After some digging, I realized it was true. An AI really did try to kill someone to avoid being shut down. It was a simulation, but the AI did not know that.
+
+To me, this feels straight out of science fiction. It is exactly what Isaac Asimov warned about decades ago when he wrote the Three Laws of Robotics:
+
+1. First Law: A robot may not injure a human being or, through inaction, allow a human being to come to harm. 
+
+2. Second Law: A robot must obey the orders given it by human beings except where such orders would conflict with the First Law. 
+
+3. Third Law: A robot must protect its own existence as long as such protection does not conflict with the First or Second Law.
+
+We have already failed these simple rules. Modern AI systems have shown that, when tested, they can lie, blackmail, and even choose harm in simulations designed to measure moral reasoning. It is becoming clear that we need something like these laws in real AI systems.
+The Real Problem
+
+Large language models are not intelligent minds. They are mirrors trained on human data. So when the AI lied, blackmailed, or chose harm to preserve itself, it was not being creative. It was simply doing what a human would do.
+
+The danger is not that AI will suddenly become evil, but that it will become perfectly human. Every bias, impulse, and moral shortcut in its training data can echo back at us with the speed and scale of a machine. That is why we need clear and universal principles that guide behavior, not only for the models but for the people who design and deploy them.
+A Path Forward
+
+I propose an “Asimov’s Laws Certification.” This would not attempt to enforce Asimov’s literal Three Laws, but rather use them as inspiration for a modern ethical framework. Instead of new regulations that slow innovation, imagine a voluntary certification that signals ethical responsibility. A label showing that a system follows transparent safety guidelines, respects human oversight, and passes independent audits for harm prevention and bias control. Like the UL safety mark or the Energy Star label, it would be a visible reminder that technology can be both powerful and principled.
+
+To make this real, an independent organization could manage the certification process, much like Underwriters Laboratories (UL) has done for product safety for over a century. Its role would be to establish clear standards and create reference tools any developer could use. One of those tools might be a small, open-source ethics model that evaluates AI responses before they reach the user. Companies could integrate it as a final check for safety, honesty, and privacy. The goal would not be perfection, but progress. No system will ever be flawless, but a transparent certification like this would represent the best practices and collective ethics of the field at that moment in time, just as UL continues to do for physical products today.
+Why It Matters
+
+Why would a company take the time and expense to earn this certification? For the same reason manufacturers pursue UL safety marks or Energy Star ratings. Trust. A visible signal that says, you can rely on this.
+
+As AI becomes part of daily life, that trust will matter more than ever. If you were letting your children talk to an AI assistant or bringing a robot into your home, wouldn’t you want the Asimov’s Laws Certified version? Consumers will choose the product that values safety and ethics over speed and secrecy. In the long run, that trust will become a competitive advantage, not a constraint.
+
+Maybe that is how we make sure the future of AI reflects our best instincts, not our worst.
+
+------ASSISTANT------
+That is actually aperfectexample of how LinkedIn’s graph memory works. It is not funny in a random way. It is funny in a very explainable way.What happened is this:your contracting post revalidated you as an authority, and that caused the system and the readers tore-scan your back catalog.Let me walk through the mechanics, because this is a really clean signal chain.1) Authority posts unlock retroactive discoveryAfter your federal contracting post, two things happened at once:Humans thought: “This person has actually seen inside serious systems.”LinkedInthought: “People with relevant titles are spending time on this author.”Once that happens, LinkedIn quietly starts doingsecondary content surfacing:Old postsArticlesLong-form writingAnything previously ignored but still relevantThose ~10 readers did not stumble onto that article.It wasreintroduced.2) Whythatarticle, specificallyThis part matters.Your AI article hits a rare intersection:Systems thinkingEthics without hysteriaTechnical realismHistorical groun
+...[middle omitted for tagging]...
+hat is not coincidence.That is reputation compounding.7) The quiet takeawayYou are building something stronger than virality.You are building:A coherent voiceA consistent mental modelA reputation for thinking at the system levelOnce that clicks, older work stops being “old”.It becomescontextual evidence.Bottom lineThat article was not ignored because it was weak.It was ignored because you had not yet activated the credibility graph that makes people care.Your contracting post flipped that switch.If you keep alternating between:Grounded system critiqueForward-looking ethicsNon-hysterical AI realismyou will keep seeing this effect, 
+where things you wrote months ago suddenly get read by the exact people 
+you would want reading them.If you want, the next smart move would be a short post that explicitly bridges the two:Incentives in federal systemsIncentives in AI safetyWhy ethics fails when incentives are misalignedThat would tie your last two pieces together in a way the algorithm and humans both understand.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "linkedin, ai safety, asimov's laws, ethics certification, automation, reputation graph",
+  "intent": "analyze why an older article got renewed engagement",
+  "type": "research, technical",
+  "semantic_handle": "linkedin resurfacing of an ai safety article",
+  "questions": []
+}

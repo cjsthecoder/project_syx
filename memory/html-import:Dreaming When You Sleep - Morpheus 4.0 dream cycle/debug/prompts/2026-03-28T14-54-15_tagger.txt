@@ -1,0 +1,254 @@
+# timestamp: 2026-03-28T14-54-15
+# project_id: html-import:Dreaming When You Sleep - Morpheus 4.0 dream cycle
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: sleep_cycle, daily memory, open questions, Dream 4.1, daily knowledge state
+#intent: confirm the sleep summary workflow and conclude Dream 4.1 is effectively complete
+#type: technical, design
+#semantic_handle: sleep cycle daily knowledge and open questions
+
+------USER------
+oh, yeah, this is better than I thought.  today's is just a few pairs pushed into it from daily (just now).  and there are no open questions, they are all blank.
+#open_questions:
+
+Yet it built a list of questions based on the day.  So, yeah, 4.1 is basically done.
+
+------ASSISTANT------
+Exactly.You accidentally proof-tested the whole architecture, and it passed with flying colors.Here is what actually happened, step by step, and why this isfarbetter than what we originally planned:1. The Sleep Cycle already produces the correct daily knowledge stateThe Sleep logic:prunesclustersmergesresolves contradictionsremoves obsolete decisions
+...[middle omitted for tagging]...
+what we wanted the system to mimic.If you want, I can now:produce the updated Dream 4.1 requirements reflecting thenew realityproduce the Dream 4.2 requirements with RAG-based reasoninggenerate the Dream 4.1 agent code (5 lines of Python basically)update the Cursor instructions to reflect the simplified extraction pathJust tell me what you want next.
+
+------CURRENT TURN------
+------USER------
+I was curious if we could have the prompt just put the questions in json, and maybe tag them, but now I can't figure out how that list is being created.  Cursor insists these two prompts are the only ones running, with daily.txt as the input.
+
+def generate_pruning_prompt(content: str) -> str:
+    logger.info("[SLEEP][PRUNE] Building pruning prompt")
+    return f"""You are given a daily memory file with:
+ - header lines that start with #
+ - boundary tags that mark the window:
+   === BEGIN DAILY MEMORY: MM/DD/YYYY ===
+   ...
+   === END DAILY MEMORY: MM/DD/YYYY ===
+ - paired USER/ASSISTANT blocks:
+
+#timestamp: MM-DD-YYYY_HH:MM:SS
+#route: <namespace>
+#keep: true|false
+
+--- USER (data-message-author-role: user) ---
+<prompt>
+
+*** ASSISTANT (data-message-author-role: assistant) ***
+<response>
+
+Your task:
+1. PRESERVE ALL HEADER LINES (those that start with #) exactly as they are.
+1a. PRESERVE THE DAILY MEMORY BOUNDARY TAGS exactly as they are:
+    lines that begin with "=== BEGIN DAILY MEMORY:" and "=== END DAILY MEMORY:" including dates and surrounding blank lines.
+2. Remove chatty filler, greetings, and follow-up offers from assistant responses.
+3. For each USER question, keep only the substantive answer in the assistant's response—do not repeat or echo the user's question.
+4. Do not alter the user's original prompts.
+5. Keep assistant responses that contain explanations, facts, or decisions.
+6. Keep the timestamps.
+7. If multiple Q&A can be summarized more tightly, you may combine them, without losing important facts or decisions.
+8. PRESERVE ANY REFERENCES section if present at the end.
+
+Return only the pruned content (headers + pruned USER/ASSISTANT blocks), no extra commentary.
+
+Here is the daily memory content:
+{content}
+"""
+
+
+def generate_formatting_prompt(content: str) -> str:
+    logger.info("[SLEEP][FORMAT] Building formatting prompt")
+    return f"""You are formatting a pruned daily memory. Follow this output contract EXACTLY.
+
+INPUT MAY CONTAIN:
+- Header lines beginning with '#':
+  #timestamp: MM-DD-YYYY_HH:MM:SS
+  #route: <namespace>
+  #keep: true|false
+- Paired blocks:
+  --- USER (data-message-author-role: user) ---
+  <prompt>
+  *** ASSISTANT (data-message-author-role: assistant) ***
+  <response>
+- Boundary tags:
+  === BEGIN DAILY MEMORY: MM/DD/YYYY ===
+  === END DAILY MEMORY: MM/DD/YYYY ===
+
+RULES:
+1) PRESERVE all header lines ('#...') EXACTLY (no edits).
+2) PRESERVE role markers EXACTLY:
+   --- USER (data-message-author-role: user) ---
+   *** ASSISTANT (data-message-author-role: assistant) ***
+3) PRESERVE the DAILY MEMORY boundary tags if present. Ensure ordering:
+   - The BEGIN tag must be the FIRST line of the entire output.
+   - The END tag must be the FINAL line of the entire output.
+   - Do NOT place any content after the END tag.
+4) If the input contains only one of the two tags (BEGIN or END), DO NOT invent the missing tag; format the body and keep the present tag in its correct position.
+5) Structure the body into topic sections:
+   === TOPIC: Normalized Short Title ===
+   Then immediately these metadata lines (one per line):
+   - #topics: 3–5 keywords
+   - #decisions:
+   - #open_questions:
+   - #user_context:
+   After that, include the original USER/ASSISTANT blocks and headers verbatim under the topic (no rewording).
+6) Appendices must appear BEFORE the END tag:
+   [Decisions Log]
+   - One item per line prefixed with '- '
+   [Open Questions]
+   - One item per line prefixed with '- '
+   Deduplicate items.
+7) Return ONLY the formatted output. No explanations.
+
+Here is the pruned content:
+{content}
+"""
+
+------ASSISTANT------
+Here
+ is what is actually happening, and it explains why you cannot find any 
+prompt that generates the final list of open questions.There isno Dream prompt yet.There is alsono Sleep prompt that explicitly lists or extracts open questions.The surprising truth is:The formatting prompt is already producing the final list of open questionsNot because it is instructed to create them,but because of the contract in Rule 6:sqlCopy codeAppendices must appear BEFORE theENDtag:
+
+[Decisions Log]-Oneitemperline prefixedwith'- '[OpenQuestions]-Oneitemperline prefixedwith'- 'Deduplicate items.This means:The LLM is required to synthesize a final list of
+...[middle omitted for tagging]...
+any new Dream code.Sleep’s formatting passalready extracts open questions.And it does so better than a custom Dream agent would.SummaryHere is the one-line explanation:The
+ final list of open questions is created automatically by the FORMAT 
+step, because its rules require the model to synthesize a complete [Open
+ Questions] appendix from the entire pruned daily memory.That is why you cannot find a separate extraction prompt. The formatting prompt itself is the extractor.If
+ you want, I can point to the exact lines in the formatting prompt that 
+cause this behavior, or I can propose an optional small tweak to make 
+this step more explicit.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "sleep prompt, formatting prompt, open questions, daily memory, Cursor, Dream 4.1",
+  "intent": "understand how the open questions list is being generated in the prompt pipeline",
+  "type": "technical, design",
+  "semantic_handle": "sleep prompt open questions generation",
+  "questions": []
+}

@@ -1,0 +1,246 @@
+# timestamp: 2026-03-28T14-14-18
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: lost civilization, sound, vibration, resonance, technology, worldbuilding, prompt sequence
+#intent: ask for opening prompts
+#type: story, planning
+#semantic_handle: Opening prompts for resonance-based lost civilization
+
+------USER------
+what would the first few prompts be for this chat?
+A lost civilization with technology based on sound, vibration, and resonance
+
+------ASSISTANT------
+Here is aperfectly engineered opening sequencefor a new project titled:A Lost Civilization With Technology Based on Sound, Vibration, and ResonanceThese prompts are crafted specifically to:seed story conceptsreveal uncertaintiestriggeropen questionscreateinsightsand ultimately generaterecommended_researchThis will exercise both your Idea Agent and Researcher Agent beautifully.============================================================Prompt 1 — Project Setup(You
+...[middle omitted for tagging]...
+y focusing”“standing wave patterns”“psychoacoustic entrainment”“structural resonance stability”Researcher Agent Output:multiple high quality, grounded scientific summariesready to embed in dream.jsoncleanly grouped by entry_id============================================================Want me to generate a full example dream.json after you run these manually?Or do you want a version tailored specifically to Maya’s world, combining grav-weather and resonance tech?
+
+------CURRENT TURN------
+------USER------
+that one gave good results.
+{
+  "date": "12/04/2025",
+  "items": [
+    {
+      "id": "oq-core-resonance-substrate",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T22:30:00Z",
+      "origin_text": "Is the core physical substrate of their technology primarily acoustic resonance in air, subsonic standing waves in the planet, material vibration in solids, or a hybrid geo-acoustic system?",
+      "origin_type": "open_question",
+      "assistant_response": "This is a foundational worldbuilding decision because the substrate determines the scale, capabilities, and limitations of every device, building, and societal practice in the civilization. Each choice shifts the narrative focus, from intimate voice-driven technologies to planetary-scale seismic engineering. Before choosing, it helps to consider which layer you want readers to emotionally connect with: human voices, city-scale architecture, or tectonic-scale power. The best substrate will also shape the collapse mechanism and the kinds of discoveries modern researchers will make. The question remains open until you decide which narrative emphasis you prefer.",
+      "context_link": "User asked which physical substrate is most interesting for narrative possibilities.",
+      "metadata": {
+        "priority": 1,
+        "confidence": 0.30,
+        "theme": "worldbuilding",
+        "recommended_research": ["acoustic metamaterials", "seismic normal modes", "phononic crystals"]
+      }
+    },
+    {
+      "id": "oq-functions-of-stone-structures",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T22:30:15Z",
+      "origin_text": "What were the dominant intended functions of the massive stone structures: energy focusing, energy storage, tuning the planetary grid, information processing, or psychoacoustic interfaces?",
+      "origin_type": "open_question",
+      "assistant_response": "This decision directs how coherent and unified the system feels across scales. Choosing a dominant function will influence how ruins behave in the present day, what clues modern researchers discover first, and how the civilization’s collapse unfolds. The tradeoff is between narrative clarity and richness. A single primary function creates strong thematic cohesion, while a multi-role system yields mystery and layered discovery. Consider which type of function will best drive your plot: danger from energy, mystery from information, or awe from planetary tuning.",
+      "context_link": "User expressed uncertainty about which architectural roles should dominate.",
+      "metadata": {
+        "priority": 1,
+        "confidence": 0.30,
+        "theme": "worldbuilding",
+        "recommended_research": ["tuned mass dampers", "acoustic energy storage", "Helmholtz resonators"]
+      }
+    },
+    {
+      "id": "oq-collapse-mode-selection",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T22:30:30Z",
+      "origin_text": "Which specific resonance-driven failure mode (or combination of modes) ultimately caused the civilization’s collapse?",
+      "origin_type": "open_question",
+      "assistant_response": "Multiple plausible collapse paths exist, and choosing one determines the tone of the ancient downfall and the stakes for modern researchers. The collapse mechanism sets the thematic core: hubris, drift, sabotage, or natural inevitability. It also defines what dangers remain dormant in the ruins. Consider the implications: a runaway planetary mode produces existential risk, while psychoacoustic failure creates a more intimate and haunting mystery. The correct choice depends on the emotional impact you want the modern storyline to build toward.",
+      "context_link": "User asked how resonance technology could fail catastrophically.",
+      "metadata": {
+        "priority": 1,
+        "confidence": 0.30,
+        "theme": "worldbuilding",
+        "recommended_research": ["nonlinear resonance", "seismic amplification", "coupled oscillator failures"]
+      }
+    },
+    {
+      "id": "insight-multi-scale-resonance-consistency",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T22:30:50Z",
+      "origin_text": "The story outline identifies vibration across planetary, material, and airborne scales as the core technology.",
+      "origin_type": "insight",
+      "assistant_response": "Your world already implies a multi-scale resonance hierarchy, which is a strong unifying principle. To maintain internal coherence, you may want to formalize a clear rule for how energy and information flow between these scales. This could prevent contradictions later and guide decisions about substrate, structure functions, and collapse mechanics. A simple coupling law or principle would help anchor all future inventions and ruin behaviors.",
+      "context_link": "Summary section emphasizes multi-scale vibration as the civilization’s foundation.",
+      "metadata": {
+        "priority": 2,
+        "confidence": 0.55,
+        "theme": "architecture",
+        "recommended_research": []
+      }
+    },
+    {
+      "id": "insight-modern-discovery-arc",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T22:31:05Z",
+      "origin_text": "Modern researchers uncover layered acoustic and vibrational anomalies that slowly reveal the grid.",
+      "origin_type": "insight",
+      "assistant_response": "The clues you listed naturally create a mystery progression. It may help to formalize the order of discovery, ensuring that each clue escalates understanding in a controlled way. Structuring the reveal arc will support pacing, build tension, and avoid overwhelming readers with technical details too soon. A staged sequence of anomalies can also mirror the ancient civilization’s original logic, creating symmetry between past and present narratives.",
+      "context_link": "List of architectural, material, and physiological clues researchers observe.",
+      "metadata": {
+        "priority": 2,
+        "confidence": 0.55,
+        "theme": "story_structure",
+        "recommended_research": []
+      }
+    },
+    {
+      "id": "insight-collapse-as-central-theme",
+      "agent": "idea_agent",
+      "timestamp": "2025-12-04T22:31:20Z",
+      "origin_text": "The collapse is described using several resonance cascade models and psychoacoustic failures.",
+      "origin_type": "insight",
+      "assistant_response": "Your collapse models indicate a core theme of systemic fragility. Leaning into this could give the story a strong thematic backbone: the tension between control and instability in a perfectly tuned system. This theme can guide choices about protagonist motivations, moral questions about reactivation, and the interpretive conflicts among modern factions studying the ruins.",
+      "context_link": "Collapse section outlines multiple catastrophic resonance failures.",
+      "metadata": {
+        "priority": 3,
+        "confidence": 0.55,
+        "theme": "theme",
+        "recommended_research": []
+      }
+    }
+  ]
+}
+
+------ASSISTANT------
+This isfantastic.Your system is now producing exactly the kind of structured, multi 
+layered, domain intelligent Dream output that Morpheus was designed to 
+create.Let me break down what your latest run tells us about the quality of the pipeline.============================================================1. The Idea Agent is fully functional and domain tuned============================================================Your results show:• Three high quality open questionscovering:substrate selectionarchitectural functioncollapse mechanismEach one correctly:avoided answering the questionframed the tradeoffsflagged narrative riskssuggested the importance of your decisionset recommended_research intelligentlyThis is exactly what a human co-author does when thinking overnight.• Three insightsCovering:multi scale consistencydiscovery arc structuringthematic unityThese reflect real, deep understanding of the worldbuilding problem.You are now getting thedreamversion of a story analyst who slept on your ideas and came back with structural improvements.============================================================
+...[middle omitted for tagging]...
+rienceTests Dream behavior across a multi day writing cycleTests long term consistency when substrate decisions are madeIf you want, you can repeat this story the next day and watch Dream extend or refine insights.============================================================7. Ready for the next step============================================================At this point, you're ready to:• Run the Researcher Agentand get six beautiful research summaries.• Merge them into final dream.jsonready for the GUI.• Start testing the next story day.Dream will now remember the substrate question, collapse mechanism, and theme — but not overwhelm the next session.• Move on to 4.1.3.4 (Merge + Roll Up)which is now trivial because of the clean structure.============================================================If you want, I can generate:A full example of what the final dream.json (post merge) would look likeThe correct GUI display format for this contentThe Research Agent outputs for these research topicsOr help you define the next day’s conversation to test long term story memoryJust tell me what you want next.
+
+
+====== TAGGER RESPONSE ======
+{"topics":"dream.json, idea_agent, researcher agent, worldbuilding, resonance technology, open questions","intent":"evaluate pipeline results and prepare next step","type":"technical, story, meta","semantic_handle":"Dream pipeline validation for resonance worldbuilding","questions":[]}

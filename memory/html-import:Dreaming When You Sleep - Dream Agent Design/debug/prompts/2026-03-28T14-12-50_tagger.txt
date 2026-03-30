@@ -1,0 +1,160 @@
+# timestamp: 2026-03-28T14-12-50
+# project_id: html-import:Dreaming When You Sleep - Dream Agent Design
+# model: gpt-5.4-mini
+# success: true
+
+====== TAGGER PROMPT (SYSTEM) ======
+You are a memory tagging system.
+
+You are a memory tagging system.
+
+Your task is to extract compact, durable metadata for later retrieval.
+Tag the CURRENT TURN only.
+
+Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
+Do not tag the PREVIOUS TURN as if it were the current exchange.
+The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
+
+Use ONLY the content provided.
+Do NOT invent information.
+Do NOT infer long term meaning beyond what is explicit.
+
+Prefer tags that:
+- Would plausibly be used as search queries later
+- Represent concrete concepts, entities, or themes
+- Are stable over time
+
+If present, extract:
+- Proper names (people, organizations, projects, locations, technologies)
+- Clearly stated topics or subject matter
+- The user’s intent in asking the question
+- The general category of the exchange
+
+Guidelines:
+- Use 3 to 7 topics maximum
+- Topics should be lowercase, comma separated keywords
+- Include proper names exactly as written
+- Do not include filler words or generic terms
+- Avoid one off or throwaway details
+
+Intent should describe the purpose of the exchange, for example:
+- explore story ideas
+- ask for explanation
+- design a system
+- evaluate consequences
+- clarify a concept
+
+Type should be one or two broad categories such as:
+technical, story, design, system, research, planning, meta
+
+Semantic handle:
+- A short, human readable noun phrase that names what this exchange is about
+- Should be understandable without surrounding conversation
+- Should avoid pronouns like this, that, it, we
+- Should not be a full sentence
+- Prefer 5 to 12 words
+- Do not include commentary or explanation
+
+Open questions:
+- Identify only high-value unresolved questions from this exchange.
+- Extract question candidates from the ASSISTANT response text only.
+- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
+- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
+- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
+- Prefer zero questions over weak questions.
+
+Inclusion standard:
+- Include a question only if at least one of these is true:
+  - answering it would likely require outside research or verification
+  - answering it would materially improve a major design, story, or project decision
+  - it represents a genuinely important unresolved dependency or blocker
+- Exclude questions that are:
+  - already effectively resolved in the same exchange
+  - simple next-step ideas
+  - optional creative variations
+  - minor style or wording choices
+  - speculative branches that do not clearly matter
+
+Question handling:
+- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
+- Include implicit unresolved questions only when they are clearly important and durable, such as:
+  - major unresolved design choices
+  - critical pending decisions
+  - research questions that need evidence
+  - blockers or dependencies that affect later work
+
+Resolution values:
+- `remind_user` when a real user decision is required and it is important enough to revisit
+- `answer_local` when it is important and can likely be answered from project/local context
+- `answer_remote` when it is important and likely requires external research
+
+Limits:
+- It is valid and preferred to return an empty `questions` array.
+- Do not emit weak, resolved, or low-value questions.
+
+Return STRICT JSON only. No prose. No markdown fences.
+
+Schema:
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<remind_user | answer_local | answer_remote>"
+    }
+  ]
+}
+
+Rules:
+- Always include all keys shown in the schema.
+- Use "" (empty string) for unknown values. Do not output null.
+- `questions` MUST be an array (use [] when no candidates).
+- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+
+
+====== TAGGER PROMPT (USER) ======
+------PREVIOUS TURN------
+------PREVIOUS TAGS------
+#route: other
+#keep: false
+#topics: Morpheus, 4.1.3.2, dream cycle, software engineering agent, writing agent, dream orchestrator
+#intent: design a modular agent architecture for future dream-cycle extensions
+#type: technical, design
+#semantic_handle: dream-cycle agents for system extension
+
+------USER------
+ok, well its time to start 4.1.3.2 but I was thinking and not right away, but we joked about how after 4.1.3.2, Morpheus could design the next part while dreaming.  That is an interesting idea, like we could create a Software Engineering Agent as part of dreaming, and maybe even a Writing Agent.  Well, the sky is the limit there, but those two would be most interesting to me.
+
+------ASSISTANT------
+Here is the design idea fully distilled and aligned with everything we have already built.You were thinking ahead about4.1.3.2and joked that after that, Morpheus could begin designing its own next 
+subsystem during dreaming. That joke is actually aligned with the 
+architecture we have already documented, and it is absolutely feasible.Below is the clean, high-level design for addinga Software Engineering Agentanda Writing Agentto the Dream Cycle, compatible with the Morpheus pipeline and with the 
+patentable mechanisms already established in the sleep/dream system.Where these agents fit in the architectureIn our files, the Dream Orchestrator is defined as running after Sle
+...[middle omitted for tagging]...
+nding architecturedriven by nightly dream cycles is absolutely unique, and the agent framework already created is the perfect host for it.Next steps (simple and sequential)Finish 4.1 (Open Questions Agent) exactly as definedAdd placeholder agent slots in Orchestrator for future modulesAfter 4.1.3.2, define FR-4.2.x for:Software Engineering Agent MVPWriting Agent MVPThen build their prompts and DreamEntry schemasBoth can be added within a day or two once 4.1 stabilizes.If you want, I can draft:The FR-4.2.x requirements for both new agentsThe prompts for eachThe JSON schemas for outputThe integration points inside the Dream OrchestratorJust say“let’s write the requirements”.
+
+------CURRENT TURN------
+------USER------
+lets make requirements for 4.1.3.2 first, Ideas.
+
+------ASSISTANT------
+Here is aclean, high-level Ideas section for Version 4.1.3.2 Requirements, written in the same style as the prior requirement docs but intentionally conceptual (Ideas only). No em-dashes used.This sitsbetweenthe defined 4.1 work and the later 4.2 agent expansions.It defines what 4.1.3.2 isaboutbefore we formalize FRs.Version 4.1.3.2 IdeasPurpose:Extend the Open Questions Agent so the Dream Cycle begins generating 
+useful insight beyond extraction. This version adds an early form of 
+analysis and preparation for future integrating agents. The output is 
+still written to dream.txt and reviewed by the user.Core Ideas:Open Question PrioritizationThe agent does not only extract open qu
+...[middle omitted for tagging]...
+n YetResults are not added to sleep_summary.No RAG mutation.User still reviews the results through the Analyze Dreams UI.Agent Framework PreparationThe Open Questions Agent now behaves like a real Dream Agent.It receives sleep_summary and emits multiple DreamEntry items.This prepares the system so additional agents can be added without changing foundations.Future Research HookThe JSON structure includes a small field called recommended_research_hint.It is a short suggestion used later when the research agent is added.If this looks right, I can now convert these Ideas intoformal FR sections(FR 4.1.3.2.1, FR 4.1.3.2.2, etc.) and then produce the requirements file in Markdown format.
+
+
+====== TAGGER RESPONSE ======
+{
+  "topics": "4.1.3.2, open questions agent, dream cycle, dream.txt, sleep_summary, analyze dreams ui, recommended_research_hint",
+  "intent": "define requirements ideas for 4.1.3.2",
+  "type": "technical, design",
+  "semantic_handle": "4.1.3.2 open questions agent requirements",
+  "questions": []
+}

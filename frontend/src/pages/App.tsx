@@ -23,6 +23,7 @@ type DreamItem = {
   origin_text?: string
   assistant_response?: string
   origin_type?: string
+  source_resolution?: string
   research?: DreamResearch[]
   keep?: boolean
   remember?: boolean
@@ -181,6 +182,7 @@ export default function App() {
           origin_text: it.origin_text,
           assistant_response: it.assistant_response,
           origin_type: it.origin_type,
+          source_resolution: it.source_resolution,
           research: Array.isArray(it.research)
             ? it.research.map((r: any) => ({
                 research_topic: r?.research_topic,
@@ -506,7 +508,7 @@ export default function App() {
 
         {/* Center: Title */}
         <div className="flex justify-center">
-          <h1 className="text-2xl font-bold">Morpheus</h1>
+          <h1 className="text-2xl font-bold">Syx</h1>
         </div>
 
         {/* Right: Model selector, inset 15% from right */}
@@ -701,10 +703,10 @@ export default function App() {
               {Array.isArray(item.research) && item.research.length > 0 && (
                 <div className="space-y-2">
                   {item.research.map((r, rIdx) => (
-                    <div key={rIdx} className="rounded border border-gray-200 px-3 py-2 bg-white">
-                      <div className="text-xs font-semibold text-gray-600 mb-1">[RESEARCH]</div>
-                      <div className="text-sm font-semibold">Topic: {r?.research_topic || '(unknown topic)'}</div>
-                      <div className="text-sm whitespace-pre-wrap break-words">
+                    <div key={rIdx} className="rounded border border-gray-200 px-3 py-2 bg-white text-black">
+                      <div className="text-xs font-semibold text-gray-700 mb-1">[RESEARCH]</div>
+                      <div className="text-sm font-semibold text-black">Topic: {r?.research_topic || '(unknown topic)'}</div>
+                      <div className="text-sm whitespace-pre-wrap break-words text-black">
                         {r?.research_summary || '(no summary)'}
                       </div>
                     </div>
@@ -749,6 +751,7 @@ export default function App() {
                     origin_text: k.origin_text,
                     assistant_response: k.assistant_response,
                     origin_type: k.origin_type,
+                    source_resolution: k.source_resolution,
                     research: k.research,
                     keep: !!k.keep,
                     remember: !!k.remember,

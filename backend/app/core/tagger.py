@@ -22,8 +22,6 @@ logger = logging.getLogger(__name__)
 
 _SYS_PROMPT = """You are a memory tagging system.
 
-You are a memory tagging system.
-
 Your task is to extract compact, durable metadata for later retrieval.
 Tag the CURRENT TURN only.
 
@@ -100,7 +98,7 @@ Question handling:
   - blockers or dependencies that affect later work
 
 Resolution values:
-- `remind_user` when a real user decision is required and it is important enough to revisit
+- `ignore` when a question should not enter the Dream question pipeline
 - `answer_local` when it is important and can likely be answered from project/local context
 - `answer_remote` when it is important and likely requires external research
 
@@ -120,7 +118,7 @@ Schema:
     {
       "question": "<exact or naturally rewritten question>",
       "topic": "<topic title where the question originated>",
-      "resolution": "<remind_user | answer_local | answer_remote>"
+      "resolution": "<ignore | answer_local | answer_remote>"
     }
   ]
 }
@@ -129,7 +127,7 @@ Rules:
 - Always include all keys shown in the schema.
 - Use "" (empty string) for unknown values. Do not output null.
 - `questions` MUST be an array (use [] when no candidates).
-- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
+- `resolution` MUST be one of: ignore, answer_local, answer_remote.
 """
 
 
@@ -457,7 +455,7 @@ def tag_pair(
         if not isinstance(semantic_handle, str):
             semantic_handle = str(semantic_handle)
         questions: List[Dict[str, str]] = []
-        allowed_resolutions = {"ignore", "remind_user", "answer_local", "answer_remote"}
+        allowed_resolutions = {"ignore", "answer_local", "answer_remote"}
         raw_questions = data.get("questions")
         if isinstance(raw_questions, list):
             for item in raw_questions:

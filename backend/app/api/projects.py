@@ -46,6 +46,7 @@ from ..core.personality import (
 from ..core.database import get_session
 from ..core.db_models import ChatMessage
 from ..core.rag_manager import rebuild_faiss_index
+from ..utils.debug_utils import write_debug_file
 import shutil
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,90 @@ def _validate_dream_payload(data: Any) -> Optional[dict]:
         "project_summary": summary,
         "items": items or [],
     }
+
+
+def _normalize_resolution(value: Any) -> str:
+    res = str(value or "").strip().lower()
+    if res in {"ignore", "answer_local", "answer_remote"}:
+        return res
+    return ""
+
+
+def _valid_research_entries(item: Dict[str, Any]) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    research_list = item.get("research") if isinstance(item.get("research"), list) else []
+    for r in research_list:
+        if not isinstance(r, dict):
+            continue
+        topic = str(r.get("research_topic") or "").strip()
+        summary = str(r.get("research_summary") or "").strip()
+        if not topic or not summary:
+            continue
+        out.append({"research_topic": topic, "research_summary": summary})
+    return out
+
+
+def _filter_remote_without_research(items: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
+    kept: List[Dict[str, Any]] = []
+    dropped = 0
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        resolution = _normalize_resolution(it.get("source_resolution"))
+        if resolution == "answer_remote" and not _valid_research_entries(it):
+            dropped += 1
+            continue
+        kept.append(it)
+    return kept, dropped
+
+
+def _filter_remote_without_research_with_rows(
+    items: List[Dict[str, Any]],
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    kept: List[Dict[str, Any]] = []
+    dropped_rows: List[Dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        resolution = _normalize_resolution(it.get("source_resolution"))
+        if resolution != "answer_remote":
+            kept.append(it)
+            continue
+        valid_research = _valid_research_entries(it)
+        if valid_research:
+            kept.append(it)
+            continue
+        dropped_rows.append(
+            {
+                "id": str(it.get("id") or ""),
+                "origin_text": str(it.get("origin_text") or "").strip(),
+                "source_resolution": resolution,
+                "research_count": 0,
+                "reason": "remote_without_research",
+            }
+        )
+    return kept, dropped_rows
+
+
+def _write_persist_filter_report(
+    project_id: str,
+    total_remembered: int,
+    kept_after_filter: int,
+    dropped_rows: List[Dict[str, Any]],
+) -> None:
+    ts = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
+    body = (
+        f"# timestamp: {ts}\n"
+        f"# project_id: {project_id}\n"
+        "\n"
+        "====== INPUT ======\n"
+        f"{json.dumps({'remembered_items': total_remembered}, ensure_ascii=False, indent=2)}\n\n"
+        "====== DECISIONS ======\n"
+        f"{json.dumps(dropped_rows, ensure_ascii=False, indent=2)}\n\n"
+        "====== OUTPUT ======\n"
+        f"{json.dumps({'kept_after_filter': kept_after_filter, 'dropped_count': len(dropped_rows)}, ensure_ascii=False, indent=2)}\n"
+    )
+    write_debug_file(project_id, "dreaming/persist_filter_report.txt", body)
 
 
 @router.get("/projects")
@@ -131,6 +216,14 @@ async def get_project_dream(project_id: str) -> JSONResponse:
         validated = _validate_dream_payload(data)
         if not validated:
             return JSONResponse(status_code=200, content={"project_id": project_id, "dream": None})
+        filtered_items, dropped = _filter_remote_without_research(validated.get("items", []))
+        validated["items"] = filtered_items
+        if dropped:
+            logger.info(
+                "[PROJECT][DREAM] Filtered remote items without research project=%s dropped=%s",
+                project_id,
+                dropped,
+            )
         return JSONResponse(status_code=200, content={"project_id": project_id, "dream": validated})
     except Exception as e:
         logger.warning("[PROJECT][DREAM] Failed reading dream for %s: %s", project_id, e, exc_info=True)
@@ -154,6 +247,41 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
         if not to_process:
             return JSONResponse(status_code=200, content={"project_id": project_id, "processed": 0, "kept": 0, "deleted_dream": False})
 
+        total_remembered = len(to_process)
+        to_process, dropped_rows = _filter_remote_without_research_with_rows(to_process)
+        dropped_remote_no_research = len(dropped_rows)
+        if dropped_remote_no_research:
+            logger.info(
+                "[PROJECT][DREAM][KEEP] Filtered remote items without research project=%s dropped=%s",
+                project_id,
+                dropped_remote_no_research,
+            )
+            try:
+                _write_persist_filter_report(
+                    project_id=project_id,
+                    total_remembered=total_remembered,
+                    kept_after_filter=len(to_process),
+                    dropped_rows=dropped_rows,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[PROJECT][DREAM][KEEP] Failed writing persist_filter_report project=%s: %s",
+                    project_id,
+                    exc,
+                    exc_info=exc,
+                )
+        if not to_process:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "project_id": project_id,
+                    "processed": 0,
+                    "kept": 0,
+                    "deleted_dream": False,
+                    "filtered_remote_without_research": dropped_remote_no_research,
+                },
+            )
+
         successes = 0
         failures = []
 
@@ -170,18 +298,33 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
             origin_text = (it.get("origin_text") or "").strip()
             assistant_resp = (it.get("assistant_response") or "").strip()
 
+            resolution = _normalize_resolution(it.get("source_resolution"))
             research_entries = []
-            research_list = it.get("research") if isinstance(it.get("research"), list) else []
-            for r in research_list:
-                if not isinstance(r, dict):
-                    continue
-                topic = r.get("research_topic") or ""
-                summary = r.get("research_summary") or ""
+            research_topics: List[str] = []
+            for r in _valid_research_entries(it):
+                topic = r["research_topic"]
+                summary = r["research_summary"]
+                research_topics.append(topic)
                 research_entries.append(f"[RESEARCH]\nTopic: {topic}\n{summary}".strip())
-            if research_entries:
-                assistant_resp_full = (assistant_resp + "\n\n" + "\n\n".join(research_entries)).strip()
+
+            # answer_remote: show concise research overview + detailed research blocks.
+            # answer_local (or unknown): keep concise assistant answer text.
+            if resolution == "answer_remote":
+                unique_topics: List[str] = []
+                seen_topics = set()
+                for t in research_topics:
+                    key = t.lower().strip()
+                    if not key or key in seen_topics:
+                        continue
+                    seen_topics.add(key)
+                    unique_topics.append(t)
+                overview = "To explore this idea, I researched: " + ", ".join(unique_topics) + "."
+                assistant_parts: List[str] = [overview]
+                if research_entries:
+                    assistant_parts.extend(research_entries)
+                assistant_resp_full = "\n\n".join(assistant_parts).strip()
             else:
-                assistant_resp_full = assistant_resp
+                assistant_resp_full = (assistant_resp or "(no summary)").strip()
 
             pair_text = f"User: {origin_text}\nAssistant: {assistant_resp_full}"
             try:
@@ -315,6 +458,7 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                 "kept": successes,
                 "failed": len(failures),
                 "deleted_dream": deleted,
+                "filtered_remote_without_research": dropped_remote_no_research,
                 "errors": failures if failures else None,
             },
         )

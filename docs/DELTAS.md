@@ -1201,7 +1201,7 @@ Canonical output contract (extension):
     {
       "question": "<exact or naturally rewritten question>",
       "topic": "<topic title where the question originated>",
-      "resolution": "<ignore | remind_user | answer_local | answer_remote>"
+      "resolution": "<ignore | answer_local | answer_remote>"
     }
   ]
 }
@@ -1211,6 +1211,15 @@ Contract notes:
 
 * `questions` MAY be empty (`[]`) when no question candidates are present.
 * `resolution` values are candidate hints at tag-time; final open/answered resolution remains a deterministic cross-turn consolidation step in sleep/dream.
+
+##### A.5.1.4 — Research-First Dream Narrowing
+
+Dream generation is narrowed to question/research usefulness:
+
+* `remind_user` is removed from the active Dream question pipeline contract.
+* Idea Agent output should prioritize open questions where additional information helps user decisions.
+* Remote-backed questions (`answer_remote`) must flow through to research output deterministically.
+* Dream debug artifacts should be written as human-readable `.txt` files with labeled input/decision/output sections.
 
 ##### A.5.1.2 — Per-Project Append-Only Semantic Artifacts
 

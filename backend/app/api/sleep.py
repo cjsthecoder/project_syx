@@ -116,7 +116,7 @@ def _consolidate_open_questions_artifact(project_id: str) -> Dict[str, Any]:
                     resolution = str(obj.get("resolution", "") or "").strip().lower()
                     if not question:
                         continue
-                    if resolution not in {"ignore", "remind_user", "answer_local", "answer_remote"}:
+                    if resolution not in {"ignore", "answer_local", "answer_remote"}:
                         resolution = "ignore"
                     key = _normalize_question_key(question, topic)
                     if not key:

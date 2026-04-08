@@ -310,7 +310,7 @@ setup-env:
 		echo "CHUNK_OVERLAP=80"; \
 		echo "# Overlap between chunks during embedding"; \
 		echo ""; \
-		echo "MAX_EMBED_TOKENS_PER_REQUEST=250000"; \
+		echo "MAX_EMBED_TOKENS_PER_REQUEST=175000"; \
 		echo "# Safety cap: max total tokens per embeddings API request (headroom under provider cap)"; \
 		echo ""; \
 		echo "# === RAG (Main / LTM) ==="; \
@@ -327,7 +327,7 @@ setup-env:
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
 		echo "# === Daily Memory + Daily RAG ==="; \
-		echo "CHAT_HISTORY_LIMIT_PAIRS=1"; \
+		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
 		echo "# V2.3: Number of prompt/response pairs kept in working memory:: 10 is working well"; \
 		echo ""; \
 		echo "DAILY_RAG_ENABLED=true"; \
@@ -398,11 +398,11 @@ setup-env:
 		echo "VERIFY_RAG=true"; \
 		echo "# V3.3: Enable post-rebuild verification"; \
 		echo ""; \
-		echo "FORCE_RAG_REBUILD_ON_STARTUP=false"; \
+		echo "FORCE_RAG_REBUILD_ON_STARTUP=true"; \
 		echo "# Optional startup sweep: rebuild all project RAG indexes from uploads"; \
 		echo ""; \
 		echo "# === Instrumentation (V5.0) ==="; \
-		echo "INSTRUMENTATION_ENABLED=true"; \
+		echo "INSTRUMENTATION_ENABLED=false"; \
 		echo "# Enable run/turn/invocation telemetry collection"; \
 		echo ""; \
 		echo "INSTRUMENTATION_MODE=metrics"; \

@@ -103,7 +103,7 @@ def setup_logging() -> None:
 
     # Create timestamped log filename
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_filename = os.path.join(logs_dir, f'morpheus_{timestamp}.log')
+    log_filename = os.path.join(logs_dir, f'syx_{timestamp}.log')
     
     # Configure root logger
     root_logger = logging.getLogger()

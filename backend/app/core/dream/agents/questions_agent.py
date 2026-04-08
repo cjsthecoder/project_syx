@@ -50,13 +50,12 @@ def _load_consolidated_questions(project_id: str) -> Dict[str, Any]:
 def _run_open_question_pipeline(project_id: str, question: str, topic: str, resolution: str) -> Dict[str, Any]:
     """
     Process a single open question per 4.1.2.
-    Returns dict with keys: question, topic, answer.
+    Returns dict with keys: question, topic, resolution, answer, used_remote_research.
     """
     settings = get_settings()
     used_remote = False
 
-    if (resolution or "").lower() == "remind_user":
-        return {"question": question, "topic": topic, "answer": "User input required"}
+    normalized_resolution = str(resolution or "").strip().lower()
 
     # Retrieve local RAG context with topic-based hints
     try:
@@ -75,7 +74,7 @@ def _run_open_question_pipeline(project_id: str, question: str, topic: str, reso
     remote_tokens = 0
 
     # Remote research only when enabled and resolution requires it
-    if (resolution or "").lower() == "answer_remote" and settings.dream_enable_remote_research:
+    if normalized_resolution == "answer_remote" and settings.dream_enable_remote_research:
         raw_remote = fetch_remote_research(question)
         if raw_remote:
             # Cap remote context tokens
@@ -122,7 +121,13 @@ def _run_open_question_pipeline(project_id: str, question: str, topic: str, reso
         remote_tokens,
         combined_tokens,
     )
-    return {"question": question, "topic": topic, "answer": answer_text}
+    return {
+        "question": question,
+        "topic": topic,
+        "resolution": normalized_resolution,
+        "answer": answer_text,
+        "used_remote_research": bool(used_remote),
+    }
 
 
 def run_questions_agent(
@@ -150,7 +155,7 @@ def run_questions_agent(
         if not isinstance(questions, list):
             questions = []
         # Process sequentially
-        outputs: List[Dict[str, str]] = []
+        outputs: List[Dict[str, Any]] = []
         for item in questions:
             try:
                 q = (item or {}).get("question") or ""
@@ -163,7 +168,9 @@ def run_questions_agent(
                     {
                         "question": out.get("question") or q,
                         "topic": out.get("topic") or topic,
+                        "resolution": str(out.get("resolution") or resolution or "").strip().lower(),
                         "answer": out.get("answer") or "Dream agent failed to generate a valid answer.",
+                        "used_remote_research": bool(out.get("used_remote_research", False)),
                     }
                 )
             except Exception as qe:

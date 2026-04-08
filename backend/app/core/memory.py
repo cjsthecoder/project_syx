@@ -46,7 +46,7 @@ class MemoryManager:
 
     @staticmethod
     def _normalize_question_candidates(value: Any) -> List[Dict[str, str]]:
-        allowed = {"ignore", "remind_user", "answer_local", "answer_remote"}
+        allowed = {"ignore", "answer_local", "answer_remote"}
         out: List[Dict[str, str]] = []
         if not isinstance(value, list):
             return out

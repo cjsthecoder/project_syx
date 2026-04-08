@@ -139,6 +139,15 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
                 project_id,
             )
             continue
+        # Backend guard: Dream narrowing mode accepts Open Question entries only.
+        if origin_type != "Open Question":
+            logger.info(
+                "[DREAM][IDEA] Skipping non-open-question item origin_type=%s index=%s project=%s",
+                origin_type,
+                idx,
+                project_id,
+            )
+            continue
 
         # Metadata and nested fields
         metadata = item.get("metadata")
@@ -197,7 +206,21 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
                 project_id,
             )
             continue
-        metadata["recommended_research"] = rec_norm
+        # Keep research topics compact and deterministic for downstream planning.
+        compact_rec: List[str] = []
+        seen_rec = set()
+        for raw_topic in rec_norm:
+            topic = str(raw_topic or "").strip()
+            if not topic:
+                continue
+            key = topic.lower()
+            if key in seen_rec:
+                continue
+            seen_rec.add(key)
+            compact_rec.append(topic)
+            if len(compact_rec) >= 2:
+                break
+        metadata["recommended_research"] = compact_rec
 
         # String fields must exist; emptiness is allowed
         for field in ("origin_text", "assistant_response", "context_link", "theme"):

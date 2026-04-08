@@ -22,9 +22,9 @@ def build_research_prompt(
 
     Args:
         project_summary_text: Concise project context summary for grounding.
-        origin_text: The originating user/idea context text.
-        origin_type: The DreamEntry origin_type (e.g., open_question, insight).
-        assistant_response: The Idea Agent's response associated with this entry.
+        origin_text: The originating user or idea context text.
+        origin_type: The DreamEntry origin_type (e.g., Open Question, Insight).
+        assistant_response: The Idea Agent response associated with this entry.
         research_topic: The specific research topic string to investigate.
         theme: High-level theme label associated with the entry.
 
@@ -33,8 +33,8 @@ def build_research_prompt(
     """
     return f"""You are the Researcher Agent of the Morpheus Dream Cycle.
 
-Your task is to produce a factual research summary for a single research topic.  
-The topic originates from a DreamEntry created by the Idea Agent.
+Your task is to produce a concise factual research summary for a single research topic.
+The summary should be useful as durable technical background memory for future project reasoning.
 
 Project Context Summary:
 {project_summary_text}
@@ -56,39 +56,52 @@ Theme:
 
 Instructions:
 
-1. Understand why this research topic matters by considering the origin_text, origin_type, and the Idea Agent response.  
-2. Perform a research query using the system research tool.  
-   Use the research_topic string exactly as provided.  
+1. Understand why this research topic matters by considering the project context, origin_text, origin_type, and Idea Agent response.
+2. Perform research using the system research tool.
+   Use the research_topic string exactly as provided.
 3. Write a concise research_summary that:
    - is factual and clearly written
    - directly supports the research_topic
-   - connects naturally to the origin_text and Idea Agent response
+   - prioritizes concrete findings, studied architectures, benchmarks, operational patterns, design tradeoffs, constraints, and evaluation methods
+   - emphasizes facts that would be useful as durable background memory for future Morpheus reasoning
+   - connects naturally to the project context without repeating origin_text or assistant_response
+   - avoids generic exposition when more specific technical findings are available
+   - summarizes the main competing approaches and tradeoffs briefly when the evidence is mixed
    - contains no hallucinated citations
-   - contains no fabricated papers, titles, or URLs
+   - contains no fabricated papers, titles, authors, or URLs
    - contains no tool citation artifacts
-   - does not repeat origin_text or assistant_response
    - does not editorialize or add opinions
+   - does not propose actions or recommendations
 
 Output Format (Important)
 
-Write a concise, factual research summary as plain text, not JSON.
+Write a concise, factual research summary as structured plain text (markdown-style), not JSON.
 
 Format exactly like this:
 {research_topic}
-<research summary paragraph>
+- Key findings:
+  - <bullet 1>
+  - <bullet 2>
+- Conditions / assumptions:
+  - <bullet>
+- Limitations / risks:
+  - <bullet>
 
 Rules for the summary:
 Do not repeat the origin text or the Idea Agent response.
 Do not include citations, links, oaicite markers, or tool artifacts.
 Do not mention the research tool or how the research was performed.
 Do not hallucinate specific papers, authors, or URLs.
-Do not generate opinions or insights. Only factual background.
+Do not generate opinions, recommendations, or speculative insights.
+Do not write process text such as "I researched" or "this was investigated."
+Write so a future agent can recover the main learned facts without rereading the full source material.
+Keep section headers exactly as written above and keep bullet formatting.
 
-Global Rules: 
-- Do not modify the Idea Agent response.  
-- Do not generate insights or opinions.  
-- Do not mention the research tool.  
-- If unsure about a name for a theory or concept, describe it without naming it.
+Global Rules:
+- Do not modify the Idea Agent response.
+- Do not generate insights or opinions.
+- Do not mention the research tool.
+- If unsure about a standard name for a theory or concept, describe it without naming it.
 """
 
 

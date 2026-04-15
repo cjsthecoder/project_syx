@@ -14,9 +14,9 @@ from typing import Dict, Optional, Any, List
 from datetime import datetime
 
 from ..core.config import get_settings
+from ..llm_model.factory import get_llm_client_mini
 from ..tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
-from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -129,26 +129,6 @@ Rules:
 - `questions` MUST be an array (use [] when no candidates).
 - `resolution` MUST be one of: ignore, answer_local, answer_remote.
 """
-
-
-def _responses_text(resp: Any) -> str:
-    """Extract text content from an OpenAI Responses API response."""
-    try:
-        text = getattr(resp, "output_text", None)
-        if isinstance(text, str) and text:
-            return text
-    except Exception as exc:
-        logger.warning("[TAGGER] Failed reading output_text from response payload: %s", exc)
-    out: list[str] = []
-    try:
-        for item in getattr(resp, "output", []) or []:
-            if getattr(item, "type", "") == "message":
-                for c in getattr(item, "content", []) or []:
-                    if getattr(c, "type", "") == "output_text":
-                        out.append(getattr(c, "text", "") or "")
-    except Exception as exc:
-        logger.warning("[TAGGER] Failed iterating response output payload: %s", exc)
-    return "".join(out).strip()
 
 
 def _slice_first_json(text: str) -> str:
@@ -336,13 +316,13 @@ def tag_pair(
         instr = get_instrumentation()
         invocation_id = instr.start_invocation(
             purpose="tagger",
-            model=settings.builder_model,
+            model=settings.tagger_model,
             meta={"project_id": project_id or ""},
         )
         t0 = time.perf_counter()
         usage: Dict[str, Any] = {
             "purpose": "tagger",
-            "model": settings.builder_model,
+            "model": settings.tagger_model,
             "prompt_tokens_reported": 0,
             "completion_tokens_reported": 0,
             "total_tokens_reported": 0,
@@ -382,57 +362,27 @@ def tag_pair(
             f"{assistant_for_prompt}\n"
         )
 
-        client = OpenAI(api_key=settings.openai_api_key)
         raw = ""
         data: Optional[Dict[str, Any]] = None
-        try:
-            resp = client.responses.create(
-                model=settings.builder_model,
-                input=[
-                    {"role": "system", "content": _SYS_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                # Guarantee a JSON text payload (avoid reasoning-only outputs).
-                text={"format": {"type": "json_object"}},
-                reasoning={"effort": "low"},
-                max_output_tokens=int(settings.builder_max_tokens),
-            )
-        except Exception:
-            resp = client.responses.create(
-                model=settings.builder_model,
-                input=_SYS_PROMPT + "\n\n" + user_prompt,
-                text={"format": {"type": "json_object"}},
-                reasoning={"effort": "low"},
-                max_output_tokens=int(settings.builder_max_tokens),
-            )
-        try:
-            u = getattr(resp, "usage", None)
-            prompt_tok = int(getattr(u, "input_tokens", 0) or 0) if u is not None else 0
-            completion_tok = int(getattr(u, "output_tokens", 0) or 0) if u is not None else 0
-            total_tok = int(getattr(u, "total_tokens", 0) or (prompt_tok + completion_tok))
-            extra_usage: Dict[str, Any] = {}
-            if u is not None:
-                for k in ("input_token_details", "output_token_details", "reasoning_tokens", "cached_tokens"):
-                    try:
-                        v = getattr(u, k, None)
-                        if v is not None:
-                            extra_usage[k] = v
-                    except Exception as exc:
-                        logger.debug("[TAGGER] Failed reading usage field=%s detail=%s", k, exc)
-            if total_tok > 0:
-                usage = {
-                    "purpose": "tagger",
-                    "model": settings.builder_model,
-                    "prompt_tokens_reported": prompt_tok,
-                    "completion_tokens_reported": completion_tok,
-                    "total_tokens_reported": total_tok,
-                    "usage_is_estimate": False,
-                }
-                if extra_usage:
-                    usage["extra_usage"] = extra_usage
-        except Exception as exc:
-            logger.warning("[TAGGER] Failed extracting usage metadata for invocation_id=%s: %s", invocation_id, exc)
-        raw = _responses_text(resp)
+        response = get_llm_client_mini().generate_response(
+            model=settings.tagger_model,
+            system_prompt=_SYS_PROMPT,
+            user_prompt=user_prompt,
+            max_output_tokens=int(settings.builder_max_tokens),
+            reasoning_effort="low",
+            require_json_object=True,
+        )
+        usage = {
+            "purpose": "tagger",
+            "model": response.model,
+            "prompt_tokens_reported": int(response.usage.prompt_tokens_reported),
+            "completion_tokens_reported": int(response.usage.completion_tokens_reported),
+            "total_tokens_reported": int(response.usage.total_tokens_reported),
+            "usage_is_estimate": bool(response.usage.usage_is_estimate),
+        }
+        if response.usage.extra_usage:
+            usage["extra_usage"] = response.usage.extra_usage
+        raw = response.text
         clean = raw
         if clean.startswith("```"):
             lines2 = [ln for ln in clean.splitlines() if not ln.strip().startswith("```")]
@@ -485,6 +435,7 @@ def tag_pair(
                     f"# timestamp: {ts}\n"
                     f"# project_id: {project_id}\n"
                     f"# model: {settings.builder_model}\n"
+                    f"# tagger_model: {settings.tagger_model}\n"
                     f"# success: true\n"
                     "\n"
                     "====== TAGGER PROMPT (SYSTEM) ======\n"
@@ -532,7 +483,7 @@ def tag_pair(
                     invocation_id,
                     usage=usage if "usage" in locals() else {
                         "purpose": "tagger",
-                        "model": get_settings().builder_model,
+                        "model": get_settings().tagger_model,
                         "prompt_tokens_reported": 0,
                         "completion_tokens_reported": 0,
                         "total_tokens_reported": 0,
@@ -552,6 +503,7 @@ def tag_pair(
                     f"# timestamp: {ts}\n"
                     f"# project_id: {project_id}\n"
                     f"# model: {settings.builder_model}\n"
+                    f"# tagger_model: {settings.tagger_model}\n"
                     f"# success: false\n"
                     f"# error: {str(e)}\n"
                     "\n"

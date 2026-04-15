@@ -9,9 +9,8 @@ Use of this software requires explicit written permission from the copyright hol
 """
 import logging
 
-from openai import OpenAI
-
 from ..core.config import get_settings
+from ..llm_model.factory import get_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -48,25 +47,16 @@ def fetch_remote_research(query: str) -> str:
     Returns text blob (may be long); caller will cap tokens.
     """
     settings = get_settings()
-    client = OpenAI(api_key=settings.openai_api_key)
     try:
-        resp = client.responses.create(
+        response = get_llm_client().generate_response(
             model=settings.dream_model,
-            input=f"Perform web research to gather concise factual context for: {query}",
+            system_prompt=None,
+            user_prompt=f"Perform web research to gather concise factual context for: {query}",
             tools=[{"type": "web_search"}],
-            temperature=settings.dream_temperature,
-            max_output_tokens=settings.dream_max_tokens,
+            temperature=float(settings.dream_temperature),
+            max_output_tokens=int(settings.dream_max_tokens),
         )
-        text = getattr(resp, "output_text", None)
-        if text:
-            return text
-        out = []
-        for item in getattr(resp, "output", []) or []:
-            if getattr(item, "type", "") == "message":
-                for c in getattr(item, "content", []) or []:
-                    if getattr(c, "type", "") == "output_text":
-                        out.append(getattr(c, "text", "") or "")
-        return "".join(out)
+        return response.text
     except Exception as e:
         logger.warning("[DREAM][WARN] Remote research failed: %s", e)
         return ""

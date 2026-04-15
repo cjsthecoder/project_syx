@@ -57,7 +57,7 @@ def _compute_file_stats(path: str) -> tuple[int, int]:
 async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> JSONResponse:
     settings = get_settings()
 
-    # PDFs are intentionally unsupported in the LangChain-removal RAG path.
+    # PDFs are intentionally unsupported in the current RAG path.
     allowed_ext = {".txt", ".md"}
     upload_root = os.path.join(get_settings().memory_root, project_id, "uploads")
     os.makedirs(upload_root, exist_ok=True)

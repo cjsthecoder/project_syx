@@ -44,6 +44,8 @@ from .core.db_models import Project
 from .rag.manager import rebuild_faiss_index
 from .core.route_policy import load_and_validate_route_policy
 from .tracking import init_instrumentation, get_instrumentation
+from .llm_model.factory import get_llm_client, get_llm_client_mini
+from .embedding.factory import get_embedding_client
 import shutil
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -69,6 +71,14 @@ except Exception as e:
 async def lifespan(app: FastAPI):
     logger.info("FastAPI startup")
     init_db()
+    # Initialize factory clients at startup so configuration is visible in logs.
+    try:
+        get_llm_client()
+        get_llm_client_mini()
+        get_embedding_client()
+        logger.info("[INIT] Factory clients initialized at startup")
+    except Exception as exc:
+        logger.warning("[INIT] Factory client startup initialization failed: %s", exc, exc_info=True)
     # V5.0: initialize instrumentation facade and start process run if enabled.
     try:
         git_commit = "unknown"
@@ -113,10 +123,9 @@ async def lifespan(app: FastAPI):
         run_cfg = {
             "config_snapshot": {
                 "models_configured": {
-                    "main_model": str(s.model_name),
+                    "main_model": str(s.llm_main_model or s.model_name),
                     "builder_model": str(s.builder_model),
-                    # Tagger currently uses builder_model in this implementation.
-                    "tagger_model": str(s.builder_model),
+                    "tagger_model": str(s.tagger_model),
                 },
                 "prompt_budgeting": {
                     "model_context_window_tokens": None,
@@ -355,7 +364,7 @@ async def health_check():
         
         dependencies = {
             "openai": api_key_status,
-            "langchain": llm_health["status"]
+            "llm": llm_health["status"]
         }
         
         return HealthResponse(

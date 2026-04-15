@@ -13,10 +13,10 @@ from __future__ import annotations
 
 def cosine_from_l2_distance(dist: float) -> float:
     """
-    Convert an L2 distance (as returned by LangChain FAISS similarity_search_with_score)
+    Convert an L2 distance returned by FAISS retrieval
     into an approximate cosine similarity in [0.0, 1.0] under unit-normalized embeddings.
 
-    Note: some LangChain/FAISS integrations may return squared L2 distance vs L2 distance.
+    Note: some integrations may return squared L2 distance vs L2 distance.
     To be robust, compute both interpretations and take the higher cosine within bounds.
     """
     try:

@@ -41,7 +41,10 @@ class Settings(BaseSettings):
     
     # OpenAI Configuration
     openai_api_key: str = Field(..., description="OpenAI API key (required)")
-    model_name: str = Field(default="gpt-5.2", description="OpenAI model name")
+    llm_provider: str = Field(default="openai", description="LLM provider selector (openai)")
+    model_name: str = Field(default="gpt-5.4", description="Primary chat model name (legacy key)")
+    llm_main_model: str = Field(default="gpt-5.4", description="Default model for main chat client")
+    llm_mini_model: str = Field(default="gpt-5.4-mini", description="Default model for mini client")
     model_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Model temperature")
     model_max_tokens: int = Field(default=32000, gt=0, description="Maximum tokens per response")
     
@@ -72,7 +75,8 @@ class Settings(BaseSettings):
     storage_limit_mb: int = Field(default=500, gt=0, description="Total storage limit per project (MB)")
 
     # V2: Embeddings / RAG
-    embedding_model: str = Field(default="text-embedding-3-large", description="OpenAI embedding model")
+    embedding_provider: str = Field(default="openai", description="Embedding provider selector (openai|local)")
+    embedding_model: str = Field(default="text-embedding-3-large", description="Embedding model name")
     chunk_size: int = Field(default=800, gt=0, description="Chunk size for embeddings")
     chunk_overlap: int = Field(default=100, ge=0, description="Chunk overlap for embeddings")
     max_embed_tokens_per_request: int = Field(
@@ -90,12 +94,14 @@ class Settings(BaseSettings):
     # V2: Model list for selector
     available_models: list[str] = Field(
         default=[
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-5.4-nano",
             "gpt-5.2",
             "gpt-5.1",
             "gpt-5.1-mini",
             "gpt-5.1-nano",
             "gpt-5",
-            "gpt-5.4-mini",
             "gpt-5-nano",
             "gpt-4o",
             "gpt-4o-mini",
@@ -130,6 +136,7 @@ class Settings(BaseSettings):
 
     # V2.3.1: Builder and reranking
     builder_model: str = Field(default="gpt-5.4-mini", description="LLM used for query builder/router")
+    tagger_model: str = Field(default="gpt-5.4-mini", description="LLM used for tagging")
     builder_confidence_min: float = Field(default=0.75, ge=0.0, le=1.0, description="Minimum confidence for full retrieval")
     builder_max_tokens: int = Field(default=1024, gt=0, description="Max tokens for builder output")
     tagger_current_response_middle_cut_percent: int = Field(
@@ -207,7 +214,7 @@ class Settings(BaseSettings):
     enable_dream: bool = Field(default=True, description="Enable Dream orchestrator")
     max_workers: int = Field(default=1, description="Dream executor worker count (MAX_WORKERS)")
     # V4.1.2: Dream agent configuration
-    dream_model: str = Field(default="gpt-5.2", description="Dream LLM model")
+    dream_model: str = Field(default="gpt-5.4", description="Dream LLM model")
     dream_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Dream LLM temperature")
     dream_max_tokens: int = Field(default=32000, gt=0, description="Max tokens for Dream LLM completion")
     dream_enable_remote_research: bool = Field(default=True, description="Enable OpenAI web_search for Dream")
@@ -282,9 +289,9 @@ def validate_openai_key() -> bool:
 
 
 def get_model_config() -> dict:
-    """Get model configuration for LangChain."""
+    """Get model configuration for main runtime LLM client."""
     return {
-        "model_name": settings.model_name,
+        "model_name": settings.llm_main_model or settings.model_name,
         "temperature": settings.model_temperature,
         "max_tokens": settings.model_max_tokens,
     }

@@ -265,7 +265,11 @@ def _clear_dir_contents(path: str) -> None:
                         exc,
                     )
     except Exception as exc:
-        logger.warning("RAG: failed clearing directory contents path=%s detail=%s", path, exc)
+        logger.warning(
+            "RAG: failed clearing directory contents; operation=_clear_dir_contents path=%s detail=%s",
+            path,
+            exc,
+        )
 
 
 def _build_ltm_adjacency_lists(
@@ -369,7 +373,12 @@ def _schedule_ltm_rebuild(project_id: str, reason: str) -> None:
             try:
                 rebuild_faiss_index(project_id)
             except Exception as exc:
-                logger.warning("RAG: background LTM rebuild failed project=%s detail=%s", project_id, exc, exc_info=True)
+                logger.warning(
+                    "RAG: background LTM rebuild failed; operation=rebuild_faiss_index project_id=%s detail=%s",
+                    project_id,
+                    exc,
+                    exc_info=True,
+                )
             finally:
                 with _LTM_REBUILD_LOCK:
                     _LTM_REBUILDING.discard(project_id)
@@ -377,7 +386,12 @@ def _schedule_ltm_rebuild(project_id: str, reason: str) -> None:
         threading.Thread(target=_rebuild, name=f"ltm-rebuild-{project_id[:8]}", daemon=True).start()
         logger.warning("RAG: scheduled LTM rebuild project=%s reason=%s", project_id, reason)
     except Exception as exc:
-        logger.warning("RAG: failed scheduling LTM rebuild project=%s reason=%s detail=%s", project_id, reason, exc)
+        logger.warning(
+            "RAG: failed scheduling LTM rebuild; operation=_schedule_ltm_rebuild project_id=%s reason=%s detail=%s",
+            project_id,
+            reason,
+            exc,
+        )
 
 
 def _read_file_text(path: str) -> List[Tuple[str, dict]]:
@@ -647,7 +661,12 @@ def rebuild_faiss_index(project_id: str) -> str:
                     session.add(row)
             session.commit()
     except Exception as exc:
-        logger.warning("RAG: failed backfilling file stats project=%s detail=%s", project_id, exc, exc_info=True)
+        logger.warning(
+            "RAG: failed backfilling file stats; operation=rebuild_faiss_index project_id=%s detail=%s",
+            project_id,
+            exc,
+            exc_info=True,
+        )
     return faiss_dir
 
 
@@ -754,7 +773,11 @@ def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
                         _schedule_ltm_rebuild(project_id, reason="a441_adjacency_missing_or_invalid")
         except Exception as exc:
             # Best-effort only; never block retrieval.
-            logger.warning("RAG: failed validating adjacency manifest project=%s detail=%s", project_id, exc)
+            logger.warning(
+                "RAG: failed validating adjacency manifest; operation=load_faiss_index project_id=%s detail=%s",
+                project_id,
+                exc,
+            )
         built_at = None
         schema_version = None
         try:

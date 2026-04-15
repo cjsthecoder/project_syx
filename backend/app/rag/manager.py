@@ -29,19 +29,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import faiss  # type: ignore
 import numpy as np  # type: ignore
 
-from .config import get_settings, compute_per_source_k
-from .embed_batching import iter_token_batches
+from ..core.config import get_settings, compute_per_source_k
+from ..core.embed_batching import iter_token_batches
 import os
-from .database import get_session
-from .db_models import File as FileRow
+from ..core.database import get_session
+from ..core.db_models import File as FileRow
 from sqlmodel import select
 
 logger = logging.getLogger(__name__)
-from .retrieval_ordering import order_candidates_by_similarity_score
-from .tracking import get_instrumentation
+from ..core.retrieval_ordering import order_candidates_by_similarity_score
+from ..core.tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
 from ..llm_model.llm_client import get_llm_client
-from .vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
+from ..core.vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
 
 try:
     import tiktoken  # type: ignore
@@ -910,7 +910,7 @@ def canonical_retrieve_candidates(
     # Daily
     if "daily" in srcs:
         try:
-            from .daily_rag import get_daily_source, notify_daily_search_failure
+            from ..core.daily_rag import get_daily_source, notify_daily_search_failure
 
             ds = get_daily_source(project_id)
             if ds is not None:
@@ -1274,8 +1274,8 @@ def merge_daily_and_main(
     # Rank-weighted adjacency expansion (materialized per-candidate; no dedupe, no token pruning).
     # This stage preserves kept candidate order and expands within the same source document only.
     try:
-        from .route_policy import get_route_policy
-        from .daily_rag import get_daily_source
+        from ..core.route_policy import get_route_policy
+        from ..core.daily_rag import get_daily_source
     except Exception:
         get_route_policy = None  # type: ignore
         get_daily_source = None  # type: ignore

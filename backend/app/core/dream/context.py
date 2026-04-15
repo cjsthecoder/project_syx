@@ -18,7 +18,7 @@ except Exception:
     tiktoken = None
 
 from ..config import get_settings
-from ..rag_manager import retrieve_context
+from ...rag.manager import retrieve_context
 from .llm import dream_llm_call
 from .prompts import build_project_summary_prompt
 from app.utils.debug_utils import write_debug_file

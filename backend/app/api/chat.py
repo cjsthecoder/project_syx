@@ -29,7 +29,7 @@ from ..utils.debug_utils import write_debug_file
 from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id, set_route, clear_route, set_namespace, clear_namespace, get_route
 from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings, get_model_config, compute_per_source_k
-from ..core.rag_manager import retrieve_context, merge_daily_and_main
+from ..rag.manager import retrieve_context, merge_daily_and_main
 from ..core.route_policy import get_route_policy
 from ..core.personality import load_project_system_prompt, load_project_personality
 from ..core.daily_rag import start_daily_cache_rebuild

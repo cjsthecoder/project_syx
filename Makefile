@@ -310,8 +310,11 @@ setup-env:
 		echo "CHUNK_OVERLAP=80"; \
 		echo "# Overlap between chunks during embedding"; \
 		echo ""; \
-		echo "MAX_EMBED_TOKENS_PER_REQUEST=175000"; \
+		echo "MAX_EMBED_TOKENS_PER_REQUEST=180000"; \
 		echo "# Safety cap: max total tokens per embeddings API request (headroom under provider cap)"; \
+		echo ""; \
+		echo "RAG_EMBED_REBUILD_WORKERS=3"; \
+		echo "# Parallel workers for LTM embedding during rebuild (range 1-8; default code fallback is 1)"; \
 		echo ""; \
 		echo "# === RAG (Main / LTM) ==="; \
 		echo "RAG_ON_CHAT=true"; \

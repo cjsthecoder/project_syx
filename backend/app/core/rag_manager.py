@@ -24,6 +24,7 @@ from typing import List, Tuple, Optional, Dict, Any, Iterable, Set, cast
 import json
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import faiss  # type: ignore
 import numpy as np  # type: ignore
@@ -57,6 +58,11 @@ _LTM_INDEX_FILE_NAME = "index.faiss"
 
 _LTM_REBUILDING: Set[str] = set()
 _LTM_REBUILD_LOCK = threading.Lock()
+
+
+def _is_rate_limit_error_message(err: Exception) -> bool:
+    msg = str(err or "").lower()
+    return ("rate limit" in msg) or ("too many requests" in msg) or ("429" in msg) or ("rate_limit_exceeded" in msg)
 
 
 def _atomic_write_json(path: str, obj: Any) -> None:
@@ -458,24 +464,110 @@ def rebuild_faiss_index(project_id: str) -> str:
         return faiss_dir
 
     max_req_tokens = int(getattr(settings, "max_embed_tokens_per_request", 250_000))
+    worker_count_raw = int(getattr(settings, "rag_embed_rebuild_workers", 1) or 1)
+    worker_count = max(1, min(8, worker_count_raw))
     llm = get_llm_client()
 
     index: Optional[faiss.IndexFlatIP] = None
     index_dim: Optional[int] = None
     index_to_id: List[str] = []
     docstore: Dict[str, Dict[str, Any]] = {}
-
-    batch_idx = 0
+    prepared_batches: List[Tuple[List[str], List[dict], int]] = []
     for batch_texts, batch_metas, est_tokens in iter_token_batches(
         texts,
         metadatas=metadatas,
         max_tokens_per_batch=max_req_tokens,
         model_name=settings.embedding_model,
     ):
-        batch_idx += 1
+        if batch_metas is None:
+            raise RuntimeError("RAG rebuild batching produced missing metadata.")
+        prepared_batches.append((list(batch_texts), list(batch_metas), int(est_tokens)))
+
+    logger.info(
+        "RAG: rebuild embedding start project=%s batches=%s workers=%s max_req_tokens=%s",
+        project_id,
+        int(len(prepared_batches)),
+        int(worker_count),
+        int(max_req_tokens),
+    )
+    embed_start_ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    embed_stage_t0 = time.monotonic()
+    write_debug_file(
+        project_id,
+        f"rag/rebuild/{embed_start_ts}_embedding_start.txt",
+        (
+            f"# timestamp: {embed_start_ts}\n"
+            f"# project_id: {project_id}\n"
+            f"# stage: embedding_start\n"
+            f"# embedding_model: {settings.embedding_model}\n"
+            f"# total_batches: {int(len(prepared_batches))}\n"
+            f"# workers: {int(worker_count)}\n"
+            f"# max_embed_tokens_per_request: {int(max_req_tokens)}\n"
+        ),
+    )
+
+    def _embed_batch(
+        batch_id: int,
+        batch_texts: List[str],
+        batch_metas: List[dict],
+        est_tokens: int,
+    ) -> Dict[str, Any]:
+        t0 = time.monotonic()
         res = llm.embed(list(batch_texts), model=settings.embedding_model)
-        vecs = res.vectors
+        dt = time.monotonic() - t0
+        return {
+            "batch_id": int(batch_id),
+            "texts": list(batch_texts),
+            "metas": list(batch_metas),
+            "est_tokens": int(est_tokens),
+            "vectors": list(res.vectors),
+            "elapsed_s": float(dt),
+        }
+
+    batch_results: Dict[int, Dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=int(worker_count)) as pool:
+        future_to_batch: Dict[Any, int] = {}
+        for batch_id, (batch_texts, batch_metas, est_tokens) in enumerate(prepared_batches, start=1):
+            fut = pool.submit(_embed_batch, batch_id, batch_texts, batch_metas, est_tokens)
+            future_to_batch[fut] = int(batch_id)
+        for fut in as_completed(future_to_batch):
+            batch_id = int(future_to_batch[fut])
+            try:
+                payload = fut.result()
+            except Exception as exc:
+                if _is_rate_limit_error_message(exc):
+                    logger.warning(
+                        "RAG: parallel embed batch throttled project=%s batch=%s workers=%s err=%s",
+                        project_id,
+                        int(batch_id),
+                        int(worker_count),
+                        exc,
+                    )
+                else:
+                    logger.error(
+                        "RAG: parallel embed batch failed project=%s batch=%s workers=%s err=%s",
+                        project_id,
+                        int(batch_id),
+                        int(worker_count),
+                        exc,
+                        exc_info=True,
+                    )
+                raise RuntimeError(
+                    f"RAG rebuild failed during embedding batch={batch_id} workers={worker_count}: {exc}"
+                ) from exc
+            batch_results[int(batch_id)] = payload
+
+    for batch_id in range(1, len(prepared_batches) + 1):
+        payload = batch_results.get(int(batch_id))
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"RAG rebuild missing embedding result for batch={batch_id}")
+        batch_texts = payload.get("texts") if isinstance(payload.get("texts"), list) else []
+        batch_metas = payload.get("metas") if isinstance(payload.get("metas"), list) else []
+        est_tokens = int(payload.get("est_tokens") or 0)
+        elapsed_s = float(payload.get("elapsed_s") or 0.0)
+        vecs = payload.get("vectors") if isinstance(payload.get("vectors"), list) else []
         if not vecs:
+            logger.warning("RAG: embed returned empty vectors project=%s batch=%s", project_id, int(batch_id))
             continue
         mat = _normalize_rows(np.array(vecs, dtype="float32"))
         if index is None:
@@ -494,12 +586,23 @@ def rebuild_faiss_index(project_id: str) -> str:
         index.add(mat)
 
         logger.debug(
-            "RAG: embedded batch=%s texts=%s est_tokens=%s max_req_tokens=%s",
-            int(batch_idx),
+            "RAG: embedded batch=%s/%s texts=%s est_tokens=%s elapsed_s=%.2f workers=%s max_req_tokens=%s",
+            int(batch_id),
+            int(len(prepared_batches)),
             int(len(batch_texts)),
             int(est_tokens),
+            float(elapsed_s),
+            int(worker_count),
             int(max_req_tokens),
         )
+    embed_stage_elapsed_s = time.monotonic() - embed_stage_t0
+    logger.info(
+        "RAG: rebuild embedding complete project=%s batches=%s workers=%s total_embed_elapsed_s=%.2f",
+        project_id,
+        int(len(prepared_batches)),
+        int(worker_count),
+        float(embed_stage_elapsed_s),
+    )
 
     if index is None or index_dim is None or int(index.ntotal) <= 0:
         return faiss_dir

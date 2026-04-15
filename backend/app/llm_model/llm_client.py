@@ -7,6 +7,8 @@ Public interface must be plain-data only (no vendor SDK types).
 from __future__ import annotations
 
 import logging
+import random
+import re
 import time
 from dataclasses import dataclass
 from typing import List, Optional
@@ -34,7 +36,34 @@ class LLMClient:
     def __init__(self, *, api_key: str) -> None:
         self._client = OpenAI(api_key=api_key)
 
-    def embed(self, texts: List[str], *, model: Optional[str] = None, retries: int = 2) -> EmbedResult:
+    @staticmethod
+    def _is_rate_limit_error(exc: Exception) -> bool:
+        msg = str(exc or "").lower()
+        return ("rate limit" in msg) or ("too many requests" in msg) or ("429" in msg)
+
+    @staticmethod
+    def _extract_retry_after_seconds(exc: Exception) -> Optional[float]:
+        """
+        Parse provider hints like "Please try again in 2.505s" from exception text.
+        Returns None when no hint is present.
+        """
+        msg = str(exc or "")
+        m = re.search(r"try again in\s*([0-9]+(?:\.[0-9]+)?)s", msg, flags=re.IGNORECASE)
+        if not m:
+            return None
+        try:
+            return float(m.group(1))
+        except Exception:
+            return None
+
+    def embed(
+        self,
+        texts: List[str],
+        *,
+        model: Optional[str] = None,
+        retries: int = 2,
+        rate_limit_retries: int = 10,
+    ) -> EmbedResult:
         """
         Embed texts via OpenAI embeddings API.
 
@@ -47,7 +76,9 @@ class LLMClient:
             return EmbedResult(vectors=[], model=str(use_model))
 
         last_err: Optional[Exception] = None
-        for attempt in range(int(retries) + 1):
+        general_attempt = 0
+        rate_limit_attempt = 0
+        while True:
             try:
                 t0 = time.monotonic()
                 resp = self._client.embeddings.create(model=str(use_model), input=clean)
@@ -58,19 +89,52 @@ class LLMClient:
                     if isinstance(vec, list):
                         vectors.append([float(x) for x in vec])
                 dt = time.monotonic() - t0
-                if attempt > 0:
-                    logger.warning("LLMClient.embed recovered after retries=%s in %.2fs", attempt, dt)
+                total_retry_attempts = int(general_attempt) + int(rate_limit_attempt)
+                if total_retry_attempts > 0:
+                    logger.warning(
+                        "LLMClient.embed recovered after retries=%s (general=%s, rate_limit=%s) in %.2fs",
+                        int(total_retry_attempts),
+                        int(general_attempt),
+                        int(rate_limit_attempt),
+                        dt,
+                    )
                 return EmbedResult(vectors=vectors, model=str(use_model))
             except Exception as e:
                 last_err = e
-                if attempt >= int(retries):
+                if self._is_rate_limit_error(e):
+                    rate_limit_attempt += 1
+                    retry_after_s = self._extract_retry_after_seconds(e)
+                    base_wait = retry_after_s if retry_after_s is not None else (0.6 * (2 ** min(rate_limit_attempt - 1, 5)))
+                    wait_s = float(base_wait) + random.uniform(0.0, 0.25)
+                    logger.warning(
+                        "LLMClient.embed rate-limit/throttle model=%s attempt=%s/%s wait_s=%.2f detail=%s",
+                        str(use_model),
+                        int(rate_limit_attempt),
+                        int(rate_limit_retries),
+                        float(wait_s),
+                        str(e),
+                    )
+                    if rate_limit_attempt > int(rate_limit_retries):
+                        break
+                    try:
+                        time.sleep(wait_s)
+                    except Exception:
+                        pass
+                    continue
+
+                general_attempt += 1
+                if general_attempt > int(retries):
                     break
                 # Best-effort exponential backoff; keep small for interactive usage.
                 try:
-                    time.sleep(0.4 * (2**attempt))
+                    backoff_s = (0.4 * (2 ** (general_attempt - 1))) + random.uniform(0.0, 0.2)
+                    time.sleep(backoff_s)
                 except Exception:
                     pass
-        raise RuntimeError(f"LLMClient.embed failed after retries={retries}: {last_err}")
+        raise RuntimeError(
+            "LLMClient.embed failed after retries="
+            f"{retries} and rate_limit_retries={rate_limit_retries}: {last_err}"
+        )
 
     def embed_query(self, text: str, *, model: Optional[str] = None) -> List[float]:
         res = self.embed([text or ""], model=model)

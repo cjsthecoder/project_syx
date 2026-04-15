@@ -80,6 +80,12 @@ class Settings(BaseSettings):
         gt=0,
         description="Max total tokens per embeddings API request (safety headroom under provider cap)",
     )
+    rag_embed_rebuild_workers: int = Field(
+        default=1,
+        ge=1,
+        le=8,
+        description="Worker count for parallel LTM embedding during rebuild (RAG_EMBED_REBUILD_WORKERS)",
+    )
 
     # V2: Model list for selector
     available_models: list[str] = Field(

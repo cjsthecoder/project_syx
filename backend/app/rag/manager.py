@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 from ..core.retrieval_ordering import order_candidates_by_similarity_score
 from ..tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
-from ..llm_model.llm_client import get_llm_client
+from ..embedding.factory import get_embedding_client
 from ..embedding.vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
 
 try:
@@ -84,7 +84,7 @@ def _safe_load_json(path: str) -> Optional[Any]:
 
 
 def _uploads_relative_doc_id(uploads_dir: str, file_path: str) -> str:
-    """Stable relative path identity under uploads/ (langchain-removal requirements)."""
+    """Stable relative path identity under uploads/."""
     try:
         rel = os.path.relpath(file_path, uploads_dir)
     except Exception:
@@ -97,7 +97,7 @@ def _ltm_doc_id(filename: Optional[str], page_number: Optional[Any]) -> Optional
     doc_id boundary rules.
 
     - Adjacency is within the same uploaded source document only (no cross-file).
-    - PDFs are not supported in the langchain-removal implementation.
+    - PDFs are not supported in the current implementation.
     """
     if not filename or not isinstance(filename, str):
         return None
@@ -105,7 +105,7 @@ def _ltm_doc_id(filename: Optional[str], page_number: Optional[Any]) -> Optional
 
 
 def _split_text_simple(text: str, *, chunk_size: int, chunk_overlap: int) -> List[str]:
-    """Deterministic character splitter (boundaries may differ vs LangChain)."""
+    """Deterministic character splitter."""
     t = text or ""
     if int(chunk_size) <= 0:
         return []
@@ -429,7 +429,7 @@ def _trim_to_tokens(text: str, max_tokens: int) -> str:
 
 
 def rebuild_faiss_index(project_id: str) -> str:
-    """Rebuild FAISS index for a project from uploads directory (raw FAISS, no LangChain)."""
+    """Rebuild FAISS index for a project from uploads directory."""
     settings = get_settings()
     memory_root = get_settings().memory_root
     uploads_dir = os.path.join(memory_root, project_id, "uploads")
@@ -486,7 +486,7 @@ def rebuild_faiss_index(project_id: str) -> str:
     max_req_tokens = int(getattr(settings, "max_embed_tokens_per_request", 250_000))
     worker_count_raw = int(getattr(settings, "rag_embed_rebuild_workers", 1) or 1)
     worker_count = max(1, min(8, worker_count_raw))
-    llm = get_llm_client()
+    llm = get_embedding_client()
 
     index: Optional[faiss.IndexFlatIP] = None
     index_dim: Optional[int] = None
@@ -902,7 +902,7 @@ def canonical_retrieve_candidates(
     # Embed ONCE (shared query vector) via LLMClient boundary (plain-data; no vendor SDK outside llm_model)
     qvec: Optional[List[float]] = None
     try:
-        qvec = get_llm_client().embed_query(query or "", model=settings.embedding_model)
+        qvec = get_embedding_client().embed_query(query or "", model=settings.embedding_model)
     except Exception as e:
         logger.warning("RAG: failed to embed query for canonical retrieval project=%s: %s", project_id, e)
         return []

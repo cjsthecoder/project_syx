@@ -14,6 +14,7 @@ Tests for LLM integration.
 import pytest
 from unittest.mock import patch, MagicMock
 from app.core.llm import LLMProvider, get_llm_provider, generate_chat_response
+from app.llm_model.base import LLMResponse, LLMUsage
 
 
 @pytest.fixture
@@ -25,27 +26,33 @@ def mock_openai_key():
 
 def test_llm_provider_initialization(mock_openai_key):
     """Test LLM provider initialization."""
-    with patch("app.core.llm.ChatOpenAI") as mock_chat:
-        mock_chat.return_value = MagicMock()
+    with patch("app.core.llm.validate_openai_key", return_value=True):
         provider = LLMProvider()
         assert provider is not None
 
 
 def test_llm_provider_without_key():
     """Test LLM provider without API key."""
-    with patch.dict("os.environ", {}, clear=True):
+    with patch("app.core.llm.validate_openai_key", return_value=False):
         with pytest.raises(ValueError, match="OpenAI API key"):
             LLMProvider()
 
 
-@patch("app.core.llm.ChatOpenAI")
-def test_generate_response(mock_chat, mock_openai_key):
+@patch("app.core.llm.get_llm_client")
+def test_generate_response(mock_get_client, mock_openai_key):
     """Test response generation."""
-    # Mock the LLM response
-    mock_response = MagicMock()
-    mock_response.content = "Hello! How can I help you?"
-    mock_response.usage_metadata = {"total_tokens": 25}
-    mock_chat.return_value.invoke.return_value = mock_response
+    mock_client = MagicMock()
+    mock_client.generate_chat.return_value = LLMResponse(
+        text="Hello! How can I help you?",
+        model="gpt-5.4",
+        usage=LLMUsage(
+            prompt_tokens_reported=10,
+            completion_tokens_reported=15,
+            total_tokens_reported=25,
+            usage_is_estimate=False,
+        ),
+    )
+    mock_get_client.return_value = mock_client
     
     # Test response generation
     result = generate_chat_response("Hello, world!")
@@ -55,14 +62,21 @@ def test_generate_response(mock_chat, mock_openai_key):
     assert result["tokens_used"] == 25
 
 
-@patch("app.core.llm.ChatOpenAI")
-def test_generate_response_with_history(mock_chat, mock_openai_key):
+@patch("app.core.llm.get_llm_client")
+def test_generate_response_with_history(mock_get_client, mock_openai_key):
     """Test response generation with conversation history."""
-    # Mock the LLM response
-    mock_response = MagicMock()
-    mock_response.content = "I remember our previous conversation!"
-    mock_response.usage_metadata = {"total_tokens": 30}
-    mock_chat.return_value.invoke.return_value = mock_response
+    mock_client = MagicMock()
+    mock_client.generate_chat.return_value = LLMResponse(
+        text="I remember our previous conversation!",
+        model="gpt-5.4",
+        usage=LLMUsage(
+            prompt_tokens_reported=20,
+            completion_tokens_reported=10,
+            total_tokens_reported=30,
+            usage_is_estimate=False,
+        ),
+    )
+    mock_get_client.return_value = mock_client
     
     # Test with conversation history
     history = [
@@ -76,11 +90,12 @@ def test_generate_response_with_history(mock_chat, mock_openai_key):
     assert "I remember our previous conversation!" in result["response"]
 
 
-@patch("app.core.llm.ChatOpenAI")
-def test_llm_error_handling(mock_chat, mock_openai_key):
+@patch("app.core.llm.get_llm_client")
+def test_llm_error_handling(mock_get_client, mock_openai_key):
     """Test LLM error handling."""
-    # Mock an error
-    mock_chat.return_value.invoke.side_effect = Exception("API Error")
+    mock_client = MagicMock()
+    mock_client.generate_chat.side_effect = Exception("API Error")
+    mock_get_client.return_value = mock_client
     
     result = generate_chat_response("Hello")
     
@@ -91,7 +106,7 @@ def test_llm_error_handling(mock_chat, mock_openai_key):
 
 def test_get_llm_provider_singleton(mock_openai_key):
     """Test that get_llm_provider returns a singleton."""
-    with patch("app.core.llm.ChatOpenAI"):
+    with patch("app.core.llm.validate_openai_key", return_value=True):
         provider1 = get_llm_provider()
         provider2 = get_llm_provider()
         assert provider1 is provider2

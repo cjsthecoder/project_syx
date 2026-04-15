@@ -136,19 +136,15 @@ def setup_logging() -> None:
         logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)
         logging.getLogger("uvicorn.error").setLevel(logging.DEBUG)
         logging.getLogger("fastapi").setLevel(logging.DEBUG)
-        logging.getLogger("langchain").setLevel(logging.DEBUG)
         logging.getLogger("openai").setLevel(logging.DEBUG)
     else:
         logging.getLogger("uvicorn").setLevel(logging.INFO)
         logging.getLogger("uvicorn.access").setLevel(logging.INFO)
         logging.getLogger("uvicorn.error").setLevel(logging.INFO)
         logging.getLogger("fastapi").setLevel(logging.INFO)
-        logging.getLogger("langchain").setLevel(logging.INFO)
         logging.getLogger("openai").setLevel(logging.INFO)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
-    # Silence noisy model-encoding warnings from langchain_openai embeddings layer
-    logging.getLogger("langchain_openai.embeddings.base").setLevel(logging.ERROR)
     # Silence filelock library debug messages (only show warnings/errors)
     logging.getLogger("filelock").setLevel(logging.WARNING)
     

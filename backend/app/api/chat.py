@@ -10,7 +10,7 @@ Use of this software requires explicit written permission from the copyright hol
 """
 Chat API endpoint for Syx AGI Chatbot Framework.
 
-This module provides the main chat functionality with LangChain integration.
+This module provides the main chat functionality via factory-backed LLM clients.
 """
 
 import logging
@@ -24,11 +24,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from ..core.models import ChatRequest, ChatResponse, ErrorResponse
 from ..core.llm import generate_chat_response, get_llm_health
+from ..llm_model.factory import get_llm_client
 from ..core.memory import get_memory_manager, set_last_context_tokens
 from ..utils.debug_utils import write_debug_file
 from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id, set_route, clear_route, set_namespace, clear_namespace, get_route
 from ..utils.errors import handle_llm_error, log_error_context
-from ..core.config import get_settings, get_model_config, compute_per_source_k
+from ..core.config import get_settings, compute_per_source_k
 from ..rag.manager import retrieve_context, merge_daily_and_main
 from ..core.route_policy import get_route_policy
 from ..core.personality import load_project_system_prompt, load_project_personality
@@ -39,17 +40,6 @@ from ..core.query_builder import build_query, format_contextual_turn
 from ..tracking import get_instrumentation
 import os
 import json
-from itertools import islice
-from langchain_openai import ChatOpenAI
-try:
-    # Preferred path for LC 0.2.x
-    from langchain.callbacks.streaming_aiter import AsyncIteratorCallbackHandler  # type: ignore
-except Exception:
-    try:
-        from langchain.callbacks import AsyncIteratorCallbackHandler  # type: ignore
-    except Exception:
-        AsyncIteratorCallbackHandler = None  # type: ignore
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage  # type: ignore
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -92,53 +82,10 @@ def _estimate_tokens(text: str) -> int:
 def _estimate_message_tokens(messages: list) -> int:
     """Best-effort token estimate over structured message list."""
     try:
-        text = "\n".join(str(getattr(m, "content", "") or "") for m in (messages or []))
+        text = "\n".join(str((m.get("content") or "")) for m in (messages or []) if isinstance(m, dict))
         return int(_estimate_tokens(text))
     except (AttributeError, TypeError, ValueError):
         return 0
-
-
-def _extract_stream_usage(chunk: Any) -> tuple[Optional[dict], Optional[dict]]:
-    """Extract provider-reported stream usage and extra details when available."""
-    try:
-        usage_meta = getattr(chunk, "usage_metadata", None)
-        if isinstance(usage_meta, dict):
-            prompt_tok = usage_meta.get("input_tokens")
-            completion_tok = usage_meta.get("output_tokens")
-            total_tok = usage_meta.get("total_tokens")
-            if isinstance(total_tok, int) or isinstance(prompt_tok, int) or isinstance(completion_tok, int):
-                usage = {
-                    "prompt_tokens_reported": int(prompt_tok or 0),
-                    "completion_tokens_reported": int(completion_tok or 0),
-                    "total_tokens_reported": int(total_tok or ((prompt_tok or 0) + (completion_tok or 0))),
-                    "usage_is_estimate": False,
-                }
-                extras = {
-                    "input_token_details": usage_meta.get("input_token_details"),
-                    "output_token_details": usage_meta.get("output_token_details"),
-                }
-                return usage, {k: v for k, v in extras.items() if v is not None}
-    except (AttributeError, TypeError, ValueError) as exc:
-        logger.debug("chat.stream usage_metadata extraction failed; detail=%s", exc)
-    try:
-        md = getattr(chunk, "response_metadata", None) or {}
-        token_usage = md.get("token_usage", {}) if isinstance(md, dict) else {}
-        if isinstance(token_usage, dict):
-            prompt_tok = token_usage.get("prompt_tokens") or token_usage.get("input_tokens")
-            completion_tok = token_usage.get("completion_tokens") or token_usage.get("output_tokens")
-            total_tok = token_usage.get("total_tokens")
-            if isinstance(total_tok, int) or isinstance(prompt_tok, int) or isinstance(completion_tok, int):
-                usage = {
-                    "prompt_tokens_reported": int(prompt_tok or 0),
-                    "completion_tokens_reported": int(completion_tok or 0),
-                    "total_tokens_reported": int(total_tok or ((prompt_tok or 0) + (completion_tok or 0))),
-                    "usage_is_estimate": False,
-                }
-                extras = dict(token_usage)
-                return usage, extras
-    except (AttributeError, TypeError, ValueError) as exc:
-        logger.debug("chat.stream response_metadata usage extraction failed; detail=%s", exc)
-    return None, None
 
 
 def _next_turn_id() -> int:
@@ -617,18 +564,18 @@ class _ChatPipeline:
     ) -> list:
         msgs: list = []
         if base_system_prompt:
-            msgs.append(SystemMessage(content=base_system_prompt))
+            msgs.append({"role": "system", "content": base_system_prompt})
         if assistant_hint:
-            msgs.append(AIMessage(content=assistant_hint))
+            msgs.append({"role": "assistant", "content": assistant_hint})
         if rag_system_prompt:
-            msgs.append(SystemMessage(content=rag_system_prompt))
+            msgs.append({"role": "system", "content": rag_system_prompt})
         if conversation_history:
             for m in conversation_history:
                 if (m.get("role") or "").lower() == "user":
-                    msgs.append(HumanMessage(content=m.get("content") or ""))
+                    msgs.append({"role": "user", "content": m.get("content") or ""})
                 elif (m.get("role") or "").lower() == "assistant":
-                    msgs.append(AIMessage(content=m.get("content") or ""))
-        msgs.append(HumanMessage(content=user_message or ""))
+                    msgs.append({"role": "assistant", "content": m.get("content") or ""})
+        msgs.append({"role": "user", "content": user_message or ""})
         try:
             get_instrumentation().record_stage(
                 "prompt_assembly",
@@ -709,7 +656,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
     """
     Main chat endpoint for user-AI conversation.
     
-    This endpoint handles the core chat functionality using LangChain ChatOpenAI.
+    This endpoint handles the core chat functionality using the shared LLM factory.
     It supports conversation history and project context (stubbed for V4).
     """
     try:
@@ -801,7 +748,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 msg_id,
                 exc,
             )
-        # Generate response using LangChain
+        # Generate response using shared LLM runtime
         t_model0 = time.time()
         llm_response = generate_chat_response(
             message=request.message,
@@ -1075,7 +1022,7 @@ async def chat_stream(request: ChatRequest):
                 except Exception as e:
                     yield f"\n[error] {str(e)}\n"
             return StreamingResponse(fake_stream(), media_type="text/plain; charset=utf-8")
-        # True streaming via LangChain callback iterator
+        # True streaming via provider factory client
         msgs = pipeline.build_llm_messages(
             base_system_prompt=base_system_prompt,
             assistant_hint=assistant_hint,
@@ -1103,7 +1050,7 @@ async def chat_stream(request: ChatRequest):
                 exc,
             )
 
-        # Token stream using astream (yields AIMessageChunk with incremental content)
+        # Token stream using factory-backed OpenAI streaming.
         async def token_stream():
             collected = []
             invocation_id = ""
@@ -1111,70 +1058,35 @@ async def chat_stream(request: ChatRequest):
             first_token_ms = None
             first_token_ts = None
             provider_usage: Optional[dict] = None
-            provider_extra_usage: Optional[dict] = None
             try:
-                # Initialize streaming LLM client (LangChain 0.2.x native astream)
-                # Try with temperature=1.0, but some models reject the temperature parameter entirely.
                 model_name = (request.model or settings.model_name)
-                def _new_stream_llm(*, include_temperature: bool) -> ChatOpenAI:
-                    kwargs: Dict[str, Any] = {
-                        "api_key": settings.openai_api_key,
-                        "model": model_name,
-                        "model_kwargs": {
-                            "max_completion_tokens": settings.model_max_tokens,
-                        },
-                        "streaming": True,
-                    }
-                    if include_temperature:
-                        kwargs["temperature"] = 1.0
-                    return ChatOpenAI(**kwargs)
-
-                llm = _new_stream_llm(include_temperature=True)
                 invocation_id = instr.start_invocation(
                     purpose="main",
                     model=model_name,
                     meta={"streaming": True},
                 )
-                yielded_any = False
-                try:
-                    async for chunk in llm.astream(msgs):
-                        u, extra = _extract_stream_usage(chunk)
-                        if u:
-                            provider_usage = u
-                            provider_extra_usage = extra
-                        # Only emit actual text content; skip metadata/header chunks
-                        piece = getattr(chunk, "content", None)
-                        if not piece:
-                            piece = getattr(chunk, "delta", None)
-                        if isinstance(piece, str) and piece:
-                            yielded_any = True
-                            if first_token_ms is None:
-                                first_token_ms = int((time.perf_counter() - t_invoke0) * 1000.0)
-                                first_token_ts = datetime.now(timezone.utc).isoformat()
-                            collected.append(piece)
-                            yield piece
-                except Exception as e:
-                    msg = str(e).lower()
-                    if (not yielded_any) and ("temperature" in msg or "unsupported_value" in msg or "invalid_request_error" in msg):
-                        llm2 = _new_stream_llm(include_temperature=False)
-                        async for chunk in llm2.astream(msgs):
-                            u, extra = _extract_stream_usage(chunk)
-                            if u:
-                                provider_usage = u
-                                provider_extra_usage = extra
-                            piece = getattr(chunk, "content", None)
-                            if not piece:
-                                piece = getattr(chunk, "delta", None)
-                            if isinstance(piece, str) and piece:
-                                yielded_any = True
-                                if first_token_ms is None:
-                                    first_token_ms = int((time.perf_counter() - t_invoke0) * 1000.0)
-                                    first_token_ts = datetime.now(timezone.utc).isoformat()
-                                collected.append(piece)
-                                yield piece
-                    else:
-                        raise
-                    # Only emit actual text content; skip metadata/header chunks
+                for piece, usage_obj in get_llm_client().stream_chat(
+                    messages=msgs,
+                    model=model_name,
+                    temperature=1.0,
+                    max_completion_tokens=int(settings.model_max_tokens),
+                ):
+                    if usage_obj is not None:
+                        provider_usage = {
+                            "prompt_tokens_reported": int(usage_obj.prompt_tokens_reported),
+                            "completion_tokens_reported": int(usage_obj.completion_tokens_reported),
+                            "total_tokens_reported": int(usage_obj.total_tokens_reported),
+                            "usage_is_estimate": bool(usage_obj.usage_is_estimate),
+                        }
+                        if usage_obj.extra_usage:
+                            provider_usage["extra_usage"] = usage_obj.extra_usage
+                        continue
+                    if isinstance(piece, str) and piece:
+                        if first_token_ms is None:
+                            first_token_ms = int((time.perf_counter() - t_invoke0) * 1000.0)
+                            first_token_ts = datetime.now(timezone.utc).isoformat()
+                        collected.append(piece)
+                        yield piece
                 # Signal end of stream
                 yield "\n::event: done\n"
             finally:
@@ -1202,8 +1114,6 @@ async def chat_stream(request: ChatRequest):
                             "total_tokens_reported": 0,
                             "usage_is_estimate": True,
                         }
-                    if provider_extra_usage:
-                        usage_payload["extra_usage"] = provider_extra_usage
                     if invocation_id:
                         if first_token_ms is None:
                             logger.warning("chat.stream produced no first token timing; forcing ttfb_ms=0")

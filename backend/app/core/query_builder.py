@@ -20,9 +20,8 @@ import logging
 from typing import Dict, Any, Tuple, Optional
 from datetime import datetime
 
-from openai import OpenAI
-
 from .config import get_settings
+from ..llm_model.factory import get_llm_client_mini
 from ..tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
 
@@ -135,29 +134,6 @@ class _BuilderPromptDumper:
 
 
 _PROMPT_DUMPER = _BuilderPromptDumper()
-
-
-def _responses_text(resp: Any) -> str:
-    """
-    Extract text content from an OpenAI Responses API response.
-    Mirrors the extraction logic used in dream/llm.py.
-    """
-    try:
-        text = getattr(resp, "output_text", None)
-        if isinstance(text, str) and text:
-            return text
-    except Exception as exc:
-        logger.warning("builder responses_text failed reading output_text: %s", exc)
-    out: list[str] = []
-    try:
-        for item in getattr(resp, "output", []) or []:
-            if getattr(item, "type", "") == "message":
-                for c in getattr(item, "content", []) or []:
-                    if getattr(c, "type", "") == "output_text":
-                        out.append(getattr(c, "text", "") or "")
-    except Exception as exc:
-        logger.warning("builder responses_text failed iterating output: %s", exc)
-    return "".join(out).strip()
 
 
 def _cache_key(project_id: str, history_summary: str, user_text: str) -> str:
@@ -294,7 +270,6 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
     }
 
     try:
-        client = OpenAI(api_key=settings.openai_api_key)
         # Log the prompt for debug visibility (trimmed)
         settings = get_settings()
         cap = settings.log_preview_max_chars
@@ -303,58 +278,25 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
             (history_summary[:cap] + ("…" if len(history_summary) > cap else "")),
             (user_text[:cap] + ("…" if len(user_text) > cap else "")),
         )
-        # Call OpenAI Responses API directly (bypass LangChain).
-        # IMPORTANT: omit temperature for maximum model compatibility.
-        try:
-            resp = client.responses.create(
-                model=settings.builder_model,
-                input=[
-                    {"role": "system", "content": _SYS_PROMPT},
-                    {"role": "user", "content": user},
-                ],
-                # Guarantee a JSON text payload (avoid reasoning-only outputs).
-                text={"format": {"type": "json_object"}},
-                # Allow some reasoning, but keep it bounded.
-                reasoning={"effort": "low"},
-                max_output_tokens=int(settings.builder_max_tokens),
-            )
-        except Exception:
-            # Fallback: some client versions/models may not accept message-list `input`.
-            resp = client.responses.create(
-                model=settings.builder_model,
-                input=_SYS_PROMPT + "\n\n" + user,
-                text={"format": {"type": "json_object"}},
-                reasoning={"effort": "low"},
-                max_output_tokens=int(settings.builder_max_tokens),
-            )
-        try:
-            u = getattr(resp, "usage", None)
-            prompt_tok = int(getattr(u, "input_tokens", 0) or 0) if u is not None else 0
-            completion_tok = int(getattr(u, "output_tokens", 0) or 0) if u is not None else 0
-            total_tok = int(getattr(u, "total_tokens", 0) or (prompt_tok + completion_tok))
-            extra_usage: Dict[str, Any] = {}
-            if u is not None:
-                for k in ("input_token_details", "output_token_details", "reasoning_tokens", "cached_tokens"):
-                    try:
-                        v = getattr(u, k, None)
-                        if v is not None:
-                            extra_usage[k] = v
-                    except Exception as exc:
-                        logger.debug("builder usage field read failed field=%s detail=%s", k, exc)
-            if total_tok > 0:
-                usage = {
-                    "purpose": "router",
-                    "model": settings.builder_model,
-                    "prompt_tokens_reported": prompt_tok,
-                    "completion_tokens_reported": completion_tok,
-                    "total_tokens_reported": total_tok,
-                    "usage_is_estimate": False,
-                }
-                if extra_usage:
-                    usage["extra_usage"] = extra_usage
-        except Exception as exc:
-            logger.warning("builder usage extraction failed project_id=%s detail=%s", project_id, exc)
-        raw = _responses_text(resp)
+        response = get_llm_client_mini().generate_response(
+            model=settings.builder_model,
+            system_prompt=_SYS_PROMPT,
+            user_prompt=user,
+            max_output_tokens=int(settings.builder_max_tokens),
+            reasoning_effort="low",
+            require_json_object=True,
+        )
+        usage = {
+            "purpose": "router",
+            "model": response.model,
+            "prompt_tokens_reported": int(response.usage.prompt_tokens_reported),
+            "completion_tokens_reported": int(response.usage.completion_tokens_reported),
+            "total_tokens_reported": int(response.usage.total_tokens_reported),
+            "usage_is_estimate": bool(response.usage.usage_is_estimate),
+        }
+        if response.usage.extra_usage:
+            usage["extra_usage"] = response.usage.extra_usage
+        raw = response.text
         logger.debug("builder raw=%s", (raw[:cap] + ("…" if len(raw) > cap else "")))
         # Clean output to ensure strict JSON parsing
         clean = raw

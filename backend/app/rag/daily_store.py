@@ -24,7 +24,7 @@ import numpy as np  # type: ignore
 from ..core.config import get_settings
 from ..embedding.batching import iter_token_batches
 from ..embedding.vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
-from ..llm_model.llm_client import get_llm_client
+from ..embedding.factory import get_embedding_client
 from ..utils.debug_utils import write_debug_file
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
 
 @dataclass
 class _DailyCache:
-    """Per-project in-memory Daily cache state (raw FAISS, no LangChain)."""
+    """Per-project in-memory Daily cache state (raw FAISS)."""
     embedding_model: str
     vs: Optional[VectorIndex]  # None means empty (no vectors yet)
     # Canonical daily.json snapshot keyed by stable entry id.
@@ -398,7 +398,7 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
 
             vs: Optional[DailyVectorIndex] = None
             batch_idx = 0
-            llm = get_llm_client()
+            llm = get_embedding_client()
             for batch_texts, batch_metas, est_tokens in iter_token_batches(
                 texts,
                 metadatas=metas,
@@ -514,7 +514,7 @@ def append_pair(
     update_cache: bool = True,
 ) -> bool:
     """Append a single embedded pair to the daily index and metadata.
-    Note: We don't persist raw FAISS via langchain here; for V2.3 we only track metadata and rely on embeddings at retrieval-time for simplicity.
+    Note: We don't persist raw FAISS here; for V2.3 we only track metadata and rely on embeddings at retrieval-time for simplicity.
     When update_cache is False, only daily.json (and optionally daily.txt) are updated; caller is responsible for rebuilding the in-memory RAG once (e.g. dream batch).
     """
     settings = get_settings()
@@ -611,7 +611,7 @@ def append_pair(
                 return False
             # If empty cache, create a new vectorstore with this single entry
             if cache.vs is None:
-                llm = get_llm_client()
+                llm = get_embedding_client()
                 vecs = llm.embed([text_for_embed], model=settings.embedding_model).vectors
                 if not vecs:
                     start_daily_cache_rebuild(project_id, reason="append_embed_empty")
@@ -636,7 +636,7 @@ def append_pair(
                     )
                 return True
             # Normal path: incremental add
-            llm = get_llm_client()
+            llm = get_embedding_client()
             vecs2 = llm.embed([text_for_embed], model=settings.embedding_model).vectors
             if not vecs2:
                 start_daily_cache_rebuild(project_id, reason="append_embed_empty")

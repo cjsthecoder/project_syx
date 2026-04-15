@@ -157,14 +157,14 @@ class _DailyCache:
     # Canonical daily.json snapshot keyed by stable entry id.
     # Used to join retrieval hits (via metadata daily_entry_id) back to authoritative metadata.
     meta_by_id: Dict[str, Dict[str, Any]]
-    # DELTA-A.4.4.1: O(1) adjacency lookup by day_sequence (chunk_seq).
+    # O(1) adjacency lookup by day_sequence (chunk_seq).
     id_by_seq: Dict[int, str]
 
 
 @dataclass
 class DailySource:
     """
-    A.4.1 source adapter boundary for Daily.
+    Source adapter boundary for Daily.
 
     Owns no retrieval mechanics. Provides a safe-to-use vectorstore handle plus
     authoritative metadata join map.
@@ -177,7 +177,7 @@ class DailySource:
 
 def get_daily_source(project_id: str) -> Optional[DailySource]:
     """
-    A.4.1: Provide a safe Daily vectorstore handle + authoritative metadata.
+    Provide a safe Daily vectorstore handle + authoritative metadata.
 
     - Daily lifecycle (warm/rebuild/mismatch) remains owned by daily_rag.py.
     - Canonical retrieval owns embedding + per-source K + search loop + shaping.
@@ -207,7 +207,7 @@ def get_daily_source(project_id: str) -> Optional[DailySource]:
 
 def daily_lookup_adjacent_entry_ids(project_id: str, *, day_sequence: int) -> Dict[str, Optional[str]]:
     """
-    DELTA-A.4.4.1: deterministic neighbor lookup for Daily entries.
+    Deterministic neighbor lookup for Daily entries.
 
     Returns dict with keys: prev_entry_id, next_entry_id.
     If cache is cold/unavailable, returns None values (no expansion).
@@ -371,7 +371,7 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
                         "source": "daily",
                         "daily_entry_id": str(eid) if eid is not None else None,
                         "day_sequence": e.get("day_sequence"),
-                        # DELTA-A.4.4.1 adjacency identity for Daily
+                        # Adjacency identity for Daily entries.
                         "doc_id": "daily",
                         "chunk_seq": e.get("day_sequence"),
                     }
@@ -486,7 +486,7 @@ def ensure_daily_cache(project_id: str, reason: str = "warm") -> bool:
                 if not entries or (models == {runtime_model}):
                     return True
             except Exception:
-                # If we can't validate, rebuild per delta (but do not retry this request elsewhere).
+                # If we can't validate, rebuild and do not retry this request elsewhere.
                 pass
         # Rebuild if missing or if daily.json indicates mismatch with runtime model.
         return rebuild_daily_cache(project_id, reason=reason)

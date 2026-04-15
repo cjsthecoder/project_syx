@@ -482,7 +482,7 @@ class _ChatPipeline:
         set_namespace(primary_ns)
         rag_metrics["route"] = str(route or "OTHER")
 
-        # DELTA-A.4.3: route_policy.json is validated at startup and cached for process lifetime.
+        # route_policy.json is validated at startup and cached for process lifetime.
         pol = get_route_policy(route or "OTHER")
         mult_val = float(pol.retrieval_multiplier)
         max_keep = int(pol.max_keep)

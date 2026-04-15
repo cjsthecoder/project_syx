@@ -512,7 +512,7 @@ def _sleep_cycle_worker():
                                             de,
                                         )
 
-                                # DELTA-A.1: Clear in-memory daily cache and remove daily.json so daily memory moves into main RAG
+                                # Clear in-memory daily cache and remove daily.json so daily memory moves into main RAG.
                                 try:
                                     meta_path, lock_path, txt_path = _project_daily_paths(pid)
                                     with FileLock(lock_path):

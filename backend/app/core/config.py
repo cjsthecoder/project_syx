@@ -108,10 +108,10 @@ class Settings(BaseSettings):
     
     # V2.1: RAG-on-chat controls
     rag_on_chat: bool = Field(default=True, description="Enable retrieval injection during chat")
-    # DELTA-A.4.1: retrieval-stage limits are controlled by BASE_TOP_K + RETRIEVAL_MULTIPLIER (not route config).
-    base_top_k: int = Field(default=5, gt=0, description="DELTA-A.4.1: base retrieval top-K (used to derive per-source K)")
-    retrieval_multiplier: float = Field(default=2.0, gt=0.0, description="DELTA-A.4.1: per-source K multiplier (PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER))")
-    rag_score_threshold: float = Field(default=0.75, ge=0.0, le=1.0, description="Cosine similarity threshold (0..1) — temporary A.4.3-stage selection policy only")
+    # Retrieval-stage limits are controlled by BASE_TOP_K + RETRIEVAL_MULTIPLIER (not route config).
+    base_top_k: int = Field(default=5, gt=0, description="Base retrieval top-K (used to derive per-source K)")
+    retrieval_multiplier: float = Field(default=2.0, gt=0.0, description="Per-source K multiplier (PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER))")
+    rag_score_threshold: float = Field(default=0.75, ge=0.0, le=1.0, description="Cosine similarity threshold (0..1) — currently not enforced by retrieval selection")
 
     # V2.2: Chat history working memory
     chat_history_limit: int = Field(default=20, gt=0, description="Number of recent messages kept per project")
@@ -119,7 +119,7 @@ class Settings(BaseSettings):
     # V2.3: Daily RAG bridge controls (global defaults)
     chat_history_limit_pairs: int = Field(default=10, gt=0, description="Number of recent prompt/response pairs kept in working memory")
     daily_rag_enabled: bool = Field(default=True, description="Enable daily RAG roll-off globally (per-project can override)")
-    daily_rag_score_threshold: float = Field(default=0.70, ge=0.0, le=1.0, description="Similarity threshold for daily results — temporary A.4.3-stage selection policy only")
+    daily_rag_score_threshold: float = Field(default=0.70, ge=0.0, le=1.0, description="Similarity threshold for daily results — currently not enforced by retrieval selection")
     daily_rag_weight: float = Field(default=1.2, gt=0.0, description="Weight multiplier applied to daily scores")
 
     # V2.3: Deduplication controls
@@ -252,7 +252,7 @@ def get_settings() -> Settings:
 
 def compute_per_source_k(base_top_k: int, retrieval_multiplier: float) -> int:
     """
-    DELTA-A.4.1:
+    Compute per-source K as:
       PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)
     """
     try:

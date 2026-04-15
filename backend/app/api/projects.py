@@ -608,7 +608,7 @@ async def delete_project(project_id: str) -> JSONResponse:
                 os.rmdir(base)
         except Exception as e:
             logger.warning("[PROJECT] Failed cleaning project directory %s: %s", base, e)
-        # DELTA-A.3: clear ephemeral per-project memory state
+        # Clear ephemeral per-project memory state.
         try:
             mm = get_memory_manager()
             try:
@@ -647,7 +647,7 @@ async def delete_project(project_id: str) -> JSONResponse:
 @router.get("/projects/{project_id}/stats")
 async def project_stats(project_id: str) -> JSONResponse:
     """Return storage_bytes, index_size_bytes, tokens_indexed, context_tokens, file_count."""
-    # DELTA-A.1: lazily warm Daily in-memory cache on first project-scoped request
+    # Lazily warm Daily in-memory cache on first project-scoped request.
     try:
         start_daily_cache_rebuild(project_id, reason="project_stats")
     except Exception as exc:

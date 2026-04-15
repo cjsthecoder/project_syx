@@ -1,5 +1,5 @@
 """
-Route policy loader and validator (DELTA-A.4.3).
+Route policy loader and validator.
 
 Strict, fail-fast semantics:
 - route_policy.json is required and validated on startup.

@@ -15,8 +15,9 @@ services:
       # Option B: mount .env into container (read-only)
       - ./.env:/app/.env:ro
       # Bind mounts for persistence (create dirs with: make docker-data-dirs)
-      - ./data/memory:/app/backend/memory
-      - ./data/db:/app/backend/app/data
-      - ./data/logs:/app/backend/logs
-      - ./data/runs:/app/backend/runs
+      - ./data/memory:/app/data/memory
+      - ./data/db:/app/data/db
+      - ./runtime/logs:/app/runtime/logs
+      - ./runtime/runs:/app/runtime/runs
+      - ./runtime/state:/app/runtime/state
     restart: unless-stopped

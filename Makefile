@@ -48,7 +48,7 @@ help:
 	@echo "  make generate-docs        - Generate architecture diagram"
 	@echo ""
 	@echo "Docker:"
-	@echo "  make docker-data-dirs     - Create host dirs for bind mounts (data/memory, data/db, data/logs, data/runs)"
+	@echo "  make docker-data-dirs     - Create host dirs for bind mounts (data/memory, data/db, runtime/logs, runtime/runs, runtime/state)"
 	@echo "  make docker-data-permissions - Set permissions on data dirs for container read/write"
 	@echo "  make docker-setup         - Create data dirs and set permissions (run before first docker-compose up)"
 	@echo "  make run-docker           - Prepare host dirs and start docker compose stack"
@@ -133,23 +133,22 @@ downgrade:
 # Danger: wipe all project data and DB; recreate schema
 HARD_RESET:
 	@echo "⚠️  HARD RESET will DELETE all project data and the SQLite DB."
-	@echo "   - Removing memory/*"
-	@echo "   - Removing backend/app/data/syx.db"
+	@echo "   - Removing data/memory/*"
+	@echo "   - Removing data/db/syx.db"
 	@echo "   - Recreating empty DB (alembic upgrade)"
 	@echo ""
 	@read -p "Type 'YES' to proceed: " CONFIRM; \
 	if [ "$$CONFIRM" != "YES" ]; then echo "Aborted."; exit 1; fi; \
-	echo "Deleting memory/* ..."; \
-	rm -rf memory/* 2>/dev/null || true; \
-	rm -rf backend/memory/* 2>/dev/null || true; \
+	echo "Deleting data/memory/* ..."; \
+	rm -rf data/memory/* 2>/dev/null || true; \
 	echo "Deleting SQLite DB ..."; \
-	rm -f backend/app/data/syx.db 2>/dev/null || true; \
+	rm -f data/db/syx.db 2>/dev/null || true; \
 	echo "Removing runtime sleep lock if present ..."; \
-	rm -f backend/runtime/sleep.lock 2>/dev/null || true; \
+	rm -f runtime/state/sleep.lock 2>/dev/null || true; \
 	echo "Deleting logs ..."; \
-	rm -f backend/logs/*.log 2>/dev/null || true; \
+	rm -f runtime/logs/*.log 2>/dev/null || true; \
 	echo "Recreating DB schema ..."; \
-	mkdir -p backend/app/data; \
+	mkdir -p data/db; \
 	cd backend && alembic upgrade head; \
 	echo "✅ HARD RESET complete. Start the server and Continuum will be reseeded."
 
@@ -288,8 +287,16 @@ setup-env:
 		echo "# Max chars for log previews"; \
 		echo ""; \
 		echo "# === Database + Storage ==="; \
-		echo "DB_PATH=app/data/syx.db"; \
+		echo "DB_PATH=../data/db/syx.db"; \
 		echo "# SQLite database file path (or full URL like sqlite:///...)"; \
+		echo ""; \
+		echo "DATA_ROOT=../data"; \
+		echo "RUNTIME_ROOT=../runtime"; \
+		echo "MEMORY_ROOT=../data/memory"; \
+		echo "RUNS_DIR=../runtime/runs"; \
+		echo "LOGS_DIR=../runtime/logs"; \
+		echo "LOCK_DIR=../runtime/state"; \
+		echo "# Runtime and storage roots"; \
 		echo ""; \
 		echo "MAX_UPLOAD_MB=10"; \
 		echo "# Max size per uploaded file (MB)"; \
@@ -414,7 +421,7 @@ setup-env:
 		echo "INSTRUMENTATION_RUN_ID=test_run"; \
 		echo "# Optional run id override; when set, all turns use this run id"; \
 		echo ""; \
-		echo "INSTRUMENTATION_RUNS_DIR=runs"; \
+		echo "INSTRUMENTATION_RUNS_DIR=../runtime/runs"; \
 		echo "# Root folder for instrumentation outputs"; \
 		echo ""; \
 		echo "INSTRUMENTATION_PROMPT_TOL_ABS_TOKENS=25"; \
@@ -468,19 +475,19 @@ setup-env:
 	@echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
 
 unlock-sleep:
-	@rm -f backend/runtime/sleep.lock backend/app/runtime/sleep.lock 2>/dev/null || true
+	@rm -f runtime/state/sleep.lock backend/runtime/sleep.lock backend/app/runtime/sleep.lock 2>/dev/null || true
 	@echo "✅ Sleep lock cleared (if it existed)"
 
 # Docker: create host directories for bind mounts (run before first docker-compose up)
 docker-data-dirs:
 	@echo "📁 Creating host directories for Docker bind mounts..."
-	@mkdir -p data/memory data/db data/logs data/runtime data/runs
-	@echo "✅ Created data/memory data/db data/logs data/runtime data/runs"
+	@mkdir -p data/memory data/db runtime/logs runtime/runs runtime/state
+	@echo "✅ Created data/memory data/db runtime/logs runtime/runs runtime/state"
 
 # Docker: set permissions so container process can read/write (container typically runs as root)
 docker-data-permissions:
-	@chmod -R 755 data 2>/dev/null || true
-	@echo "✅ Set permissions on data/ (755)"
+	@chmod -R 755 data runtime 2>/dev/null || true
+	@echo "✅ Set permissions on data/ and runtime/ (755)"
 
 # Docker: full host prep for first run (dirs + permissions)
 docker-setup: docker-data-dirs docker-data-permissions

@@ -95,9 +95,8 @@ def setup_logging() -> None:
     console_level = getattr(logging, settings.log_level_console.upper(), logging.INFO)
     file_level = getattr(logging, settings.log_level_file.upper(), logging.DEBUG)
     
-    # Create logs directory
-    script_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    logs_dir = os.path.join(script_dir, 'logs')
+    # Create logs directory from runtime config.
+    logs_dir = str(settings.logs_dir)
     if not os.path.exists(logs_dir):
         os.makedirs(logs_dir)
 

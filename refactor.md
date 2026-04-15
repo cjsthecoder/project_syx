@@ -101,3 +101,17 @@
   - `backend/app/rag/manager.py`
   - `backend/app/rag/daily_store.py`
   - `backend/app/sleep/cycle.py`
+
+## Ticket 9 - Move runtime artifacts to root layout
+
+- Standardized root runtime/data layout:
+  - `data/db`
+  - `data/memory`
+  - `runtime/logs`
+  - `runtime/runs`
+  - `runtime/state`
+- Updated infrastructure files:
+  - `Dockerfile` directory bootstrap paths
+  - `docker-compose.yml` bind mounts to `/app/data/*` and `/app/runtime/*`
+  - `Makefile` defaults and maintenance targets (`DB_PATH`, lock cleanup, docker dir setup, hard reset)
+- Updated runtime defaults in `backend/app/core/config.py` to align with the new root layout.

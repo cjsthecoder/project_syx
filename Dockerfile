@@ -33,7 +33,7 @@ COPY backend ./backend
 COPY --from=frontend-builder /app/backend/app/static ./backend/app/static
 
 # Directories the app writes to (bind mounts override these at runtime)
-RUN mkdir -p backend/memory backend/app/data backend/logs backend/runtime backend/runs
+RUN mkdir -p data/memory data/db runtime/logs runtime/runs runtime/state
 
 # Build tools + Rust (numpy needs gcc; tiktoken needs Rust when no wheel for platform/python)
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential curl \
@@ -48,7 +48,7 @@ RUN python3 -m venv /app/venv && \
     /app/venv/bin/pip install --upgrade pip setuptools wheel && \
     /app/venv/bin/pip install -r backend/requirements.txt
 
-# App runs from backend/ so relative paths (memory/, app/data/, runtime/, logs) resolve correctly
+# App runs from backend/ so relative paths (../data/*, ../runtime/*) resolve correctly
 WORKDIR /app/backend
 
 # .env is mounted at /app/.env at runtime (Option B); do not bake secrets into image

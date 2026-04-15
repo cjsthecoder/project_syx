@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     )
 
     # V2: Database & Storage
-    db_path: str = Field(default="backend/app/data/syx.db", description="SQLite DB path")
+    db_path: str = Field(default="../data/db/syx.db", description="SQLite DB path")
     max_upload_mb: int = Field(default=10, gt=0, description="Max upload size per file (MB)")
     max_batch_mb: int = Field(default=50, gt=0, description="Max total batch size (MB)")
     storage_limit_mb: int = Field(default=500, gt=0, description="Total storage limit per project (MB)")
@@ -164,12 +164,12 @@ class Settings(BaseSettings):
         description="Path to the default personality JSON file"
     )
     # Runtime/storage roots
-    data_root: str = Field(default=".", description="Base directory for persistent application data")
-    runtime_root: str = Field(default="runtime", description="Base directory for ephemeral runtime artifacts")
-    memory_root: str = Field(default="memory", description="Root directory for per-project memory artifacts")
-    runs_dir: str = Field(default="runs", description="Root directory for run artifacts")
-    logs_dir: str = Field(default="logs", description="Root directory for log files")
-    lock_dir: str = Field(default="runtime", description="Directory for lock/state files")
+    data_root: str = Field(default="../data", description="Base directory for persistent application data")
+    runtime_root: str = Field(default="../runtime", description="Base directory for ephemeral runtime artifacts")
+    memory_root: str = Field(default="../data/memory", description="Root directory for per-project memory artifacts")
+    runs_dir: str = Field(default="../runtime/runs", description="Root directory for run artifacts")
+    logs_dir: str = Field(default="../runtime/logs", description="Root directory for log files")
+    lock_dir: str = Field(default="../runtime/state", description="Directory for lock/state files")
     # V2.6: Size caps
     system_prompt_max_bytes: int = Field(default=64 * 1024, gt=0, description="Max size of system_prompt.txt in bytes")
     personality_max_bytes: int = Field(default=8 * 1024, gt=0, description="Max size of personality.json in bytes")
@@ -188,7 +188,7 @@ class Settings(BaseSettings):
     instrumentation_enabled: bool = Field(default=False, description="Enable instrumentation telemetry")
     instrumentation_mode: str = Field(default="metrics", description="Instrumentation mode: metrics or research")
     instrumentation_run_id: Optional[str] = Field(default=None, description="Optional run id override")
-    instrumentation_runs_dir: str = Field(default="runs", description="Root directory for instrumentation run artifacts")
+    instrumentation_runs_dir: str = Field(default="../runtime/runs", description="Root directory for instrumentation run artifacts")
     instrumentation_prompt_tol_abs_tokens: int = Field(
         default=25,
         ge=0,

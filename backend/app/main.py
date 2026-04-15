@@ -79,7 +79,7 @@ async def lifespan(app: FastAPI):
         logger.info("[INIT] Factory clients initialized at startup")
     except Exception as exc:
         logger.warning("[INIT] Factory client startup initialization failed: %s", exc, exc_info=True)
-    # V5.0: initialize instrumentation facade and start process run if enabled.
+    # Initialize instrumentation facade and start process run if enabled.
     try:
         git_commit = "unknown"
         git_dirty = False
@@ -188,17 +188,17 @@ async def lifespan(app: FastAPI):
         logger.info("[SLEEP] Cleared any existing lock on startup")
     except Exception as e:
         logger.warning("[SLEEP] Failed clearing startup lock: %s", e)
-    # V2.6: Backfill system prompt and personality defaults for existing projects
+    # Backfill system prompt and personality defaults for existing projects
     try:
         backfill_all_projects()
     except Exception as e:
         logger.warning("[PROJECT] Backfill defaults failed: %s", e, exc_info=True)
-    # V2.7: Initialize sleep lock from disk if present
+    # Initialize sleep lock from disk if present
     try:
         init_from_disk()
     except Exception as e:
         logger.warning("[SLEEP] Failed to init lock from disk: %s", e, exc_info=True)
-    # V2.8: Seed DEFAULT_RAG for Continuum if present and missing
+    # Seed DEFAULT_RAG for Continuum if present and missing
     try:
         from sqlmodel import select
         with get_session() as session:
@@ -243,7 +243,7 @@ async def lifespan(app: FastAPI):
             logger.info("[INIT] FORCE_RAG_REBUILD_ON_STARTUP disabled; skipping full RAG rebuild.")
     except Exception as e:
         logger.warning("[INIT] Startup RAG rebuild sweep failed: %s", e, exc_info=True)
-    # V3.1: Start daily scheduler if enabled
+    # Start daily scheduler if enabled
     try:
         if get_settings().enable_scheduler:
             sched = BackgroundScheduler(timezone=None)
@@ -298,7 +298,7 @@ app.include_router(files_api.router, tags=["files"])
 app.include_router(llm_models.router, tags=["models"])
 app.include_router(dream_api.router, tags=["dream"])
 
-# V2.7: Write-blocking middleware during sleep
+# Write-blocking middleware during sleep
 from fastapi.responses import JSONResponse
 from .core.state import clear_stale_lock
 

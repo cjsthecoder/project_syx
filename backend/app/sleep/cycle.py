@@ -47,7 +47,7 @@ router = APIRouter()
 # Initialize logger
 request_logger = RequestLogger("sleep")
 
-# V3.1: unified sleep runner (background thread)
+# Unified sleep runner (background thread)
 _runner_lock = threading.Lock()
 _runner_thread: Optional[threading.Thread] = None
 from ..rag.manager import rebuild_faiss_index, load_faiss_index
@@ -373,7 +373,7 @@ def _sleep_cycle_worker():
                 status = "partial"
                 errors.append(f"backfill:{p.id}")
                 logger.warning("[SLEEP] Backfill failed for project=%s: %s", p.id, e)
-        # V3.2: Summarization pipeline (per project with non-empty daily.txt)
+        # Summarization pipeline (per project with non-empty daily.txt)
         for p in rows or []:
             pid = p.id
             base_dir = os.path.join(get_settings().memory_root, pid)
@@ -396,7 +396,7 @@ def _sleep_cycle_worker():
             except Exception as e:
                 logger.warning("[SLEEP][ERROR] Failed reading daily.txt project=%s: %s", pid, e)
                 continue
-            # Deterministic consolidation (A.5.1.3): no sleep prompt calls.
+            # Deterministic consolidation: no sleep prompt calls.
             summary_path = os.path.join(base_dir, "sleep_summary.txt")
             try:
                 final = _nl(source_text)

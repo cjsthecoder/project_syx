@@ -28,7 +28,7 @@ def _today_mmddyyyy() -> str:
 
 def _normalize_recommended_research(value: Any) -> List[Any] | None:
     """
-    Normalize recommended_research according to FR-4.2.1.7.
+    Normalize recommended_research to the expected shape.
 
     Returns:
         - list value (possibly wrapped/normalized) on success
@@ -54,7 +54,7 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
     This function:
       - Builds the idea prompt from dream_context.
       - Invokes the Dream LLM via dream_llm_call.
-      - Parses and validates the returned JSON per FR-4.2.1.
+      - Parses and validates the returned JSON.
 
     Args:
         project_id: Project identifier

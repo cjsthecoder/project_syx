@@ -502,14 +502,14 @@ async def create_or_switch_project(request: ProjectRequest) -> JSONResponse:
                 obj = Project(id=new_id, name=request.project_name.strip(), description=request.project_name.strip(), system=False)
                 session.add(obj)
                 session.commit()
-                # V2.6: seed default prompt/personality files
+                # Seed default prompt/personality files
                 try:
                     seed_project_defaults(obj.id)
                 except Exception as e:
                     logger.warning("[PROJECT] Failed to seed defaults for project %s: %s", obj.id, e, exc_info=True)
                 _current_project = obj.id
                 message = f"Created and switched to new project '{obj.name}'"
-                # V2.8: Seed DEFAULT_RAG.txt and rebuild RAG
+                # Seed DEFAULT_RAG.txt and rebuild RAG
                 try:
                     uploads_dir = os.path.join(get_settings().memory_root, obj.id, "uploads")
                     os.makedirs(uploads_dir, exist_ok=True)

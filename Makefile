@@ -340,64 +340,64 @@ setup-env:
 		echo "# If true, inject retrieved context into chat when index exists"; \
 		echo ""; \
 		echo "BASE_TOP_K=6"; \
-		echo "# DELTA-A.4.1: Base top-K used to derive per-source retrieval K"; \
+		echo "# Base top-K used to derive per-source retrieval K"; \
 		echo ""; \
 		echo "RETRIEVAL_MULTIPLIER=2.0"; \
-		echo "# DELTA-A.4.1: PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)"; \
+		echo "# PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)"; \
 		echo ""; \
 		echo "RAG_SCORE_THRESHOLD=0.5"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
 		echo "# === Daily Memory + Daily RAG ==="; \
 		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
-		echo "# V2.3: Number of prompt/response pairs kept in working memory:: 10 is working well"; \
+		echo "# Number of prompt/response pairs kept in working memory:: 10 is working well"; \
 		echo ""; \
 		echo "DAILY_RAG_ENABLED=true"; \
-		echo "# V2.3: Global default toggle; per-project override via UI"; \
+		echo "# Global default toggle; per-project override via UI"; \
 		echo ""; \
 		echo "DAILY_RAG_SCORE_THRESHOLD=0.40"; \
-		echo "# V2.3: Similarity threshold for daily results"; \
+		echo "# Similarity threshold for daily results"; \
 		echo ""; \
 		echo "DAILY_RAG_WEIGHT=1.2"; \
-		echo "# V2.3: Weight multiplier for daily scores before merging"; \
+		echo "# Weight multiplier for daily scores before merging"; \
 		echo ""; \
 		echo "# === Deduplication (Daily + Main) ==="; \
 		echo "DEDUPE_EXACT=true"; \
-		echo "# V2.3: Remove exact-text duplicates across daily/main"; \
+		echo "# Remove exact-text duplicates across daily/main"; \
 		echo ""; \
 		echo "DEDUPE_NEAR=true"; \
-		echo "# V2.3: Remove near-duplicates by similarity"; \
+		echo "# Remove near-duplicates by similarity"; \
 		echo ""; \
 		echo "DEDUPE_SIMILARITY_THRESHOLD=0.98"; \
-		echo "# V2.3: Cosine threshold for near-duplicate detection"; \
+		echo "# Cosine threshold for near-duplicate detection"; \
 		echo ""; \
 		echo "DEDUPE_KEEP_DAILY=true"; \
-		echo "# V2.3: Prefer keeping the daily hit on dedupe"; \
+		echo "# Prefer keeping the daily hit on dedupe"; \
 		echo ""; \
 		echo "# === Query Builder + Reranking ==="; \
 		echo "BUILDER_MODEL=gpt-5.4-mini"; \
-		echo "# V2.3.1: LLM for query builder/router"; \
+		echo "# LLM for query builder/router"; \
 		echo ""; \
 		echo "TAGGER_MODEL=gpt-5.4-mini"; \
 		echo "# LLM used for tagging"; \
 		echo ""; \
 		echo "BUILDER_CONFIDENCE_MIN=0.75"; \
-		echo "# V2.3.1: Confidence threshold for full retrieval"; \
+		echo "# Confidence threshold for full retrieval"; \
 		echo ""; \
 		echo "BUILDER_MAX_TOKENS=1024"; \
-		echo "# V2.3.1: Max tokens for builder output"; \
+		echo "# Max tokens for builder output"; \
 		echo ""; \
 		echo "BUILDER_CACHE=true"; \
-		echo "# V2.3.1: Enable in-memory builder cache"; \
+		echo "# Enable in-memory builder cache"; \
 		echo ""; \
 		echo "TOPIC_BOOST=1.10"; \
-		echo "# V2.3.1: Multiplicative boost for topic overlap"; \
+		echo "# Multiplicative boost for topic overlap"; \
 		echo ""; \
 		echo "DECISION_BOOST=1.05"; \
-		echo "# V2.3.1: Multiplicative boost for decision overlap"; \
+		echo "# Multiplicative boost for decision overlap"; \
 		echo ""; \
 		echo "QUESTION_BOOST=1.02"; \
-		echo "# V2.3.1: Multiplicative boost for open-question overlap"; \
+		echo "# Multiplicative boost for open-question overlap"; \
 		echo ""; \
 		echo "# === Working Memory ==="; \
 		echo "CHAT_HISTORY_LIMIT=20"; \
@@ -405,23 +405,23 @@ setup-env:
 		echo ""; \
 		echo "# === Project Defaults (seeded files) ==="; \
 		echo "DEFAULT_SYSTEM_PROMPT_PATH=app/config/defaults/system_prompt.txt"; \
-		echo "# V2.6: Default system prompt file path (relative to backend/ cwd)"; \
+		echo "# Default system prompt file path (relative to backend/ cwd)"; \
 		echo ""; \
 		echo "DEFAULT_PERSONALITY_PROMPT_PATH=app/config/defaults/personality.json"; \
-		echo "# V2.6: Default personality JSON file path (relative to backend/ cwd)"; \
+		echo "# Default personality JSON file path (relative to backend/ cwd)"; \
 		echo ""; \
 		echo "# === Sleep Cycle + Verification ==="; \
 		echo "ENABLE_SCHEDULER=true"; \
-		echo "# V3.1: Enable daily sleep scheduler"; \
+		echo "# Enable daily sleep scheduler"; \
 		echo ""; \
 		echo "SLEEP_CYCLE_HOUR=3"; \
-		echo "# V3.1: Local hour of day (0-23) to run sleep cycle"; \
+		echo "# Local hour of day (0-23) to run sleep cycle"; \
 		echo ""; \
 		echo "SLEEP_CYCLE_MINUTE=0"; \
-		echo "# V3.1: Local minute of day (0-59) to run sleep cycle"; \
+		echo "# Local minute of day (0-59) to run sleep cycle"; \
 		echo ""; \
 		echo "VERIFY_RAG=true"; \
-		echo "# V3.3: Enable post-rebuild verification"; \
+		echo "# Enable post-rebuild verification"; \
 		echo ""; \
 		echo "FORCE_RAG_REBUILD_ON_STARTUP=true"; \
 		echo "# Optional startup sweep: rebuild all project RAG indexes from uploads"; \
@@ -440,36 +440,36 @@ setup-env:
 		echo "# Root folder for instrumentation outputs"; \
 		echo ""; \
 		echo "INSTRUMENTATION_PROMPT_TOL_ABS_TOKENS=25"; \
-		echo "# V5.9: Absolute prompt token tolerance for accounting validation"; \
+		echo "# Absolute prompt token tolerance for accounting validation"; \
 		echo ""; \
 		echo "INSTRUMENTATION_PROMPT_TOL_PCT=0.02"; \
-		echo "# V5.9: Relative prompt token tolerance (fraction)"; \
+		echo "# Relative prompt token tolerance (fraction)"; \
 		echo ""; \
 		echo "# === Streaming Chat ==="; \
 		echo "STREAMING_ENABLED=true"; \
-		echo "# V3.5: Enable streaming chat endpoint"; \
+		echo "# Enable streaming chat endpoint"; \
 		echo ""; \
 		echo "STREAM_FLUSH_MS=50"; \
-		echo "# V3.5: Flush cadence for streaming chunks (ms)"; \
+		echo "# Flush cadence for streaming chunks (ms)"; \
 		echo ""; \
 		echo "STREAM_TIMEOUT_MS=60000"; \
-		echo "# V3.5: Overall stream timeout (ms)"; \
+		echo "# Overall stream timeout (ms)"; \
 		echo ""; \
 		echo "TAGGER_CURRENT_RESPONSE_MIDDLE_CUT_PERCENT=50"; \
-		echo "# V3.x tagger prompt optimization: percent removed from center of current assistant text (range: 10-90, int)"; \
+		echo "# Tagger prompt optimization: percent removed from center of current assistant text (range: 10-90, int)"; \
 		echo ""; \
 		echo "TAGGER_PREVIOUS_RESPONSE_MIDDLE_CUT_PERCENT=75"; \
-		echo "# V3.x tagger prompt optimization: percent removed from center of previous assistant text (range: 10-90, int)"; \
+		echo "# Tagger prompt optimization: percent removed from center of previous assistant text (range: 10-90, int)"; \
 		echo ""; \
 		echo "TAGGER_MIN_RESPONSE_LENGTH_FOR_CHOP=600"; \
-		echo "# V3.x tagger prompt optimization: apply chopping only when assistant text length is greater than this value"; \
+		echo "# Tagger prompt optimization: apply chopping only when assistant text length is greater than this value"; \
 		echo ""; \
 		echo "# === Dream Pipeline ==="; \
 		echo "ENABLE_DREAM=true"; \
-		echo "# V4.1: Enable Dream orchestrator"; \
+		echo "# Enable Dream orchestrator"; \
 		echo ""; \
 		echo "MAX_WORKERS=1"; \
-		echo "# V4.1: Dream executor workers"; \
+		echo "# Dream executor workers"; \
 		echo ""; \
 		echo "DREAM_MODEL=gpt-5.4"; \
 		echo "DREAM_TEMPERATURE=1.0"; \
@@ -477,11 +477,11 @@ setup-env:
 		echo "DREAM_ENABLE_REMOTE_RESEARCH=true"; \
 		echo "DREAM_REMOTE_CONTEXT_MAX_TOKENS=32000"; \
 		echo "DREAM_TOPIC_BOOST=1.5"; \
-		echo "# V4.1.2: Dream agent configuration"; \
+		echo "# Dream agent configuration"; \
 		echo ""; \
 		echo "# === Debug / Observability ==="; \
 		echo "GENERATE_DEBUG_FILES=true"; \
-		echo "# V4.1.3.1: Enable debug file generation (e.g., debug_context.txt)"; \
+		echo "# Enable debug file generation (e.g., debug_context.txt)"; \
 		echo ""; \
 		echo "VITE_SHOW_DEBUG_VALUES=false"; \
 		echo "# Frontend: show stats/debug values bar in chat UI"; \

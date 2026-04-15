@@ -21,7 +21,7 @@ class Project(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     system: bool = Field(default=False, description="System project (non-deletable/non-renamable)")
     daily_rag_enabled: bool = Field(default=True, description="V2.3: Keep Daily History per project")
-    # V3.x: persist a minimal "recent summary" seed across sleep flush (ChatMessage is wiped).
+    # Persist a minimal "recent summary" seed across sleep flush (ChatMessage is wiped).
     last_semantic_handle: Optional[str] = Field(
         default=None,
         description="V3.x: last non-empty semantic_handle observed for the project; used as builder fallback when active history is empty",
@@ -51,7 +51,7 @@ class ChatMessage(SQLModel, table=True):
     forget: bool = Field(default=False, description="V2.7: if true, skip roll-off embedding and daily.txt")
     namespace: Optional[str] = Field(default=None, description="V2.7: primary namespace captured at assistant creation")
     keep: bool = Field(default=False, description="V2.7.7: user preference tag propagated into daily headers/metadata")
-    # V3.x: store per-assistant metadata produced immediately after response.
+    # Store per-assistant metadata produced immediately after response.
     # tags_meta_json stores parsed tagger output (topics/intent/type/semantic_handle).
     tags_meta_json: Optional[str] = Field(default=None, description="JSON string for tagger metadata; nullable on failure")
     semantic_handle: Optional[str] = Field(default=None, description="Short noun phrase naming the exchange; nullable on failure")

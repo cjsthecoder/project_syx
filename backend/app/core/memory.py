@@ -28,7 +28,7 @@ from .db_models import ChatMessage, Project
 from .config import get_settings
 from .daily_rag import append_pair
 from ..utils.logging import get_message_id, get_namespace
-from .tagger import tag_pair
+from ..tagging.tagger import tag_pair
 
 logger = logging.getLogger(__name__)
 

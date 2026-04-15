@@ -13,8 +13,8 @@ import time
 from typing import Dict, Optional, Any, List
 from datetime import datetime
 
-from .config import get_settings
-from .tracking import get_instrumentation
+from ..core.config import get_settings
+from ..core.tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
 from openai import OpenAI
 

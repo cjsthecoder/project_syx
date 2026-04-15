@@ -28,7 +28,7 @@ from ..core.database import get_session
 from ..core.db_models import Project, ChatMessage
 from sqlmodel import select
 from ..core.daily_rag import backfill_daily_txt_from_meta, append_pair_text_only
-from ..core.tagger import tag_pair as tag_pair_tagger
+from ..tagging.tagger import tag_pair as tag_pair_tagger
 from ..core.dream import dream
 import time
 from ..utils.logging import RequestLogger

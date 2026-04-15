@@ -30,7 +30,7 @@ def _load_consolidated_questions(project_id: str) -> Dict[str, Any]:
     """
     Load deterministic open-question consolidation artifact from sleep.
     """
-    path = os.path.join("memory", project_id, "open_questions_consolidated.json")
+    path = os.path.join(get_settings().memory_root, project_id, "open_questions_consolidated.json")
     if not os.path.isfile(path):
         return {"questions": []}
     try:

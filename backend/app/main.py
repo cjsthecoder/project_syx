@@ -196,7 +196,7 @@ async def lifespan(app: FastAPI):
             row = session.exec(select(Project).where(Project.name.ilike("Continuum"))).first()
         if row:
             pid = row.id
-            uploads_dir = os.path.join("memory", pid, "uploads")
+            uploads_dir = os.path.join(settings.memory_root, pid, "uploads")
             os.makedirs(uploads_dir, exist_ok=True)
             default_src = os.path.abspath(os.path.join(os.path.dirname(__file__), "config", "defaults", "DEFAULT_RAG.txt"))
             default_dst = os.path.join(uploads_dir, "DEFAULT_RAG.txt")

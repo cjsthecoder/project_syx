@@ -37,7 +37,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "..", "..", ".."))
 
 
 def _project_dir(project_id: str) -> str:
-    return os.path.join("memory", project_id)
+    return os.path.join(get_settings().memory_root, project_id)
 
 
 def _project_prompt_path(project_id: str) -> str:

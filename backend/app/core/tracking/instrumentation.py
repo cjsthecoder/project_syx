@@ -105,7 +105,9 @@ class RealInstrumentation:
         prompt_tol_abs_tokens: int = 25,
         prompt_tol_pct: float = 0.02,
     ):
-        self.runs_dir = runs_dir or "runs"
+        from ..config import get_settings
+
+        self.runs_dir = runs_dir or str(getattr(get_settings(), "runs_dir", "runs") or "runs")
         self.mode = (mode or "metrics").strip().lower()
         self.run_id_override = run_id_override.strip() if isinstance(run_id_override, str) and run_id_override.strip() else None
         self.prompt_tol_abs_tokens = max(0, int(prompt_tol_abs_tokens))
@@ -336,7 +338,9 @@ class RealInstrumentation:
         }
         if not pid:
             return out
-        personality_path = os.path.join("memory", pid, "personality.json")
+        from ..config import get_settings
+
+        personality_path = os.path.join(get_settings().memory_root, pid, "personality.json")
         source = "project_file" if os.path.isfile(personality_path) else "default_fallback"
         try:
             # Local import avoids adding a hard runtime dependency at module import time.
@@ -1142,7 +1146,8 @@ def init_instrumentation(settings: Any, *, has_lifespan_hook: bool = False) -> I
             return _INSTRUMENTATION
 
         mode = str(getattr(settings, "instrumentation_mode", "metrics") or "metrics")
-        runs_dir = str(getattr(settings, "instrumentation_runs_dir", "runs") or "runs")
+        default_runs_dir = str(getattr(settings, "runs_dir", "runs") or "runs")
+        runs_dir = str(getattr(settings, "instrumentation_runs_dir", default_runs_dir) or default_runs_dir)
         run_id = getattr(settings, "instrumentation_run_id", None)
         prompt_tol_abs = int(getattr(settings, "instrumentation_prompt_tol_abs_tokens", 25) or 25)
         prompt_tol_pct = float(getattr(settings, "instrumentation_prompt_tol_pct", 0.02) or 0.02)

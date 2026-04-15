@@ -338,7 +338,7 @@ def _cleanup_question_artifacts(project_id: str) -> None:
     """
     Remove consumed question artifacts after a successful Dream run.
     """
-    base_dir = os.path.join("memory", project_id)
+    base_dir = os.path.join(get_settings().memory_root, project_id)
     paths = [
         os.path.join(base_dir, "open_questions_consolidated.json"),
         os.path.join(base_dir, "open_questions.json"),
@@ -404,7 +404,7 @@ def write_dream_output(project_id: str, dream_data: dict, project_summary_text: 
         dream_data["items"] = normalized_items
 
         # Serialize to JSON and write to memory/{project_id}/dream.json.
-        dream_path = os.path.join("memory", project_id, "dream.json")
+        dream_path = os.path.join(get_settings().memory_root, project_id, "dream.json")
         with open(dream_path, "w", encoding="utf-8", newline="\n") as df:
             json.dump(dream_data, df, ensure_ascii=False, indent=2)
 
@@ -433,7 +433,7 @@ def dream(project_id: str) -> None:
         debug_ts = _dream_file_timestamp()
         logger.info("[DREAM] Starting dreaming for project=%s", project_id)
         try:
-            consolidated_questions_path = os.path.join("memory", project_id, "open_questions_consolidated.json")
+            consolidated_questions_path = os.path.join(get_settings().memory_root, project_id, "open_questions_consolidated.json")
             questions_input = _read_json_file_safe(consolidated_questions_path)
             try:
                 _write_dreaming_debug_txt(
@@ -591,7 +591,7 @@ def dream(project_id: str) -> None:
 
             # Mirror the current debug_dream_summary.txt into dreaming/{timestamp}_dream_summary.txt.
             try:
-                summary_debug_path = os.path.join("memory", project_id, "debug", "debug_dream_summary.txt")
+                summary_debug_path = os.path.join(get_settings().memory_root, project_id, "debug", "debug_dream_summary.txt")
                 if os.path.isfile(summary_debug_path):
                     with open(summary_debug_path, "r", encoding="utf-8", errors="ignore") as sf:
                         summary_debug_text = sf.read()

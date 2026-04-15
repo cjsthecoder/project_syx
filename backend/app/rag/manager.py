@@ -431,8 +431,9 @@ def _trim_to_tokens(text: str, max_tokens: int) -> str:
 def rebuild_faiss_index(project_id: str) -> str:
     """Rebuild FAISS index for a project from uploads directory (raw FAISS, no LangChain)."""
     settings = get_settings()
-    uploads_dir = os.path.join("memory", project_id, "uploads")
-    faiss_dir = os.path.join("memory", project_id, "faiss")
+    memory_root = get_settings().memory_root
+    uploads_dir = os.path.join(memory_root, project_id, "uploads")
+    faiss_dir = os.path.join(memory_root, project_id, "faiss")
     os.makedirs(faiss_dir, exist_ok=True)
 
     # No legacy support: rebuild from scratch.
@@ -731,7 +732,7 @@ class LTMIndex:
 def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
     """Load raw FAISS index + docstore for project if exists and non-empty."""
     settings = get_settings()
-    faiss_dir = os.path.join("memory", project_id, "faiss")
+    faiss_dir = os.path.join(get_settings().memory_root, project_id, "faiss")
     if not os.path.isdir(faiss_dir):
         logger.debug(f"RAG: index directory missing for project '{project_id}' at {faiss_dir}")
         return None
@@ -813,7 +814,7 @@ def ltm_lookup_adjacent_docstore_ids(
     Returns dict with keys: prev_docstore_id, next_docstore_id.
     If adjacency is unavailable (legacy index, missing/corrupt sidecar), returns None values.
     """
-    faiss_dir = os.path.join("memory", project_id, "faiss")
+    faiss_dir = os.path.join(get_settings().memory_root, project_id, "faiss")
     manifest = _safe_load_json(os.path.join(faiss_dir, _LTM_MANIFEST_NAME))
     claims_adjacency_schema = bool(
         isinstance(manifest, dict) and manifest.get("schema_version") == _ADJACENCY_SCHEMA_VERSION
@@ -1294,7 +1295,7 @@ def merge_daily_and_main(
     # Best-effort check: LTM expansion is only allowed when the index supports adjacency and sidecar is valid.
     ltm_expand_ok = False
     try:
-        faiss_dir = os.path.join("memory", project_id, "faiss")
+        faiss_dir = os.path.join(get_settings().memory_root, project_id, "faiss")
         manifest = _safe_load_json(os.path.join(faiss_dir, _LTM_MANIFEST_NAME))
         claims_adjacency_schema = bool(
             isinstance(manifest, dict) and manifest.get("schema_version") == _ADJACENCY_SCHEMA_VERSION

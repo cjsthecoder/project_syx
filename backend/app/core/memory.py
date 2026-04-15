@@ -202,7 +202,7 @@ class MemoryManager:
                     source_user_message_id = int(uid) if isinstance(uid, int) else None
         except Exception:
             source_user_message_id = None
-        # V3.x: tag immediately after assistant reply using the immediately previous active pair as context anchor.
+        # Tag immediately after assistant reply using the immediately previous active pair as context anchor.
         try:
             if (not bool(skip_tagger)) and (user_text_for_tagging is not None):
                 tagged = tag_pair(
@@ -242,7 +242,7 @@ class MemoryManager:
                 semantic_handle=semantic_handle,
             )
             session.add(msg)
-            # V3.x: persist last non-empty semantic handle across sleep flush (ChatMessage is wiped).
+            # Persist last non-empty semantic handle across sleep flush (ChatMessage is wiped).
             try:
                 if isinstance(semantic_handle, str) and semantic_handle.strip():
                     p = session.get(Project, project_id)
@@ -349,7 +349,7 @@ class MemoryManager:
             elif self._is_daily_enabled(project_id):
                 ns = (asst_msg.get("namespace") or get_namespace() or "other").lower()
                 keep = bool(asst_msg.get("keep"))
-                # V3.x: roll-off does NOT call the tagger. It reuses metadata stored on the assistant row.
+                # Roll-off does NOT call the tagger. It reuses metadata stored on the assistant row.
                 tags_meta = None
                 tags_meta_json = asst_msg.get("tags_meta_json")
                 if isinstance(tags_meta_json, str) and tags_meta_json.strip():

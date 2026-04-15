@@ -52,7 +52,7 @@ export default function App() {
   const [model, setModel] = useState('gpt-5.2')
   const [models, setModels] = useState<ModelItem[]>(['gpt-5.2'])
 
-  // V2.1 UI state
+  // UI state
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showManageModal, setShowManageModal] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
@@ -62,7 +62,7 @@ export default function App() {
   const [projectInfo, setProjectInfo] = useState<{ name?: string; description?: string; created_at?: string; system?: boolean; daily_rag_enabled?: boolean } | null>(null)
   const [showSleepModal, setShowSleepModal] = useState(false)
   const [sleepSince, setSleepSince] = useState<string | null>(null)
-  // FR-4.5.1 Dream UI
+  // Dream UI
   const [projectSummary, setProjectSummary] = useState<string | null>(null)
   const [dreamWarning, setDreamWarning] = useState<string | null>(null)
   const [hasDreamItems, setHasDreamItems] = useState(false)
@@ -82,7 +82,7 @@ export default function App() {
     )
   }
 
-  // V2.6 Personality UI state
+  // Personality UI state
   const [showPersonalityModal, setShowPersonalityModal] = useState(false)
   const [systemPrompt, setSystemPrompt] = useState('')
   const [tone, setTone] = useState<'analytical'|'friendly'|'creative'|'formal'>('analytical')
@@ -161,7 +161,7 @@ export default function App() {
     }
   }, [])
 
-  // FR-4.5.2: Load dream summary and items data
+  // Load dream summary and items data
   const loadDreamSummary = useCallback(async (pid: string) => {
     try {
       const data = await api<{ project_id?: string; dream?: any; error?: any }>(`/projects/${pid}/dream`)
@@ -201,7 +201,7 @@ export default function App() {
     }
   }, [])
 
-  // FR-4.5.1.1: Refresh all project data
+  // Refresh all project data
   const refreshProjectData = useCallback(async (pid: string) => {
     if (!pid) return
     try {
@@ -238,7 +238,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // FR-4.5.1.1: Refresh project data when project changes
+  // Refresh project data when project changes
   useEffect(() => {
     if (projectId) {
       refreshProjectData(projectId)
@@ -253,7 +253,7 @@ export default function App() {
     }
   }, [projectId, refreshProjectData])
 
-  // FR-4.5.1.1: Monitor sleep status and refresh when sleep ends
+  // Monitor sleep status and refresh when sleep ends
   useEffect(() => {
     if (!showSleepModal || !projectId) return
 
@@ -431,7 +431,7 @@ export default function App() {
     }
   }
 
-  // V2.6: Personality endpoints
+  // Personality endpoints
   async function loadPersonality(pid: string) {
     try {
       const data = await api<{ project_id: string; personality: any; system_prompt: string }>(`/projects/${pid}/personality`)
@@ -662,7 +662,7 @@ export default function App() {
         </DialogFooter>
       </Dialog>
 
-      {/* Dream Analysis Modal (placeholder for FR-4.5.1.3) */}
+      {/* Dream Analysis Modal */}
       <Dialog
         open={showDreamModal}
         onClose={() => setShowDreamModal(false)}
@@ -800,7 +800,7 @@ export default function App() {
         </DialogFooter>
       </Dialog>
 
-      {/* Personality Modal (V2.6) */}
+      {/* Personality Modal */}
       <Dialog open={showPersonalityModal} onClose={() => setShowPersonalityModal(false)}>
         <DialogHeader>Project Personality</DialogHeader>
         <div className="space-y-4 px-4 pb-2">
@@ -859,7 +859,7 @@ export default function App() {
             {projectInfo?.system && <div className="text-amber-600">System project</div>}
           </div>
 
-          {/* V2.6: Personality manager entry point */}
+          {/* Personality manager entry point */}
           <div className="flex items-center justify-start">
             <Button
               className="bg-black !text-white hover:bg-gray-900 border-transparent dark:!bg-black dark:!text-white dark:hover:!bg-gray-900"

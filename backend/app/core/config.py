@@ -68,13 +68,13 @@ class Settings(BaseSettings):
         description="Allowed CORS origins"
     )
 
-    # V2: Database & Storage
+    # Database and storage
     db_path: str = Field(default="../data/db/syx.db", description="SQLite DB path")
     max_upload_mb: int = Field(default=10, gt=0, description="Max upload size per file (MB)")
     max_batch_mb: int = Field(default=50, gt=0, description="Max total batch size (MB)")
     storage_limit_mb: int = Field(default=500, gt=0, description="Total storage limit per project (MB)")
 
-    # V2: Embeddings / RAG
+    # Embeddings and RAG
     embedding_provider: str = Field(default="openai", description="Embedding provider selector (openai|local)")
     embedding_model: str = Field(default="text-embedding-3-large", description="Embedding model name")
     chunk_size: int = Field(default=800, gt=0, description="Chunk size for embeddings")
@@ -91,7 +91,7 @@ class Settings(BaseSettings):
         description="Worker count for parallel LTM embedding during rebuild (RAG_EMBED_REBUILD_WORKERS)",
     )
 
-    # V2: Model list for selector
+    # Model list for selector
     available_models: list[str] = Field(
         default=[
             "gpt-5.4",
@@ -112,29 +112,29 @@ class Settings(BaseSettings):
         description="Whitelisted chat models",
     )
     
-    # V2.1: RAG-on-chat controls
+    # RAG-on-chat controls
     rag_on_chat: bool = Field(default=True, description="Enable retrieval injection during chat")
     # Retrieval-stage limits are controlled by BASE_TOP_K + RETRIEVAL_MULTIPLIER (not route config).
     base_top_k: int = Field(default=5, gt=0, description="Base retrieval top-K (used to derive per-source K)")
     retrieval_multiplier: float = Field(default=2.0, gt=0.0, description="Per-source K multiplier (PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER))")
     rag_score_threshold: float = Field(default=0.75, ge=0.0, le=1.0, description="Cosine similarity threshold (0..1) — currently not enforced by retrieval selection")
 
-    # V2.2: Chat history working memory
+    # Chat history working memory
     chat_history_limit: int = Field(default=20, gt=0, description="Number of recent messages kept per project")
 
-    # V2.3: Daily RAG bridge controls (global defaults)
+    # Daily RAG bridge controls (global defaults)
     chat_history_limit_pairs: int = Field(default=10, gt=0, description="Number of recent prompt/response pairs kept in working memory")
     daily_rag_enabled: bool = Field(default=True, description="Enable daily RAG roll-off globally (per-project can override)")
     daily_rag_score_threshold: float = Field(default=0.70, ge=0.0, le=1.0, description="Similarity threshold for daily results — currently not enforced by retrieval selection")
     daily_rag_weight: float = Field(default=1.2, gt=0.0, description="Weight multiplier applied to daily scores")
 
-    # V2.3: Deduplication controls
+    # Deduplication controls
     dedupe_exact: bool = Field(default=True, description="Enable exact-text deduplication across daily/main snippets")
     dedupe_near: bool = Field(default=True, description="Enable near-duplicate deduplication via cosine similarity")
     dedupe_similarity_threshold: float = Field(default=0.98, ge=0.0, le=1.0, description="Cosine threshold for near-duplicate detection")
     dedupe_keep_daily: bool = Field(default=True, description="Prefer keeping daily snippet on dedupe conflicts")
 
-    # V2.3.1: Builder and reranking
+    # Builder and reranking
     builder_model: str = Field(default="gpt-5.4-mini", description="LLM used for query builder/router")
     tagger_model: str = Field(default="gpt-5.4-mini", description="LLM used for tagging")
     builder_confidence_min: float = Field(default=0.75, ge=0.0, le=1.0, description="Minimum confidence for full retrieval")
@@ -161,7 +161,7 @@ class Settings(BaseSettings):
     decision_boost: float = Field(default=1.05, gt=0.0, description="Multiplicative boost for decision overlap")
     question_boost: float = Field(default=1.02, gt=0.0, description="Multiplicative boost for open-question overlap")
 
-    # V2.6: Defaults and file paths
+    # Defaults and file paths
     default_system_prompt_path: str = Field(
         default="backend/app/config/defaults/system_prompt.txt",
         description="Path to the default system prompt file"
@@ -177,12 +177,12 @@ class Settings(BaseSettings):
     runs_dir: str = Field(default="../runtime/runs", description="Root directory for run artifacts")
     logs_dir: str = Field(default="../runtime/logs", description="Root directory for log files")
     lock_dir: str = Field(default="../runtime/state", description="Directory for lock/state files")
-    # V2.6: Size caps
+    # Size caps
     system_prompt_max_bytes: int = Field(default=64 * 1024, gt=0, description="Max size of system_prompt.txt in bytes")
     personality_max_bytes: int = Field(default=8 * 1024, gt=0, description="Max size of personality.json in bytes")
     payload_max_bytes: int = Field(default=128 * 1024, gt=0, description="Max size of combined request payload in bytes")
 
-    # V3.1: Sleep scheduler
+    # Sleep scheduler
     enable_scheduler: bool = Field(default=True, description="Enable sleep cycle scheduler (daily)")
     sleep_cycle_hour: int = Field(default=3, ge=0, le=23, description="Local hour (0-23) to run sleep cycle")
     sleep_cycle_minute: int = Field(default=0, ge=0, le=59, description="Local minute (0-59) to run sleep cycle")
@@ -191,7 +191,7 @@ class Settings(BaseSettings):
         default=False,
         description="Force rebuilding all project FAISS indexes during server startup",
     )
-    # V5.0: Instrumentation
+    # Instrumentation
     instrumentation_enabled: bool = Field(default=False, description="Enable instrumentation telemetry")
     instrumentation_mode: str = Field(default="metrics", description="Instrumentation mode: metrics or research")
     instrumentation_run_id: Optional[str] = Field(default=None, description="Optional run id override")
@@ -206,21 +206,21 @@ class Settings(BaseSettings):
         ge=0.0,
         description="Relative tolerance for 5.9 prompt estimate validation",
     )
-    # V3.5: Streaming
+    # Streaming
     streaming_enabled: bool = Field(default=True, description="Enable streaming chat endpoint")
     stream_flush_ms: int = Field(default=50, gt=0, description="Flush cadence for streaming chunks in milliseconds")
     stream_timeout_ms: int = Field(default=60000, gt=0, description="Overall stream timeout in milliseconds")
-    # V4.1: Dream orchestrator
+    # Dream orchestrator
     enable_dream: bool = Field(default=True, description="Enable Dream orchestrator")
     max_workers: int = Field(default=1, description="Dream executor worker count (MAX_WORKERS)")
-    # V4.1.2: Dream agent configuration
+    # Dream agent configuration
     dream_model: str = Field(default="gpt-5.4", description="Dream LLM model")
     dream_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Dream LLM temperature")
     dream_max_tokens: int = Field(default=32000, gt=0, description="Max tokens for Dream LLM completion")
     dream_enable_remote_research: bool = Field(default=True, description="Enable OpenAI web_search for Dream")
     dream_remote_context_max_tokens: int = Field(default=32000, gt=0, description="Max tokens for remote context inclusion")
     dream_topic_boost: float = Field(default=1.5, gt=0.0, description="Namespace boost used for topic hinting in RAG")
-    # V4.1.3.1: Debug file generation
+    # Debug file generation
     generate_debug_files: bool = Field(default=False, description="V4.1.3.1: Enable writing debug files (e.g., debug_context.txt)")
     # Frontend-only Vite flags may live in the same .env; keep backend parsing tolerant.
     vite_show_debug_values: Optional[str] = Field(

@@ -910,7 +910,7 @@ def canonical_retrieve_candidates(
     # Daily
     if "daily" in srcs:
         try:
-            from ..core.daily_rag import get_daily_source, notify_daily_search_failure
+            from .daily_store import get_daily_source, notify_daily_search_failure
 
             ds = get_daily_source(project_id)
             if ds is not None:
@@ -1275,7 +1275,7 @@ def merge_daily_and_main(
     # This stage preserves kept candidate order and expands within the same source document only.
     try:
         from ..core.route_policy import get_route_policy
-        from ..core.daily_rag import get_daily_source
+        from .daily_store import get_daily_source
     except Exception:
         get_route_policy = None  # type: ignore
         get_daily_source = None  # type: ignore

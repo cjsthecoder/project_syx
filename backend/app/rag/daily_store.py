@@ -21,9 +21,9 @@ from filelock import FileLock
 import faiss  # type: ignore
 import numpy as np  # type: ignore
 
-from .config import get_settings
-from .embed_batching import iter_token_batches
-from .vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
+from ..core.config import get_settings
+from ..core.embed_batching import iter_token_batches
+from ..core.vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
 from ..llm_model.llm_client import get_llm_client
 from ..utils.debug_utils import write_debug_file
 logger = logging.getLogger(__name__)
@@ -179,7 +179,7 @@ def get_daily_source(project_id: str) -> Optional[DailySource]:
     """
     Provide a safe Daily vectorstore handle + authoritative metadata.
 
-    - Daily lifecycle (warm/rebuild/mismatch) remains owned by daily_rag.py.
+    - Daily lifecycle (warm/rebuild/mismatch) remains owned by daily_store.py.
     - Canonical retrieval owns embedding + per-source K + search loop + shaping.
     """
     settings = get_settings()

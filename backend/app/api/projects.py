@@ -290,7 +290,15 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
         base_dir = os.path.join(get_settings().memory_root, project_id)
         os.makedirs(base_dir, exist_ok=True)
         summary_path = os.path.join(base_dir, "dream_summary.txt")
-        summary_lock_path = os.path.join(base_dir, "dream_summary.lock")
+        state_dir = os.path.join(base_dir, "state")
+        os.makedirs(state_dir, exist_ok=True)
+        summary_lock_path = os.path.join(state_dir, "dream_summary.lock")
+        legacy_summary_lock_path = os.path.join(base_dir, "dream_summary.lock")
+        if os.path.isfile(legacy_summary_lock_path) and not os.path.exists(summary_lock_path):
+            try:
+                os.replace(legacy_summary_lock_path, summary_lock_path)
+            except OSError as exc:
+                logger.warning("projects dream_summary lock migration failed project_id=%s detail=%s", project_id, exc)
 
         # Pass 1: tag all items (and build pair text, tokens, tags_block, embed_text)
         tagged: List[Dict[str, Any]] = []

@@ -83,7 +83,15 @@ def _consolidate_open_questions_artifact(project_id: str) -> Dict[str, Any]:
     base_dir = os.path.join(get_settings().memory_root, project_id)
     src_path = os.path.join(base_dir, "open_questions.jsonl")
     out_path = os.path.join(base_dir, "open_questions_consolidated.json")
-    lock_path = os.path.join(base_dir, "open_questions.lock")
+    state_dir = os.path.join(base_dir, "state")
+    os.makedirs(state_dir, exist_ok=True)
+    lock_path = os.path.join(state_dir, "open_questions.lock")
+    legacy_lock_path = os.path.join(base_dir, "open_questions.lock")
+    if os.path.isfile(legacy_lock_path) and not os.path.exists(lock_path):
+        try:
+            os.replace(legacy_lock_path, lock_path)
+        except OSError as exc:
+            logger.warning("[SLEEP][QUESTIONS] lock migration failed project=%s detail=%s", project_id, exc)
     consolidated: Dict[str, Any] = {"questions": []}
     if not os.path.isfile(src_path):
         try:
@@ -454,7 +462,15 @@ def _sleep_cycle_worker():
                 try:
                     if (sleep_upload_text or "").strip() or (dream_upload_text or "").strip():
                         uploads_dir = os.path.join(get_settings().memory_root, pid, "uploads")
-                        merge_lock = os.path.join(get_settings().memory_root, pid, "merge.lock")
+                        state_dir = os.path.join(get_settings().memory_root, pid, "state")
+                        os.makedirs(state_dir, exist_ok=True)
+                        merge_lock = os.path.join(state_dir, "merge.lock")
+                        legacy_merge_lock = os.path.join(get_settings().memory_root, pid, "merge.lock")
+                        if os.path.isfile(legacy_merge_lock) and not os.path.exists(merge_lock):
+                            try:
+                                os.replace(legacy_merge_lock, merge_lock)
+                            except OSError as exc:
+                                logger.warning("[SLEEP] merge lock migration failed project=%s detail=%s", pid, exc)
                         with FileLock(merge_lock):
                             os.makedirs(uploads_dir, exist_ok=True)
 

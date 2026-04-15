@@ -144,7 +144,15 @@ def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
     base_dir = os.path.join(get_settings().memory_root, project_id)
     os.makedirs(base_dir, exist_ok=True)
     meta_path = os.path.join(base_dir, "daily.json")
-    lock_path = os.path.join(base_dir, "daily.lock")
+    state_dir = os.path.join(base_dir, "state")
+    os.makedirs(state_dir, exist_ok=True)
+    lock_path = os.path.join(state_dir, "daily.lock")
+    legacy_lock_path = os.path.join(base_dir, "daily.lock")
+    if os.path.isfile(legacy_lock_path) and not os.path.exists(lock_path):
+        try:
+            os.replace(legacy_lock_path, lock_path)
+        except OSError as exc:
+            logger.warning("daily_store lock migration failed project_id=%s detail=%s", project_id, exc)
     txt_path = os.path.join(base_dir, "daily.txt")
     return meta_path, lock_path, txt_path
 

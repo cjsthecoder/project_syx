@@ -14,9 +14,9 @@ import json
 import os
 
 from ..research import count_tokens, trim_to_tokens, fetch_remote_research
-from ...config import get_settings
+from ...core.config import get_settings
 from ..llm import dream_llm_call
-from ....rag.manager import retrieve_context
+from ...rag.manager import retrieve_context
 from app.utils.debug_utils import write_debug_file
 from .prompts.questions_prompts import (
     build_answer_question_prompt_local,

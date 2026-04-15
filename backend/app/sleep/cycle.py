@@ -29,7 +29,7 @@ from ..core.db_models import Project, ChatMessage
 from sqlmodel import select
 from ..rag.daily_store import backfill_daily_txt_from_meta, append_pair_text_only
 from ..tagging.tagger import tag_pair as tag_pair_tagger
-from ..core.dream import dream
+from ..dream import dream
 import time
 from ..utils.logging import RequestLogger
 from ..utils.errors import handle_memory_error, log_error_context
@@ -54,7 +54,7 @@ from ..rag.manager import rebuild_faiss_index, load_faiss_index
 from filelock import FileLock
 from ..core.config import get_settings
 from ..rag.daily_store import _project_daily_paths, clear_daily_cache
-from ..core.dream import dream
+from ..dream import dream
 from ..utils.debug_utils import write_debug_file
 def _nl(s: str) -> str:
     """Normalize line endings to LF to avoid mixed terminators."""

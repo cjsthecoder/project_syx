@@ -15,7 +15,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
-from ..config import get_settings
+from ..core.config import get_settings
 from .agents.questions_agent import run_questions_agent
 from .agents.idea_agent import run_idea_agent
 from .agents.research_agent import run_research_agent

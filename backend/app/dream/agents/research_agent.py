@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from ...config import get_settings
+from ...core.config import get_settings
 from app.utils.debug_utils import write_debug_file
 from ..llm import dream_llm_call
 from .prompts.research_prompts import build_research_prompt

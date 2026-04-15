@@ -239,7 +239,7 @@ def _cosine_to_01(cos: float) -> float:
     """Map cosine in [-1,1] to [0,1]."""
     try:
         c = float(cos)
-    except Exception:
+    except (TypeError, ValueError):
         return 0.0
     if c < -1.0:
         c = -1.0
@@ -287,7 +287,7 @@ def _build_ltm_adjacency_lists(
                 continue
             try:
                 si = int(seq)
-            except Exception:
+            except (TypeError, ValueError):
                 continue
             by_doc.setdefault(doc_id, []).append((si, str(item_id)))
 
@@ -398,7 +398,7 @@ def _count_tokens(text: str) -> int:
         return len(text.split())
     try:
         enc = tiktoken.get_encoding("cl100k_base")
-    except Exception:
+    except (KeyError, ValueError):
         enc = tiktoken.get_encoding("cl100k_base")
     return len(enc.encode(text))
 
@@ -773,7 +773,7 @@ def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
             built_at=built_at,
             schema_version=schema_version,
         )
-    except Exception as e:
+    except (OSError, ValueError, TypeError) as e:
         logger.debug(f"RAG: failed to load index for '{project_id}': {e}")
         return None
 

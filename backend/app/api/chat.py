@@ -36,7 +36,7 @@ from ..rag.daily_store import start_daily_cache_rebuild
 from ..core.database import get_session
 from ..core.db_models import Project
 from ..core.query_builder import build_query, format_contextual_turn
-from ..core.tracking import get_instrumentation
+from ..tracking import get_instrumentation
 import os
 import json
 from itertools import islice

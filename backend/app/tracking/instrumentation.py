@@ -105,7 +105,7 @@ class RealInstrumentation:
         prompt_tol_abs_tokens: int = 25,
         prompt_tol_pct: float = 0.02,
     ):
-        from ..config import get_settings
+        from ..core.config import get_settings
 
         self.runs_dir = runs_dir or str(getattr(get_settings(), "runs_dir", "runs") or "runs")
         self.mode = (mode or "metrics").strip().lower()
@@ -338,13 +338,13 @@ class RealInstrumentation:
         }
         if not pid:
             return out
-        from ..config import get_settings
+        from ..core.config import get_settings
 
         personality_path = os.path.join(get_settings().memory_root, pid, "personality.json")
         source = "project_file" if os.path.isfile(personality_path) else "default_fallback"
         try:
             # Local import avoids adding a hard runtime dependency at module import time.
-            from ..personality import load_project_personality
+            from ..core.personality import load_project_personality
 
             personality = load_project_personality(pid)
             if isinstance(personality, dict):

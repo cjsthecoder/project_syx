@@ -38,7 +38,7 @@ from sqlmodel import select
 
 logger = logging.getLogger(__name__)
 from ..core.retrieval_ordering import order_candidates_by_similarity_score
-from ..core.tracking import get_instrumentation
+from ..tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
 from ..llm_model.llm_client import get_llm_client
 from ..embedding.vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex

@@ -30,7 +30,7 @@ import faiss  # type: ignore
 import numpy as np  # type: ignore
 
 from ..core.config import get_settings, compute_per_source_k
-from ..core.embed_batching import iter_token_batches
+from ..embedding.batching import iter_token_batches
 import os
 from ..core.database import get_session
 from ..core.db_models import File as FileRow
@@ -41,7 +41,7 @@ from ..core.retrieval_ordering import order_candidates_by_similarity_score
 from ..core.tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
 from ..llm_model.llm_client import get_llm_client
-from ..core.vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
+from ..embedding.vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
 
 try:
     import tiktoken  # type: ignore

@@ -49,3 +49,12 @@
   - `backend/app/api/sleep.py`
   - `backend/app/core/memory.py`
   - `backend/app/rag/manager.py`
+
+## Ticket 5 - Move embedding utilities
+
+- Moved files:
+  - `backend/app/core/embed_batching.py` -> `backend/app/embedding/batching.py`
+  - `backend/app/core/vector_index.py` -> `backend/app/embedding/vector_index.py`
+- Updated callers/imports:
+  - `backend/app/rag/manager.py`
+  - `backend/app/rag/daily_store.py`

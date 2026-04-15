@@ -32,7 +32,7 @@ from ..core.config import get_settings, get_model_config, compute_per_source_k
 from ..rag.manager import retrieve_context, merge_daily_and_main
 from ..core.route_policy import get_route_policy
 from ..core.personality import load_project_system_prompt, load_project_personality
-from ..core.daily_rag import start_daily_cache_rebuild
+from ..rag.daily_store import start_daily_cache_rebuild
 from ..core.database import get_session
 from ..core.db_models import Project
 from ..core.query_builder import build_query, format_contextual_turn

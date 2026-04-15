@@ -26,7 +26,7 @@ from sqlmodel import select
 from .database import get_session
 from .db_models import ChatMessage, Project
 from .config import get_settings
-from .daily_rag import append_pair
+from ..rag.daily_store import append_pair
 from ..utils.logging import get_message_id, get_namespace
 from ..tagging.tagger import tag_pair
 

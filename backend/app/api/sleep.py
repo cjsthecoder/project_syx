@@ -27,7 +27,7 @@ from ..core.state import engage_lock, release_lock, is_sleeping, since, lock_pat
 from ..core.database import get_session
 from ..core.db_models import Project, ChatMessage
 from sqlmodel import select
-from ..core.daily_rag import backfill_daily_txt_from_meta, append_pair_text_only
+from ..rag.daily_store import backfill_daily_txt_from_meta, append_pair_text_only
 from ..tagging.tagger import tag_pair as tag_pair_tagger
 from ..core.dream import dream
 import time
@@ -53,7 +53,7 @@ _runner_thread: Optional[threading.Thread] = None
 from ..rag.manager import rebuild_faiss_index, load_faiss_index
 from filelock import FileLock
 from ..core.config import get_settings
-from ..core.daily_rag import _project_daily_paths, clear_daily_cache
+from ..rag.daily_store import _project_daily_paths, clear_daily_cache
 from ..core.dream import dream
 from ..utils.debug_utils import write_debug_file
 def _nl(s: str) -> str:

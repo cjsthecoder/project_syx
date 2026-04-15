@@ -36,3 +36,16 @@
   - `backend/app/api/sleep.py`
   - `backend/app/core/dream/context.py`
   - `backend/app/core/dream/agents/questions_agent.py`
+
+## Ticket 4 - Move daily_rag module
+
+- Moved file:
+  - `backend/app/core/daily_rag.py` -> `backend/app/rag/daily_store.py`
+- Updated moved module imports from `core` package locations:
+  - `config`, `embed_batching`, `vector_index`
+- Updated callers/imports:
+  - `backend/app/api/chat.py`
+  - `backend/app/api/projects.py`
+  - `backend/app/api/sleep.py`
+  - `backend/app/core/memory.py`
+  - `backend/app/rag/manager.py`

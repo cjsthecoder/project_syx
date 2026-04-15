@@ -96,4 +96,4 @@ Your organization must be verified to stream this model.
 * Verification is required even when using these models through external platforms such as Azure.
 
 
-Refer to `docs/REQUIREMENTS.md` for full details.
+Refer to the `docs/` specification documents for full details.

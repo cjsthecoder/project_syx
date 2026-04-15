@@ -68,3 +68,12 @@
 - Result:
   - sleep orchestration lives in the `sleep` package
   - API layer remains a thin wrapper module
+
+## Ticket 7 - Remove dream bridge wrappers
+
+- Removed obsolete bridge modules:
+  - `backend/app/core/dream_context.py`
+  - `backend/app/core/dream_llm.py`
+  - `backend/app/core/dream_prompts.py`
+  - `backend/app/core/dream_research.py`
+- Verified there are no remaining imports of those bridge modules; Dream code imports directly from `backend/app/core/dream/*`.

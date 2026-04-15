@@ -118,8 +118,8 @@ def _extract_stream_usage(chunk: Any) -> tuple[Optional[dict], Optional[dict]]:
                     "output_token_details": usage_meta.get("output_token_details"),
                 }
                 return usage, {k: v for k, v in extras.items() if v is not None}
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("chat.stream usage_metadata extraction failed; detail=%s", exc)
     try:
         md = getattr(chunk, "response_metadata", None) or {}
         token_usage = md.get("token_usage", {}) if isinstance(md, dict) else {}
@@ -136,8 +136,8 @@ def _extract_stream_usage(chunk: Any) -> tuple[Optional[dict], Optional[dict]]:
                 }
                 extras = dict(token_usage)
                 return usage, extras
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("chat.stream response_metadata usage extraction failed; detail=%s", exc)
     return None, None
 
 
@@ -169,7 +169,8 @@ def _dump_prompt_debug(
     route = None
     try:
         route = get_route()
-    except Exception:
+    except Exception as exc:
+        logger.debug("chat.prompt_debug failed reading route; detail=%s", exc)
         route = None
     rag_used = bool(rag_system_prompt)
     _ = msgs  # Reserved for future exact-payload debug variants.
@@ -300,8 +301,12 @@ class _ChatPipeline:
                         h = getattr(p, "last_semantic_handle", None) if p is not None else None
                         if isinstance(h, str) and h.strip():
                             return json.dumps({"semantic_handle": h.strip()}, ensure_ascii=False)[:2000]
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning(
+                        "chat.builder_summary failed fallback lookup project_id=%s detail=%s",
+                        project_id,
+                        exc,
+                    )
 
             return ""
         except Exception:
@@ -347,7 +352,7 @@ class _ChatPipeline:
                         tag_type = str(parsed.get("type", "") or "")
                         semantic_handle = str(parsed.get("semantic_handle", "") or "")
             except Exception:
-                pass
+                logger.debug("chat.previous_pair_text failed parsing tags_meta_json", exc_info=True)
 
             return (
                 f"#route: {ns}\n"
@@ -369,7 +374,7 @@ class _ChatPipeline:
                 if p is not None:
                     return bool(p.daily_rag_enabled)
         except Exception:
-            pass
+            logger.debug("chat.daily_enabled lookup failed project_id=%s", project_id, exc_info=True)
         return True
 
     def compute_rag_context(
@@ -422,7 +427,7 @@ class _ChatPipeline:
                     [],
                 )
             except Exception:
-                pass
+                logger.debug("chat.builder debug logging failed project_id=%s", project_id, exc_info=True)
             logger.debug("builder unavailable; skipping RAG for this turn")
             return None, None, rag_metrics
 
@@ -449,8 +454,8 @@ class _ChatPipeline:
                 len(topics or []),
                 builder_prev,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("chat.builder route logging failed project_id=%s detail=%s", project_id, exc)
 
         try:
             logger.debug(
@@ -461,8 +466,13 @@ class _ChatPipeline:
                 int(self.settings.base_top_k),
                 float(self.settings.retrieval_multiplier),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "chat.rag_query_debug_write failed project_id=%s message_id=%s detail=%s",
+                project_id,
+                msg_id,
+                exc,
+            )
 
         set_route(route or "UNKNOWN")
         try:
@@ -512,8 +522,13 @@ class _ChatPipeline:
                 f"{primary_query}\n"
             )
             write_debug_file(project_id, f"prompts/{fname}", body)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(
+                "chat.retrieval metrics logging failed project_id=%s message_id=%s detail=%s",
+                project_id,
+                msg_id,
+                exc,
+            )
 
         logger.debug(
             "Chat: performing merged retrieval (daily+main) for project=%s route=%s conf=%.2f queries=%s",
@@ -549,8 +564,12 @@ class _ChatPipeline:
                 float(rc.get("daily_avg", 0.0)),
                 int(rc.get("total_hits", 0)),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "chat.prompt_assembly instrumentation failed project_id=%s detail=%s",
+                project_id,
+                exc,
+            )
 
         if rc.get("context_text"):
             rag_system_prompt = rc["context_text"]
@@ -625,8 +644,8 @@ class _ChatPipeline:
                     "message_count": int(len(msgs)),
                 },
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("chat.prompt_assembly instrumentation failed detail=%s", exc)
         return msgs
 
     def persist_user(self, project_id: Optional[str], message: str) -> None:
@@ -634,8 +653,8 @@ class _ChatPipeline:
             return
         try:
             get_memory_manager().append_user_message(project_id, message)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("chat.persist_user failed project_id=%s detail=%s", project_id, exc, exc_info=True)
 
     def persist_assistant(
         self,
@@ -668,8 +687,8 @@ class _ChatPipeline:
                 forget=bool(forget),
                 skip_tagger=bool(skip_tagger),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("chat.persist_assistant failed project_id=%s detail=%s", project_id, exc, exc_info=True)
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -742,8 +761,8 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 len((assistant_hint or "").encode("utf-8")),
                 ((base_system_prompt or "")[:200].replace("\n", " ")),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("chat.prompt size logging failed message_id=%s detail=%s", msg_id, exc)
         llm_logger.log_llm_request(
             model=(request.model or settings.model_name),
             message_length=len(request.message),
@@ -762,8 +781,8 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 user_prompt=request.message,
                 model=(request.model or settings.model_name),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("chat.prompt_debug dump failed project_id=%s message_id=%s detail=%s", request.project_id, msg_id, exc)
         # Generate response using LangChain
         t_model0 = time.time()
         llm_response = generate_chat_response(
@@ -828,8 +847,8 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             context_tokens = len(enc.encode(combined_text))
             if request.project_id:
                 set_last_context_tokens(request.project_id, context_tokens)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("chat.context_tokens update failed project_id=%s detail=%s", request.project_id, exc)
         
         # Create response
         response = ChatResponse(
@@ -929,13 +948,13 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                         "model_id": _model_id,
                     }
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("chat.turn_end instrumentation failed project_id=%s detail=%s", request.project_id, exc)
         clear_message_id()
         try:
             clear_namespace()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("chat.clear_namespace failed detail=%s", exc)
 
 
 @router.post("/chat/stream")
@@ -1015,8 +1034,12 @@ async def chat_stream(request: ChatRequest):
                                 forget=is_chitchat,
                                 skip_tagger=is_chitchat,
                             )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning(
+                            "chat.stream fake_stream assistant persist failed project_id=%s detail=%s",
+                            request.project_id,
+                            exc,
+                        )
                     # Simulate streaming by yielding characters
                     for ch in text:
                         yield ch
@@ -1044,8 +1067,13 @@ async def chat_stream(request: ChatRequest):
                 model=(request.model or settings.model_name),
                 msgs=msgs,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "chat.stream prompt_debug dump failed project_id=%s message_id=%s detail=%s",
+                request.project_id,
+                msg_id,
+                exc,
+            )
 
         # Token stream using astream (yields AIMessageChunk with incremental content)
         async def token_stream():
@@ -1160,8 +1188,12 @@ async def chat_stream(request: ChatRequest):
                                 "first_token_ts": first_token_ts,
                             },
                         )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning(
+                        "chat.stream invocation instrumentation finalization failed project_id=%s detail=%s",
+                        request.project_id,
+                        exc,
+                    )
                 # Persist assistant once complete
                 try:
                     if request.project_id:
@@ -1175,8 +1207,12 @@ async def chat_stream(request: ChatRequest):
                             forget=is_chitchat,
                             skip_tagger=is_chitchat,
                         )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning(
+                        "chat.stream assistant persist failed project_id=%s detail=%s",
+                        request.project_id,
+                        exc,
+                    )
                 try:
                     nonlocal turn_closed
                     if turn_started and not turn_closed:
@@ -1206,8 +1242,8 @@ async def chat_stream(request: ChatRequest):
                             }
                         )
                         turn_closed = True
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("chat.stream turn_end failed project_id=%s detail=%s", request.project_id, exc)
 
         return StreamingResponse(token_stream(), media_type="text/plain; charset=utf-8")
     except Exception as e:
@@ -1239,15 +1275,15 @@ async def chat_stream(request: ChatRequest):
                     }
                 )
                 turn_closed = True
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("chat.stream error turn_end failed project_id=%s detail=%s", request.project_id, exc)
         return JSONResponse(status_code=500, content={"error": str(e)})
     finally:
         clear_message_id()
         try:
             clear_namespace()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("chat.stream clear_namespace failed detail=%s", exc)
 
 @router.get("/chat/health")
 async def chat_health() -> JSONResponse:

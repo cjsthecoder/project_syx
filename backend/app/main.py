@@ -95,8 +95,8 @@ async def lifespan(app: FastAPI):
             )
             if dirty.returncode == 0:
                 git_dirty = bool(str(dirty.stdout or "").strip())
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.info("[TRACKING] Failed to collect git metadata: %s", exc)
         instr = init_instrumentation(get_settings(), has_lifespan_hook=True)
         s = get_settings()
         pol = load_and_validate_route_policy()
@@ -298,8 +298,8 @@ async def sleep_guard(request, call_next):
     try:
         if is_sleeping() and request.method.upper() != "GET":
             return JSONResponse(status_code=423, content={"error": "System is sleeping. Try again later."})
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("[SLEEP] sleep_guard state check failed; method=%s detail=%s", request.method, exc)
     return await call_next(request)
 
 def _schedule_entrypoint():
@@ -309,8 +309,8 @@ def _schedule_entrypoint():
             cleared = clear_stale_lock()
             if cleared:
                 logger.info("[SLEEP] Cleared stale lock before scheduled run")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.info("[SLEEP] clear_stale_lock failed before scheduled run: %s", exc)
         if not is_sleeping():
             start_sleep_cycle_async()
         else:
@@ -464,10 +464,10 @@ if __name__ == "__main__":
         for handler in list(root_logger.handlers):
             try:
                 handler.flush()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.info("[SHUTDOWN] Failed to flush log handler %s: %s", type(handler).__name__, exc)
             try:
                 if hasattr(handler, "close"):
                     handler.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.info("[SHUTDOWN] Failed to close log handler %s: %s", type(handler).__name__, exc)

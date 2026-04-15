@@ -147,3 +147,14 @@
   - if a legacy lock exists at `memory/<project_id>/*.lock` and state lock is absent, it is moved to `memory/<project_id>/state/*.lock`
   - migration failures are logged with project context.
 - Ensured `state/` directories are created on demand before lock acquisition.
+
+## Post-plan ticket - Move dream package out of core
+
+- Moved package directory:
+  - `backend/app/core/dream/` -> `backend/app/dream/`
+- Updated external imports:
+  - `backend/app/sleep/cycle.py` now imports `dream` from `app.dream`.
+- Updated moved package internals to preserve valid dependency boundaries:
+  - config imports now reference `app.core.config`
+  - RAG imports now reference `app.rag.manager`
+- Verified no remaining references to `app.core.dream` in backend runtime modules.

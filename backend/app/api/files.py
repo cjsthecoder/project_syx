@@ -13,6 +13,7 @@ File upload endpoints (V2): upload files to a project and store to disk.
 import os
 import time
 from typing import List
+import logging
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
@@ -24,6 +25,7 @@ from ..core.db_models import File as FileRow
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _bytes_to_mb(n: int) -> float:
@@ -43,10 +45,11 @@ def _compute_file_stats(path: str) -> tuple[int, int]:
                 import tiktoken  # type: ignore
                 enc = tiktoken.get_encoding("cl100k_base")
                 total_tokens += len(enc.encode(raw_text))
-            except Exception:
+            except Exception as exc:
+                logger.info("files.compute_file_stats token fallback path=%s detail=%s", path, exc)
                 total_tokens += len((raw_text or "").split())
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("files.compute_file_stats failed path=%s detail=%s", path, exc)
     return (page_count, total_tokens)
 
 
@@ -91,8 +94,13 @@ async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> 
         for s in saved:
             try:
                 os.remove(s["path"])  # type: ignore
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "files.upload rollback delete failed project_id=%s file=%s detail=%s",
+                    project_id,
+                    s.get("path"),
+                    exc,
+                )
         raise HTTPException(status_code=400, detail={"error": f"Batch exceeds max size {settings.max_batch_mb}MB"})
 
     # Storage limit per project (existing + new)
@@ -101,8 +109,13 @@ async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> 
         for n in filenames:
             try:
                 existing_total += os.path.getsize(os.path.join(root, n))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "files.upload size calc failed project_id=%s file=%s detail=%s",
+                    project_id,
+                    os.path.join(root, n),
+                    exc,
+                )
     if _bytes_to_mb(existing_total) > settings.storage_limit_mb:
         raise HTTPException(status_code=400, detail={"error": f"Project storage already exceeds limit {settings.storage_limit_mb}MB"})
     if _bytes_to_mb(existing_total + total_written) > settings.storage_limit_mb:
@@ -110,8 +123,13 @@ async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> 
         for s in saved:
             try:
                 os.remove(s["path"])  # type: ignore
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "files.upload storage rollback delete failed project_id=%s file=%s detail=%s",
+                    project_id,
+                    s.get("path"),
+                    exc,
+                )
         raise HTTPException(status_code=400, detail={"error": f"Storage limit {settings.storage_limit_mb}MB would be exceeded"})
 
     # Record files in DB with stats
@@ -199,8 +217,14 @@ async def delete_file(project_id: str, file_id: int) -> JSONResponse:
             path = os.path.join(upload_root, row.filename)
             if os.path.exists(path):
                 os.remove(path)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "files.delete failed removing disk file project_id=%s file_id=%s path=%s detail=%s",
+                project_id,
+                file_id,
+                path,
+                exc,
+            )
         session.delete(row)
         session.commit()
 

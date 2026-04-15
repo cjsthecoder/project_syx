@@ -10,6 +10,9 @@ Use of this software requires explicit written permission from the copyright hol
 import os
 import time
 from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 _sleeping: bool = False
 _since_ts: Optional[float] = None
@@ -49,8 +52,8 @@ def release_lock() -> None:
     try:
         if os.path.exists(_LOCK_PATH):
             os.remove(_LOCK_PATH)
-    except Exception:
-        pass
+    except OSError as exc:
+        logger.warning("state.release_lock failed lock_path=%s detail=%s", _LOCK_PATH, exc)
     set_sleeping(False)
 
 
@@ -73,7 +76,7 @@ def clear_stale_lock(max_age_seconds: int = 2 * 60 * 60) -> bool:
                 finally:
                     set_sleeping(False)
                 return True
-    except Exception:
-        pass
+    except OSError as exc:
+        logger.warning("state.clear_stale_lock failed lock_path=%s detail=%s", _LOCK_PATH, exc)
     return False
 

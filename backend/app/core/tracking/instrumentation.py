@@ -242,8 +242,8 @@ class RealInstrumentation:
             )
             if dirty.returncode == 0:
                 git_dirty = bool(str(dirty.stdout or "").strip())
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("tracking.git metadata detection failed; operation=_detect_git_metadata detail=%s", exc)
         return {"git_commit": git_commit, "git_dirty": bool(git_dirty)}
 
     @classmethod
@@ -1161,8 +1161,8 @@ def init_instrumentation(settings: Any, *, has_lifespan_hook: bool = False) -> I
             def _flush_on_exit() -> None:
                 try:
                     get_instrumentation().end_run({"reason": "atexit"})
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("tracking.atexit end_run failed; operation=end_run detail=%s", exc)
             atexit.register(_flush_on_exit)
             _REGISTERED_ATEXIT = True
 

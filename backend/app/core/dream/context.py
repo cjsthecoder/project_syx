@@ -51,8 +51,8 @@ def _read_file_safe(path: str) -> str:
         if os.path.isfile(path):
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 return f.read()
-    except Exception:
-        pass
+    except OSError as exc:
+        logger.warning("[DREAM][CONTEXT] Failed reading file path=%s detail=%s", path, exc)
     return ""
 
 

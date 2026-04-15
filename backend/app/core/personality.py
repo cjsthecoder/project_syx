@@ -51,8 +51,8 @@ def _project_personality_path(project_id: str) -> str:
 def ensure_directories(path: str) -> None:
     try:
         os.makedirs(path, exist_ok=True)
-    except Exception:
-        pass
+    except OSError as exc:
+        logger.warning("[PROJECT] ensure_directories failed path=%s detail=%s", path, exc)
 
 
 def load_default_prompt_and_personality() -> Tuple[str, Dict[str, Any]]:
@@ -124,15 +124,15 @@ def seed_project_defaults(project_id: str) -> None:
             with open(prompt_path, "w", encoding="utf-8") as f:
                 f.write(default_prompt or "")
             wrote_any = True
-        except Exception:
-            pass
+        except OSError as exc:
+            logger.warning("[PROJECT] Failed writing project prompt project_id=%s path=%s detail=%s", project_id, prompt_path, exc)
     if not os.path.isfile(pers_path):
         try:
             with open(pers_path, "w", encoding="utf-8") as f:
                 json.dump(default_personality, f, ensure_ascii=False, indent=2)
             wrote_any = True
-        except Exception:
-            pass
+        except (OSError, TypeError, ValueError) as exc:
+            logger.warning("[PROJECT] Failed writing project personality project_id=%s path=%s detail=%s", project_id, pers_path, exc)
     if wrote_any:
         logger.debug("[PROJECT] Loaded system_prompt=system_prompt.txt personality=personality.json")
 
@@ -144,9 +144,9 @@ def backfill_all_projects() -> None:
             rows = session.query(Project).all()  # type: ignore[attr-defined]
             for p in rows or []:
                 seed_project_defaults(p.id)
-    except Exception:
-        # Non-fatal
-        pass
+    except Exception as exc:
+        # Non-fatal startup backfill path; request handling can continue.
+        logger.warning("[PROJECT] Backfill failed for existing projects detail=%s", exc)
 
 
 def _validate_sizes(prompt_text: Optional[str], personality_json: Optional[Dict[str, Any]]) -> None:

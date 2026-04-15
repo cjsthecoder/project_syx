@@ -28,6 +28,7 @@ WORKDIR /app
 
 # Copy backend (includes backend/app/config/route_policy.json)
 COPY backend ./backend
+COPY requirements.txt ./requirements.txt
 
 # Overwrite with built static from stage 1
 COPY --from=frontend-builder /app/backend/app/static ./backend/app/static
@@ -46,7 +47,7 @@ ENV PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
 # Virtualenv and install Python deps
 RUN python3 -m venv /app/venv && \
     /app/venv/bin/pip install --upgrade pip setuptools wheel && \
-    /app/venv/bin/pip install -r backend/requirements.txt
+    /app/venv/bin/pip install -r requirements.txt
 
 # App runs from backend/ so relative paths (../data/*, ../runtime/*) resolve correctly
 WORKDIR /app/backend

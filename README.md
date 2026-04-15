@@ -14,7 +14,7 @@ python3 -m venv venv
 source venv/bin/activate
 
 # 3) Install backend dependencies
-pip install -r backend/requirements.txt
+pip install -r requirements.txt
 
 # 4) Install frontend dependencies (optional here; `make install` also does this)
 cd frontend && npm install && cd ..
@@ -68,7 +68,7 @@ Run Syx in a container with bind-mounted data and a mounted `.env` (no secrets i
    ```
    App: http://localhost:8000 — API docs: http://localhost:8000/api/docs — Health: http://localhost:8000/health.
 
-4. **Bind mounts**: Data is stored on the host under `./data/memory`, `./data/db`, `./data/logs`, and `./data/runs`, so it survives container rebuilds and is easy to back up. If you use a different host or port, set `CORS_ORIGINS` in `.env` to include that origin.
+4. **Bind mounts**: Data is stored on the host under `./data/memory`, `./data/db`, `./runtime/logs`, and `./runtime/runs`, so it survives container rebuilds and is easy to back up. If you use a different host or port, set `CORS_ORIGINS` in `.env` to include that origin.
 
 # Organization Verification Required for Streaming
 

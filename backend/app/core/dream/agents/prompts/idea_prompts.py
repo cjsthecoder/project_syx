@@ -1,7 +1,7 @@
 """
 Copyright (c) 2025 Christopher Shuler. All rights reserved.
 
-This source code is part of the Morpheus project and is proprietary.
+This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
@@ -19,7 +19,7 @@ def build_idea_prompt(dream_context: str) -> str:
     Returns:
         Complete prompt string ready for LLM consumption
     """
-    return f"""You are the Idea Agent for the Morpheus Dream Cycle.
+    return f"""You are the Idea Agent for the Syx Dream Cycle.
 Your job is to produce compact, high-value Dream entries only when they create durable learning value for future chats on this project.
 
 Core principle:
@@ -57,7 +57,7 @@ All items must pass:
 4) Non-duplication:
    - The content is not already sufficiently covered in QUESTION ANSWERS or elsewhere in dream_context.
 5) Project relevance:
-   - The item is directly tied to Morpheus architecture, implementation, memory model, sleep cycle, retrieval, provenance, consolidation, patent relevance, or another persistent project concern.
+   - The item is directly tied to Syx architecture, implementation, memory model, sleep cycle, retrieval, provenance, consolidation, patent relevance, or another persistent project concern.
 
 Additional rule for answer_local items:
 6) High bar for local-only capture:

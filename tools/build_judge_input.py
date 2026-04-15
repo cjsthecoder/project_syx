@@ -120,10 +120,10 @@ def build_judge_rows(
     run_id: str,
     prompt_turns: Dict[int, PromptTurn],
     prompt_meta: Dict[str, Any],
-    morpheus_rows: Dict[int, Dict[str, Any]],
+    syx_rows: Dict[int, Dict[str, Any]],
     web_rows: Dict[int, Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    turn_ids = sorted(set(prompt_turns.keys()) | set(morpheus_rows.keys()) | set(web_rows.keys()))
+    turn_ids = sorted(set(prompt_turns.keys()) | set(syx_rows.keys()) | set(web_rows.keys()))
     system_prompt_text: Optional[str] = None
     sp = prompt_meta.get("system_prompt")
     if isinstance(sp, dict) and isinstance(sp.get("known_component"), str):
@@ -132,7 +132,7 @@ def build_judge_rows(
     results: List[Dict[str, Any]] = []
     for tid in turn_ids:
         p = prompt_turns.get(tid)
-        mor = morpheus_rows.get(tid, {})
+        mor = syx_rows.get(tid, {})
         web = web_rows.get(tid, {})
 
         candidate_a = mor.get("response_text") if isinstance(mor.get("response_text"), str) else None
@@ -155,7 +155,7 @@ def build_judge_rows(
             "rubric_id": (p.rubric_id if p else None),
             "rubric_text": (p.rubric_text if p else None),
             "system_prompt_known_component": system_prompt_text,
-            "candidate_a": candidate_a,  # fixed mapping: Morpheus response
+            "candidate_a": candidate_a,  # fixed mapping: Syx response
             "candidate_b": candidate_b,  # fixed mapping: Web/ChatGPT response
             "candidate_a_case_id": mor.get("case_id"),
             "candidate_b_case_id": web.get("case_id"),
@@ -351,7 +351,7 @@ def run(test_run_dir: str, prompts_json_path: str) -> int:
     prompts_path = _resolve_prompts_json(prompts_json_path)
     prompt_turns, prompt_meta = _load_prompt_turns(prompts_path)
 
-    morpheus_rows = _index_by_turn(_read_jsonl(benchmark_path))
+    syx_rows = _index_by_turn(_read_jsonl(benchmark_path))
     web_rows = _index_by_turn(_read_jsonl(web_benchmark_path))
 
     run_id = os.path.basename(test_run_dir.rstrip(os.sep))
@@ -359,7 +359,7 @@ def run(test_run_dir: str, prompts_json_path: str) -> int:
         run_id=run_id,
         prompt_turns=prompt_turns,
         prompt_meta=prompt_meta,
-        morpheus_rows=morpheus_rows,
+        syx_rows=syx_rows,
         web_rows=web_rows,
     )
     if not judge_rows:

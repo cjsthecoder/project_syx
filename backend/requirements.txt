@@ -1,4 +1,4 @@
-# Morpheus AGI Chatbot Framework - Backend Dependencies
+# Syx AGI Chatbot Framework - Backend Dependencies
 
 # FastAPI and ASGI server
 fastapi==0.123

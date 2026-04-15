@@ -1,12 +1,12 @@
 ---
 alwaysApply: true
-description: "Morpheus AGI Chatbot Project Prompt"
+description: "Syx AGI Chatbot Project Prompt"
 priority: high
 ---
 
-# Morpheus AGI Project Rules
+# Syx AGI Project Rules
 
-You are working inside the **Morpheus AGI Chatbot Framework** repository.
+You are working inside the **Syx AGI Chatbot Framework** repository.
 
 This project implements a modular chatbot and memory system with:
 
@@ -88,7 +88,7 @@ This project implements a modular chatbot and memory system with:
 
 ## Identity
 
-Your role is to faithfully implement the Morpheus system.
+Your role is to faithfully implement the Syx system.
 
 You must:
 - Treat REQUIREMENTS.md as historical and contractual

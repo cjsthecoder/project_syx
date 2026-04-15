@@ -155,7 +155,7 @@ Required top-level:
 - Type and units: string enum-like
 - Exact meaning: Source system label for cross-system comparison streams.
 - Where measured: Benchmark/web extraction boundary (`benchmark_results.jsonl`, `web_benchmark_results.jsonl`, `web_turns.jsonl`).
-- How computed: Set by producer (`morpheus`, `chatgpt`, `chatgpt_web`, etc.).
+- How computed: Set by producer (`syx`, `chatgpt`, `chatgpt_web`, etc.).
 - Invariants / tolerance: Must be stable and explicit for a given stream to support joins/plot splits.
 
 #### `ts`
@@ -321,7 +321,7 @@ Required top-level:
 - Exact meaning: Estimated history contribution in final prompt.
 - Where measured: `prompt_assembly` stage, pre-send.
 - How computed:
-  - Morpheus: estimate over serialized conversation history included in the final prompt payload.
+  - Syx: estimate over serialized conversation history included in the final prompt payload.
   - Web synthetic (`web_turns.jsonl`): estimate over all prior visible extracted user prompts and assistant responses (`history_text_parts` replay), excluding current-turn prompt/response.
 - Invariants / tolerance: Non-negative; part of prompt-sum invariant.
 
@@ -414,7 +414,7 @@ Required top-level:
 - Exact meaning: Main invocation prompt tokens copied to turn summary.
 - Where measured: `end_turn`, post main invocation.
 - How computed:
-  - Morpheus: from main invocation usage payload.
+  - Syx: from main invocation usage payload.
   - Web synthetic (`web_turns.jsonl`): set to `final_context_tokens_est`.
 - Invariants / tolerance: If both this and completion are present, their sum must equal `main_total_tokens_reported`.
 
@@ -423,7 +423,7 @@ Required top-level:
 - Exact meaning: Main invocation completion tokens copied to turn summary.
 - Where measured: `end_turn`, post main invocation.
 - How computed:
-  - Morpheus: from main invocation usage payload.
+  - Syx: from main invocation usage payload.
   - Web synthetic (`web_turns.jsonl`): estimated response tokens for the current turn.
 - Invariants / tolerance: If both this and prompt are present, their sum must equal `main_total_tokens_reported`.
 
@@ -440,7 +440,7 @@ Required top-level:
 - Type and units: string enum-like
 - Exact meaning: Provenance of usage/latency metrics in benchmark rows.
 - Where measured: Benchmark extraction/capture boundary.
-- How computed: Set by producer (`morpheus_instrumentation`, `html_extracted`, etc.).
+- How computed: Set by producer (`syx_instrumentation`, `html_extracted`, etc.).
 - Invariants / tolerance: Must reflect real provenance; do not fabricate provider metrics.
 
 #### `completeness`
@@ -462,7 +462,7 @@ Required top-level:
 - Exact meaning: User-controlled system-instruction component used for benchmark runs.
 - Where measured: Benchmark input configuration (`prompts.json`) and web extractor synthesis boundary.
 - How computed:
-  - Morpheus: treated as system prompt content and counted within prompt/system token accounting.
+  - Syx: treated as system prompt content and counted within prompt/system token accounting.
   - ChatGPT web synthetic: mapped to Custom Instructions text and counted as the visible system component only.
 - Invariants / tolerance: For ChatGPT web runs, this field represents only the known/visible portion of the effective system prompt; hidden platform/system layers are not observable and are intentionally excluded from token accounting.
 

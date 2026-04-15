@@ -1,14 +1,14 @@
 """
 Copyright (c) 2025 Christopher Shuler. All rights reserved.
 
-This source code is part of the Morpheus project and is proprietary.
+This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 Use of this software requires explicit written permission from the copyright holder.
 """
 """
-Configuration management for Morpheus AGI Chatbot Framework.
+Configuration management for Syx AGI Chatbot Framework.
 
 This module handles environment variable loading and configuration validation.
 """
@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     )
 
     # V2: Database & Storage
-    db_path: str = Field(default="backend/app/data/morpheus.db", description="SQLite DB path")
+    db_path: str = Field(default="backend/app/data/syx.db", description="SQLite DB path")
     max_upload_mb: int = Field(default=10, gt=0, description="Max upload size per file (MB)")
     max_batch_mb: int = Field(default=50, gt=0, description="Max total batch size (MB)")
     storage_limit_mb: int = Field(default=500, gt=0, description="Total storage limit per project (MB)")

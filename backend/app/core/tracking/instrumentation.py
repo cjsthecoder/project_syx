@@ -420,7 +420,7 @@ class RealInstrumentation:
 
         record: Dict[str, Any] = {
             "case_id": case_id,
-            "system": "morpheus",
+            "system": "syx",
             "model_id": model_id,
             "timestamp": turn_payload.get("ts"),
             "run_id": self.run_id,
@@ -428,7 +428,7 @@ class RealInstrumentation:
             "main_total_tokens_reported": turn_payload.get("main_total_tokens_reported"),
             "turn_total_tokens_reported": turn_payload.get("turn_total_tokens_reported"),
             "latency_ms": turn_payload.get("ttlt_ms_turn_total"),
-            "metrics_source": "morpheus_instrumentation",
+            "metrics_source": "syx_instrumentation",
             "completeness": ("full" if not missing_fields else "partial"),
             "missing_fields": missing_fields,
             "prompt_text": prompt_text,

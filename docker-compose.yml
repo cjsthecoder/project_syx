@@ -1,14 +1,14 @@
-# Morpheus AGI Chatbot Framework - Docker Compose
+# Syx AGI Chatbot Framework - Docker Compose
 # Run: make docker-data-dirs (once), then docker-compose up -d
 # Config: mount .env at /app/.env (Option B); no secrets in image.
 
 services:
-  morpheus:
+  syx:
     build:
       context: .
       dockerfile: Dockerfile
-    image: morpheus:latest
-    container_name: morpheus
+    image: syx:latest
+    container_name: syx
     ports:
       - "8000:8000"
     volumes:

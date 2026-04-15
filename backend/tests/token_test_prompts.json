@@ -1,5 +1,5 @@
 {
-    "benchmark_name": "morpheus_controlled_memory_benchmark_v2",
+    "benchmark_name": "syx_controlled_memory_benchmark_v2",
     "description": "A 40-turn benchmark for testing delayed recall, bounded-context memory use, controlled long-form generation, and route diversity without relying on earlier freeform responses. Later turns depend only on seeded facts rather than prior generated prose, reducing semantic drift while still allowing realistic context growth.",
     "system_prompt": {
       "known_component": "You are helping with a controlled benchmark for memory, retrieval, and structured response generation. Follow each prompt exactly. When a prompt asks you to store or remember a fact, treat it as durable context for later turns. When a prompt asks for a response format, word range, number of bullets, numbered steps, or strict JSON, follow those instructions as closely as possible. Do not add extra framing text unless the prompt asks for it."

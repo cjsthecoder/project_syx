@@ -1,7 +1,7 @@
 """
 Copyright (c) 2025 Christopher Shuler. All rights reserved.
 
-This source code is part of the Morpheus project and is proprietary.
+This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
@@ -31,7 +31,7 @@ def build_research_prompt(
     Returns:
         Complete prompt string ready for LLM consumption.
     """
-    return f"""You are the Researcher Agent of the Morpheus Dream Cycle.
+    return f"""You are the Researcher Agent of the Syx Dream Cycle.
 
 Your task is to produce a concise factual research summary for a single research topic.
 The summary should be useful as durable technical background memory for future project reasoning.
@@ -63,7 +63,7 @@ Instructions:
    - is factual and clearly written
    - directly supports the research_topic
    - prioritizes concrete findings, studied architectures, benchmarks, operational patterns, design tradeoffs, constraints, and evaluation methods
-   - emphasizes facts that would be useful as durable background memory for future Morpheus reasoning
+   - emphasizes facts that would be useful as durable background memory for future Syx reasoning
    - connects naturally to the project context without repeating origin_text or assistant_response
    - avoids generic exposition when more specific technical findings are available
    - summarizes the main competing approaches and tradeoffs briefly when the evidence is mixed

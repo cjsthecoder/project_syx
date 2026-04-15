@@ -1,7 +1,7 @@
-# Morpheus
+# Syx
 
 ## Project Overview
-Morpheus is a modular system that provides a web-based chat interface backed by a FastAPI server and LangChain for LLM integration.  
+Syx is a modular system that provides a web-based chat interface backed by a FastAPI server and LangChain for LLM integration.  
 
 ## Setup (Python venv)
 Use a local virtual environment to isolate Python dependencies.
@@ -52,7 +52,7 @@ Or add it to your `.env` file alongside other settings (see `.env.example`).
 
 ## Docker (Ubuntu, Python 3.13.3)
 
-Run Morpheus in a container with bind-mounted data and a mounted `.env` (no secrets in the image).
+Run Syx in a container with bind-mounted data and a mounted `.env` (no secrets in the image).
 
 1. **Create host directories** for persistence (run once):
    ```bash

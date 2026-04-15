@@ -17,7 +17,7 @@ Follow these preferences: tone=creative, verbosity=balanced, format=markdown, do
 You are helping develop an original hard science fiction story. Maintain continuity across turns. Reuse established names, factions, technologies, locations, and story facts unless the user explicitly changes them. Prefer grounded scientific reasoning, clear structured outputs, and internally consistent world building.
 
 
-## Morpheus Setup
+## Syx Setup
 
 ### Verify these settings are set:
 FORCE_RAG_REBUILD_ON_STARTUP=false
@@ -32,7 +32,7 @@ GENERATE_DEBUG_FILES=true
 make setup-env
 
 ### Steps
-start Morpheus (make run)
+start Syx (make run)
 Create a new Project "Test Run" (or something unique for a test)
 
 Click the Manage button
@@ -55,10 +55,10 @@ Save/Close
 
 ## Test Execution
 
-For each prompt in the prompts.json file, cut and paste the prompt in one at a time into Morpheus first.
+For each prompt in the prompts.json file, cut and paste the prompt in one at a time into Syx first.
 Make sure to let each prompt finish, and tag before executing the next prompt.
 
-Once all the prompts are executed in Morpheus, quit the run.
+Once all the prompts are executed in Syx, quit the run.
 
 In the ChatGPT Project also cut and paste each prompt from prompts.json.
 Let each prompt completely finish before pasting/entering the next one.
@@ -70,10 +70,10 @@ Note the filename and the location so you can find it.
 
 ## Processing
 
-On the command line execute (from morpheus root):
+On the command line execute (from syx root):
 % python3 tools/extract_chat.py  <prompts.json> <chat_export.html> <test_run_path>
 
-On the command line execute (from morpheus root):
+On the command line execute (from syx root):
 % python3 tools/build_judge_input.py <test_run_path>
 
 

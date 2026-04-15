@@ -43,7 +43,7 @@ from .core.database import get_session
 from .core.db_models import Project
 from .rag.manager import rebuild_faiss_index
 from .core.route_policy import load_and_validate_route_policy
-from .core.tracking import init_instrumentation, get_instrumentation
+from .tracking import init_instrumentation, get_instrumentation
 import shutil
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger

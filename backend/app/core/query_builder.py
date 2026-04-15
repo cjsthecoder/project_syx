@@ -23,7 +23,7 @@ from datetime import datetime
 from openai import OpenAI
 
 from .config import get_settings
-from .tracking import get_instrumentation
+from ..tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
 
 logger = logging.getLogger(__name__)

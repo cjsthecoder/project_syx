@@ -20,7 +20,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 
 from .config import get_settings, validate_openai_key, get_model_config
-from .tracking import get_instrumentation
+from ..tracking import get_instrumentation
 
 # Set up module-level logger
 logger = logging.getLogger(__name__)

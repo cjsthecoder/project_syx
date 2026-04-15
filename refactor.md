@@ -158,3 +158,18 @@
   - config imports now reference `app.core.config`
   - RAG imports now reference `app.rag.manager`
 - Verified no remaining references to `app.core.dream` in backend runtime modules.
+
+## Post-plan ticket - Move tracking package out of core
+
+- Moved package directory:
+  - `backend/app/core/tracking/` -> `backend/app/tracking/`
+- Updated external imports:
+  - `backend/app/main.py`
+  - `backend/app/rag/manager.py`
+  - `backend/app/api/chat.py`
+  - `backend/app/tagging/tagger.py`
+  - `backend/app/core/llm.py`
+  - `backend/app/core/query_builder.py`
+- Updated moved package internals:
+  - instrumentation imports now reference `app.core.config` and `app.core.personality`
+- Verified no remaining runtime references to `app.core.tracking`.

@@ -33,7 +33,7 @@ from ..utils.errors import handle_project_error, log_error_context
 import uuid
 import os
 from ..core.memory import get_memory_manager, get_last_context_tokens
-from ..core.tagger import tag_pair
+from ..tagging.tagger import tag_pair
 from ..core.daily_rag import append_pair, daily_stats, rebuild_daily_cache, start_daily_cache_rebuild
 from filelock import FileLock
 from ..core.personality import (

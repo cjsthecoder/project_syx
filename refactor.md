@@ -115,3 +115,17 @@
   - `docker-compose.yml` bind mounts to `/app/data/*` and `/app/runtime/*`
   - `Makefile` defaults and maintenance targets (`DB_PATH`, lock cleanup, docker dir setup, hard reset)
 - Updated runtime defaults in `backend/app/core/config.py` to align with the new root layout.
+
+## Ticket 10 - Verification pass
+
+- Import/startup smoke:
+  - `cd backend && ../venv/bin/python -c "import app.main"` passed.
+- Backend tests:
+  - `cd backend && ../venv/bin/python -m pytest tests -q` ran with 16 passed / 4 failed.
+  - Failing tests are in `tests/test_llm.py` and are unrelated to this refactor ticket set.
+- Backend lint:
+  - `make lint-backend` fails due to existing repository-wide style issues in `backend/app/utils/logging.py` and existing test lint violations.
+- Frontend build:
+  - `make build` passed.
+- Docker compose config:
+  - `docker compose config` passed.

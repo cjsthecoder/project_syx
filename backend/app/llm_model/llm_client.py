@@ -53,7 +53,7 @@ class LLMClient:
             return None
         try:
             return float(m.group(1))
-        except Exception:
+        except (TypeError, ValueError):
             return None
 
     def embed(

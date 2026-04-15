@@ -94,7 +94,7 @@ def _estimate_message_tokens(messages: list) -> int:
     try:
         text = "\n".join(str(getattr(m, "content", "") or "") for m in (messages or []))
         return int(_estimate_tokens(text))
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return 0
 
 
@@ -118,7 +118,7 @@ def _extract_stream_usage(chunk: Any) -> tuple[Optional[dict], Optional[dict]]:
                     "output_token_details": usage_meta.get("output_token_details"),
                 }
                 return usage, {k: v for k, v in extras.items() if v is not None}
-    except Exception as exc:
+    except (AttributeError, TypeError, ValueError) as exc:
         logger.debug("chat.stream usage_metadata extraction failed; detail=%s", exc)
     try:
         md = getattr(chunk, "response_metadata", None) or {}
@@ -136,7 +136,7 @@ def _extract_stream_usage(chunk: Any) -> tuple[Optional[dict], Optional[dict]]:
                 }
                 extras = dict(token_usage)
                 return usage, extras
-    except Exception as exc:
+    except (AttributeError, TypeError, ValueError) as exc:
         logger.debug("chat.stream response_metadata usage extraction failed; detail=%s", exc)
     return None, None
 
@@ -251,7 +251,7 @@ class _ChatPipeline:
                 }
                 for m in hist
             ]
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             return None
 
     def load_project_prompts(self, project_id: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[float]]:
@@ -273,7 +273,7 @@ class _ChatPipeline:
                 f"domain_focus={domains}. Respond concisely in the chosen format."
             )
             return base_system_prompt, assistant_hint, personality_creativity
-        except Exception:
+        except (KeyError, TypeError, ValueError):
             return None, None, None
 
     def _build_builder_summary(self, project_id: Optional[str], conversation_history: Optional[list[dict]]) -> str:
@@ -351,7 +351,7 @@ class _ChatPipeline:
                         intent = str(parsed.get("intent", "") or "")
                         tag_type = str(parsed.get("type", "") or "")
                         semantic_handle = str(parsed.get("semantic_handle", "") or "")
-            except Exception:
+            except (TypeError, ValueError, json.JSONDecodeError):
                 logger.debug("chat.previous_pair_text failed parsing tags_meta_json", exc_info=True)
 
             return (
@@ -373,7 +373,7 @@ class _ChatPipeline:
                 p = session.get(Project, project_id)
                 if p is not None:
                     return bool(p.daily_rag_enabled)
-        except Exception:
+        except (OSError, TypeError, ValueError):
             logger.debug("chat.daily_enabled lookup failed project_id=%s", project_id, exc_info=True)
         return True
 
@@ -597,7 +597,7 @@ class _ChatPipeline:
             if base_system_prompt:
                 return base_system_prompt.rstrip() + "\n\n" + RAG_SYSTEM_PROMPT.strip() + "\n"
             return RAG_SYSTEM_PROMPT.strip() + "\n"
-        except Exception:
+        except (AttributeError, TypeError):
             return base_system_prompt
 
     def enforce_model_whitelist(self, requested_model: Optional[str]) -> None:

@@ -237,8 +237,12 @@ class MemoryManager:
                     if p is not None:
                         p.last_semantic_handle = semantic_handle.strip()
                         session.add(p)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "append_assistant_message failed updating project semantic handle; project_id=%s detail=%s",
+                    project_id,
+                    exc,
+                )
             session.commit()
             session.refresh(msg)
         self.project_deques[project_id].append({

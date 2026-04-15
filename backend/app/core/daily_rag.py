@@ -231,8 +231,8 @@ def notify_daily_search_failure(project_id: str, reason: str) -> None:
     """Source-owned rebuild trigger for canonical to call on Daily search failure."""
     try:
         start_daily_cache_rebuild(project_id, reason=reason)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("DailyRAG: failed scheduling cache rebuild project=%s reason=%s detail=%s", project_id, reason, exc)
 
 
 _CACHE: Dict[str, _DailyCache] = {}
@@ -363,8 +363,8 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
                         seq = int(e.get("day_sequence"))
                         if seq > 0:
                             id_by_seq[seq] = eid
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("DailyRAG: invalid day_sequence for entry id=%s project=%s detail=%s", eid, project_id, exc)
                 texts.append(t)
                 metas.append(
                     {
@@ -458,8 +458,8 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
                     f"# day_sequence_max: {seqs[-1] if seqs else None}\n"
                 )
                 write_debug_file(project_id, f"rag/daily/{ts}_daily_cache_report.txt", body)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("DailyRAG: failed writing daily cache debug report project=%s detail=%s", project_id, exc)
             return True
         except Exception as be:
             logger.error("DailyRAG: rebuild failed project=%s reason=%s err=%s", project_id, reason, be)
@@ -546,8 +546,8 @@ def append_pair(
                         begin_date = time.strftime("%m/%d/%Y", time.localtime())
                         with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
                             tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("DailyRAG: failed ensuring daily BEGIN header project=%s path=%s detail=%s", project_id, txt_path, exc)
                 ts = entry["created_at"]
                 # Split pair_text into user and assistant parts safely
                 if "\nAssistant:" in pair_text:
@@ -651,16 +651,16 @@ def append_pair(
                 eid2 = entry.get("id")
                 if eid2:
                     cache.meta_by_id[str(eid2)] = entry
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("DailyRAG: failed updating meta_by_id project=%s entry_id=%s detail=%s", project_id, entry.get("id"), exc)
             # Update adjacency map (best-effort)
             try:
                 seq2 = entry.get("day_sequence")
                 eid3 = entry.get("id")
                 if eid3 is not None and seq2 is not None:
                     cache.id_by_seq[int(seq2)] = str(eid3)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("DailyRAG: failed updating id_by_seq project=%s entry_id=%s detail=%s", project_id, entry.get("id"), exc)
             return True
     except Exception as e:
         logger.error("DailyRAG: in-memory add failed project=%s: %s", project_id, e)
@@ -692,8 +692,8 @@ def append_pair_text_only(
                     begin_date = time.strftime("%m/%d/%Y", time.localtime())
                     with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
                         tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("DailyRAG: failed ensuring text-only BEGIN header project=%s path=%s detail=%s", project_id, txt_path, exc)
             ts = created_at_iso_utc or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             # Localize timestamp to MM-DD-YYYY_HH:MM:SS
             try:

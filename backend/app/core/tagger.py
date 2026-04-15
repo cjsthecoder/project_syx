@@ -137,8 +137,8 @@ def _responses_text(resp: Any) -> str:
         text = getattr(resp, "output_text", None)
         if isinstance(text, str) and text:
             return text
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("[TAGGER] Failed reading output_text from response payload: %s", exc)
     out: list[str] = []
     try:
         for item in getattr(resp, "output", []) or []:
@@ -146,8 +146,8 @@ def _responses_text(resp: Any) -> str:
                 for c in getattr(item, "content", []) or []:
                     if getattr(c, "type", "") == "output_text":
                         out.append(getattr(c, "text", "") or "")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("[TAGGER] Failed iterating response output payload: %s", exc)
     return "".join(out).strip()
 
 
@@ -417,8 +417,8 @@ def tag_pair(
                         v = getattr(u, k, None)
                         if v is not None:
                             extra_usage[k] = v
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("[TAGGER] Failed reading usage field=%s detail=%s", k, exc)
             if total_tok > 0:
                 usage = {
                     "purpose": "tagger",
@@ -430,8 +430,8 @@ def tag_pair(
                 }
                 if extra_usage:
                     usage["extra_usage"] = extra_usage
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("[TAGGER] Failed extracting usage metadata for invocation_id=%s: %s", invocation_id, exc)
         raw = _responses_text(resp)
         clean = raw
         if clean.startswith("```"):
@@ -496,8 +496,8 @@ def tag_pair(
                     + "\n"
                 )
                 write_debug_file(project_id, f"prompts/{fname}", body)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("[TAGGER] Failed writing debug tagger prompt dump project_id=%s: %s", project_id, exc)
 
         # Log trimmed for brevity
         try:
@@ -509,8 +509,8 @@ def tag_pair(
                 (semantic_handle or "")[:120] if isinstance(semantic_handle, str) else "None",
                 int(len(questions)),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("[TAGGER] Failed writing tagger summary log project_id=%s: %s", project_id, exc)
         instr.end_invocation(
             invocation_id,
             usage=usage,
@@ -540,8 +540,8 @@ def tag_pair(
                     },
                     timing={"ttlt_ms": int((time.perf_counter() - t0) * 1000.0)} if "t0" in locals() else {},
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("[TAGGER] Failed finalizing invocation after error project_id=%s: %s", project_id, exc)
         # Debug dump on failure (best-effort)
         try:
             settings = get_settings()
@@ -566,8 +566,8 @@ def tag_pair(
                     + "\n"
                 )
                 write_debug_file(project_id, f"prompts/{fname}", body)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("[TAGGER] Failed writing debug failure dump project_id=%s: %s", project_id, exc)
         return None
 
 

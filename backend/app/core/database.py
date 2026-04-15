@@ -12,6 +12,7 @@ Database setup for Syx (SQLModel + SQLite).
 """
 
 import os
+import logging
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -20,6 +21,8 @@ from sqlmodel import SQLModel, Session, create_engine
 from .config import get_settings
 from .db_models import Project
 from sqlmodel import select
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_dir(path: str) -> None:
@@ -52,7 +55,8 @@ def _run_migrations() -> None:
         alembic_ini = os.path.join(base_dir, "..", "alembic.ini")
         cfg = Config(alembic_ini)
         command.upgrade(cfg, "head")
-    except Exception:
+    except Exception as exc:
+        logger.warning("database._run_migrations failed; falling back to create_all detail=%s", exc)
         # Fallback to create_all in dev if migrations cannot run
         from . import db_models  # noqa: F401 ensure models are imported
         SQLModel.metadata.create_all(engine)
@@ -69,8 +73,8 @@ def init_db() -> None:
             if legacy and not legacy.system:
                 session.delete(legacy)
                 session.commit()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("database.init_db failed removing legacy default project detail=%s", exc)
 
 
 @contextmanager

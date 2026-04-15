@@ -161,8 +161,8 @@ class LLMProvider:
                 roles = [getattr(m, "type", m.__class__.__name__) for m in messages]
                 lens = [len(getattr(m, "content", "") or "") for m in messages]
                 logger.debug("[PROMPT] sending messages roles=%s lens=%s", roles, lens)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("llm.generate_response prompt debug formatting failed detail=%s", exc)
             
             # Determine temperature
             temp_value = (
@@ -322,8 +322,8 @@ class LLMProvider:
                         },
                         timing={"ttlt_ms": int((time.perf_counter() - invoke_start) * 1000.0)},
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("llm.generate_response failed ending invocation invocation_id=%s detail=%s", invocation_id, exc)
             logger.error(f"Error generating response: {str(e)}")
             return {
                 "response": f"I apologize, but I encountered an error: {str(e)}",

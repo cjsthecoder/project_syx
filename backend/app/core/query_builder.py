@@ -146,8 +146,8 @@ def _responses_text(resp: Any) -> str:
         text = getattr(resp, "output_text", None)
         if isinstance(text, str) and text:
             return text
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("builder responses_text failed reading output_text: %s", exc)
     out: list[str] = []
     try:
         for item in getattr(resp, "output", []) or []:
@@ -155,8 +155,8 @@ def _responses_text(resp: Any) -> str:
                 for c in getattr(item, "content", []) or []:
                     if getattr(c, "type", "") == "output_text":
                         out.append(getattr(c, "text", "") or "")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("builder responses_text failed iterating output: %s", exc)
     return "".join(out).strip()
 
 
@@ -339,8 +339,8 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
                         v = getattr(u, k, None)
                         if v is not None:
                             extra_usage[k] = v
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("builder usage field read failed field=%s detail=%s", k, exc)
             if total_tok > 0:
                 usage = {
                     "purpose": "router",
@@ -352,8 +352,8 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
                 }
                 if extra_usage:
                     usage["extra_usage"] = extra_usage
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("builder usage extraction failed project_id=%s detail=%s", project_id, exc)
         raw = _responses_text(resp)
         logger.debug("builder raw=%s", (raw[:cap] + ("…" if len(raw) > cap else "")))
         # Clean output to ensure strict JSON parsing
@@ -371,8 +371,8 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
                 pos = getattr(je, "pos", 0)
                 snippet = clean[max(0, pos - 80) : pos + 80]
                 logger.debug("builder json decode failed near pos=%s snippet=%r", pos, snippet)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("builder json decode diagnostics failed project_id=%s detail=%s", project_id, exc)
             import re
             m = re.search(r"\{[\s\S]*\}", clean)
             if not m:
@@ -392,8 +392,8 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
                 data=data,
                 model=settings.builder_model,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("builder debug prompt dump failed project_id=%s detail=%s", project_id, exc)
         data2 = _filter_route_only(data)
         if settings.builder_cache:
             _CACHE[key] = (time.time(), data2)
@@ -417,8 +417,8 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
                 data=(data if isinstance(data, dict) else None),
                 model=getattr(settings, "builder_model", None),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("builder failure-path prompt dump failed project_id=%s detail=%s", project_id, exc)
         logger.warning(f"builder failed: {e}")
         if invocation_id:
             instr.end_invocation(

@@ -118,8 +118,13 @@ class LLMClient:
                         break
                     try:
                         time.sleep(wait_s)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.info(
+                            "LLMClient.embed sleep interrupted during rate-limit backoff; model=%s wait_s=%.2f detail=%s",
+                            str(use_model),
+                            float(wait_s),
+                            str(exc),
+                        )
                     continue
 
                 general_attempt += 1
@@ -129,8 +134,13 @@ class LLMClient:
                 try:
                     backoff_s = (0.4 * (2 ** (general_attempt - 1))) + random.uniform(0.0, 0.2)
                     time.sleep(backoff_s)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.info(
+                        "LLMClient.embed sleep interrupted during general backoff; model=%s backoff_s=%.2f detail=%s",
+                        str(use_model),
+                        float(backoff_s),
+                        str(exc),
+                    )
         raise RuntimeError(
             "LLMClient.embed failed after retries="
             f"{retries} and rate_limit_retries={rate_limit_retries}: {last_err}"

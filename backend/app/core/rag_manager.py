@@ -257,10 +257,15 @@ def _clear_dir_contents(path: str) -> None:
             for fn in files:
                 try:
                     os.remove(os.path.join(root, fn))
-                except Exception:
-                    pass
-    except Exception:
-        pass
+                except Exception as exc:
+                    logger.warning(
+                        "RAG: failed removing file during clear_dir path=%s file=%s detail=%s",
+                        path,
+                        os.path.join(root, fn),
+                        exc,
+                    )
+    except Exception as exc:
+        logger.warning("RAG: failed clearing directory contents path=%s detail=%s", path, exc)
 
 
 def _build_ltm_adjacency_lists(
@@ -363,16 +368,16 @@ def _schedule_ltm_rebuild(project_id: str, reason: str) -> None:
         def _rebuild() -> None:
             try:
                 rebuild_faiss_index(project_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("RAG: background LTM rebuild failed project=%s detail=%s", project_id, exc, exc_info=True)
             finally:
                 with _LTM_REBUILD_LOCK:
                     _LTM_REBUILDING.discard(project_id)
 
         threading.Thread(target=_rebuild, name=f"ltm-rebuild-{project_id[:8]}", daemon=True).start()
         logger.warning("RAG: scheduled LTM rebuild project=%s reason=%s", project_id, reason)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("RAG: failed scheduling LTM rebuild project=%s reason=%s detail=%s", project_id, reason, exc)
 
 
 def _read_file_text(path: str) -> List[Tuple[str, dict]]:
@@ -641,8 +646,8 @@ def rebuild_faiss_index(project_id: str) -> str:
                     row.embedding_status = "indexed"
                     session.add(row)
             session.commit()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("RAG: failed backfilling file stats project=%s detail=%s", project_id, exc, exc_info=True)
     return faiss_dir
 
 
@@ -747,9 +752,9 @@ def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
                     # If missing/invalid, rebuild (A.4.4.1+ only). Legacy absence is expected.
                     if not isinstance(adj_obj, dict) or adj_obj.get("schema_version") != _ADJACENCY_SCHEMA_VERSION:
                         _schedule_ltm_rebuild(project_id, reason="a441_adjacency_missing_or_invalid")
-        except Exception:
+        except Exception as exc:
             # Best-effort only; never block retrieval.
-            pass
+            logger.warning("RAG: failed validating adjacency manifest project=%s detail=%s", project_id, exc)
         built_at = None
         schema_version = None
         try:
@@ -758,8 +763,8 @@ def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
             if isinstance(manifest, dict):
                 built_at = manifest.get("built_at") if isinstance(manifest.get("built_at"), str) else None
                 schema_version = manifest.get("schema_version") if isinstance(manifest.get("schema_version"), str) else None
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("RAG: failed loading optional manifest metadata project=%s detail=%s", project_id, exc)
         logger.debug(f"RAG: loaded index for '{project_id}' with {int(index.ntotal)} vectors")
         return LTMIndex(
             index=index,
@@ -982,8 +987,12 @@ def canonical_retrieve_candidates(
                 try:
                     logger.warning("RAG: LTM candidate search failed project=%s; scheduling rebuild: %s", project_id, e)
                     _schedule_ltm_rebuild(project_id, reason="canonical_ltm_search_exception")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning(
+                        "RAG: failed scheduling LTM rebuild after search exception project=%s detail=%s",
+                        project_id,
+                        exc,
+                    )
                 return []
 
         results = _ltm_search_by_vector()
@@ -1033,8 +1042,8 @@ def canonical_retrieve_candidates(
             int(ltm_count),
             qprev,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("RAG: canonical retrieval debug logging failed project=%s detail=%s", project_id, exc)
     return out
 
 
@@ -1231,8 +1240,12 @@ def merge_daily_and_main(
                     if abs(a - b) == 1:
                         effective_limit += 1
                         adjacent_bonus += 1
-                except (TypeError, ValueError):
-                    pass
+                except (TypeError, ValueError) as exc:
+                    logger.debug(
+                        "RAG: adjacent bonus check skipped due to invalid chunk index project=%s detail=%s",
+                        project_id,
+                        exc,
+                    )
     selected_candidates = list(kept_candidates)
 
     # DELTA-A.4.4.2: rank-weighted adjacency expansion (materialized per-candidate; no dedupe, no token pruning).
@@ -1413,9 +1426,9 @@ def merge_daily_and_main(
                 c["expanded_chunks"] = chunks
                 # Keep downstream prompt assembly compatible by materializing candidate text from chunks.
                 c["text"] = "\n".join(str(ch.get("text") or "") for ch in chunks if isinstance(ch, dict))
-    except Exception:
+    except Exception as exc:
         # Best-effort: never block retrieval/prompt assembly.
-        pass
+        logger.warning("RAG: failed materializing expanded chunks project=%s detail=%s", project_id, exc, exc_info=True)
 
     # DELTA-A.4.4.3.2: chunk identity dedupe (first-seen wins) over structured expansion output.
     # Operates in kept_candidates order, then per-candidate chunk order.
@@ -1491,9 +1504,9 @@ def merge_daily_and_main(
                     }
                 )
         kept_candidates = deduped_chunks
-    except Exception:
+    except Exception as exc:
         # Best-effort: never block retrieval/prompt assembly.
-        pass
+        logger.warning("RAG: failed deduping expanded chunks project=%s detail=%s", project_id, exc, exc_info=True)
 
     # A.4.4.3.3: source-document ordering and narrative coherence.
     # Extract sources (first-seen order); per source sort by chunk_index ascending; sparse chunks in first-seen order at end.
@@ -1528,9 +1541,9 @@ def merge_daily_and_main(
             ordered_chunks_list.extend(chunks)
         ordered_chunks_list.extend(sparse_chunks)
         kept_candidates = ordered_chunks_list
-    except Exception:
+    except Exception as exc:
         # Best-effort: never block retrieval/prompt assembly.
-        pass
+        logger.warning("RAG: failed ordering deduped chunks project=%s detail=%s", project_id, exc, exc_info=True)
 
     # A.4.4.3.4: adjacent chunk overlap trimming (in-place; same-doc consecutive pairs only).
     try:
@@ -1539,16 +1552,16 @@ def merge_daily_and_main(
             kept_candidates or [],
             int(settings.chunk_overlap),
         )
-    except Exception:
+    except Exception as exc:
         # Best-effort: never block retrieval/prompt assembly.
-        pass
+        logger.warning("RAG: failed trimming adjacent overlap project=%s detail=%s", project_id, exc, exc_info=True)
 
     # A.4.4.3.5: snippet-group collapse (one entry per adjacent same-document run).
     try:
         kept_candidates = _collapse_snippet_groups(kept_candidates or [])
-    except Exception:
+    except Exception as exc:
         # Best-effort: never block retrieval/prompt assembly.
-        pass
+        logger.warning("RAG: failed collapsing snippet groups project=%s detail=%s", project_id, exc, exc_info=True)
 
     # Debug dumps (human-readable .txt) for A.4.2 ordering and A.4.3 selection.
     try:
@@ -1720,8 +1733,8 @@ def merge_daily_and_main(
                 f"rag/retrieval/{ts}_deduped_chunks.txt",
                 _fmt_deduped_chunks_with_audit(kept_candidates),
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("RAG: failed writing retrieval debug artifacts project=%s detail=%s", project_id, exc, exc_info=True)
 
     # Prompt assembly stage (after ordering + selection).
     tokens_used_total = 0
@@ -1795,8 +1808,12 @@ def merge_daily_and_main(
                 "tokens_used": int(tokens_used_total),
             },
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            "RAG: instrumentation stage record failed project=%s op=retrieval_selection_expansion detail=%s",
+            project_id,
+            exc,
+        )
 
     return {
         "context_text": context_text,

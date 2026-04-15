@@ -613,14 +613,18 @@ async def delete_project(project_id: str) -> JSONResponse:
             mm = get_memory_manager()
             try:
                 mm.project_deques.pop(project_id, None)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.info("[PROJECT] Failed clearing project deque project_id=%s: %s", project_id, exc)
             try:
                 mm.clear_last_rolled_off_pair(project_id)
-            except Exception:
-                pass
-        except Exception:
-            pass
+            except Exception as exc:
+                logger.info(
+                    "[PROJECT] Failed clearing last_rolled_off_pair project_id=%s: %s",
+                    project_id,
+                    exc,
+                )
+        except Exception as exc:
+            logger.info("[PROJECT] Memory manager cleanup failed project_id=%s: %s", project_id, exc)
         # Reset current project to Continuum if needed
         global _current_project
         if _current_project == project_id:
@@ -646,8 +650,8 @@ async def project_stats(project_id: str) -> JSONResponse:
     # DELTA-A.1: lazily warm Daily in-memory cache on first project-scoped request
     try:
         start_daily_cache_rebuild(project_id, reason="project_stats")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.info("[PROJECT] Daily cache warm request failed project_id=%s op=project_stats detail=%s", project_id, exc)
     # storage and tokens from DB
     with get_session() as session:
         rows = session.exec(select(File).where(File.project_id == project_id)).all()
@@ -662,8 +666,13 @@ async def project_stats(project_id: str) -> JSONResponse:
             for n in files:
                 try:
                     index_size += os.path.getsize(os.path.join(root, n))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.info(
+                        "[PROJECT] Failed reading file size project_id=%s file=%s detail=%s",
+                        project_id,
+                        os.path.join(root, n),
+                        exc,
+                    )
     # context tokens from memory manager
     context_tokens = get_last_context_tokens(project_id)
     # If missing/zero, recompute from stored working memory for this project (excludes any RAG system prompts)
@@ -791,8 +800,13 @@ async def set_chat_forget(project_id: str, assistant_msg_id: int, payload: dict)
                         if keep_val_present:
                             m["keep"] = bool(keep_val)
                         break
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "[PROJECT] Failed updating in-memory chat flags project_id=%s assistant_msg_id=%s detail=%s",
+                project_id,
+                str(assistant_msg_id),
+                exc,
+            )
         return JSONResponse(
             status_code=200,
             content={
@@ -822,8 +836,8 @@ async def get_project_personality(project_id: str) -> JSONResponse:
                 p.get("verbosity"),
                 p.get("format"),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.info("[PROJECT] personality_get debug log failed project_id=%s detail=%s", project_id, exc)
         return JSONResponse(status_code=200, content={
             "project_id": project_id,
             "personality": p,

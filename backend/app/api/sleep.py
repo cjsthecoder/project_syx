@@ -89,8 +89,13 @@ def _consolidate_open_questions_artifact(project_id: str) -> Dict[str, Any]:
         try:
             with open(out_path, "w", encoding="utf-8", newline="\n") as f:
                 json.dump(consolidated, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "[SLEEP][QUESTIONS] Failed writing empty consolidated artifact project=%s path=%s detail=%s",
+                project_id,
+                out_path,
+                exc,
+            )
         return consolidated
 
     latest_by_key: Dict[str, Tuple[Tuple[str, int], Dict[str, Any]]] = {}
@@ -146,8 +151,13 @@ def _consolidate_open_questions_artifact(project_id: str) -> Dict[str, Any]:
             try:
                 with open(out_path, "w", encoding="utf-8", newline="\n") as f:
                     json.dump(consolidated, f, ensure_ascii=False, indent=2)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "[SLEEP][QUESTIONS] Failed writing fallback consolidated artifact project=%s path=%s detail=%s",
+                    project_id,
+                    out_path,
+                    exc,
+                )
             return consolidated
 
         rows: List[Dict[str, Any]] = []
@@ -309,16 +319,25 @@ def _sleep_cycle_worker():
                                     if row:
                                         session.delete(row)
                                         session.commit()
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.warning(
+                                    "[SLEEP][FLUSH] Failed deleting orphan row project=%s row_id=%s detail=%s",
+                                    pid,
+                                    getattr(msgs[i], "id", None),
+                                    exc,
+                                )
                             i += 1
                     # Clear in-memory deque cache for this project to force reload
                     try:
                         if pid in mem.project_deques:
                             mem.project_deques.pop(pid, None)
                         mem.clear_last_rolled_off_pair(pid)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning(
+                            "[SLEEP][FLUSH] Failed clearing in-memory caches project=%s detail=%s",
+                            pid,
+                            exc,
+                        )
                     if flushed:
                         logger.info("[SLEEP][FLUSH] flushed_pairs=%s project=%s", flushed, pid)
                 except Exception as fe:
@@ -498,8 +517,12 @@ def _sleep_cycle_worker():
                                         if os.path.exists(meta_path):
                                             try:
                                                 os.remove(meta_path)
-                                            except Exception:
-                                                pass
+                                            except Exception as exc:
+                                                logger.warning(
+                                                    "[SLEEP][CLEANUP] Failed removing daily.json for %s: %s",
+                                                    pid,
+                                                    exc,
+                                                )
                                         # remove daily.txt
                                         if os.path.exists(txt_path):
                                             try:
@@ -511,8 +534,12 @@ def _sleep_cycle_worker():
                                                 )
                                     try:
                                         clear_daily_cache(pid)
-                                    except Exception:
-                                        pass
+                                    except Exception as exc:
+                                        logger.warning(
+                                            "[SLEEP][MERGE] Failed clearing in-memory daily cache for %s: %s",
+                                            pid,
+                                            exc,
+                                        )
                                     logger.info(
                                         "[SLEEP][MERGE] Cleared in-memory daily cache and removed daily.json for %s",
                                         pid,

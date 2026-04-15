@@ -349,7 +349,7 @@ def _sleep_cycle_worker():
         except Exception as e:
             status = "partial"
             errors.append("flush:global")
-            logger.warning("[SLEEP][FLUSH][WARN] global flush step failed: %s", e)
+            logger.warning("[SLEEP][FLUSH][WARN] global flush step failed; operation=flush_pairs detail=%s", e)
         # Backfill daily.txt if missing (current V2.x behavior)
         try:
             with get_session() as session:
@@ -442,7 +442,10 @@ def _sleep_cycle_worker():
                             try:
                                 write_debug_file(pid, "debug_dream_summary.txt", formatted_dream)
                             except Exception:
-                                logger.warning("[SLEEP][DREAM_SUMMARY] Failed writing debug file for %s", pid)
+                                logger.warning(
+                                    "[SLEEP][DREAM_SUMMARY] Failed writing debug file; operation=write_debug_file project_id=%s",
+                                    pid,
+                                )
                         dream_upload_text = formatted_dream
                 except Exception as de:
                     logger.warning("[SLEEP][DREAM_SUMMARY][WARN] project=%s: %s", pid, de)
@@ -572,7 +575,7 @@ def _sleep_cycle_worker():
             release_lock()
             logger.debug("[SLEEP] Lock released")
         except Exception as e:
-            logger.warning("[SLEEP] finalize failed: %s", e)
+            logger.warning("[SLEEP] finalize failed; operation=release_lock detail=%s", e)
 
 def start_sleep_cycle_async() -> bool:
     """Start sleep cycle in background if not already sleeping. Returns True if started."""

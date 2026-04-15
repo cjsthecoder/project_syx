@@ -645,7 +645,10 @@ class _ChatPipeline:
                 },
             )
         except Exception as exc:
-            logger.warning("chat.prompt_assembly instrumentation failed detail=%s", exc)
+            logger.warning(
+                "chat.prompt_assembly instrumentation failed; operation=record_stage module=chat_stream detail=%s",
+                exc,
+            )
         return msgs
 
     def persist_user(self, project_id: Optional[str], message: str) -> None:
@@ -654,7 +657,12 @@ class _ChatPipeline:
         try:
             get_memory_manager().append_user_message(project_id, message)
         except Exception as exc:
-            logger.warning("chat.persist_user failed project_id=%s detail=%s", project_id, exc, exc_info=True)
+            logger.warning(
+                "chat.persist_user failed; operation=append_user_message project_id=%s detail=%s",
+                project_id,
+                exc,
+                exc_info=True,
+            )
 
     def persist_assistant(
         self,
@@ -688,7 +696,12 @@ class _ChatPipeline:
                 skip_tagger=bool(skip_tagger),
             )
         except Exception as exc:
-            logger.warning("chat.persist_assistant failed project_id=%s detail=%s", project_id, exc, exc_info=True)
+            logger.warning(
+                "chat.persist_assistant failed; operation=append_assistant_message project_id=%s detail=%s",
+                project_id,
+                exc,
+                exc_info=True,
+            )
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -782,7 +795,12 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 model=(request.model or settings.model_name),
             )
         except Exception as exc:
-            logger.warning("chat.prompt_debug dump failed project_id=%s message_id=%s detail=%s", request.project_id, msg_id, exc)
+            logger.warning(
+                "chat.prompt_debug dump failed; operation=write_debug_file project_id=%s message_id=%s detail=%s",
+                request.project_id,
+                msg_id,
+                exc,
+            )
         # Generate response using LangChain
         t_model0 = time.time()
         llm_response = generate_chat_response(
@@ -848,7 +866,12 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             if request.project_id:
                 set_last_context_tokens(request.project_id, context_tokens)
         except Exception as exc:
-            logger.warning("chat.context_tokens update failed project_id=%s detail=%s", request.project_id, exc)
+            logger.warning(
+                "chat.context_tokens update failed; operation=set_last_context_tokens project_id=%s message_id=%s detail=%s",
+                request.project_id,
+                msg_id,
+                exc,
+            )
         
         # Create response
         response = ChatResponse(
@@ -949,7 +972,12 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                     }
                 )
         except Exception as exc:
-            logger.warning("chat.turn_end instrumentation failed project_id=%s detail=%s", request.project_id, exc)
+            logger.warning(
+                "chat.turn_end instrumentation failed; operation=end_turn project_id=%s turn_id=%s detail=%s",
+                request.project_id,
+                turn_id,
+                exc,
+            )
         clear_message_id()
         try:
             clear_namespace()
@@ -1243,7 +1271,12 @@ async def chat_stream(request: ChatRequest):
                         )
                         turn_closed = True
                 except Exception as exc:
-                    logger.warning("chat.stream turn_end failed project_id=%s detail=%s", request.project_id, exc)
+                    logger.warning(
+                        "chat.stream turn_end failed; operation=end_turn project_id=%s turn_id=%s detail=%s",
+                        request.project_id,
+                        turn_id,
+                        exc,
+                    )
 
         return StreamingResponse(token_stream(), media_type="text/plain; charset=utf-8")
     except Exception as e:
@@ -1276,7 +1309,12 @@ async def chat_stream(request: ChatRequest):
                 )
                 turn_closed = True
         except Exception as exc:
-            logger.warning("chat.stream error turn_end failed project_id=%s detail=%s", request.project_id, exc)
+            logger.warning(
+                "chat.stream error turn_end failed; operation=end_turn project_id=%s turn_id=%s detail=%s",
+                request.project_id,
+                turn_id,
+                exc,
+            )
         return JSONResponse(status_code=500, content={"error": str(e)})
     finally:
         clear_message_id()

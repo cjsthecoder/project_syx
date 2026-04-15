@@ -498,7 +498,7 @@ class RealInstrumentation:
 
                 return self.run_id
             except Exception as e:
-                logger.warning("tracking.start_run failed: %s", e, exc_info=True)
+                logger.warning("tracking.start_run failed; operation=start_run run_id=%s detail=%s", self._run_id, e, exc_info=True)
                 return ""
 
     def end_run(self, summary: Optional[dict] = None) -> None:
@@ -521,7 +521,7 @@ class RealInstrumentation:
                 self._write_run_json()
                 self._ended = True
             except Exception as e:
-                logger.warning("tracking.end_run failed: %s", e, exc_info=True)
+                logger.warning("tracking.end_run failed; operation=end_run run_id=%s detail=%s", self._run_id, e, exc_info=True)
 
     def start_turn(self, turn_id: int, user_meta: Optional[dict] = None) -> None:
         with self._lock:
@@ -561,7 +561,7 @@ class RealInstrumentation:
                 self._append_jsonl("turns.jsonl", payload)
                 self._observe_project_for_run(user_meta)
             except Exception as e:
-                logger.warning("tracking.start_turn failed: %s", e, exc_info=True)
+                logger.warning("tracking.start_turn failed; operation=start_turn turn_id=%s detail=%s", turn_id, e, exc_info=True)
 
     def end_turn(self, output_meta: Optional[dict] = None) -> None:
         with self._lock:
@@ -752,7 +752,7 @@ class RealInstrumentation:
                 if tid is not None:
                     self._turn_state.pop(int(tid), None)
             except Exception as e:
-                logger.warning("tracking.end_turn failed: %s", e, exc_info=True)
+                logger.warning("tracking.end_turn failed; operation=end_turn turn_id=%s detail=%s", turn_id, e, exc_info=True)
 
     def start_invocation(self, purpose: str, model: str, meta: Optional[dict] = None) -> str:
         with self._lock:
@@ -800,7 +800,7 @@ class RealInstrumentation:
                 }
                 return invocation_id
             except Exception as e:
-                logger.warning("tracking.start_invocation failed: %s", e, exc_info=True)
+                logger.warning("tracking.start_invocation failed; operation=start_invocation detail=%s", e, exc_info=True)
                 return ""
 
     def end_invocation(
@@ -1033,7 +1033,12 @@ class RealInstrumentation:
 
                 self._invocation_state.pop(invocation_id, None)
             except Exception as e:
-                logger.warning("tracking.end_invocation failed: %s", e, exc_info=True)
+                logger.warning(
+                    "tracking.end_invocation failed; operation=end_invocation invocation_id=%s detail=%s",
+                    invocation_id,
+                    e,
+                    exc_info=True,
+                )
 
     def record_stage(self, name: str, data: dict) -> None:
         with self._lock:
@@ -1116,7 +1121,7 @@ class RealInstrumentation:
                 }
                 self._append_jsonl("turns.jsonl", payload)
             except Exception as e:
-                logger.warning("tracking.record_stage failed: %s", e, exc_info=True)
+                logger.warning("tracking.record_stage failed; operation=record_stage detail=%s", e, exc_info=True)
 
 _INSTRUMENTATION: Instrumentation = NoopInstrumentation()
 _REGISTERED_ATEXIT = False

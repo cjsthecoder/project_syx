@@ -22,8 +22,8 @@ import faiss  # type: ignore
 import numpy as np  # type: ignore
 
 from ..core.config import get_settings
-from ..core.embed_batching import iter_token_batches
-from ..core.vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
+from ..embedding.batching import iter_token_batches
+from ..embedding.vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
 from ..llm_model.llm_client import get_llm_client
 from ..utils.debug_utils import write_debug_file
 logger = logging.getLogger(__name__)

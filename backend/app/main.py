@@ -57,7 +57,7 @@ logger = get_logger()  # Use single shared logger
 settings = get_settings()
 logger.info("Config: DB_PATH=%s", settings.db_path)
 
-# DELTA-A.4.3: route_policy.json is required; validate at startup (fail-fast).
+# route_policy.json is required; validate at startup (fail-fast).
 try:
     load_and_validate_route_policy()
 except Exception as e:
@@ -140,7 +140,7 @@ async def lifespan(app: FastAPI):
                 "deprecated_or_ignored": {
                     "rag_score_threshold": float(s.rag_score_threshold),
                     "daily_rag_score_threshold": float(s.daily_rag_score_threshold),
-                    "note": "not enforced in A.4.1-A.4.3",
+                    "note": "not enforced by current retrieval selection pipeline",
                 },
                 "maintenance": {
                     "sleep_enabled": True,

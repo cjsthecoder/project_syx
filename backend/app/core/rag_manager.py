@@ -94,7 +94,7 @@ def _uploads_relative_doc_id(uploads_dir: str, file_path: str) -> str:
 
 def _ltm_doc_id(filename: Optional[str], page_number: Optional[Any]) -> Optional[str]:
     """
-    DELTA-A.4.4.1: doc_id boundary rules.
+    doc_id boundary rules.
 
     - Adjacency is within the same uploaded source document only (no cross-file).
     - PDFs are not supported in the langchain-removal implementation.
@@ -129,7 +129,7 @@ def _trim_adjacent_chunk_overlap(
     chunk_overlap: int,
 ) -> None:
     """
-    DELTA-A.4.4.3.4: Adjacent Chunk Overlap Trimming (Fourth Pass).
+    Adjacent chunk overlap trimming.
 
     In-place: for each consecutive pair (A, B) with the same valid source_document_id,
     find the longest exact overlap of A's suffix and B's prefix (capped by chunk_overlap)
@@ -166,7 +166,7 @@ def _trim_adjacent_chunk_overlap(
 
 def _collapse_snippet_groups(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    DELTA-A.4.4.3.5: Snippet-Group Collapse (Fifth Pass).
+    Snippet-group collapse.
 
     Groups consecutive chunks that share the same (source_document_id, source)
     into one entry per group. Each group entry has: source, score from first chunk;
@@ -320,7 +320,7 @@ def _write_ltm_manifest_and_adjacency(
     index_to_id: List[str],
 ) -> bool:
     """
-    Persist A.4.4.1 adjacency sidecar + manifest.
+    Persist adjacency sidecar + manifest.
     If this fails, retrieval may still work, but adjacency is treated as unavailable.
     """
     try:
@@ -631,7 +631,7 @@ def rebuild_faiss_index(project_id: str) -> str:
     _atomic_write_json(os.path.join(faiss_dir, _LTM_INDEX_TO_ID_NAME), index_to_id)
     _atomic_write_json(os.path.join(faiss_dir, _LTM_DOCSTORE_NAME), docstore)
 
-    # A.4.4.1 adjacency + manifest (best-effort; does not block retrieval).
+    # Adjacency sidecar + manifest (best-effort; does not block retrieval).
     try:
         ok = _write_ltm_manifest_and_adjacency(
             project_id=project_id,
@@ -643,9 +643,9 @@ def rebuild_faiss_index(project_id: str) -> str:
             index_to_id=index_to_id,
         )
         if not ok:
-            logger.warning("RAG: failed to write A.4.4.1 adjacency index project=%s", project_id)
+            logger.warning("RAG: failed to write adjacency index project=%s", project_id)
     except Exception:
-        logger.warning("RAG: exception writing A.4.4.1 adjacency index project=%s", project_id)
+        logger.warning("RAG: exception writing adjacency index project=%s", project_id)
 
     # Backfill file token/page stats in DB
     try:
@@ -748,7 +748,7 @@ def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
             return None
         index_to_id = [str(x) for x in ids_obj]
         docstore = cast(Dict[str, Dict[str, Any]], ds_obj)
-        # DELTA-A.4.4.1: validate adjacency sidecar only when index claims A.4.4.1+
+        # Validate adjacency sidecar only when the index claims adjacency support.
         try:
             manifest_path = os.path.join(faiss_dir, _LTM_MANIFEST_NAME)
             manifest = _safe_load_json(manifest_path)
@@ -768,7 +768,7 @@ def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
                     adj_name = manifest.get("adjacency_index") or _LTM_ADJACENCY_INDEX_NAME
                     adj_path = os.path.join(faiss_dir, str(adj_name))
                     adj_obj = _safe_load_json(adj_path)
-                    # If missing/invalid, rebuild (A.4.4.1+ only). Legacy absence is expected.
+                    # If missing/invalid, rebuild when adjacency is expected. Legacy absence is expected.
                     if not isinstance(adj_obj, dict) or adj_obj.get("schema_version") != _ADJACENCY_SCHEMA_VERSION:
                         _schedule_ltm_rebuild(project_id, reason="a441_adjacency_missing_or_invalid")
         except Exception as exc:
@@ -808,7 +808,7 @@ def ltm_lookup_adjacent_docstore_ids(
     chunk_seq: int,
 ) -> Dict[str, Optional[str]]:
     """
-    DELTA-A.4.4.1: deterministic neighbor lookup for LTM chunks.
+    Deterministic neighbor lookup for LTM chunks.
 
     Returns dict with keys: prev_docstore_id, next_docstore_id.
     If adjacency is unavailable (legacy index, missing/corrupt sidecar), returns None values.
@@ -824,7 +824,7 @@ def ltm_lookup_adjacent_docstore_ids(
     adj_name = (manifest.get("adjacency_index") if isinstance(manifest, dict) else None) or _LTM_ADJACENCY_INDEX_NAME
     adj = _safe_load_json(os.path.join(faiss_dir, str(adj_name)))
     if not isinstance(adj, dict) or adj.get("schema_version") != _ADJACENCY_SCHEMA_VERSION:
-        # A.4.4.1+ but adjacency missing/invalid: degrade (no expansion) and schedule rebuild
+        # Adjacency expected but missing/invalid: degrade (no expansion) and schedule rebuild.
         _schedule_ltm_rebuild(project_id, reason="a441_lookup_missing_or_invalid")
         return {"prev_docstore_id": None, "next_docstore_id": None}
 
@@ -872,7 +872,7 @@ def canonical_retrieve_candidates(
     per_source_k_override: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
-    DELTA-A.4.1: Canonical retrieval entry point.
+    Canonical retrieval entry point.
 
     - Computes the query embedding exactly once and reuses it across all sources queried.
     - No thresholding, no boosting, and no route-based eligibility pruning occurs here.
@@ -955,7 +955,7 @@ def canonical_retrieve_candidates(
                                     "keep": entry.get("keep"),
                                     "day_sequence": entry.get("day_sequence"),
                                     "pair_ids": entry.get("pair_ids"),
-                                    # DELTA-A.4.4.1 adjacency identity for Daily entries
+                                    # Adjacency identity for Daily entries.
                                     "doc_id": "daily",
                                     "chunk_seq": entry.get("day_sequence"),
                                     "source_document_id": "daily",
@@ -1028,7 +1028,7 @@ def canonical_retrieve_candidates(
                         "text": hit.entry.text or "",
                         "score": float(score01),
                         "metadata": {
-                            # Allow missing/absent metadata fields in A.4.1
+                            # Allow missing/absent metadata fields.
                             "timestamp": md.get("timestamp"),
                             "route": None,
                             "tags": None,
@@ -1044,7 +1044,7 @@ def canonical_retrieve_candidates(
                             "filename": md.get("filename"),
                             "page_number": md.get("page_number"),
                             "chunk_id": md.get("chunk_id"),
-                            # DELTA-A.4.4.1 adjacency identity
+                            # Adjacency identity fields.
                             "doc_id": md.get("doc_id"),
                             "chunk_seq": md.get("chunk_seq"),
                             "source_document_id": md.get("doc_id"),
@@ -1057,7 +1057,7 @@ def canonical_retrieve_candidates(
     try:
         qprev = (query or "")[:120].replace("\n", " ")
         logger.debug(
-            "[A.4.1][CANONICAL_RETRIEVE] project_id=%s sources=%s per_source_k=%s daily_candidates=%s ltm_candidates=%s query_preview=\"%s\"",
+            "[CANONICAL_RETRIEVE] project_id=%s sources=%s per_source_k=%s daily_candidates=%s ltm_candidates=%s query_preview=\"%s\"",
             project_id,
             srcs,
             int(per_source_k),
@@ -1086,8 +1086,8 @@ def retrieve_context(
       - hits: list of per-snippet metadata dicts
         (each with snippet, filename, page_number, score)
     """
-    # DELTA-A.4.1: all retrieval passes through canonical entry point (LTM-only here; embed-once).
-    # DELTA-A.4.2: order candidates by raw similarity score before selection and assembly.
+    # All retrieval passes through canonical entry point (LTM-only here; embed-once).
+    # Order candidates by raw similarity score before selection and assembly.
     cands = canonical_retrieve_candidates(project_id, query, sources=["ltm"])
     ltm = [c for c in (cands or []) if (c.get("source") == "ltm")]
     ltm = order_candidates_by_similarity_score(ltm)
@@ -1120,7 +1120,7 @@ def retrieve_context(
         )
     logger.debug(f"RAG: filtered {len(filtered)} >= threshold {score_threshold}; details={details}")
 
-    # Build context (no token caps in A.4.1/A.4.2; trimming/budgeting is deferred to A.4.3).
+    # Build context with no token caps here; trimming/budgeting is deferred to selection policy.
     tokens_used = 0
     pieces: List[str] = []
     for i, (content, meta, score) in enumerate(filtered):
@@ -1196,13 +1196,13 @@ def merge_daily_and_main(
     route: Optional[str] = None,
     per_source_k_override: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Retrieve from daily and main, then apply A.4.3 positional truncation.
+    """Retrieve from daily and main, then apply positional truncation.
 
-    DELTA-A.4.2: candidate ordering is by raw similarity score across all sources
+    Candidate ordering is by raw similarity score across all sources
     before selection/truncation/prompt assembly.
 
-    DELTA-A.4.3: selection is positional/deterministic:
-    - consume the globally ordered list from A.4.2
+    Selection is positional/deterministic:
+    - consume the globally ordered list
     - retain the first MAX_KEEP candidates
     - no reordering, skipping, thresholding, boosting, or dedupe occurs here
     """
@@ -1235,13 +1235,13 @@ def merge_daily_and_main(
         str(bool(daily_enabled)).lower(),
         int(max_keep),
     )
-    # DELTA-A.4.1: retrieval via canonical entry point (raw candidates; no thresholding/boosting here).
+    # Retrieval via canonical entry point (raw candidates; no thresholding/boosting here).
     sources = ["ltm"] + (["daily"] if bool(daily_enabled) else [])
     cands = canonical_retrieve_candidates(project_id, query, sources=sources, per_source_k_override=per_source_k)
-    # DELTA-A.4.2: global ordering by raw similarity score (stable; ties preserve pre-sort order).
+    # Global ordering by raw similarity score (stable; ties preserve pre-sort order).
     ordered = order_candidates_by_similarity_score(list(cands or []))
 
-    # DELTA-A.4.3: policy-driven selection with adjacent-chunk rule (effective limit can grow when we retain adjacent same-doc chunks).
+    # Policy-driven selection with adjacent-chunk rule (effective limit can grow when we retain adjacent same-doc chunks).
     adjacent_bonus = 0
     kept_candidates = []
     effective_limit = int(max_keep)
@@ -1271,7 +1271,7 @@ def merge_daily_and_main(
                     )
     selected_candidates = list(kept_candidates)
 
-    # DELTA-A.4.4.2: rank-weighted adjacency expansion (materialized per-candidate; no dedupe, no token pruning).
+    # Rank-weighted adjacency expansion (materialized per-candidate; no dedupe, no token pruning).
     # This stage preserves kept candidate order and expands within the same source document only.
     try:
         from .route_policy import get_route_policy
@@ -1291,7 +1291,7 @@ def merge_daily_and_main(
     except Exception:
         max_before, max_after = 0, 0
 
-    # Best-effort check: LTM expansion is only allowed when index claims A.4.4.1+ and adjacency sidecar is valid.
+    # Best-effort check: LTM expansion is only allowed when the index supports adjacency and sidecar is valid.
     ltm_expand_ok = False
     try:
         faiss_dir = os.path.join("memory", project_id, "faiss")
@@ -1308,7 +1308,7 @@ def merge_daily_and_main(
                 _schedule_ltm_rebuild(project_id, reason="a442_adjacency_missing_or_invalid")
                 ltm_expand_ok = False
         else:
-            # Legacy (pre-A.4.4.1): expansion treated as disabled.
+            # Legacy index format: expansion treated as disabled.
             ltm_expand_ok = False
     except Exception:
         ltm_expand_ok = False
@@ -1328,7 +1328,7 @@ def merge_daily_and_main(
         daily_src = None
 
     def _tier_counts(i: int, k: int) -> tuple[int, int]:
-        # Tiering per DELTA-A.4.4.2 (K is actual runtime len(kept_candidates)).
+        # Tiering by candidate rank (K is actual runtime len(kept_candidates)).
         if k <= 0:
             return 0, 0
         import math
@@ -1343,7 +1343,7 @@ def merge_daily_and_main(
 
     def _materialize_candidate_chunks(i: int, k: int, c: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        DELTA-A.4.4.3.1 structured expansion materialization.
+        Structured expansion materialization.
 
         Returns ordered chunk objects in before…central…after order, with fields:
           - source_document_id
@@ -1377,7 +1377,7 @@ def merge_daily_and_main(
         if int(before_n) <= 0 and int(after_n) <= 0:
             return [central_chunk]
 
-        # LTM: expand only when A.4.4.1+ adjacency is available and doc_id is valid.
+        # LTM: expand only when adjacency is available and doc_id is valid.
         if str(src0).lower() == "ltm":
             if not ltm_expand_ok or ltm_index is None or source_document_id is None:
                 return [central_chunk]
@@ -1444,7 +1444,7 @@ def merge_daily_and_main(
             for i, c in enumerate(list(kept_candidates)):
                 if not isinstance(c, dict):
                     continue
-                # A.4.4.3.1 output artifact: per-candidate ordered chunk objects.
+                # Output artifact: per-candidate ordered chunk objects.
                 chunks = _materialize_candidate_chunks(int(i), int(k_actual), c)
                 c["expanded_chunks"] = chunks
                 # Keep downstream prompt assembly compatible by materializing candidate text from chunks.
@@ -1453,7 +1453,7 @@ def merge_daily_and_main(
         # Best-effort: never block retrieval/prompt assembly.
         logger.warning("RAG: failed materializing expanded chunks project=%s detail=%s", project_id, exc, exc_info=True)
 
-    # DELTA-A.4.4.3.2: chunk identity dedupe (first-seen wins) over structured expansion output.
+    # Chunk identity dedupe (first-seen wins) over structured expansion output.
     # Operates in kept_candidates order, then per-candidate chunk order.
     dedupe_input_chunk_count = 0
     dedupe_unique_keyed_count = 0
@@ -1531,7 +1531,7 @@ def merge_daily_and_main(
         # Best-effort: never block retrieval/prompt assembly.
         logger.warning("RAG: failed deduping expanded chunks project=%s detail=%s", project_id, exc, exc_info=True)
 
-    # A.4.4.3.3: source-document ordering and narrative coherence.
+    # Source-document ordering and narrative coherence.
     # Extract sources (first-seen order); per source sort by chunk_index ascending; sparse chunks in first-seen order at end.
     try:
         by_source: Dict[str, List[Dict[str, Any]]] = {}
@@ -1568,7 +1568,7 @@ def merge_daily_and_main(
         # Best-effort: never block retrieval/prompt assembly.
         logger.warning("RAG: failed ordering deduped chunks project=%s detail=%s", project_id, exc, exc_info=True)
 
-    # A.4.4.3.4: adjacent chunk overlap trimming (in-place; same-doc consecutive pairs only).
+    # Adjacent chunk overlap trimming (in-place; same-doc consecutive pairs only).
     try:
         settings = get_settings()
         _trim_adjacent_chunk_overlap(
@@ -1579,14 +1579,14 @@ def merge_daily_and_main(
         # Best-effort: never block retrieval/prompt assembly.
         logger.warning("RAG: failed trimming adjacent overlap project=%s detail=%s", project_id, exc, exc_info=True)
 
-    # A.4.4.3.5: snippet-group collapse (one entry per adjacent same-document run).
+    # Snippet-group collapse (one entry per adjacent same-document run).
     try:
         kept_candidates = _collapse_snippet_groups(kept_candidates or [])
     except Exception as exc:
         # Best-effort: never block retrieval/prompt assembly.
         logger.warning("RAG: failed collapsing snippet groups project=%s detail=%s", project_id, exc, exc_info=True)
 
-    # Debug dumps (human-readable .txt) for A.4.2 ordering and A.4.3 selection.
+    # Debug dumps (human-readable .txt) for ordering and selection.
     try:
         if project_id:
             ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
@@ -1619,7 +1619,7 @@ def merge_daily_and_main(
 
             def _fmt_expansion_plan(items: List[Dict[str, Any]]) -> str:
                 """
-                Human-readable A.4.4.2 plan dump:
+                Human-readable expansion plan dump:
                 shows per-candidate requested ranges and which neighbors were materialized.
                 """
                 k_actual = int(len(items or []))
@@ -1637,7 +1637,7 @@ def merge_daily_and_main(
                     f"# ltm_expand_ok: {str(bool(ltm_expand_ok)).lower()}",
                     f"# daily_cache_available: {str(bool(daily_src is not None)).lower()}",
                     "",
-                    "====== EXPANSION_PLAN (A.4.4.2) ======",
+                    "====== EXPANSION_PLAN ======",
                     "",
                 ]
                 for rank, c in enumerate(items, start=1):
@@ -1712,7 +1712,7 @@ def merge_daily_and_main(
 
             def _fmt_deduped_chunks_with_audit(items: List[Dict[str, Any]]) -> str:
                 """Chunk list plus audit summary and duplicate_events (same file)."""
-                chunk_section = _fmt_list("DEDUPED_CHUNKS (A.4.4.3.2)", items)
+                chunk_section = _fmt_list("DEDUPED_CHUNKS", items)
                 audit_lines = [
                     "",
                     "====== DEDUPE_AUDIT ======",
@@ -1739,12 +1739,12 @@ def merge_daily_and_main(
             write_debug_file(
                 project_id,
                 f"rag/retrieval/{ts}_ordered_candidates.txt",
-                _fmt_list("ORDERED_CANDIDATES (A.4.2)", ordered),
+                _fmt_list("ORDERED_CANDIDATES", ordered),
             )
             write_debug_file(
                 project_id,
                 f"rag/retrieval/{ts}_kept_candidates.txt",
-                _fmt_list("KEPT_CANDIDATES (A.4.3)", selected_candidates),
+                _fmt_list("KEPT_CANDIDATES", selected_candidates),
             )
             write_debug_file(
                 project_id,

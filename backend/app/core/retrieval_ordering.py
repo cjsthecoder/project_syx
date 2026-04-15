@@ -15,7 +15,7 @@ from typing import Any, Dict, List
 
 def order_candidates_by_similarity_score(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    DELTA-A.4.2: Deterministic candidate ordering by similarity score.
+    Deterministic candidate ordering by similarity score.
 
     - Sort descending by candidate["score"] (raw cosine similarity 0.0–1.0).
     - Use stable sorting (ties preserve original input order).

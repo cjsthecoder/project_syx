@@ -129,3 +129,9 @@
   - `make build` passed.
 - Docker compose config:
   - `docker compose config` passed.
+
+## Ticket 11 - Keep llm_model top-level
+
+- Verified `backend/app/llm_model` remains a top-level package.
+- Confirmed no `backend/app/core/llm_model` package exists.
+- Confirmed runtime imports continue to reference top-level `llm_model` from peer packages.

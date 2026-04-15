@@ -163,6 +163,13 @@ class Settings(BaseSettings):
         default="backend/app/config/defaults/personality.json",
         description="Path to the default personality JSON file"
     )
+    # Runtime/storage roots
+    data_root: str = Field(default=".", description="Base directory for persistent application data")
+    runtime_root: str = Field(default="runtime", description="Base directory for ephemeral runtime artifacts")
+    memory_root: str = Field(default="memory", description="Root directory for per-project memory artifacts")
+    runs_dir: str = Field(default="runs", description="Root directory for run artifacts")
+    logs_dir: str = Field(default="logs", description="Root directory for log files")
+    lock_dir: str = Field(default="runtime", description="Directory for lock/state files")
     # V2.6: Size caps
     system_prompt_max_bytes: int = Field(default=64 * 1024, gt=0, description="Max size of system_prompt.txt in bytes")
     personality_max_bytes: int = Field(default=8 * 1024, gt=0, description="Max size of personality.json in bytes")

@@ -59,7 +59,7 @@ async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> 
 
     # PDFs are intentionally unsupported in the LangChain-removal RAG path.
     allowed_ext = {".txt", ".md"}
-    upload_root = os.path.join("memory", project_id, "uploads")
+    upload_root = os.path.join(get_settings().memory_root, project_id, "uploads")
     os.makedirs(upload_root, exist_ok=True)
 
     saved = []
@@ -206,7 +206,7 @@ async def list_files(project_id: str) -> JSONResponse:
 @router.delete("/projects/{project_id}/files/{file_id}")
 async def delete_file(project_id: str, file_id: int) -> JSONResponse:
     """Delete a file from DB and disk; rebuild FAISS index."""
-    upload_root = os.path.join("memory", project_id, "uploads")
+    upload_root = os.path.join(get_settings().memory_root, project_id, "uploads")
     from sqlmodel import select
     with get_session() as session:
         row = session.get(FileRow, file_id)

@@ -80,7 +80,7 @@ def _consolidate_open_questions_artifact(project_id: str) -> Dict[str, Any]:
     - Collision policy: keep latest record by (ts, line_no)
     - Status resolution: drop records where final resolution == "ignore"
     """
-    base_dir = os.path.join("memory", project_id)
+    base_dir = os.path.join(get_settings().memory_root, project_id)
     src_path = os.path.join(base_dir, "open_questions.jsonl")
     out_path = os.path.join(base_dir, "open_questions_consolidated.json")
     lock_path = os.path.join(base_dir, "open_questions.lock")
@@ -368,7 +368,7 @@ def _sleep_cycle_worker():
         # V3.2: Summarization pipeline (per project with non-empty daily.txt)
         for p in rows or []:
             pid = p.id
-            base_dir = os.path.join("memory", pid)
+            base_dir = os.path.join(get_settings().memory_root, pid)
             try:
                 _consolidate_open_questions_artifact(pid)
             except Exception as qce:
@@ -453,8 +453,8 @@ def _sleep_cycle_worker():
                 # Write per-cycle artifacts and rebuild FAISS once (after both sleep + optional dream writes).
                 try:
                     if (sleep_upload_text or "").strip() or (dream_upload_text or "").strip():
-                        uploads_dir = os.path.join("memory", pid, "uploads")
-                        merge_lock = os.path.join("memory", pid, "merge.lock")
+                        uploads_dir = os.path.join(get_settings().memory_root, pid, "uploads")
+                        merge_lock = os.path.join(get_settings().memory_root, pid, "merge.lock")
                         with FileLock(merge_lock):
                             os.makedirs(uploads_dir, exist_ok=True)
 

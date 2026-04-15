@@ -93,7 +93,7 @@ def _get_user_profile(project_id: str) -> str:
     Returns text or '(empty)' if not found.
     """
     # 1) Prefer a precomputed user_profile_summary.txt if it exists
-    summary_path = os.path.join("memory", project_id, "user_profile_summary.txt")
+    summary_path = os.path.join(get_settings().memory_root, project_id, "user_profile_summary.txt")
     summary_text = _read_file_safe(summary_path)
     if summary_text.strip():
         logger.info(
@@ -111,7 +111,7 @@ def _get_user_profile(project_id: str) -> str:
     )
     user_profile_text = up.get("context_text") or ""
     if not user_profile_text.strip():
-        fallback_profile_path = os.path.join("memory", project_id, "default_profile.txt")
+        fallback_profile_path = os.path.join(get_settings().memory_root, project_id, "default_profile.txt")
         user_profile_text = _read_file_safe(fallback_profile_path)
         if user_profile_text.strip():
             logger.warning("User profile missing from RAG. Using fallback file.")
@@ -135,7 +135,7 @@ def _get_project_system_prompt(project_id: str) -> str:
     )
     system_prompt_text = sp.get("context_text") or ""
     if not system_prompt_text.strip():
-        fallback_sys_path = os.path.join("memory", project_id, "system_prompt.txt")
+        fallback_sys_path = os.path.join(get_settings().memory_root, project_id, "system_prompt.txt")
         system_prompt_text = _read_file_safe(fallback_sys_path)
         if not system_prompt_text.strip():
             logger.warning("Project system rules missing.")
@@ -151,7 +151,7 @@ def _get_project_context_summary(project_id: str) -> str:
     """
     settings = get_settings()
     # Always use the latest sleep summary as source; skip RAG retrieval
-    summary_path = os.path.join("memory", project_id, "sleep_summary.txt")
+    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.txt")
     summ_src = _read_file_safe(summary_path)
     summary_prompt = build_project_summary_prompt(summ_src)
     write_debug_file(project_id, "debug_context_summary.txt", summary_prompt)
@@ -209,7 +209,7 @@ def _get_daily_memory(project_id: str) -> str:
     Load daily memory from sleep_summary.txt with [Open Questions] section stripped.
     Returns text or '(empty)' if missing or empty.
     """
-    summary_path = os.path.join("memory", project_id, "sleep_summary.txt")
+    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.txt")
     daily_text = _read_file_safe(summary_path)
     if not daily_text.strip():
         logger.warning("sleep_summary.txt missing or empty.")
@@ -231,7 +231,7 @@ def _extract_rag_topics(project_id: str) -> List[str]:
     Returns:
         Ordered, deduplicated list of topic queries (section titles + individual topics).
     """
-    summary_path = os.path.join("memory", project_id, "sleep_summary.txt")
+    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.txt")
     text = _read_file_safe(summary_path)
     if not text.strip():
         logger.debug("[DREAM][CONTEXT] RAG enrichment: sleep_summary.txt missing or empty for project=%s", project_id)

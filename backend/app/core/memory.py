@@ -76,7 +76,7 @@ class MemoryManager:
         if not questions:
             return
         try:
-            base_dir = os.path.join("memory", project_id)
+            base_dir = os.path.join(get_settings().memory_root, project_id)
             os.makedirs(base_dir, exist_ok=True)
             artifact_path = os.path.join(base_dir, "open_questions.jsonl")
             lock_path = os.path.join(base_dir, "open_questions.lock")

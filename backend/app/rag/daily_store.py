@@ -141,7 +141,7 @@ def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
         return ""
 
 def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
-    base_dir = os.path.join("memory", project_id)
+    base_dir = os.path.join(get_settings().memory_root, project_id)
     os.makedirs(base_dir, exist_ok=True)
     meta_path = os.path.join(base_dir, "daily.json")
     lock_path = os.path.join(base_dir, "daily.lock")

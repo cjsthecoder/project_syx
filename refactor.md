@@ -77,3 +77,27 @@
   - `backend/app/core/dream_prompts.py`
   - `backend/app/core/dream_research.py`
 - Verified there are no remaining imports of those bridge modules; Dream code imports directly from `backend/app/core/dream/*`.
+
+## Ticket 8 - Introduce configured path roots
+
+- Added new path settings in `backend/app/core/config.py`:
+  - `data_root`
+  - `runtime_root`
+  - `memory_root`
+  - `runs_dir`
+  - `logs_dir`
+  - `lock_dir`
+- Replaced hardcoded runtime/data path literals in key modules with settings-driven paths:
+  - `backend/app/core/state.py`
+  - `backend/app/core/tracking/instrumentation.py`
+  - `backend/app/main.py`
+  - `backend/app/api/files.py`
+  - `backend/app/api/projects.py`
+  - `backend/app/core/memory.py`
+  - `backend/app/core/personality.py`
+  - `backend/app/core/dream/context.py`
+  - `backend/app/core/dream/dreams.py`
+  - `backend/app/core/dream/agents/questions_agent.py`
+  - `backend/app/rag/manager.py`
+  - `backend/app/rag/daily_store.py`
+  - `backend/app/sleep/cycle.py`

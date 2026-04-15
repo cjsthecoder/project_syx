@@ -178,7 +178,7 @@ test: test-backend test-frontend
 
 test-backend:
 	@echo "🧪 Running backend tests..."
-	cd backend && $(PYTHON) -m pytest tests/ -v
+	cd backend && $(PYTHON) -m pytest ../tests/ -v
 	@echo "✅ Backend tests completed"
 
 test-frontend:
@@ -192,7 +192,7 @@ lint: lint-backend lint-frontend
 
 lint-backend:
 	@echo "🔍 Linting Python code..."
-	cd backend && $(PYTHON) -m flake8 app/ tests/
+	cd backend && $(PYTHON) -m flake8 app/ ../tests/
 	@echo "✅ Backend linting completed"
 
 lint-frontend:
@@ -206,7 +206,7 @@ format: format-backend format-frontend
 
 format-backend:
 	@echo "🎨 Formatting Python code..."
-	cd backend && $(PYTHON) -m black app/ tests/
+	cd backend && $(PYTHON) -m black app/ ../tests/
 	@echo "✅ Backend formatting completed"
 
 format-frontend:

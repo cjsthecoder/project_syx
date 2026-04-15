@@ -79,7 +79,19 @@ class MemoryManager:
             base_dir = os.path.join(get_settings().memory_root, project_id)
             os.makedirs(base_dir, exist_ok=True)
             artifact_path = os.path.join(base_dir, "open_questions.jsonl")
-            lock_path = os.path.join(base_dir, "open_questions.lock")
+            state_dir = os.path.join(base_dir, "state")
+            os.makedirs(state_dir, exist_ok=True)
+            lock_path = os.path.join(state_dir, "open_questions.lock")
+            legacy_lock_path = os.path.join(base_dir, "open_questions.lock")
+            if os.path.isfile(legacy_lock_path) and not os.path.exists(lock_path):
+                try:
+                    os.replace(legacy_lock_path, lock_path)
+                except OSError as exc:
+                    logger.warning(
+                        "memory questions lock migration failed project_id=%s detail=%s",
+                        project_id,
+                        exc,
+                    )
             pair_id: Optional[str] = None
             if isinstance(user_message_id, int) and isinstance(assistant_message_id, int):
                 pair_id = f"{user_message_id}:{assistant_message_id}"

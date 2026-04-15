@@ -135,3 +135,15 @@
 - Verified `backend/app/llm_model` remains a top-level package.
 - Confirmed no `backend/app/core/llm_model` package exists.
 - Confirmed runtime imports continue to reference top-level `llm_model` from peer packages.
+
+## Ticket 12 - Move project lock files to state subdir
+
+- Updated per-project lock paths to `memory/<project_id>/state/*.lock`:
+  - `daily.lock`
+  - `open_questions.lock`
+  - `merge.lock`
+  - `dream_summary.lock`
+- Added automatic legacy lock migration at lock-path construction/call sites:
+  - if a legacy lock exists at `memory/<project_id>/*.lock` and state lock is absent, it is moved to `memory/<project_id>/state/*.lock`
+  - migration failures are logged with project context.
+- Ensured `state/` directories are created on demand before lock acquisition.

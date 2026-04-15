@@ -45,7 +45,7 @@ from ..core.personality import (
 )
 from ..core.database import get_session
 from ..core.db_models import ChatMessage
-from ..core.rag_manager import rebuild_faiss_index
+from ..rag.manager import rebuild_faiss_index
 from ..utils.debug_utils import write_debug_file
 import shutil
 

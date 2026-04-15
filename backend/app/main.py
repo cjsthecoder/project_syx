@@ -41,7 +41,7 @@ from .core.state import init_from_disk, is_sleeping
 from .core.personality import backfill_all_projects
 from .core.database import get_session
 from .core.db_models import Project
-from .core.rag_manager import rebuild_faiss_index
+from .rag.manager import rebuild_faiss_index
 from .core.route_policy import load_and_validate_route_policy
 from .core.tracking import init_instrumentation, get_instrumentation
 import shutil

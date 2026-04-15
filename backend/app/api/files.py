@@ -19,7 +19,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 
 from ..core.config import get_settings
-from ..core.rag_manager import rebuild_faiss_index, _read_file_text
+from ..rag.manager import rebuild_faiss_index, _read_file_text
 from ..core.database import get_session
 from ..core.db_models import File as FileRow
 

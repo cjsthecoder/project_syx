@@ -50,7 +50,7 @@ request_logger = RequestLogger("sleep")
 # V3.1: unified sleep runner (background thread)
 _runner_lock = threading.Lock()
 _runner_thread: Optional[threading.Thread] = None
-from ..core.rag_manager import rebuild_faiss_index, load_faiss_index
+from ..rag.manager import rebuild_faiss_index, load_faiss_index
 from filelock import FileLock
 from ..core.config import get_settings
 from ..core.daily_rag import _project_daily_paths, clear_daily_cache

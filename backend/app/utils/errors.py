@@ -1,14 +1,14 @@
 """
 Copyright (c) 2025 Syx Project Contributors. All rights reserved.
 
-This source code is part of the Morpheus project and is proprietary.
+This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 Use of this software requires explicit written permission from the copyright holder.
 """
 """
-Error handling utilities for Morpheus AGI Chatbot Framework.
+Error handling utilities for Syx AGI Chatbot Framework.
 
 This module provides custom exceptions and error handling utilities.
 """
@@ -20,8 +20,8 @@ from .logging import get_logger
 logger = get_logger()  # Use single shared logger
 
 
-class MorpheusError(Exception):
-    """Base exception for Morpheus application errors."""
+class SyxError(Exception):
+    """Base exception for Syx application errors."""
     
     def __init__(
         self, 
@@ -35,27 +35,27 @@ class MorpheusError(Exception):
         super().__init__(self.message)
 
 
-class LLMError(MorpheusError):
+class LLMError(SyxError):
     """Exception raised for LLM-related errors."""
     pass
 
 
-class ConfigurationError(MorpheusError):
+class ConfigurationError(SyxError):
     """Exception raised for configuration errors."""
     pass
 
 
-class MemoryError(MorpheusError):
+class MemoryError(SyxError):
     """Exception raised for memory-related errors."""
     pass
 
 
-class RAGError(MorpheusError):
+class RAGError(SyxError):
     """Exception raised for RAG-related errors."""
     pass
 
 
-class ProjectError(MorpheusError):
+class ProjectError(SyxError):
     """Exception raised for project-related errors."""
     pass
 
@@ -94,7 +94,7 @@ def create_error_response(
     Returns:
         HTTPException with standardized format
     """
-    if isinstance(error, MorpheusError):
+    if isinstance(error, SyxError):
         error_code = error.error_code or error_code
         message = error.message
         details = error.details

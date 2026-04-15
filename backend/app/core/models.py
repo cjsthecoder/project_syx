@@ -1,14 +1,14 @@
 """
 Copyright (c) 2025 Syx Project Contributors. All rights reserved.
 
-This source code is part of the Morpheus project and is proprietary.
+This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 Use of this software requires explicit written permission from the copyright holder.
 """
 """
-Pydantic models for Morpheus AGI Chatbot Framework.
+Pydantic models for Syx AGI Chatbot Framework.
 
 This module defines all request and response models for the API endpoints.
 """
@@ -199,7 +199,7 @@ class ErrorResponse(BaseModel):
 class HealthResponse(BaseModel):
     """Health check response model."""
     status: str = Field(..., description="Service status")
-    service: str = Field(default="morpheus-api", description="Service name")
+    service: str = Field(default="syx-api", description="Service name")
     version: str = Field(default="1.0.0", description="Service version")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Health check timestamp")
     dependencies: Dict[str, str] = Field(default={}, description="Dependency status")
@@ -208,7 +208,7 @@ class HealthResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "status": "healthy",
-                "service": "morpheus-api",
+                "service": "syx-api",
                 "version": "1.0.0",
                 "timestamp": "2024-01-01T12:00:00Z",
                 "dependencies": {

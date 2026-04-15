@@ -4,8 +4,8 @@ Build benchmark_turns.csv from turns.jsonl and web_turns.jsonl.
 
 Output format:
 - Label
-- Morpheus Part 1
-- Morpheus Part 2
+- Syx Part 1
+- Syx Part 2
 - Web Part 1
 - Web Part 2
 """
@@ -55,7 +55,7 @@ def _read_jsonl(path: str) -> list[dict[str, Any]]:
     return rows
 
 
-def _build_morpheus_map(turns_path: str) -> dict[int, tuple[int, int]]:
+def _build_syx_map(turns_path: str) -> dict[int, tuple[int, int]]:
     rows = _read_jsonl(turns_path)
     out: dict[int, tuple[int, int]] = {}
 
@@ -70,9 +70,9 @@ def _build_morpheus_map(turns_path: str) -> dict[int, tuple[int, int]]:
         if mini_prompt is None:
             # Backward compatibility for historical runs written before the split.
             mini_prompt = _parse_int(row.get("mini_total_tokens_reported_sum"))
-        morpheus_main = int(main_prompt or 0)
-        morpheus_mini = int(mini_prompt or 0)
-        out[turn_id] = (morpheus_main, morpheus_mini)
+        syx_main = int(main_prompt or 0)
+        syx_mini = int(mini_prompt or 0)
+        out[turn_id] = (syx_main, syx_mini)
     return out
 
 
@@ -122,17 +122,17 @@ def _main() -> int:
     if output_parent and not os.path.isdir(output_parent):
         raise FileNotFoundError(f"output directory does not exist: {output_parent}")
 
-    morpheus = _build_morpheus_map(turns_path)
+    syx = _build_syx_map(turns_path)
     web = _build_web_map(web_turns_path) if os.path.isfile(web_turns_path) else {}
-    all_turn_ids = sorted(set(morpheus.keys()) | set(web.keys()))
+    all_turn_ids = sorted(set(syx.keys()) | set(web.keys()))
     if not all_turn_ids:
         raise RuntimeError("No usable turn rows found in input files.")
 
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["Label", "Morpheus Part 1", "Morpheus Part 2", "Web Part 1", "Web Part 2"])
+        writer.writerow(["Label", "Syx Part 1", "Syx Part 2", "Web Part 1", "Web Part 2"])
         for turn_id in all_turn_ids:
-            m_main, m_mini = morpheus.get(turn_id, (0, 0))
+            m_main, m_mini = syx.get(turn_id, (0, 0))
             w_turn, w_ctx = web.get(turn_id, (0, 0))
             writer.writerow([turn_id, m_main, m_mini, w_turn, w_ctx])
 

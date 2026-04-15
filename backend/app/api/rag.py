@@ -1,14 +1,14 @@
 """
 Copyright (c) 2025 Syx Project Contributors. All rights reserved.
 
-This source code is part of the Morpheus project and is proprietary.
+This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 Use of this software requires explicit written permission from the copyright holder.
 """
 """
-RAG (Retrieval-Augmented Generation) API endpoint for Morpheus AGI Chatbot Framework.
+RAG (Retrieval-Augmented Generation) API endpoint for Syx AGI Chatbot Framework.
 
 This module provides RAG functionality (stubbed for Version 2).
 """

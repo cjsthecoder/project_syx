@@ -1,16 +1,16 @@
 """
 Copyright (c) 2025 Syx Project Contributors. All rights reserved.
 
-This source code is part of the Morpheus project and is proprietary.
+This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 Use of this software requires explicit written permission from the copyright holder.
 """
 """
-Morpheus AGI Chatbot Framework - FastAPI Main Entry Point
+Syx AGI Chatbot Framework - FastAPI Main Entry Point
 
-This is the main FastAPI application that provides the backend API for the Morpheus chatbot.
+This is the main FastAPI application that provides the backend API for the Syx chatbot.
 It includes endpoints for chat, RAG queries, projects, and sleep cycle management.
 """
 
@@ -263,8 +263,8 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI app with lifespan
 app = FastAPI(
-    title="Morpheus AGI Chatbot API",
-    description="Backend API for the Morpheus chatbot framework",
+    title="Syx AGI Chatbot API",
+    description="Backend API for the Syx chatbot framework",
     version="1.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
@@ -337,7 +337,7 @@ async def root():
     else:
         # Return API info if no React build
         return {
-            "message": "Morpheus AGI Chatbot API is running",
+            "message": "Syx AGI Chatbot API is running",
             "frontend": "Not built - run 'make build' to build React app",
             "docs": "/api/docs"
         }
@@ -404,7 +404,7 @@ if __name__ == "__main__":
     port = settings.port
     reload = settings.reload
     
-    logger.info(f"Starting Morpheus API server on {host}:{port}")
+    logger.info(f"Starting Syx API server on {host}:{port}")
     logger.info(f"API Documentation: http://{host}:{port}/api/docs")
     logger.info(f"Health Check: http://{host}:{port}/health")
     

@@ -1,12 +1,12 @@
-# Morpheus
+# Syx
 
 ## Project Overview
-Morpheus is a modular system that provides a web-based chat interface backed by a FastAPI server and LangChain for LLM integration.  
+Syx is a modular system that provides a web-based chat interface backed by a FastAPI server and LangChain for LLM integration.  
 
 **Version 1 Goal:** Establish a working chatbot with a GUI and stable backend interfaces that can be extended later with RAG, memory pruning, and multi-project support.  
 **Version 2 Goal:** Add persistent Project Management, File Upload + RAG initialization, and dynamic Model Selection.
-**Version 3 Goal:** Implement autonomous long-term memory consolidation through a nightly Sleep Cycle that prunes, summarizes, and rebuilds each project’s RAG automatically. This release transforms Morpheus from a reactive chat system into one that learns and maintains knowledge over time, preparing the foundation for Dreaming (creative synthesis) in version 4.
-**Version 4 Goal:** Introduce the Dream Cycle as a post Sleep reasoning phase capable of autonomously analyzing the nightly memory summary and generating structured insight outputs. Version 4 establishes the Dream Orchestrator, the Dream Agent framework, and the first Dream function: extracting all open questions into a unified artifact. This transforms Morpheus from a system that only consolidates memory into one that begins to interpret, organize, and act on unresolved knowledge gaps during nightly maintenance.
+**Version 3 Goal:** Implement autonomous long-term memory consolidation through a nightly Sleep Cycle that prunes, summarizes, and rebuilds each project’s RAG automatically. This release transforms Syx from a reactive chat system into one that learns and maintains knowledge over time, preparing the foundation for Dreaming (creative synthesis) in version 4.
+**Version 4 Goal:** Introduce the Dream Cycle as a post Sleep reasoning phase capable of autonomously analyzing the nightly memory summary and generating structured insight outputs. Version 4 establishes the Dream Orchestrator, the Dream Agent framework, and the first Dream function: extracting all open questions into a unified artifact. This transforms Syx from a system that only consolidates memory into one that begins to interpret, organize, and act on unresolved knowledge gaps during nightly maintenance.
 
 ---
 
@@ -109,7 +109,7 @@ Establish a working chatbot with a web UI and stable backend interfaces, laying 
   - `MODEL_NAME` (default: `gpt-5`)
   - `MODEL_TEMPERATURE` (default: `1.0`)
   - `MODEL_MAX_TOKENS` (default: `32000`)
-  - `DB_PATH` (e.g., `backend/app/data/morpheus.db`)
+  - `DB_PATH` (e.g., `backend/app/data/syx.db`)
   - `MAX_UPLOAD_MB` (per-file limit; default `10`)
   - `MAX_BATCH_MB` (per-request batch limit; default `50`)
   - `STORAGE_LIMIT_MB` (per-project storage cap; default `500`)
@@ -159,7 +159,7 @@ Establish a working chatbot with a web UI and stable backend interfaces, laying 
 
 ## Overview
 Version 2 introduces persistent **Project Management**, **File Upload + RAG Initialization**, and a **Dynamic Model Selector**.  
-These upgrades make Morpheus a multi-project, persistent knowledge system.
+These upgrades make Syx a multi-project, persistent knowledge system.
 
 ---
 
@@ -551,7 +551,7 @@ RAG-ready structure	Rolled-off messages easily convertible into embeddings
 ## Version 2.3 — Rolling Context → Daily RAG Bridge
 
 ### Purpose
-Extend Morpheus’ working memory by continuously off-loading the oldest prompt/response pairs from the live chat buffer and database into a persistent daily RAG file.
+Extend Syx’ working memory by continuously off-loading the oldest prompt/response pairs from the live chat buffer and database into a persistent daily RAG file.
 This yields an effectively unlimited context window while isolating transient data from the long-term project memory (merged later during 3.0 sleep cycle).
 
 ### Functional Requirements
@@ -796,7 +796,7 @@ This makes it easy to trace specific projects, conversations, and decisions.
 
 #### FR-2.4.4 — Log Destination and Rotation
 - Keep default console + file handlers.  
-- Add rotation policy: `logs/morpheus.log`, 10 MB × 5 files.  
+- Add rotation policy: `logs/syx.log`, 10 MB × 5 files.  
 
 #### FR-2.4.5 — Verification Checklist
 - Each chat request produces a full `[PROMPT] → [BUILDER] → [RETRIEVAL] → [RESPONSE]` chain in the logs.
@@ -920,7 +920,7 @@ Env:
 
 Example content:
 ```
-You are Morpheus-AI, a reflective assistant that consolidates knowledge during nightly sleep.
+You are Syx-AI, a reflective assistant that consolidates knowledge during nightly sleep.
 Focus on pruning redundant information and clarifying reasoning.
 ```
 
@@ -1085,7 +1085,7 @@ Prevent user interactions during the sleep cycle.
 - While active:
   - All writes (POST/PUT/PATCH/DELETE) return HTTP **423 (Locked)** with message: `"System is sleeping. Try again later."`
   - Reads (GET) remain allowed.
-  - Frontend shows overlay modal: “Morpheus is sleeping — consolidating memory. Please wait…”
+  - Frontend shows overlay modal: “Syx is sleeping — consolidating memory. Please wait…”
   - No roll‑off or daily.txt writes occur while sleeping; submissions fail with 423.
 - Status: `GET /sleep/status` → `{ sleeping: true|false, since: <ISO8601>, lock_path: "..." }`
 - Startup behavior: if `runtime/sleep.lock` exists, start with `is_sleeping=true` and log a Warning.
@@ -1205,7 +1205,7 @@ Add a second toggle next to the existing Forget control to carry a “keep” fl
 ## Version 2.8 — Default Global RAG File
 
 ### Purpose
-Ensure every new project starts with a consistent baseline of Morpheus system knowledge, even if the user never uploads any files.  
+Ensure every new project starts with a consistent baseline of Syx system knowledge, even if the user never uploads any files.  
 This version simplifies the earlier design by copying a shared **DEFAULT_RAG.txt** into each project’s uploads directory on creation and triggering a RAG rebuild automatically.
 
 ### Functional Requirements
@@ -1267,7 +1267,7 @@ After copying the default file:
 
 ## Overview
 Version 3 introduces **autonomous long-term memory consolidation** through a nightly **Sleep Cycle** that prunes, summarizes, and rebuilds each project’s RAG automatically.
-This version transforms Morpheus from a reactive chat system into one that maintains knowledge over time, preparing the foundation for **Version 4 — Dreaming**.
+This version transforms Syx from a reactive chat system into one that maintains knowledge over time, preparing the foundation for **Version 4 — Dreaming**.
 
 ---
 
@@ -2932,7 +2932,7 @@ Populate the Dream analysis modal with dream entries from `dream.json`, rendered
 # 5 Instrumentation Overview
 ## Instrumentation High Level Description
 
-Version 5.0 introduces **Instrumentation** as a first-class telemetry layer for Morpheus. Instrumentation collects structured, end to end metrics across the multi-module pipeline, including interactive chat turns and internal helper model calls. Its purpose is to generate defensible evidence for token usage and latency behavior over time, and to support profiling and optimization without changing core routing, retrieval, or memory logic.
+Version 5.0 introduces **Instrumentation** as a first-class telemetry layer for Syx. Instrumentation collects structured, end to end metrics across the multi-module pipeline, including interactive chat turns and internal helper model calls. Its purpose is to generate defensible evidence for token usage and latency behavior over time, and to support profiling and optimization without changing core routing, retrieval, or memory logic.
 
 Instrumentation is designed to run with minimal overhead, remain disabled by default, and avoid logging raw content unless explicitly enabled for research and evaluation.
 
@@ -2950,19 +2950,19 @@ Goals of Version 5.0:
 ## 5.1 Goals and Scope
 
 ### 5.1.1 Purpose
-Add a unified `Instrumentation` component that works like the logger: all modules can contribute structured metrics for evaluation runs. The goal is to produce defensible data for token and latency charts comparing Morpheus to external baselines.
+Add a unified `Instrumentation` component that works like the logger: all modules can contribute structured metrics for evaluation runs. The goal is to produce defensible data for token and latency charts comparing Syx to external baselines.
 
 ### 5.1.2 Primary Outputs
 Instrumentation MUST enable generation of:
 - Tokens per turn vs turn index
 - Cumulative tokens processed vs turn index
 - Latency per turn vs turn index (TTFB and TTLT)
-- Optional stacked bar breakdown for Morpheus: main model vs mini model
+- Optional stacked bar breakdown for Syx: main model vs mini model
 
 ### 5.1.3 In Scope
 - Per run, per turn, and per invocation metrics capture
 - Token totals by type from day one
-- Latency capture (TTFB and TTLT) for Morpheus
+- Latency capture (TTFB and TTLT) for Syx
 - In memory collection with flush at end of run
 
 ### 5.1.4 Out of Scope
@@ -3386,7 +3386,7 @@ Snapshot immutability and runtime changes:
 
 ## 5.11 Benchmark Evaluation Artifacts (Turn Capture)
 
-To support repeatable quality-vs-cost comparisons across systems (for example Morpheus, ChatGPT, and additional baselines), instrumentation-adjacent benchmark artifacts SHALL be produced in structured JSONL form.
+To support repeatable quality-vs-cost comparisons across systems (for example Syx, ChatGPT, and additional baselines), instrumentation-adjacent benchmark artifacts SHALL be produced in structured JSONL form.
 
 ### 5.11.1 Primary Benchmark Turn Artifact
 
@@ -3397,7 +3397,7 @@ Each record represents one evaluated turn/case candidate output.
 
 Required fields (minimum):
 - `case_id` (string; stable unique id for the benchmark case)
-- `system` (string; for example `morpheus`, `chatgpt`, `baseline_x`)
+- `system` (string; for example `syx`, `chatgpt`, `baseline_x`)
 - `model_id` (string)
 - `timestamp` (UTC ISO timestamp string)
 - `prompt_text` (string; exact prompt content used for that candidate)
@@ -3413,20 +3413,20 @@ Token/latency comparison fields:
 - `latency_ms` (int or null)
 
 Alignment and completeness fields:
-- `metrics_source` (string; for example `morpheus_instrumentation`, `html_extracted`)
+- `metrics_source` (string; for example `syx_instrumentation`, `html_extracted`)
 - `completeness` (enum: `full` | `partial`)
 - `missing_fields` (array of strings; MAY be empty)
 
 ### 5.11.2 Turn ID Alignment Rules
 
-For records where `system="morpheus"`:
+For records where `system="syx"`:
 - `turn_id` MUST match the corresponding `turns.jsonl` turn id exactly.
 - `run_id` MUST match the corresponding instrumentation run directory id.
 - `turn_id`/`run_id` mismatches MUST be treated as alignment errors by benchmark tooling.
 
 For external/manual sources (for example HTML-extracted ChatGPT turns):
 - `turn_id` MAY be null when no native instrumentation turn id exists.
-- Tooling SHOULD include an explicit alignment key (for example `aligned_turn_id` or equivalent) to map external turns to Morpheus benchmark turns.
+- Tooling SHOULD include an explicit alignment key (for example `aligned_turn_id` or equivalent) to map external turns to Syx benchmark turns.
 
 ### 5.11.3 Secondary Scoring Artifact
 

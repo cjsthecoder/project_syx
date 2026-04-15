@@ -1,7 +1,7 @@
 """
 Copyright (c) 2025 Syx Project Contributors. All rights reserved.
 
-This source code is part of the Morpheus project and is proprietary.
+This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
@@ -129,10 +129,10 @@ def test_health_response():
     """Test HealthResponse model."""
     health = HealthResponse(
         status="healthy",
-        service="morpheus-api",
+        service="syx-api",
         version="1.0.0",
         dependencies={"openai": "connected"}
     )
     assert health.status == "healthy"
-    assert health.service == "morpheus-api"
+    assert health.service == "syx-api"
     assert "openai" in health.dependencies

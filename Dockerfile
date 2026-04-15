@@ -1,4 +1,4 @@
-# Morpheus AGI Chatbot Framework - Docker image (Ubuntu, Python 3.13.3)
+# Syx AGI Chatbot Framework - Docker image (Ubuntu, Python 3.13.3)
 # Multi-stage: Node for frontend build, Python for backend + static serving.
 
 # ------------------------------------------------------------------------------

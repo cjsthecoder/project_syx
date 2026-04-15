@@ -1,14 +1,14 @@
 """
 Copyright (c) 2025 Syx Project Contributors. All rights reserved.
 
-This source code is part of the Morpheus project and is proprietary.
+This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 Use of this software requires explicit written permission from the copyright holder.
 """
 """
-Enhanced logging configuration for Morpheus AGI Chatbot Framework.
+Enhanced logging configuration for Syx AGI Chatbot Framework.
 
 This module provides structured logging with colored console output and timestamped files.
 """
@@ -168,7 +168,7 @@ def setup_logging() -> None:
     uvicorn_error_logger.propagate = False
     
     # Set our application logger
-    app_logger = logging.getLogger("morpheus")
+    app_logger = logging.getLogger("syx")
     app_logger.setLevel(min(console_level, file_level, log_level))
     
     # Log initialization
@@ -219,7 +219,7 @@ def clear_namespace() -> None:
 
 def get_logger(name: str = None) -> logging.Logger:
     """Get the main application logger."""
-    return logging.getLogger("morpheus")
+    return logging.getLogger("syx")
 
 
 class RequestLogger:

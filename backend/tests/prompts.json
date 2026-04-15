@@ -1,5 +1,5 @@
 {
-  "benchmark_name": "morpheus_mars_story_benchmark_v1",
+  "benchmark_name": "syx_mars_story_benchmark_v1",
   "description": "A multi-turn benchmark for testing continuity, recall, and structured story development using an original science fiction premise about an ancient Martian civilization and a modern Mars university archaeology program.",
   "system_prompt": {
     "known_component": "You are helping develop an original hard science fiction story. Maintain continuity across turns. Reuse established names, factions, technologies, locations, and story facts unless the user explicitly changes them. Prefer grounded scientific reasoning, clear structured outputs, and internally consistent worldbuilding."

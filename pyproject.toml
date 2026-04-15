@@ -1,7 +1,7 @@
 [project]
-name = "morpheus"
+name = "syx"
 version = "0.1.0"
-description = "Morpheus AGI Chatbot Framework"
+description = "Syx AGI Chatbot Framework"
 requires-python = ">=3.13,<3.14"
 
 [tool.black]

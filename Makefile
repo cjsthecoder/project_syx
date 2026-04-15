@@ -1,4 +1,4 @@
-# Morpheus AGI Chatbot Framework - Build Automation
+# Syx AGI Chatbot Framework - Build Automation
 # Make targets for development and deployment
 
 .PHONY: help install build run clean test lint format generate-docs docker-data-dirs docker-data-permissions docker-setup run-docker restart-docker stop-docker docker-rebuild
@@ -8,7 +8,7 @@ PYTHON := $(shell if [ -x venv/bin/python ]; then printf "%s" "$(CURDIR)/venv/bi
 
 # Default target
 help:
-	@echo "Morpheus AGI Chatbot Framework - Available Commands:"
+	@echo "Syx AGI Chatbot Framework - Available Commands:"
 	@echo ""
 	@echo "Core:"
 	@echo "  make install              - Install all dependencies (Python + Node.js)"
@@ -98,7 +98,7 @@ copy-static:
 
 # Start the unified FastAPI server
 run: build
-	@echo "🚀 Starting Morpheus server..."
+	@echo "🚀 Starting Syx server..."
 	@echo "   Frontend: http://localhost:8000"
 	@echo "   API Docs: http://localhost:8000/docs"
 	@echo "   Health:   http://localhost:8000/health"
@@ -134,7 +134,7 @@ downgrade:
 HARD_RESET:
 	@echo "⚠️  HARD RESET will DELETE all project data and the SQLite DB."
 	@echo "   - Removing memory/*"
-	@echo "   - Removing backend/app/data/morpheus.db"
+	@echo "   - Removing backend/app/data/syx.db"
 	@echo "   - Recreating empty DB (alembic upgrade)"
 	@echo ""
 	@read -p "Type 'YES' to proceed: " CONFIRM; \
@@ -143,7 +143,7 @@ HARD_RESET:
 	rm -rf memory/* 2>/dev/null || true; \
 	rm -rf backend/memory/* 2>/dev/null || true; \
 	echo "Deleting SQLite DB ..."; \
-	rm -f backend/app/data/morpheus.db 2>/dev/null || true; \
+	rm -f backend/app/data/syx.db 2>/dev/null || true; \
 	echo "Removing runtime sleep lock if present ..."; \
 	rm -f backend/runtime/sleep.lock 2>/dev/null || true; \
 	echo "Deleting logs ..."; \
@@ -233,7 +233,7 @@ setup-env:
 	fi; \
 	echo "📝 Generating .env with defaults"; \
 	{ \
-		echo "# Morpheus AGI Chatbot Framework - Environment Variables"; \
+		echo "# Syx AGI Chatbot Framework - Environment Variables"; \
 		echo "# Edit values as needed. Comments are placed after each variable to avoid parser conflicts."; \
 		echo ""; \
 		echo "# === Core: OpenAI + Chat Model ==="; \
@@ -288,7 +288,7 @@ setup-env:
 		echo "# Max chars for log previews"; \
 		echo ""; \
 		echo "# === Database + Storage ==="; \
-		echo "DB_PATH=app/data/morpheus.db"; \
+		echo "DB_PATH=app/data/syx.db"; \
 		echo "# SQLite database file path (or full URL like sqlite:///...)"; \
 		echo ""; \
 		echo "MAX_UPLOAD_MB=10"; \
@@ -515,7 +515,7 @@ docker-rebuild:
 
 # Full setup from scratch
 setup: setup-env install build
-	@echo "🎉 Morpheus setup completed!"
+	@echo "🎉 Syx setup completed!"
 	@echo "   Next steps:"
 	@echo "   1. Edit .env file with your OpenAI API key"
 	@echo "   2. Run 'make run' to start the server"
@@ -531,4 +531,4 @@ generate-docs:
 			python docs/architecture_diagram.py; \
 		fi \
 	) && \
-	( [ -f docs/morpheus_architecture.png ] && echo "✅ Diagram updated at docs/morpheus_architecture.png" || (echo "❌ Failed to generate docs/morpheus_architecture.png" && exit 1) )
+	( [ -f docs/syx_architecture.png ] && echo "✅ Diagram updated at docs/syx_architecture.png" || (echo "❌ Failed to generate docs/syx_architecture.png" && exit 1) )

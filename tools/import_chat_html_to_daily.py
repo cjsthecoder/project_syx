@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Import ChatGPT HTML exports into Morpheus daily-memory text format.
+Import ChatGPT HTML exports into Syx daily-memory text format.
 
 Behavior:
 - Accept an input path that may be one HTML file or a directory.
@@ -441,7 +441,7 @@ def run(input_path_raw: str, output_dir: str) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Import ChatGPT HTML file(s) into Morpheus daily-memory text format."
+        description="Import ChatGPT HTML file(s) into Syx daily-memory text format."
     )
     parser.add_argument(
         "input_path",

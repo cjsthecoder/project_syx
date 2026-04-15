@@ -1,7 +1,7 @@
 """
 Copyright (c) 2025 Syx Project Contributors. All rights reserved.
 
-This source code is part of the Morpheus project and is proprietary.
+This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
@@ -14,10 +14,10 @@ from diagrams.onprem.database import PostgreSQL
 from diagrams.onprem.network import Nginx
 from diagrams.generic.storage import Storage
 
-# Generate docs/morpheus_architecture.png
+# Generate docs/syx_architecture.png
 with Diagram(
-    "Morpheus Architecture",
-    filename="docs/morpheus_architecture",
+    "Syx Architecture",
+    filename="docs/syx_architecture",
     show=False,
     outformat="png",
     direction="RL",  # Right-to-left layout: Core (left) -> Persistence (middle) -> User (right)
@@ -32,7 +32,7 @@ with Diagram(
 
     # Persistence & Storage (middle)
     with Cluster("Persistence & Storage"):
-        sql_db = PostgreSQL("SQLModel/SQLite\nbackend/app/data/morpheus.db")
+        sql_db = PostgreSQL("SQLModel/SQLite\nbackend/app/data/syx.db")
         uploads = Storage("Uploads\nmemory/{project}/uploads")
         faiss_idx = Storage("Main FAISS Index\nmemory/{project}/faiss")
         daily_faiss = Storage("Daily FAISS\nmemory/{project}/daily_faiss")

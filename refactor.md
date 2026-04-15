@@ -58,3 +58,13 @@
 - Updated callers/imports:
   - `backend/app/rag/manager.py`
   - `backend/app/rag/daily_store.py`
+
+## Ticket 6 - Move sleep orchestration module
+
+- Moved file:
+  - `backend/app/api/sleep.py` -> `backend/app/sleep/cycle.py`
+- Added thin API wrapper:
+  - `backend/app/api/sleep.py` now re-exports router and orchestration entrypoints from `app.sleep.cycle`
+- Result:
+  - sleep orchestration lives in the `sleep` package
+  - API layer remains a thin wrapper module

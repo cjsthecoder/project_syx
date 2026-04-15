@@ -76,7 +76,7 @@ install-backend:
 	fi'
 	@# Ensure current shell picks up cargo/rustc for the install step
 	@sh -c 'if [ -f "$$HOME/.cargo/env" ]; then . "$$HOME/.cargo/env"; fi; \
-		PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 venv/bin/python -m pip install -r backend/requirements.txt'
+		PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 venv/bin/python -m pip install -r requirements.txt'
 	@echo "✅ Backend dependencies installed"
 
 install-frontend:
@@ -108,15 +108,15 @@ run: build
 			echo "🐍 Creating Python virtual environment at ./venv"; \
 			python3 -m venv venv; \
 			echo "📦 Installing backend requirements into ./venv"; \
-			. venv/bin/activate && pip install -r backend/requirements.txt; \
+			. venv/bin/activate && pip install -r requirements.txt; \
 		else \
 			echo "ℹ️  Using existing ./venv"; \
 		fi; \
 		echo "✅ Virtual environment ready"; \
-		venv/bin/python -c "import fastapi" 2>/dev/null || (echo "📦 Installing backend requirements into ./venv" && venv/bin/python -m pip install -r backend/requirements.txt); \
+		venv/bin/python -c "import fastapi" 2>/dev/null || (echo "📦 Installing backend requirements into ./venv" && venv/bin/python -m pip install -r requirements.txt); \
 		cd backend && ../venv/bin/python -m app.main; \
 	else \
-		python -c "import fastapi" 2>/dev/null || (echo "📦 Installing backend requirements into active venv" && python -m pip install -r backend/requirements.txt); \
+		python -c "import fastapi" 2>/dev/null || (echo "📦 Installing backend requirements into active venv" && python -m pip install -r requirements.txt); \
 		cd backend && python -m app.main; \
 	fi
 

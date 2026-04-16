@@ -35,7 +35,12 @@ Set log level via the `LOG_LEVEL` environment variable (e.g., DEBUG, INFO):
 export LOG_LEVEL=DEBUG
 ```
 
-Or add it to your `.env` file alongside other settings (see `.env.example`).
+Or add it to your `.env` file alongside other settings (generate with `make setup-env`).
+
+## Configuration source of truth
+- Runtime defaults are defined in `backend/app/core/config.py` (`Settings`).
+- `make setup-env` mirrors those runtime defaults when generating `.env`.
+- If a `.env` value differs from `config.py`, `.env` intentionally overrides runtime defaults.
 
 ## Key environment variables
 - OPENAI_API_KEY
@@ -48,11 +53,10 @@ Or add it to your `.env` file alongside other settings (see `.env.example`).
 - TAGGER_MODEL (default gpt-5.4-mini)
 - DREAM_MODEL (default gpt-5.4)
 - LOG_LEVEL (default INFO)
-- LOG_FORMAT (json or text)
 - DB_PATH
 - MAX_UPLOAD_MB, MAX_BATCH_MB, STORAGE_LIMIT_MB
-- EMBEDDING_PROVIDER (default openai), EMBEDDING_MODEL, CHUNK_SIZE, CHUNK_OVERLAP
-- RAG_ON_CHAT, BASE_TOP_K, RETRIEVAL_MULTIPLIER, RAG_SCORE_THRESHOLD, DAILY_RAG_SCORE_THRESHOLD, DAILY_RAG_WEIGHT
+- EMBEDDING_PROVIDER (default openai), EMBEDDING_MODEL, CHUNK_SIZE (default 800), CHUNK_OVERLAP (default 100)
+- RAG_ON_CHAT, BASE_TOP_K (default 5), RETRIEVAL_MULTIPLIER, RAG_SCORE_THRESHOLD (default 0.75), DAILY_RAG_SCORE_THRESHOLD (default 0.70)
 - AVAILABLE_MODELS (optional JSON array)
 
 ## Docker (Ubuntu, Python 3.13.3)

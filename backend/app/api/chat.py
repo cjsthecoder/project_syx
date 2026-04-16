@@ -19,10 +19,10 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Tuple
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from ..core.models import ChatRequest, ChatResponse, ErrorResponse
+from ..core.models import ChatRequest, ChatResponse
 from ..core.llm import generate_chat_response, get_llm_health
 from ..llm_model.factory import get_llm_client
 from ..core.memory import get_memory_manager, set_last_context_tokens

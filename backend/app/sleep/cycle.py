@@ -14,7 +14,7 @@ This module provides memory pruning and cleanup functionality (stubbed for Versi
 """
 
 import logging
-from typing import Optional, Any, Dict, List, Tuple
+from typing import Optional, Any, Dict, List
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -33,13 +33,10 @@ from ..dream import dream
 import time
 from ..utils.logging import RequestLogger
 from ..utils.errors import handle_memory_error, log_error_context
-import threading
 import os
 import json
-import re
 import uuid
 from datetime import datetime
-from ..core.state import release_lock
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -47,156 +44,17 @@ router = APIRouter()
 # Initialize logger
 request_logger = RequestLogger("sleep")
 
-# Unified sleep runner (background thread)
-_runner_lock = threading.Lock()
-_runner_thread: Optional[threading.Thread] = None
 from ..rag.manager import rebuild_faiss_index, load_faiss_index
 from filelock import FileLock
 from ..core.config import get_settings
 from ..rag.daily_store import _project_daily_paths, clear_daily_cache
-from ..dream import dream
 from ..utils.debug_utils import write_debug_file
+from .questions_consolidation import consolidate_open_questions_artifact
+from .worker import start_sleep_cycle_runner
 def _nl(s: str) -> str:
     """Normalize line endings to LF to avoid mixed terminators."""
     return s.replace("\r\n", "\n").replace("\r", "\n")
 
-
-def _normalize_question_key(question: str, topic: str) -> str:
-    def _norm(text: str) -> str:
-        lowered = str(text or "").strip().lower()
-        lowered = re.sub(r"['\"`“”’]", "", lowered)
-        lowered = re.sub(r"[^a-z0-9]+", " ", lowered)
-        return lowered.strip()
-
-    return f"{_norm(question)}||{_norm(topic)}"
-
-
-def _consolidate_open_questions_artifact(project_id: str) -> Dict[str, Any]:
-    """
-    Deterministically consolidate open_questions.jsonl into canonical unresolved questions.
-
-    Consolidation rules:
-    - Stable dedupe key: normalized(question) + normalized(topic)
-    - Collision policy: keep latest record by (ts, line_no)
-    - Status resolution: drop records where final resolution == "ignore"
-    """
-    base_dir = os.path.join(get_settings().memory_root, project_id)
-    src_path = os.path.join(base_dir, "open_questions.jsonl")
-    out_path = os.path.join(base_dir, "open_questions_consolidated.json")
-    state_dir = os.path.join(base_dir, "state")
-    os.makedirs(state_dir, exist_ok=True)
-    lock_path = os.path.join(state_dir, "open_questions.lock")
-    legacy_lock_path = os.path.join(base_dir, "open_questions.lock")
-    if os.path.isfile(legacy_lock_path) and not os.path.exists(lock_path):
-        try:
-            os.replace(legacy_lock_path, lock_path)
-        except OSError as exc:
-            logger.warning("[SLEEP][QUESTIONS] lock migration failed project=%s detail=%s", project_id, exc)
-    consolidated: Dict[str, Any] = {"questions": []}
-    if not os.path.isfile(src_path):
-        try:
-            with open(out_path, "w", encoding="utf-8", newline="\n") as f:
-                json.dump(consolidated, f, ensure_ascii=False, indent=2)
-        except Exception as exc:
-            logger.warning(
-                "[SLEEP][QUESTIONS] Failed writing empty consolidated artifact project=%s path=%s detail=%s",
-                project_id,
-                out_path,
-                exc,
-            )
-        return consolidated
-
-    latest_by_key: Dict[str, Tuple[Tuple[str, int], Dict[str, Any]]] = {}
-    kept = 0
-    ignored = 0
-    parsed = 0
-
-    with FileLock(lock_path):
-        try:
-            with open(src_path, "r", encoding="utf-8") as f:
-                for line_no, raw in enumerate(f, start=1):
-                    raw = (raw or "").strip()
-                    if not raw:
-                        continue
-                    try:
-                        obj = json.loads(raw)
-                    except Exception:
-                        continue
-                    if not isinstance(obj, dict):
-                        continue
-                    question = str(obj.get("question", "") or "").strip()
-                    topic = str(obj.get("topic", "") or "").strip()
-                    resolution = str(obj.get("resolution", "") or "").strip().lower()
-                    if not question:
-                        continue
-                    if resolution not in {"ignore", "answer_local", "answer_remote"}:
-                        resolution = "ignore"
-                    key = _normalize_question_key(question, topic)
-                    if not key:
-                        continue
-                    parsed += 1
-                    ts = str(obj.get("ts", "") or "")
-                    rank = (ts, int(line_no))
-                    cur = latest_by_key.get(key)
-                    if (cur is None) or (rank >= cur[0]):
-                        latest_by_key[key] = (
-                            rank,
-                            {
-                                "question": question,
-                                "topic": topic,
-                                "resolution": resolution,
-                                "project_id": project_id,
-                                "namespace": str(obj.get("namespace", "") or ""),
-                                "semantic_handle": str(obj.get("semantic_handle", "") or ""),
-                                "pair_id": str(obj.get("pair_id", "") or ""),
-                                "assistant_message_id": obj.get("assistant_message_id"),
-                                "user_message_id": obj.get("user_message_id"),
-                                "source_ts": ts,
-                            },
-                        )
-        except Exception as e:
-            logger.warning("[SLEEP][QUESTIONS] Failed reading open_questions.jsonl project=%s: %s", project_id, e)
-            try:
-                with open(out_path, "w", encoding="utf-8", newline="\n") as f:
-                    json.dump(consolidated, f, ensure_ascii=False, indent=2)
-            except Exception as exc:
-                logger.warning(
-                    "[SLEEP][QUESTIONS] Failed writing fallback consolidated artifact project=%s path=%s detail=%s",
-                    project_id,
-                    out_path,
-                    exc,
-                )
-            return consolidated
-
-        rows: List[Dict[str, Any]] = []
-        for _key, (_rank, item) in latest_by_key.items():
-            if str(item.get("resolution", "")).lower() == "ignore":
-                ignored += 1
-                continue
-            kept += 1
-            rows.append(item)
-        rows.sort(
-            key=lambda r: (
-                str(r.get("source_ts", "") or ""),
-                str(r.get("question", "") or "").lower(),
-                str(r.get("topic", "") or "").lower(),
-            )
-        )
-        consolidated = {"questions": rows}
-        try:
-            with open(out_path, "w", encoding="utf-8", newline="\n") as f:
-                json.dump(consolidated, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.warning("[SLEEP][QUESTIONS] Failed writing consolidated artifact project=%s: %s", project_id, e)
-    logger.info(
-        "[SLEEP][QUESTIONS] project=%s parsed=%s deduped=%s kept=%s ignored=%s",
-        project_id,
-        int(parsed),
-        int(len(latest_by_key)),
-        int(kept),
-        int(ignored),
-    )
-    return consolidated
 
 def _sleep_cycle_worker():
     start_iso = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime())
@@ -378,7 +236,7 @@ def _sleep_cycle_worker():
             pid = p.id
             base_dir = os.path.join(get_settings().memory_root, pid)
             try:
-                _consolidate_open_questions_artifact(pid)
+                consolidate_open_questions_artifact(pid)
             except Exception as qce:
                 logger.warning("[SLEEP][QUESTIONS][WARN] project=%s: %s", pid, qce)
             daily_path = os.path.join(base_dir, "daily.txt")
@@ -595,18 +453,7 @@ def _sleep_cycle_worker():
 
 def start_sleep_cycle_async() -> bool:
     """Start sleep cycle in background if not already sleeping. Returns True if started."""
-    if is_sleeping():
-        logger.info("[SLEEP] Already running, skipping.")
-        return False
-    global _runner_thread
-    with _runner_lock:
-        if is_sleeping():
-            logger.info("[SLEEP] Already running, skipping.")
-            return False
-        t = threading.Thread(target=_sleep_cycle_worker, name="sleep-cycle", daemon=True)
-        _runner_thread = t
-        t.start()
-        return True
+    return start_sleep_cycle_runner(_sleep_cycle_worker)
 
 @router.post("/sleep_cycle", response_model=SleepCycleResponse)
 async def sleep_cycle_endpoint(request: SleepCycleRequest) -> SleepCycleResponse:

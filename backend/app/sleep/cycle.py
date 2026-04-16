@@ -10,7 +10,7 @@ Use of this software requires explicit written permission from the copyright hol
 """
 Sleep Cycle API endpoint for Syx AGI Chatbot Framework.
 
-This module provides memory pruning and cleanup functionality (stubbed for Version 3).
+This module provides memory pruning and cleanup functionality (stubbed).
 """
 
 import logging
@@ -216,7 +216,7 @@ def _sleep_cycle_worker():
             status = "partial"
             errors.append("flush:global")
             logger.warning("[SLEEP][FLUSH][WARN] global flush step failed; operation=flush_pairs detail=%s", e)
-        # Backfill daily.txt if missing (current V2.x behavior)
+        # Backfill daily.txt if missing (current behavior).
         try:
             with get_session() as session:
                 rows = session.exec(select(Project)).all()
@@ -460,7 +460,7 @@ async def sleep_cycle_endpoint(request: SleepCycleRequest) -> SleepCycleResponse
     """
     Trigger memory pruning and sleep cycle.
     
-    This endpoint is stubbed for Version 3 implementation with scheduled cleanup.
+    This endpoint is stubbed for future scheduled cleanup implementation.
     Currently returns placeholder responses.
     """
     try:
@@ -482,7 +482,7 @@ async def sleep_cycle_endpoint(request: SleepCycleRequest) -> SleepCycleResponse
         
         # Create response (stubbed)
         response = SleepCycleResponse(
-            response=f"Memory cleanup for project '{request.project_id or 'default'}' is not yet implemented. This feature will be available in Version 3 with scheduled pruning.",
+            response=f"Memory cleanup for project '{request.project_id or 'default'}' is not yet implemented. This feature will be available with scheduled pruning.",
             items_cleaned=cleanup_stats.get("items_cleaned", 0),
             memory_usage_before=cleanup_stats.get("memory_usage_before", "0MB"),
             memory_usage_after=cleanup_stats.get("memory_usage_after", "0MB")
@@ -569,7 +569,7 @@ async def sleep_cycle_status() -> JSONResponse:
                 "status": "stub",
                 "service": "sleep_cycle",
                 "memory_stats": stats,
-                "implementation": "Version 3 with scheduled cleanup"
+                "implementation": "Scheduled cleanup implementation planned"
             }
         )
         
@@ -641,7 +641,7 @@ async def manual_cleanup(
 
 @router.get("/sleep_cycle/schedule")
 async def get_cleanup_schedule() -> JSONResponse:
-    """Get cleanup schedule information (stubbed for V3)."""
+    """Get cleanup schedule information (stubbed)."""
     try:
         return JSONResponse(
             status_code=200,
@@ -653,7 +653,7 @@ async def get_cleanup_schedule() -> JSONResponse:
                     "time": "02:00",
                     "retention_days": 30
                 },
-                "implementation": "Version 3 with Celery and Redis"
+                "implementation": "Planned with Celery and Redis"
             }
         )
         
@@ -675,7 +675,7 @@ async def set_cleanup_schedule(
     time: str = "02:00",
     retention_days: int = 30
 ) -> JSONResponse:
-    """Set cleanup schedule (stubbed for V3)."""
+    """Set cleanup schedule (stubbed)."""
     try:
         # Log the request
         request_logger.log_request(
@@ -684,7 +684,7 @@ async def set_cleanup_schedule(
         )
         
         # Stubbed schedule setting
-        logger.info(f"Cleanup schedule setting requested (stub - will be implemented in V3)")
+        logger.info("Cleanup schedule setting requested (stub - not yet implemented)")
         
         return JSONResponse(
             status_code=200,
@@ -697,7 +697,7 @@ async def set_cleanup_schedule(
                     "time": time,
                     "retention_days": retention_days
                 },
-                "implementation": "Version 3 with Celery and Redis"
+                "implementation": "Planned with Celery and Redis"
             }
         )
         
@@ -724,7 +724,7 @@ async def sleep_cycle_health() -> JSONResponse:
                 "service": "sleep_cycle",
                 "memory_mode": stats["memory_mode"],
                 "features": stats["features_available"],
-                "implementation": "Version 3 with scheduled cleanup"
+                "implementation": "Scheduled cleanup implementation planned"
             }
         )
         

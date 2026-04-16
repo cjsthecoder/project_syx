@@ -514,7 +514,7 @@ def append_pair(
     update_cache: bool = True,
 ) -> bool:
     """Append a single embedded pair to the daily index and metadata.
-    Note: We don't persist raw FAISS here; for V2.3 we only track metadata and rely on embeddings at retrieval-time for simplicity.
+    Note: We don't persist raw FAISS here; we only track metadata and rely on embeddings at retrieval-time for simplicity.
     When update_cache is False, only daily.json (and optionally daily.txt) are updated; caller is responsible for rebuilding the in-memory RAG once (e.g. dream batch).
     """
     settings = get_settings()
@@ -565,7 +565,7 @@ def append_pair(
                 else:
                     user_text = ""
                     assistant_text = pair_text.strip()
-                # New V3.2 header + block format (local time MM-DD-YYYY_HH:MM:SS)
+                # Header + block format (local time MM-DD-YYYY_HH:MM:SS)
                 try:
                     tstruct = time.strptime(ts.replace("Z", ""), "%Y-%m-%dT%H:%M:%S")
                     ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime(time.mktime(tstruct)))
@@ -764,7 +764,7 @@ def daily_stats(project_id: str) -> Dict[str, int]:
 
 
 def backfill_daily_txt_from_meta(project_id: str) -> bool:
-    """If daily.json exists and daily.txt missing, write out text blocks for all entries (V3.2 format)."""
+    """If daily.json exists and daily.txt missing, write out text blocks for all entries (canonical format)."""
     meta_path, lock_path, txt_path = _project_daily_paths(project_id)
     if os.path.isfile(txt_path):
         return False
@@ -814,7 +814,7 @@ def backfill_daily_txt_from_meta(project_id: str) -> bool:
                         f"\n"
                     )
                     tf.write(_nl(block))
-            logger.warning("[DAILYTXT] Backfilled daily.txt (V3.2 format) for project=%s", project_id)
+            logger.warning("[DAILYTXT] Backfilled daily.txt (canonical format) for project=%s", project_id)
             return True
         except Exception as e:
             logger.error("[DAILYTXT] Failed backfill for project=%s: %s", project_id, e)

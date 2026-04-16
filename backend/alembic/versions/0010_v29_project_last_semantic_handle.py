@@ -7,7 +7,7 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
-"""V3.x add last_semantic_handle to Project
+"""Add last_semantic_handle to Project
 
 Revision ID: 0010
 Revises: 0009

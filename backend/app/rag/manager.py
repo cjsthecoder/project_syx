@@ -9,7 +9,7 @@ Use of this software requires explicit written permission from the copyright hol
 """
 from __future__ import annotations
 """
-RAG manager for building FAISS indices per project (V2).
+RAG manager for building FAISS indices per project.
 
 Policy:
 - Embedding model: text-embedding-3-large (configurable)
@@ -1276,6 +1276,6 @@ def merge_daily_and_main(
     }
 
 
-# Legacy FAISS sidecar namespace map support removed in V2.5; namespaces are embedded during indexing.
+# Legacy FAISS sidecar namespace map support removed; namespaces are embedded during indexing.
 
 

@@ -7,7 +7,7 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
-"""Add tags_meta_json + semantic_handle to ChatMessage (V3.x)
+"""Add tags_meta_json + semantic_handle to ChatMessage
 
 Revision ID: 0009
 Revises: 0008

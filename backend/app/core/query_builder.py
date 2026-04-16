@@ -9,7 +9,7 @@ Use of this software requires explicit written permission from the copyright hol
 """
 from __future__ import annotations
 """
-Query Builder / Router for V2.3.1.
+Query Builder / Router.
 
 Calls a lightweight LLM to produce routing + rewritten queries and caches results briefly.
 """

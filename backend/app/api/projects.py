@@ -10,7 +10,7 @@ Use of this software requires explicit written permission from the copyright hol
 """
 Projects API endpoint for Syx AGI Chatbot Framework.
 
-This module provides project management functionality (stubbed for Version 4).
+This module provides project management functionality (stubbed).
 """
 
 import logging

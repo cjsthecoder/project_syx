@@ -7,7 +7,7 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
-"""v2.7 add forget flag to chat_message
+"""Add forget flag to chat_message
 
 Revision ID: 0005
 Revises: 0004

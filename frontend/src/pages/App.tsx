@@ -13,30 +13,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Toast } from '@/components/ui/toast'
 import { Dialog, DialogHeader, DialogFooter } from '@/components/ui/dialog'
-
-type Message = { id?: number; role: 'user' | 'assistant'; content: string; forget?: boolean; keep?: boolean }
-type Project = { id: string; name?: string }
-type ModelItem = string
-type DreamResearch = { research_topic?: string; research_summary?: string }
-type DreamItem = {
-  id?: string
-  origin_text?: string
-  assistant_response?: string
-  origin_type?: string
-  source_resolution?: string
-  research?: DreamResearch[]
-  keep?: boolean
-  remember?: boolean
-}
-
-async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
-}
+import { api } from '@/pages/app/api'
+import { DreamItem, Message, ModelItem, Project, ProjectInfo, ProjectStats } from '@/pages/app/types'
 
 export default function App() {
   const showDebugValues = !['false', '0', 'no', 'off'].includes(
@@ -58,8 +36,8 @@ export default function App() {
   const [newProjectName, setNewProjectName] = useState('')
   const [renameProjectName, setRenameProjectName] = useState('')
   const [files, setFiles] = useState<any[]>([])
-  const [stats, setStats] = useState<{ storage_bytes: number; index_size_bytes: number; tokens_indexed: number; context_tokens: number; file_count: number; daily_index_size_bytes?: number; daily_tokens_indexed?: number; daily_vector_count?: number; active_pairs?: number } | null>(null)
-  const [projectInfo, setProjectInfo] = useState<{ name?: string; description?: string; created_at?: string; system?: boolean; daily_rag_enabled?: boolean } | null>(null)
+  const [stats, setStats] = useState<ProjectStats | null>(null)
+  const [projectInfo, setProjectInfo] = useState<ProjectInfo | null>(null)
   const [showSleepModal, setShowSleepModal] = useState(false)
   const [sleepSince, setSleepSince] = useState<string | null>(null)
   // Dream UI

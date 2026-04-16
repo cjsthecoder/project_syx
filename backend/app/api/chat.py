@@ -26,8 +26,7 @@ from ..core.models import ChatRequest, ChatResponse, ErrorResponse
 from ..core.llm import generate_chat_response, get_llm_health
 from ..llm_model.factory import get_llm_client
 from ..core.memory import get_memory_manager, set_last_context_tokens
-from ..utils.debug_utils import write_debug_file
-from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id, set_route, clear_route, set_namespace, clear_namespace, get_route
+from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id, set_route, clear_route, set_namespace, clear_namespace
 from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings, compute_per_source_k
 from ..rag.manager import retrieve_context, merge_daily_and_main
@@ -38,6 +37,7 @@ from ..core.database import get_session
 from ..core.db_models import Project
 from ..core.query_builder import build_query, format_contextual_turn
 from ..tracking import get_instrumentation
+from .chat_prompting import RAG_SYSTEM_PROMPT, dump_prompt_debug, estimate_message_tokens, estimate_tokens
 import os
 import json
 
@@ -50,124 +50,11 @@ llm_logger = LLMLogger()
 _TURN_SEQ = 0
 _TURN_SEQ_LOCK = threading.Lock()
 
-RAG_SYSTEM_PROMPT = """Each retrieved snippet includes a similarity score in the range [0.0–1.0].
-The similarity score reflects semantic closeness to the query, not factual correctness.
-
-Guidance for use:
-- Higher scores indicate stronger semantic relevance to the current query.
-- Prefer high-scoring snippets when making factual claims or direct assertions.
-- Lower-scoring snippets may be used for background, framing, or creative inspiration.
-- Do not treat lower-scoring snippets as authoritative unless supported by higher-scoring context.
-
-When multiple snippets conflict:
-- Favor information from higher-scoring snippets.
-- If only lower-scoring snippets are available, respond cautiously and note uncertainty.
-
-Output constraint:
-- Do NOT include similarity scores, snippet numbers, filenames, page numbers, routes, or other retrieval 
-metadata in your response unless the user explicitly asks for them.
-- Use scores only to guide which retrieved text to rely on.
-"""
-
-def _estimate_tokens(text: str) -> int:
-    """Best-effort token estimate for debug headers."""
-    try:
-        import tiktoken  # type: ignore
-        enc = tiktoken.get_encoding("cl100k_base")
-        return int(len(enc.encode(text or "")))
-    except Exception:
-        return int(len((text or "").split()))
-
-
-def _estimate_message_tokens(messages: list) -> int:
-    """Best-effort token estimate over structured message list."""
-    try:
-        text = "\n".join(str((m.get("content") or "")) for m in (messages or []) if isinstance(m, dict))
-        return int(_estimate_tokens(text))
-    except (AttributeError, TypeError, ValueError):
-        return 0
-
-
 def _next_turn_id() -> int:
     global _TURN_SEQ
     with _TURN_SEQ_LOCK:
         _TURN_SEQ += 1
         return int(_TURN_SEQ)
-
-def _dump_prompt_debug(
-    *,
-    project_id: Optional[str],
-    base_system_prompt: Optional[str],
-    assistant_hint: Optional[str],
-    rag_system_prompt: Optional[str],
-    conversation_history: Optional[list[dict]],
-    user_prompt: Optional[str],
-    model: Optional[str],
-    msgs: Optional[list] = None,
-) -> None:
-    """
-    Write a prompt debug snapshot to memory/{project_id}/debug/prompts/.
-    Safe/no-op when project_id is missing or debug files are disabled.
-    """
-    if not project_id:
-        return
-    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-    fname = f"{ts}_prompt_to_execute.txt"
-    route = None
-    try:
-        route = get_route()
-    except Exception as exc:
-        logger.debug("chat.prompt_debug failed reading route; detail=%s", exc)
-        route = None
-    rag_used = bool(rag_system_prompt)
-    _ = msgs  # Reserved for future exact-payload debug variants.
-
-    # Build conversation history section
-    hist_lines: list[str] = []
-    if conversation_history:
-        for m in conversation_history:
-            role = (m.get("role") or "").lower()
-            content = (m.get("content") or "")
-            if role == "user":
-                hist_lines.append("USER:")
-                hist_lines.append(content)
-                hist_lines.append("")
-            elif role == "assistant":
-                hist_lines.append("ASSISTANT:")
-                hist_lines.append(content)
-                hist_lines.append("")
-            else:
-                hist_lines.append(f"{role.upper()}:")
-                hist_lines.append(content)
-                hist_lines.append("")
-    hist_text = "\n".join(hist_lines).rstrip() + ("\n" if hist_lines else "")
-
-    body = (
-        f"# timestamp: {ts}\n"
-        + (f"# project_id: {project_id}\n" if project_id else "")
-        + (f"# route: {route}\n" if route else "")
-        + f"# rag: {str(bool(rag_used)).lower()}\n"
-        + (f"# model: {model}\n" if model else "")
-    )
-    # Estimate tokens over the whole formatted dump (best-effort).
-    payload_preview = (
-        "====== SYSTEM ======\n"
-        + (base_system_prompt or "")
-        + "\n\n====== ASSISTANT_HINT ======\n"
-        + (assistant_hint or "")
-        + "\n\n====== (RAG CONTEXT) ======\n"
-        + (rag_system_prompt or "")
-        + "\n\n====== CONVERSATION HISTORY ======\n"
-        + hist_text
-        + "\n====== USER PROMPT ======\n"
-        + (user_prompt or "")
-        + "\n"
-    )
-    body += f"# total_tokens_estimate: {_estimate_tokens(body + payload_preview)}\n\n"
-    body += payload_preview
-
-    write_debug_file(project_id, f"prompts/{fname}", body)
-
 
 class _ChatPipeline:
     """
@@ -581,13 +468,13 @@ class _ChatPipeline:
                 "prompt_assembly",
                 {
                     "module": "chat_stream",
-                    "prompt_system_tokens_est": int(_estimate_tokens(base_system_prompt or "")),
+                    "prompt_system_tokens_est": int(estimate_tokens(base_system_prompt or "")),
                     "prompt_history_tokens_est": int(
-                        _estimate_tokens("\n".join(str((m.get("content") or "")) for m in (conversation_history or [])))
+                        estimate_tokens("\n".join(str((m.get("content") or "")) for m in (conversation_history or [])))
                     ),
-                    "prompt_rag_tokens_est": int(_estimate_tokens(rag_system_prompt or "")),
-                    "prompt_profile_tokens_est": int(_estimate_tokens(assistant_hint or "")),
-                    "prompt_other_tokens_est": int(_estimate_tokens(user_message or "")),
+                    "prompt_rag_tokens_est": int(estimate_tokens(rag_system_prompt or "")),
+                    "prompt_profile_tokens_est": int(estimate_tokens(assistant_hint or "")),
+                    "prompt_other_tokens_est": int(estimate_tokens(user_message or "")),
                     "message_count": int(len(msgs)),
                 },
             )
@@ -732,7 +619,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         logger.debug(f"Chat: model={request.model or 'default'} message_len={len(request.message)} conv_id={request.conversation_id}")
         # Prompt debug snapshot (best-effort; no-op unless GENERATE_DEBUG_FILES=true)
         try:
-            _dump_prompt_debug(
+            dump_prompt_debug(
                 project_id=request.project_id,
                 base_system_prompt=base_system_prompt,
                 assistant_hint=assistant_hint,
@@ -1032,7 +919,7 @@ async def chat_stream(request: ChatRequest):
         )
         # Prompt debug snapshot (best-effort; no-op unless GENERATE_DEBUG_FILES=true)
         try:
-            _dump_prompt_debug(
+            dump_prompt_debug(
                 project_id=request.project_id,
                 base_system_prompt=base_system_prompt,
                 assistant_hint=assistant_hint,
@@ -1092,8 +979,8 @@ async def chat_stream(request: ChatRequest):
             finally:
                 try:
                     full_text = "".join(collected)
-                    prompt_tokens_est = int(_estimate_message_tokens(msgs))
-                    completion_tokens_est = int(_estimate_tokens(full_text))
+                    prompt_tokens_est = int(estimate_message_tokens(msgs))
+                    completion_tokens_est = int(estimate_tokens(full_text))
                     total_tokens_est = int(prompt_tokens_est + completion_tokens_est)
                     usage_payload = provider_usage or {
                         "prompt_tokens_reported": int(prompt_tokens_est),

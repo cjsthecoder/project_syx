@@ -8,7 +8,6 @@ Enabled/disabled behavior is centralized here via Noop vs Real implementations.
 from __future__ import annotations
 
 import atexit
-import contextvars
 import hashlib
 import json
 import logging
@@ -18,79 +17,10 @@ import subprocess
 import threading
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Dict, Optional
+from .base import Instrumentation, NoopInstrumentation, local_timestamp_compact, utc_iso
 
 logger = logging.getLogger(__name__)
-_ACTIVE_TURN_ID: contextvars.ContextVar[Optional[int]] = contextvars.ContextVar(
-    "instrumentation_active_turn_id",
-    default=None,
-)
-
-
-def _utc_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _local_timestamp_compact() -> str:
-    # Match logger file timestamp format in utils/logging.py
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
-
-
-class Instrumentation(Protocol):
-    """Common interface used by application code."""
-
-    def start_run(self, config: Optional[dict] = None) -> str: ...
-
-    def end_run(self, summary: Optional[dict] = None) -> None: ...
-
-    def start_turn(self, turn_id: int, user_meta: Optional[dict] = None) -> None: ...
-
-    def end_turn(self, output_meta: Optional[dict] = None) -> None: ...
-
-    def start_invocation(self, purpose: str, model: str, meta: Optional[dict] = None) -> str: ...
-
-    def end_invocation(
-        self,
-        invocation_id: str,
-        usage: Optional[dict] = None,
-        timing: Optional[dict] = None,
-    ) -> None: ...
-
-    def record_stage(self, name: str, data: dict) -> None: ...
-
-
-class NoopInstrumentation:
-    """No-op implementation used when instrumentation is disabled."""
-
-    def start_run(self, config: Optional[dict] = None) -> str:
-        _ = config
-        return ""
-
-    def end_run(self, summary: Optional[dict] = None) -> None:
-        _ = summary
-
-    def start_turn(self, turn_id: int, user_meta: Optional[dict] = None) -> None:
-        _ = (turn_id, user_meta)
-        _ACTIVE_TURN_ID.set(int(turn_id))
-
-    def end_turn(self, output_meta: Optional[dict] = None) -> None:
-        _ = output_meta
-        _ACTIVE_TURN_ID.set(None)
-
-    def start_invocation(self, purpose: str, model: str, meta: Optional[dict] = None) -> str:
-        _ = (purpose, model, meta)
-        return ""
-
-    def end_invocation(
-        self,
-        invocation_id: str,
-        usage: Optional[dict] = None,
-        timing: Optional[dict] = None,
-    ) -> None:
-        _ = (invocation_id, usage, timing)
-
-    def record_stage(self, name: str, data: dict) -> None:
-        _ = (name, data)
 
 
 class RealInstrumentation:
@@ -308,7 +238,7 @@ class RealInstrumentation:
         os.makedirs(self.runs_dir, exist_ok=True)
 
     def _new_run_id(self) -> str:
-        ts = _local_timestamp_compact()
+        ts = local_timestamp_compact()
         if self.run_id_override:
             return f"{self.run_id_override}_{ts}"
         return f"run_{ts}_{uuid.uuid4().hex[:8]}"
@@ -352,7 +282,7 @@ class RealInstrumentation:
                 digest_src = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
                 out["as_run_personality"] = canonical
                 out["as_run_personality_sha256"] = hashlib.sha256(digest_src.encode("utf-8")).hexdigest()
-                out["personality_captured_at"] = _utc_iso()
+                out["personality_captured_at"] = utc_iso()
                 out["personality_source"] = source
         except Exception as e:
             logger.warning("tracking.project_observed personality snapshot failed project_id=%s: %s", pid, e)
@@ -466,7 +396,7 @@ class RealInstrumentation:
                 self._run_meta = {
                     "run_id": self.run_id,
                     "mode": self.mode,
-                    "started_at": _utc_iso(),
+                    "started_at": utc_iso(),
                     "ended_at": None,
                     # 5.10: immutable startup snapshot (authoritative)
                     "config_snapshot": cfg_snapshot,
@@ -519,7 +449,7 @@ class RealInstrumentation:
                     vals = sorted([str(m) for m in models if str(m).strip()])
                     if vals:
                         observed[str(purpose)] = vals
-                self._run_meta["ended_at"] = _utc_iso()
+                self._run_meta["ended_at"] = utc_iso()
                 self._run_meta["models_observed"] = observed
                 self._run_meta["summary"] = summary or {}
                 self._write_run_json()
@@ -549,14 +479,14 @@ class RealInstrumentation:
                 _ACTIVE_TURN_ID.set(tid)
                 self._turn_state[tid] = {
                     "_turn_started_monotonic": time.perf_counter(),
-                    "_turn_start_ts": _utc_iso(),
+                    "_turn_start_ts": utc_iso(),
                     "ttfb_ms_main": None,
                     "ttlt_ms_main": None,
                     "_has_main_latency": False,
                     **self._turn_state_defaults(),
                 }
                 payload = {
-                    "ts": _utc_iso(),
+                    "ts": utc_iso(),
                     "event": "start_turn",
                     "run_id": self.run_id,
                     "turn_id": tid,
@@ -703,7 +633,7 @@ class RealInstrumentation:
                         return
 
                 payload = {
-                    "ts": _utc_iso(),
+                    "ts": utc_iso(),
                     "event": "end_turn",
                     "run_id": self.run_id,
                     "turn_id": int(tid) if tid is not None else None,
@@ -766,7 +696,7 @@ class RealInstrumentation:
                 self._invocation_seq += 1
                 # Unique within a run by construction (monotonic sequence).
                 invocation_id = f"inv_{self._invocation_seq:08d}"
-                start_ts = _utc_iso()
+                start_ts = utc_iso()
                 turn_id = _ACTIVE_TURN_ID.get()
                 schema_errors: list[Dict[str, Any]] = []
                 purpose_value = str(purpose or "").strip()
@@ -953,7 +883,7 @@ class RealInstrumentation:
                 if isinstance(extra_usage, dict):
                     meta_diag["extra_usage"] = extra_usage
 
-                end_ts = _utc_iso()
+                end_ts = utc_iso()
                 start_ts = state.get("start_ts")
                 if not isinstance(start_ts, str) or not start_ts.strip():
                     schema_errors.append(
@@ -1116,7 +1046,7 @@ class RealInstrumentation:
                     stage_data["snippet_count_after_merge"] = int(snippet_count_after_merge or 0)
                     stage_data["expanded_unique_chunks_after_merge"] = int(expanded_unique_chunks_after_merge or 0)
                 payload = {
-                    "ts": _utc_iso(),
+                    "ts": utc_iso(),
                     "event": "stage",
                     "run_id": self.run_id,
                     "name": stage_name,

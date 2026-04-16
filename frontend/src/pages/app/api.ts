@@ -1,8 +1,14 @@
+import { RequestError, readJsonSafe, throwRequestError } from '@/pages/app/request'
+
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  if (!res.ok) await throwRequestError(res)
+  const data = await readJsonSafe<T>(res)
+  if (data === null) {
+    throw new RequestError('Invalid JSON response', res.status, null)
+  }
+  return data
 }

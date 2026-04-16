@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/pages/app/api'
 import { toDreamViewState } from '@/pages/app/dream'
+import { extractErrorMessage, readJsonSafe, throwRequestError } from '@/pages/app/request'
 import { DreamItem, Project, ProjectInfo, ProjectStats } from '@/pages/app/types'
 
 type UseProjectDataArgs = {
@@ -166,19 +167,7 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
       Array.from(selected).forEach((f) => form.append('files', f))
       try {
         const res = await fetch(`/projects/${projectId}/files`, { method: 'POST', body: form })
-        if (!res.ok) {
-          const raw = await res.text().catch(() => '')
-          let detail = raw
-          if (raw) {
-            try {
-              const parsed = JSON.parse(raw)
-              detail = parsed?.error || parsed?.detail || parsed?.message || raw
-            } catch (parseErr) {
-              console.info('upload error response was non-JSON; using raw text', parseErr)
-            }
-          }
-          throw new Error(detail || `Upload failed (HTTP ${res.status})`)
-        }
+        if (!res.ok) await throwRequestError(res)
         await loadFiles(projectId)
         await loadStats(projectId)
       } catch (e: unknown) {
@@ -263,13 +252,12 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      if (!res.ok) {
-        const txt = await res.text().catch(() => '')
-        throw new Error(txt || `HTTP ${res.status}`)
-      }
-      const data = await res.json().catch(() => ({}))
+      if (!res.ok) await throwRequestError(res)
+      const data = (await readJsonSafe<{ failed?: number; errors?: string[] }>(res)) || {}
       if (data?.failed && data.failed > 0) {
-        const msg = Array.isArray(data?.errors) ? data.errors.join('; ') : 'One or more dream items failed'
+        const msg = Array.isArray(data?.errors)
+          ? data.errors.join('; ')
+          : extractErrorMessage(data, 'One or more dream items failed')
         throw new Error(msg)
       }
       setHasDreamItems(false)

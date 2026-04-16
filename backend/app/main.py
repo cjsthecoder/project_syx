@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Import our modules
 from .core.config import get_settings, validate_openai_key
 from .core.models import HealthResponse
-from .api import chat, rag, projects, sleep
+from .api import chat, projects, sleep
 from .api import dream as dream_api
 from .api import files as files_api
 from .api import llm_models
@@ -291,7 +291,6 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(chat.router, tags=["chat"])
-app.include_router(rag.router, tags=["rag"])
 app.include_router(projects.router, tags=["projects"])
 app.include_router(sleep.router, tags=["sleep"])
 app.include_router(files_api.router, tags=["files"])

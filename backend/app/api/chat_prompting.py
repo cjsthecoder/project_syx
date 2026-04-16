@@ -6,6 +6,7 @@ from typing import Optional
 
 from ..utils.debug_utils import write_debug_file
 from ..utils.logging import get_route
+from ..utils.tokens import count_message_content_tokens, count_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -31,22 +32,12 @@ metadata in your response unless the user explicitly asks for them.
 
 def estimate_tokens(text: str) -> int:
     """Best-effort token estimate for debug headers."""
-    try:
-        import tiktoken  # type: ignore
-
-        enc = tiktoken.get_encoding("cl100k_base")
-        return int(len(enc.encode(text or "")))
-    except Exception:
-        return int(len((text or "").split()))
+    return int(count_tokens(text or ""))
 
 
 def estimate_message_tokens(messages: list) -> int:
     """Best-effort token estimate over structured message list."""
-    try:
-        text = "\n".join(str((m.get("content") or "")) for m in (messages or []) if isinstance(m, dict))
-        return int(estimate_tokens(text))
-    except (AttributeError, TypeError, ValueError):
-        return 0
+    return int(count_message_content_tokens(messages or []))
 
 
 def dump_prompt_debug(

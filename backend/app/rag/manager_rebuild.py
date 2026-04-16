@@ -16,6 +16,7 @@ from ..core.database import get_session
 from ..core.db_models import File as FileRow
 from ..embedding.batching import iter_token_batches
 from ..embedding.factory import get_embedding_client
+from ..utils.tokens import count_tokens as _count_tokens, trim_to_tokens as _trim_to_tokens
 from ..utils.debug_utils import write_debug_file
 from .chunk_utils import split_text_simple
 from .manager_index_io import (
@@ -30,12 +31,6 @@ from .manager_index_io import (
 )
 
 logger = logging.getLogger(__name__)
-
-try:
-    import tiktoken  # type: ignore
-except Exception:
-    tiktoken = None  # token counting optional until installed
-
 
 def is_rate_limit_error_message(err: Exception) -> bool:
     msg = str(err or "").lower()
@@ -55,23 +50,11 @@ def read_file_text(path: str) -> List[Tuple[str, dict]]:
 
 
 def count_tokens(text: str) -> int:
-    if not tiktoken:
-        return len(text.split())
-    try:
-        enc = tiktoken.get_encoding("cl100k_base")
-    except (KeyError, ValueError):
-        enc = tiktoken.get_encoding("cl100k_base")
-    return len(enc.encode(text))
+    return int(_count_tokens(text))
 
 
 def trim_to_tokens(text: str, max_tokens: int) -> str:
-    if not tiktoken:
-        return text
-    enc = tiktoken.get_encoding("cl100k_base")
-    ids = enc.encode(text)
-    if len(ids) <= max_tokens:
-        return text
-    return enc.decode(ids[:max_tokens])
+    return _trim_to_tokens(text, max_tokens)
 
 
 def rebuild_faiss_index(project_id: str) -> str:

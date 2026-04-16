@@ -30,6 +30,7 @@ from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_mess
 from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings
 from ..tracking import get_instrumentation
+from ..utils.tokens import count_tokens
 from .chat_prompting import dump_prompt_debug, estimate_message_tokens, estimate_tokens
 from .chat_pipeline import ChatPipeline
 
@@ -197,8 +198,6 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         
         # Update context tokens for stats (exclude RAG system prompt)
         try:
-            import tiktoken  # type: ignore
-            enc = tiktoken.get_encoding("cl100k_base")
             combined_text = ''
             if conversation_history:
                 for msg in conversation_history:
@@ -206,7 +205,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             combined_text += request.message or ''
             # Include the assistant's latest reply
             combined_text += '\n' + (llm_response.get('response') or '')
-            context_tokens = len(enc.encode(combined_text))
+            context_tokens = int(count_tokens(combined_text))
             if request.project_id:
                 set_last_context_tokens(request.project_id, context_tokens)
         except Exception as exc:

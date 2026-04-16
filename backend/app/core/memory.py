@@ -28,6 +28,7 @@ from .db_models import ChatMessage, Project
 from .config import get_settings
 from ..rag.daily_store import append_pair
 from ..utils.logging import get_message_id, get_namespace
+from ..utils.tokens import count_tokens
 from ..tagging.tagger import tag_pair
 
 logger = logging.getLogger(__name__)
@@ -320,14 +321,7 @@ class MemoryManager:
         user_text = user_msg.get('content') or ''
         asst_text = asst_msg.get('content') or ''
         pair_text = f"User: {user_text}\nAssistant: {asst_text}"
-        # approximate tokens
-        try:
-            import tiktoken  # type: ignore
-            enc = tiktoken.get_encoding("cl100k_base")
-            tokens = len(enc.encode(pair_text))
-        except Exception as e:
-            logger.debug("Token count fallback used due to error: %s", e)
-            tokens = len((pair_text or "").split())
+        tokens = int(count_tokens(pair_text))
         mid = get_message_id() or "-"
         limit = get_settings().log_preview_max_chars
         pp = (user_msg.get('content') or '')[:limit]

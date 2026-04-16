@@ -11,34 +11,17 @@ import logging
 
 from ..core.config import get_settings
 from ..llm_model.factory import get_llm_client
+from ..utils.tokens import count_tokens as _count_tokens, trim_to_tokens as _trim_to_tokens
 
 logger = logging.getLogger(__name__)
 
-try:
-    import tiktoken  # type: ignore
-except Exception:
-    tiktoken = None
-
 
 def count_tokens(text: str) -> int:
-    if not tiktoken:
-        return len(text.split())
-    try:
-        enc = tiktoken.get_encoding("cl100k_base")
-    except Exception:
-        enc = tiktoken.get_encoding("cl100k_base")
-    return len(enc.encode(text or ""))
+    return int(_count_tokens(text or ""))
 
 
 def trim_to_tokens(text: str, max_tokens: int) -> str:
-    if not tiktoken:
-        return text
-    enc = tiktoken.get_encoding("cl100k_base")
-    ids = enc.encode(text or "")
-    if len(ids) <= max_tokens:
-        return text
-    ids = ids[:max_tokens]
-    return enc.decode(ids)
+    return _trim_to_tokens(text or "", max_tokens)
 
 
 def fetch_remote_research(query: str) -> str:

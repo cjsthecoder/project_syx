@@ -1,205 +1,0 @@
-# timestamp: 2026-03-28T14-04-54
-# project_id: html-import:Dreaming When You Sleep - Claim Numbering Guidance
-# model: gpt-5.4-mini
-# success: true
-
-====== TAGGER PROMPT (SYSTEM) ======
-You are a memory tagging system.
-
-You are a memory tagging system.
-
-Your task is to extract compact, durable metadata for later retrieval.
-Tag the CURRENT TURN only.
-
-Use PREVIOUS TURN content only as supporting context to interpret the CURRENT TURN correctly.
-Do not tag the PREVIOUS TURN as if it were the current exchange.
-The goal is to help future searches reliably find the CURRENT TURN and its most durable meaning.
-
-Use ONLY the content provided.
-Do NOT invent information.
-Do NOT infer long term meaning beyond what is explicit.
-
-Prefer tags that:
-- Would plausibly be used as search queries later
-- Represent concrete concepts, entities, or themes
-- Are stable over time
-
-If present, extract:
-- Proper names (people, organizations, projects, locations, technologies)
-- Clearly stated topics or subject matter
-- The user’s intent in asking the question
-- The general category of the exchange
-
-Guidelines:
-- Use 3 to 7 topics maximum
-- Topics should be lowercase, comma separated keywords
-- Include proper names exactly as written
-- Do not include filler words or generic terms
-- Avoid one off or throwaway details
-
-Intent should describe the purpose of the exchange, for example:
-- explore story ideas
-- ask for explanation
-- design a system
-- evaluate consequences
-- clarify a concept
-
-Type should be one or two broad categories such as:
-technical, story, design, system, research, planning, meta
-
-Semantic handle:
-- A short, human readable noun phrase that names what this exchange is about
-- Should be understandable without surrounding conversation
-- Should avoid pronouns like this, that, it, we
-- Should not be a full sentence
-- Prefer 5 to 12 words
-- Do not include commentary or explanation
-
-Open questions:
-- Identify only high-value unresolved questions from this exchange.
-- Extract question candidates from the ASSISTANT response text only.
-- Do NOT extract questions from USER prompt text, even if the user asks a direct question.
-- Do NOT extract routine brainstorming branches, minor follow-up ideas, casual suggestions, or low-stakes uncertainty.
-- Only include a question if it is likely to matter later for research, design quality, major decisions, or long-term project direction.
-- Prefer zero questions over weak questions.
-
-Inclusion standard:
-- Include a question only if at least one of these is true:
-  - answering it would likely require outside research or verification
-  - answering it would materially improve a major design, story, or project decision
-  - it represents a genuinely important unresolved dependency or blocker
-- Exclude questions that are:
-  - already effectively resolved in the same exchange
-  - simple next-step ideas
-  - optional creative variations
-  - minor style or wording choices
-  - speculative branches that do not clearly matter
-
-Question handling:
-- Include explicit ASSISTANT-side questions ending with '?' only if they remain genuinely unresolved and important.
-- Include implicit unresolved questions only when they are clearly important and durable, such as:
-  - major unresolved design choices
-  - critical pending decisions
-  - research questions that need evidence
-  - blockers or dependencies that affect later work
-
-Resolution values:
-- `remind_user` when a real user decision is required and it is important enough to revisit
-- `answer_local` when it is important and can likely be answered from project/local context
-- `answer_remote` when it is important and likely requires external research
-
-Limits:
-- It is valid and preferred to return an empty `questions` array.
-- Do not emit weak, resolved, or low-value questions.
-
-Return STRICT JSON only. No prose. No markdown fences.
-
-Schema:
-{
-  "topics": "",
-  "intent": "",
-  "type": "",
-  "semantic_handle": "",
-  "questions": [
-    {
-      "question": "<exact or naturally rewritten question>",
-      "topic": "<topic title where the question originated>",
-      "resolution": "<remind_user | answer_local | answer_remote>"
-    }
-  ]
-}
-
-Rules:
-- Always include all keys shown in the schema.
-- Use "" (empty string) for unknown values. Do not output null.
-- `questions` MUST be an array (use [] when no candidates).
-- `resolution` MUST be one of: ignore, remind_user, answer_local, answer_remote.
-
-
-====== TAGGER PROMPT (USER) ======
-------PREVIOUS TURN------
-------PREVIOUS TAGS------
-(none)
-
-------USER------
-(none)
-
-------ASSISTANT------
-(none)
-
-------CURRENT TURN------
-------USER------
-for the claims.  In Patent B claims, they are all numbered (up to 34), but we didn't number Patent A consistently.
-
-This is the end of Patent A, it is consistent down to this point, how should it be numbered here?
-
-30. The method of claim 19, wherein integrating consolidated memory artifacts into long-term memory comprises selectively accepting, deferring, modifying, archiving, or removing the consolidated memory artifacts according to lifecycle policies.
-31. The method of claim 19, wherein retrieving stored information during inference is performed in a read-only manner with respect to stored consolidated memory artifacts.
-32. The method of claim 31, wherein retrieved information is used solely to assemble an inference input and does not directly modify stored memory artifacts.
-33. The method of claim 19, further comprising optionally presenting consolidated memory artifacts for review prior to integration into long-term memory.
-34. The method of claim 33, wherein the review is performed by a human user, an automated agent, or an external system via a defined interface.
-35. The method of claim 19, wherein the method is performed independently of any specific artificial intelligence model architecture, training method, storage technology, or retrieval mechanism.
-
-
-Independent Computer-Readable Medium Claim
-1. A non-transitory computer-readable medium storing instructions that, when executed by one or more processors, cause an artificial intelligence system to perform operations comprising:
-1. receiving interaction inputs from an external source via an interaction interface and generating corresponding interaction outputs using an artificial intelligence model;
-2. maintaining, during real-time inference, a bounded active interaction window that stores recent interaction inputs and corresponding outputs as a transient context used for response generation;
-3. upon satisfaction of one or more boundary conditions, transferring interaction data that exits the active interaction window into a short-term memory store as stabilized interaction data insulated from concurrent real-time inference;
-4. autonomously triggering, independent of user interaction, one or more maintenance phases that are non-interactive and non-inferential;
-5. during the one or more maintenance phases, processing the stabilized interaction data using a memory consolidation engine to produce one or more fixed consolidated memory artifacts representing consolidated interaction-derived information, wherein memory consolidation is performed outside the active interaction window;
-6. storing the fixed consolidated memory artifacts in a persistent knowledge store as governed long-term knowledge; and
-7. during subsequent real-time inference, optionally retrieving selected information from one or more of the short-term memory store and the persistent knowledge store in a read-only manner and providing the retrieved information to the artificial intelligence model for response generation,
-wherein retrieval during real-time inference does not modify the fixed consolidated memory artifacts, and wherein modification of stored memory artifacts occurs only during the one or more maintenance phases.
-
-Dependent Computer
-Dependent CRM Claim 1 The computer-readable medium of the independent claim, wherein the instructions cause the processor to maintain an Active Interaction Window comprising a bounded, real-time context used directly for response generation during active interaction.
-Dependent CRM Claim 2 The computer-readable medium of the independent claim, wherein the instructions cause interaction data to exit the Active Interaction Window upon satisfaction of one or more boundary conditions including at least one of a token limit, time threshold, interaction count threshold, or event trigger.
-Dependent CRM Claim 3 The computer-readable medium of the independent claim, wherein the instructions cause rolled-off interaction data to be stored in Short-Term Memory as stabilized interaction data insulated from concurrent inference or interaction processing.
-Dependent CRM Claim 4 The computer-readable medium of the independent claim, wherein the instructions cause Memory Consolidation to be performed only during one or more Maintenance Phases that are non-interactive and non-inference phases of operation.
-Dependent CRM Claim 5 The computer-readable medium of the independent claim, wherein the instructions cause the Memory Consolidation to include one or more operations selected from filtering, pruning, summarization, extraction, restructuring, validation, decay, or reinforcement.
-Dependent CRM Claim 6 The computer-readable medium of the independent claim, wherein the instructions cause the Memory Consolidation to produce a fixed consolidated memory artifact representing a stabilized snapshot of interaction-derived information.
-Dependent CRM Claim 7 The computer-readable medium of the independent claim, wherein the instructions cause subsequent maintenance processing to operate on the fixed consolidated memory artifact without modifying the Active Interaction Window.
-Dependent CRM Claim 8 The computer-readable medium of the independent claim, wherein the instructions cause the fixed consolidated memory artifact to be integrated into a Persistent Knowledge Store governed by lifecycle-based retention rules.
-Dependent CRM Claim 9 The computer-readable medium of the independent claim, wherein the instructions cause pruning rules to remove, suppress, or deprioritize interaction data or consolidated memory artifacts based on relevance, salience, age, redundancy, or usage.
-Dependent CRM Claim 10 The computer-readable medium of the independent claim, wherein the instructions cause decay rules to reduce a retention priority associated with a consolidated memory artifact as a function of time or non-use.
-Dependent CRM Claim 11 The computer-readable medium of the independent claim, wherein the instructions cause reinforcement signals to counteract decay by increasing retention priority, reducing decay rate, or increasing retrieval weighting for a consolidated memory artifact.
-Dependent CRM Claim 12 The computer-readable medium of the independent claim, wherein the instructions cause reinforcement to be triggered based on at least one of repeated retrieval during inference, repeated user references across sessions, or corroboration of information across interaction sessions.
-Dependent CRM Claim 13 The computer-readable medium of the independent claim, wherein the instructions cause metadata to be associated with interaction data, the metadata including at least one of temporal information, salience indicators, relevance indicators, or user influence markers.
-Dependent CRM Claim 14 The computer-readable medium of the independent claim, wherein the instructions cause metadata to be assigned during ingestion, updated during Maintenance Phases, and revised during subsequent consolidation cycles.
-Dependent CRM Claim 15 The computer-readable medium of the independent claim, wherein the instructions cause retrieval during inference to be read-only with respect to stored consolidated memory artifacts.
-Dependent CRM Claim 16 The computer-readable medium of the independent claim, wherein the instructions cause retrieval during inference to include selective retrieval from Short-Term Memory, the Persistent Knowledge Store, or both.
-Dependent CRM Claim 17 The computer-readable medium of the independent claim, wherein the instructions cause a Prompt Assembly Engine to assemble a combined prompt using interaction input and selectively retrieved memory segments prior to submission to an Artificial Intelligence Model.
-Dependent CRM Claim 18 The computer-readable medium of the independent claim, wherein the instructions cause Maintenance Phases to be triggered by at least one of a scheduled interval, inactivity condition, system resource availability, or explicit system command.
-Dependent CRM Claim 19 The computer-readable medium of the independent claim, wherein the instructions cause the system to operate independently of any particular storage technology, embedding representation, vector database, or artificial intelligence model architecture.
-
-------ASSISTANT------
-This is purely aclaim-numbering and form issue,
- not a substance issue. Here is the clean, correct way to do it, 
-consistent with USPTO practice and what you already did in Patent B.1. Finish the Method ClaimsYourmethod claimsalready run cleanly throughClaim 35.That part is fine and shouldnot change.So you end with:35.The method of claim 19, wherein the method is performed independently 
-of any specific artificial intelligence model architecture, training 
-method, storage technology, or retrieval mechanism.That closes themethod claim set.2. Independent Computer-Readable Medium ClaimYou shouldnot reset numbering to 1.The independent computer-readable medium claim should be thenext claim number, and its internal steps shouldnotbe numbered as claims.Correct numbering and structure36.
- A non-transitory computer-readable medium storing instructions that, 
-when executed by one or more processors, cause an artificial 
-intelligence system to perform operations comprising:(a) receiving interaction inputs 
-from an external source via an interaction interface and generating 
-corresponding interaction outputs using an artificial intellig
-...[middle omitted for tagging]...
-he instructions 
-cause rolled-off interaction data to be stored in Short-Term Memory as 
-stabilized interaction data insulated from concurrent inference or 
-interaction processing.…and so on through:55.The computer-readable medium of claim 36, wherein the instructions 
-cause the system to operate independently of any particular storage 
-technology, embedding representation, vector database, or artificial 
-intelligence model architecture.4. Why this mattersWhat you had was structurally correctcontent-wise, but:Resetting to Claim 1 inside the same claim set isformally incorrectNumbered sub-items 1–7 inside a claim can be misconstrued asmultiple claims, which you do not wantUSPTO examiners expect:Continuous numberingOne independent CRM claimLettered or unnumbered internal stepsPatent B already did this right. Patent A just needs to match it.5. Bottom lineKeepmethod claims 1–35exactly as-isMake theCRM claim Claim 36Convert its internal list to(a)–(g)Number dependent CRM claims37–55If you want, next we can:Do a quick consistency sweep acrossA and BOr decide whether A and B should shareidentical CRM languagefor prosecution leverage
-
-
-====== TAGGER RESPONSE ======
-{
-  "topics": "patent claims, claim numbering, computer-readable medium claim, uspTO practice, patent drafting",
-  "intent": "ask for explanation",
-  "type": "technical, design",
-  "semantic_handle": "Patent claim numbering and formatting",
-  "questions": [],
-  "resolution": ""
-}

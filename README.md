@@ -1,7 +1,7 @@
 # Syx
 
 ## Project Overview
-Syx is a modular system that provides a web-based chat interface backed by a FastAPI server and LangChain for LLM integration.  
+Syx is a modular system that provides a web-based chat interface backed by a FastAPI server and provider-selectable LLM and embedding factories.  
 
 ## Setup (Python venv)
 Use a local virtual environment to isolate Python dependencies.
@@ -14,7 +14,7 @@ python3 -m venv venv
 source venv/bin/activate
 
 # 3) Install backend dependencies
-pip install -r backend/requirements.txt
+pip install -r requirements.txt
 
 # 4) Install frontend dependencies (optional here; `make install` also does this)
 cd frontend && npm install && cd ..
@@ -39,14 +39,19 @@ Or add it to your `.env` file alongside other settings (see `.env.example`).
 
 ## Key environment variables
 - OPENAI_API_KEY
-- MODEL_NAME (default gpt-5)
+- LLM_PROVIDER (default openai)
+- MODEL_NAME / LLM_MAIN_MODEL (default gpt-5.4)
+- LLM_MINI_MODEL (default gpt-5.4-mini)
 - MODEL_TEMPERATURE (default 1.0)
 - MODEL_MAX_TOKENS (default 32000)
+- BUILDER_MODEL (default gpt-5.4-mini)
+- TAGGER_MODEL (default gpt-5.4-mini)
+- DREAM_MODEL (default gpt-5.4)
 - LOG_LEVEL (default INFO)
 - LOG_FORMAT (json or text)
 - DB_PATH
 - MAX_UPLOAD_MB, MAX_BATCH_MB, STORAGE_LIMIT_MB
-- EMBEDDING_MODEL, CHUNK_SIZE, CHUNK_OVERLAP
+- EMBEDDING_PROVIDER (default openai), EMBEDDING_MODEL, CHUNK_SIZE, CHUNK_OVERLAP
 - RAG_ON_CHAT, BASE_TOP_K, RETRIEVAL_MULTIPLIER, RAG_SCORE_THRESHOLD, DAILY_RAG_SCORE_THRESHOLD, DAILY_RAG_WEIGHT
 - AVAILABLE_MODELS (optional JSON array)
 
@@ -68,7 +73,7 @@ Run Syx in a container with bind-mounted data and a mounted `.env` (no secrets i
    ```
    App: http://localhost:8000 — API docs: http://localhost:8000/api/docs — Health: http://localhost:8000/health.
 
-4. **Bind mounts**: Data is stored on the host under `./data/memory`, `./data/db`, `./data/logs`, and `./data/runs`, so it survives container rebuilds and is easy to back up. If you use a different host or port, set `CORS_ORIGINS` in `.env` to include that origin.
+4. **Bind mounts**: Data is stored on the host under `./data/memory`, `./data/db`, `./runtime/logs`, and `./runtime/runs`, so it survives container rebuilds and is easy to back up. If you use a different host or port, set `CORS_ORIGINS` in `.env` to include that origin.
 
 # Organization Verification Required for Streaming
 

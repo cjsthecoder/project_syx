@@ -19,7 +19,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 
 from ..core.config import get_settings
-from ..core.rag_manager import rebuild_faiss_index, _read_file_text
+from ..rag.manager import rebuild_faiss_index, _read_file_text
 from ..core.database import get_session
 from ..core.db_models import File as FileRow
 
@@ -57,9 +57,9 @@ def _compute_file_stats(path: str) -> tuple[int, int]:
 async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> JSONResponse:
     settings = get_settings()
 
-    # PDFs are intentionally unsupported in the LangChain-removal RAG path.
+    # PDFs are intentionally unsupported in the current RAG path.
     allowed_ext = {".txt", ".md"}
-    upload_root = os.path.join("memory", project_id, "uploads")
+    upload_root = os.path.join(get_settings().memory_root, project_id, "uploads")
     os.makedirs(upload_root, exist_ok=True)
 
     saved = []
@@ -206,7 +206,7 @@ async def list_files(project_id: str) -> JSONResponse:
 @router.delete("/projects/{project_id}/files/{file_id}")
 async def delete_file(project_id: str, file_id: int) -> JSONResponse:
     """Delete a file from DB and disk; rebuild FAISS index."""
-    upload_root = os.path.join("memory", project_id, "uploads")
+    upload_root = os.path.join(get_settings().memory_root, project_id, "uploads")
     from sqlmodel import select
     with get_session() as session:
         row = session.get(FileRow, file_id)

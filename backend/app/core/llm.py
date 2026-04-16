@@ -1,28 +1,17 @@
 """
-Copyright (c) 2025 Christopher Shuler. All rights reserved.
-
-This source code is part of the Syx project and is proprietary.
-
-Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
-
-Use of this software requires explicit written permission from the copyright holder.
+LLM integration for Syx chatbot runtime (factory-based, no LangChain).
 """
-"""
-LangChain integration for Syx AGI Chatbot Framework.
 
-This module provides the LLM abstraction layer using LangChain ChatOpenAI.
-"""
+from __future__ import annotations
 
 import logging
 import time
-from typing import Optional, Dict, Any, List
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
+from typing import Any, Dict, List, Optional
 
-from .config import get_settings, validate_openai_key, get_model_config
-from .tracking import get_instrumentation
+from .config import get_settings, validate_openai_key
+from ..llm_model.factory import get_llm_client
+from ..tracking import get_instrumentation
 
-# Set up module-level logger
 logger = logging.getLogger(__name__)
 
 
@@ -36,54 +25,37 @@ def _estimate_tokens(text: str) -> int:
         return int(len((text or "").split()))
 
 
+def _build_messages(
+    *,
+    message: str,
+    conversation_history: Optional[List[Dict[str, str]]],
+    base_system_prompt: Optional[str],
+    assistant_hint: Optional[str],
+    rag_system_prompt: Optional[str],
+) -> List[Dict[str, str]]:
+    messages: List[Dict[str, str]] = []
+    if base_system_prompt:
+        messages.append({"role": "system", "content": base_system_prompt})
+    if assistant_hint:
+        messages.append({"role": "assistant", "content": assistant_hint})
+    if rag_system_prompt:
+        messages.append({"role": "system", "content": rag_system_prompt})
+    if conversation_history:
+        for item in conversation_history:
+            role = str(item.get("role") or "").lower()
+            if role not in {"user", "assistant", "system"}:
+                continue
+            messages.append({"role": role, "content": str(item.get("content") or "")})
+    messages.append({"role": "user", "content": str(message or "")})
+    return messages
+
+
 class LLMProvider:
-    """LangChain-based LLM provider for OpenAI integration."""
-    
-    def __init__(self):
-        """Initialize the LLM provider."""
+    def __init__(self) -> None:
         self.settings = get_settings()
-        self._llm: Optional[ChatOpenAI] = None
-        # Cache of models that do not support non-default temperature values (only allow 1.0).
-        self._temp_only_default: set[str] = set()
-        # Cache of models that reject the temperature parameter entirely.
-        self._temp_param_rejected: set[str] = set()
-        self._initialize_llm()
-    
-    def _initialize_llm(self) -> None:
-        """Initialize the LangChain ChatOpenAI instance."""
-        try:
-            if not validate_openai_key():
-                raise ValueError("OpenAI API key is not configured or invalid")
-            
-            model_config = get_model_config()
-            # Initialize with configured temperature, but fall back if the model rejects the param.
-            try:
-                self._llm = ChatOpenAI(
-                    api_key=self.settings.openai_api_key,
-                    model=model_config["model_name"],
-                    temperature=float(self.settings.model_temperature),
-                    model_kwargs={"max_completion_tokens": model_config["max_tokens"]},
-                    streaming=False,
-                )
-            except Exception as e:
-                msg = str(e).lower()
-                if "temperature" in msg or "invalid_request_error" in msg:
-                    # Fall back to omitting temperature.
-                    self._llm = ChatOpenAI(
-                        api_key=self.settings.openai_api_key,
-                        model=model_config["model_name"],
-                        model_kwargs={"max_completion_tokens": model_config["max_tokens"]},
-                        streaming=False,
-                    )
-                else:
-                    raise
-            
-            logger.debug(f"LLM provider initialized with model: {model_config['model_name']}")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize LLM provider: {str(e)}")
-            raise
-    
+        if not validate_openai_key():
+            raise ValueError("OpenAI API key is not configured or invalid")
+
     def generate_response(
         self,
         message: str,
@@ -96,225 +68,86 @@ class LLMProvider:
         completion_tokens_override: Optional[int] = None,
         instrument: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Generate a response using the LLM.
-        
-        Args:
-            message: User message
-            conversation_history: Previous conversation messages
-            system_prompt: System prompt for the AI
-            
-        Returns:
-            Dictionary containing response and metadata
-        """
+        invocation_id = ""
+        invoke_start = time.perf_counter()
+        used_model = str(override_model or self.settings.model_name)
+
         try:
-            if not self._llm:
-                raise ValueError("LLM provider not initialized")
-            
-            # Build message history
-            messages = []
-            
-            # V2.6: Add base project system prompt first
-            if base_system_prompt:
-                messages.append(SystemMessage(content=base_system_prompt))
-            # V2.6: Add assistant personality hint
-            if assistant_hint:
-                messages.append(AIMessage(content=assistant_hint))
-            # V2.6: Add RAG merged context as system message (after hint, before user)
-            if rag_system_prompt:
-                messages.append(SystemMessage(content=rag_system_prompt))
-            
-            # Add conversation history
-            if conversation_history:
-                for msg in conversation_history:
-                    if msg.get("role") == "user":
-                        messages.append(HumanMessage(content=msg["content"]))
-                    elif msg.get("role") == "assistant":
-                        messages.append(AIMessage(content=msg["content"]))
-            
-            # Add current user message
-            messages.append(HumanMessage(content=message))
-            instr = get_instrumentation()
-            # Keep prompt buckets disjoint: system excludes RAG, which has its own bucket.
-            system_tokens = _estimate_tokens(base_system_prompt or "")
-            history_tokens = _estimate_tokens(
-                "\n".join(str((msg.get("content") or "")) for msg in (conversation_history or []))
+            messages = _build_messages(
+                message=message,
+                conversation_history=conversation_history,
+                base_system_prompt=base_system_prompt,
+                assistant_hint=assistant_hint,
+                rag_system_prompt=rag_system_prompt,
             )
-            profile_tokens = _estimate_tokens(assistant_hint or "")
-            user_tokens = _estimate_tokens(message or "")
+            instr = get_instrumentation()
             if instrument:
                 instr.record_stage(
                     "prompt_assembly",
                     {
                         "module": "llm",
-                        "prompt_system_tokens_est": int(system_tokens),
-                        "prompt_history_tokens_est": int(history_tokens),
+                        "prompt_system_tokens_est": int(_estimate_tokens(base_system_prompt or "")),
+                        "prompt_history_tokens_est": int(
+                            _estimate_tokens(
+                                "\n".join(str((msg.get("content") or "")) for msg in (conversation_history or []))
+                            )
+                        ),
                         "prompt_rag_tokens_est": int(_estimate_tokens(rag_system_prompt or "")),
-                        "prompt_profile_tokens_est": int(profile_tokens),
-                        "prompt_other_tokens_est": int(user_tokens),
+                        "prompt_profile_tokens_est": int(_estimate_tokens(assistant_hint or "")),
+                        "prompt_other_tokens_est": int(_estimate_tokens(message or "")),
                         "message_count": int(len(messages)),
                     },
                 )
-
-            # Debug: show roles and content lengths of messages being sent
-            try:
-                roles = [getattr(m, "type", m.__class__.__name__) for m in messages]
-                lens = [len(getattr(m, "content", "") or "") for m in messages]
-                logger.debug("[PROMPT] sending messages roles=%s lens=%s", roles, lens)
-            except Exception as exc:
-                logger.warning("llm.generate_response prompt debug formatting failed detail=%s", exc)
-            
-            # Determine temperature
-            temp_value = (
-                float(temperature_override)
-                if temperature_override is not None
-                else self.settings.model_temperature
-            )
-            # Optionally use an override model for this call with temperature fallback + model capability cache
-            def _invoke_with(model_name: str, temperature: float, *, include_temperature: bool):
-                kwargs: Dict[str, Any] = {
-                    "api_key": self.settings.openai_api_key,
-                    "model": model_name,
-                    "model_kwargs": {
-                        "max_completion_tokens": (
-                            int(completion_tokens_override)
-                            if completion_tokens_override is not None
-                            else self.settings.model_max_tokens
-                        )
-                    },
-                    "streaming": False,
-                }
-                if include_temperature:
-                    kwargs["temperature"] = float(temperature)
-                llm = ChatOpenAI(**kwargs)
-                return llm.invoke(messages)
-
-            used_model = self.settings.model_name
-            model_to_use = override_model or self.settings.model_name
-            invocation_id = ""
-            invoke_start = time.perf_counter()
-            if instrument:
                 invocation_id = instr.start_invocation(
                     purpose="main",
-                    model=model_to_use,
+                    model=used_model,
                     meta={"streaming": False},
                 )
-            include_temp = model_to_use not in self._temp_param_rejected
-            requested_temp = (
-                float(temperature_override)
-                if temperature_override is not None
-                else float(self.settings.model_temperature)
+
+            response = get_llm_client().generate_chat(
+                messages=messages,
+                model=override_model or self.settings.model_name,
+                temperature=temperature_override if temperature_override is not None else self.settings.model_temperature,
+                max_completion_tokens=(
+                    int(completion_tokens_override)
+                    if completion_tokens_override is not None
+                    else int(self.settings.model_max_tokens)
+                ),
             )
-            effective_temp = 1.0 if model_to_use in self._temp_only_default else requested_temp
-            try:
-                if override_model and override_model != self.settings.model_name:
-                    used_model = override_model
-                    response = _invoke_with(override_model, effective_temp, include_temperature=include_temp)
-                else:
-                    if include_temp and (effective_temp != float(self.settings.model_temperature)):
-                        response = _invoke_with(self.settings.model_name, effective_temp, include_temperature=True)
-                    else:
-                        response = self._llm.invoke(messages)
-            except Exception as e:
-                # Fallback: handle models that (a) only allow temperature=1.0 or (b) reject the param entirely.
-                msg = str(e).lower()
-                if "temperature" in msg or "invalid_request_error" in msg or "unsupported_value" in msg or "unsupported value" in msg:
-                    # If error suggests only default temperature is supported, force 1.0.
-                    if "only the default" in msg or "does not support" in msg:
-                        first_time = model_to_use not in self._temp_only_default
-                        self._temp_only_default.add(model_to_use)
-                        if first_time:
-                            logger.debug("LLM model %s only supports default temperature=1.0; forcing 1.0 thereafter", model_to_use)
-                        if override_model and override_model != self.settings.model_name:
-                            response = _invoke_with(override_model, 1.0, include_temperature=True)
-                            used_model = override_model
-                        else:
-                            response = _invoke_with(self.settings.model_name, 1.0, include_temperature=True)
-                            used_model = self.settings.model_name
-                    else:
-                        # Otherwise assume the parameter itself is rejected; omit it.
-                        first_time = model_to_use not in self._temp_param_rejected
-                        self._temp_param_rejected.add(model_to_use)
-                        if first_time:
-                            logger.debug("LLM model %s rejected temperature param; omitting temperature thereafter", model_to_use)
-                        if override_model and override_model != self.settings.model_name:
-                            response = _invoke_with(override_model, requested_temp, include_temperature=False)
-                            used_model = override_model
-                        else:
-                            response = _invoke_with(self.settings.model_name, requested_temp, include_temperature=False)
-                            used_model = self.settings.model_name
-                else:
-                    raise
-            
-            # Extract response content and metadata
-            response_content = getattr(response, "content", str(response)) or ""
-            # Get token usage if available (LangChain 0.2.x)
-            meta = getattr(response, "response_metadata", {}) or {}
-            token_usage = meta.get("token_usage", {}) or {}
-            input_tok = token_usage.get("prompt_tokens") or token_usage.get("input_tokens")
-            output_tok = token_usage.get("completion_tokens") or token_usage.get("output_tokens")
-            total_tok = token_usage.get("total_tokens")
-            extra_usage = {}
-            try:
-                for k, v in (token_usage or {}).items():
-                    if k not in {"prompt_tokens", "input_tokens", "completion_tokens", "output_tokens", "total_tokens"}:
-                        extra_usage[k] = v
-            except Exception:
-                extra_usage = {}
-            invoke_end = time.perf_counter()
-            prompt_tokens_est = _estimate_tokens(
-                (base_system_prompt or "")
-                + "\n"
-                + (assistant_hint or "")
-                + "\n"
-                + (rag_system_prompt or "")
-                + "\n"
-                + "\n".join(str((msg.get("content") or "")) for msg in (conversation_history or []))
-                + "\n"
-                + (message or "")
-            )
-            completion_tokens_est = _estimate_tokens(response_content)
-            usage_is_estimate = not isinstance(total_tok, int)
-            if not isinstance(total_tok, int):
-                total_tok = int(prompt_tokens_est + completion_tokens_est)
-            if not isinstance(input_tok, int):
-                input_tok = int(prompt_tokens_est)
-            if not isinstance(output_tok, int):
-                output_tok = int(completion_tokens_est)
+
             if instrument and invocation_id:
                 usage_payload = {
                     "purpose": "main",
-                    "model": used_model,
-                    "prompt_tokens_reported": int(input_tok),
-                    "completion_tokens_reported": int(output_tok),
-                    "total_tokens_reported": int(total_tok),
-                    "usage_is_estimate": bool(usage_is_estimate),
+                    "model": response.model,
+                    "prompt_tokens_reported": int(response.usage.prompt_tokens_reported),
+                    "completion_tokens_reported": int(response.usage.completion_tokens_reported),
+                    "total_tokens_reported": int(response.usage.total_tokens_reported),
+                    "usage_is_estimate": bool(response.usage.usage_is_estimate),
                 }
-                if extra_usage:
-                    usage_payload["extra_usage"] = extra_usage
+                if response.usage.extra_usage:
+                    usage_payload["extra_usage"] = response.usage.extra_usage
                 instr.end_invocation(
                     invocation_id,
                     usage=usage_payload,
-                    timing={"ttlt_ms": int((invoke_end - invoke_start) * 1000.0)},
+                    timing={"ttlt_ms": int((time.perf_counter() - invoke_start) * 1000.0)},
                 )
-            
+
             return {
-                "response": response_content,
-                "llm_model": used_model,
-                "tokens_used": total_tok,
-                "input_tokens": input_tok,
-                "output_tokens": output_tok,
-                "success": True
+                "response": response.text,
+                "llm_model": response.model,
+                "tokens_used": int(response.usage.total_tokens_reported),
+                "input_tokens": int(response.usage.prompt_tokens_reported),
+                "output_tokens": int(response.usage.completion_tokens_reported),
+                "success": True,
             }
-            
-        except Exception as e:
+        except Exception as exc:
             try:
-                if instrument and "invocation_id" in locals() and invocation_id:
+                if instrument and invocation_id:
                     get_instrumentation().end_invocation(
                         invocation_id,
                         usage={
                             "purpose": "main",
-                            "model": self.settings.model_name,
+                            "model": used_model,
                             "prompt_tokens_reported": 0,
                             "completion_tokens_reported": 0,
                             "total_tokens_reported": 0,
@@ -322,52 +155,50 @@ class LLMProvider:
                         },
                         timing={"ttlt_ms": int((time.perf_counter() - invoke_start) * 1000.0)},
                     )
-            except Exception as exc:
-                logger.warning("llm.generate_response failed ending invocation invocation_id=%s detail=%s", invocation_id, exc)
-            logger.error(f"Error generating response: {str(e)}")
+            except Exception as finalize_exc:
+                logger.warning(
+                    "llm.generate_response failed ending invocation invocation_id=%s detail=%s",
+                    invocation_id,
+                    finalize_exc,
+                )
+            logger.error("Error generating response: %s", exc)
             return {
-                "response": f"I apologize, but I encountered an error: {str(e)}",
-                "llm_model": self.settings.model_name,
+                "response": f"I apologize, but I encountered an error: {str(exc)}",
+                "llm_model": used_model,
                 "tokens_used": None,
                 "input_tokens": None,
                 "output_tokens": None,
                 "success": False,
-                "error": str(e)
+                "error": str(exc),
             }
-    
+
     def get_model_info(self) -> Dict[str, Any]:
-        """Get information about the current model configuration."""
         return {
             "model_name": self.settings.model_name,
             "temperature": self.settings.model_temperature,
             "max_tokens": self.settings.model_max_tokens,
-            "api_key_configured": validate_openai_key()
+            "api_key_configured": validate_openai_key(),
         }
-    
+
     def health_check(self) -> Dict[str, str]:
-        """Check if the LLM provider is healthy."""
         try:
-            if not self._llm:
-                return {"status": "unhealthy", "error": "LLM not initialized"}
-            
-            # Test with a simple message
-            test_response = self._llm.invoke([HumanMessage(content="Hello")])
-            
-            if test_response:
-                return {"status": "healthy", "model": self.settings.model_name}
-            else:
-                return {"status": "unhealthy", "error": "No response from model"}
-                
-        except Exception as e:
-            return {"status": "unhealthy", "error": str(e)}
+            test = get_llm_client().generate_chat(
+                messages=[{"role": "user", "content": "Hello"}],
+                model=self.settings.model_name,
+                temperature=1.0,
+                max_completion_tokens=32,
+            )
+            if test.text is not None:
+                return {"status": "healthy", "model": str(test.model)}
+            return {"status": "unhealthy", "error": "No response from model"}
+        except Exception as exc:
+            return {"status": "unhealthy", "error": str(exc)}
 
 
-# Global LLM provider instance
 _llm_provider: Optional[LLMProvider] = None
 
 
 def get_llm_provider() -> LLMProvider:
-    """Get the global LLM provider instance."""
     global _llm_provider
     if _llm_provider is None:
         _llm_provider = LLMProvider()
@@ -375,12 +206,9 @@ def get_llm_provider() -> LLMProvider:
 
 
 def reset_llm_provider() -> None:
-    """Reset the global LLM provider instance."""
     global _llm_provider
     _llm_provider = None
 
-
-# Convenience functions
 
 def generate_chat_response(
     message: str,
@@ -406,5 +234,4 @@ def generate_chat_response(
 
 
 def get_llm_health() -> Dict[str, str]:
-    provider = get_llm_provider()
-    return provider.health_check()
+    return get_llm_provider().health_check()

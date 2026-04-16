@@ -26,9 +26,9 @@ from sqlmodel import select
 from .database import get_session
 from .db_models import ChatMessage, Project
 from .config import get_settings
-from .daily_rag import append_pair
+from ..rag.daily_store import append_pair
 from ..utils.logging import get_message_id, get_namespace
-from .tagger import tag_pair
+from ..tagging.tagger import tag_pair
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +76,22 @@ class MemoryManager:
         if not questions:
             return
         try:
-            base_dir = os.path.join("memory", project_id)
+            base_dir = os.path.join(get_settings().memory_root, project_id)
             os.makedirs(base_dir, exist_ok=True)
             artifact_path = os.path.join(base_dir, "open_questions.jsonl")
-            lock_path = os.path.join(base_dir, "open_questions.lock")
+            state_dir = os.path.join(base_dir, "state")
+            os.makedirs(state_dir, exist_ok=True)
+            lock_path = os.path.join(state_dir, "open_questions.lock")
+            legacy_lock_path = os.path.join(base_dir, "open_questions.lock")
+            if os.path.isfile(legacy_lock_path) and not os.path.exists(lock_path):
+                try:
+                    os.replace(legacy_lock_path, lock_path)
+                except OSError as exc:
+                    logger.warning(
+                        "memory questions lock migration failed project_id=%s detail=%s",
+                        project_id,
+                        exc,
+                    )
             pair_id: Optional[str] = None
             if isinstance(user_message_id, int) and isinstance(assistant_message_id, int):
                 pair_id = f"{user_message_id}:{assistant_message_id}"
@@ -190,7 +202,7 @@ class MemoryManager:
                     source_user_message_id = int(uid) if isinstance(uid, int) else None
         except Exception:
             source_user_message_id = None
-        # V3.x: tag immediately after assistant reply using the immediately previous active pair as context anchor.
+        # Tag immediately after assistant reply using the immediately previous active pair as context anchor.
         try:
             if (not bool(skip_tagger)) and (user_text_for_tagging is not None):
                 tagged = tag_pair(
@@ -230,7 +242,7 @@ class MemoryManager:
                 semantic_handle=semantic_handle,
             )
             session.add(msg)
-            # V3.x: persist last non-empty semantic handle across sleep flush (ChatMessage is wiped).
+            # Persist last non-empty semantic handle across sleep flush (ChatMessage is wiped).
             try:
                 if isinstance(semantic_handle, str) and semantic_handle.strip():
                     p = session.get(Project, project_id)
@@ -337,7 +349,7 @@ class MemoryManager:
             elif self._is_daily_enabled(project_id):
                 ns = (asst_msg.get("namespace") or get_namespace() or "other").lower()
                 keep = bool(asst_msg.get("keep"))
-                # V3.x: roll-off does NOT call the tagger. It reuses metadata stored on the assistant row.
+                # Roll-off does NOT call the tagger. It reuses metadata stored on the assistant row.
                 tags_meta = None
                 tags_meta_json = asst_msg.get("tags_meta_json")
                 if isinstance(tags_meta_json, str) and tags_meta_json.strip():

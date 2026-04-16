@@ -48,7 +48,7 @@ help:
 	@echo "  make generate-docs        - Generate architecture diagram"
 	@echo ""
 	@echo "Docker:"
-	@echo "  make docker-data-dirs     - Create host dirs for bind mounts (data/memory, data/db, data/logs, data/runs)"
+	@echo "  make docker-data-dirs     - Create host dirs for bind mounts (data/memory, data/db, runtime/logs, runtime/runs, runtime/state)"
 	@echo "  make docker-data-permissions - Set permissions on data dirs for container read/write"
 	@echo "  make docker-setup         - Create data dirs and set permissions (run before first docker-compose up)"
 	@echo "  make run-docker           - Prepare host dirs and start docker compose stack"
@@ -76,7 +76,7 @@ install-backend:
 	fi'
 	@# Ensure current shell picks up cargo/rustc for the install step
 	@sh -c 'if [ -f "$$HOME/.cargo/env" ]; then . "$$HOME/.cargo/env"; fi; \
-		PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 venv/bin/python -m pip install -r backend/requirements.txt'
+		PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 venv/bin/python -m pip install -r requirements.txt'
 	@echo "✅ Backend dependencies installed"
 
 install-frontend:
@@ -108,15 +108,15 @@ run: build
 			echo "🐍 Creating Python virtual environment at ./venv"; \
 			python3 -m venv venv; \
 			echo "📦 Installing backend requirements into ./venv"; \
-			. venv/bin/activate && pip install -r backend/requirements.txt; \
+			. venv/bin/activate && pip install -r requirements.txt; \
 		else \
 			echo "ℹ️  Using existing ./venv"; \
 		fi; \
 		echo "✅ Virtual environment ready"; \
-		venv/bin/python -c "import fastapi" 2>/dev/null || (echo "📦 Installing backend requirements into ./venv" && venv/bin/python -m pip install -r backend/requirements.txt); \
+		venv/bin/python -c "import fastapi" 2>/dev/null || (echo "📦 Installing backend requirements into ./venv" && venv/bin/python -m pip install -r requirements.txt); \
 		cd backend && ../venv/bin/python -m app.main; \
 	else \
-		python -c "import fastapi" 2>/dev/null || (echo "📦 Installing backend requirements into active venv" && python -m pip install -r backend/requirements.txt); \
+		python -c "import fastapi" 2>/dev/null || (echo "📦 Installing backend requirements into active venv" && python -m pip install -r requirements.txt); \
 		cd backend && python -m app.main; \
 	fi
 
@@ -133,23 +133,22 @@ downgrade:
 # Danger: wipe all project data and DB; recreate schema
 HARD_RESET:
 	@echo "⚠️  HARD RESET will DELETE all project data and the SQLite DB."
-	@echo "   - Removing memory/*"
-	@echo "   - Removing backend/app/data/syx.db"
+	@echo "   - Removing data/memory/*"
+	@echo "   - Removing data/db/syx.db"
 	@echo "   - Recreating empty DB (alembic upgrade)"
 	@echo ""
 	@read -p "Type 'YES' to proceed: " CONFIRM; \
 	if [ "$$CONFIRM" != "YES" ]; then echo "Aborted."; exit 1; fi; \
-	echo "Deleting memory/* ..."; \
-	rm -rf memory/* 2>/dev/null || true; \
-	rm -rf backend/memory/* 2>/dev/null || true; \
+	echo "Deleting data/memory/* ..."; \
+	rm -rf data/memory/* 2>/dev/null || true; \
 	echo "Deleting SQLite DB ..."; \
-	rm -f backend/app/data/syx.db 2>/dev/null || true; \
+	rm -f data/db/syx.db 2>/dev/null || true; \
 	echo "Removing runtime sleep lock if present ..."; \
-	rm -f backend/runtime/sleep.lock 2>/dev/null || true; \
+	rm -f runtime/state/sleep.lock 2>/dev/null || true; \
 	echo "Deleting logs ..."; \
-	rm -f backend/logs/*.log 2>/dev/null || true; \
+	rm -f runtime/logs/*.log 2>/dev/null || true; \
 	echo "Recreating DB schema ..."; \
-	mkdir -p backend/app/data; \
+	mkdir -p data/db; \
 	cd backend && alembic upgrade head; \
 	echo "✅ HARD RESET complete. Start the server and Continuum will be reseeded."
 
@@ -179,12 +178,16 @@ test: test-backend test-frontend
 
 test-backend:
 	@echo "🧪 Running backend tests..."
-	cd backend && $(PYTHON) -m pytest tests/ -v
+	cd backend && $(PYTHON) -m pytest ../tests/ -v
 	@echo "✅ Backend tests completed"
 
 test-frontend:
 	@echo "🧪 Running frontend tests..."
-	cd frontend && npm test -- --run
+	@if cd frontend && node -e "const s=require('./package.json').scripts||{}; process.exit(s.test?0:1)"; then \
+		cd frontend && npm run test -- --run; \
+	else \
+		echo "ℹ️  Skipping frontend tests: no 'test' script in frontend/package.json"; \
+	fi
 	@echo "✅ Frontend tests completed"
 
 # Run linting
@@ -193,12 +196,16 @@ lint: lint-backend lint-frontend
 
 lint-backend:
 	@echo "🔍 Linting Python code..."
-	cd backend && $(PYTHON) -m flake8 app/ tests/
+	cd backend && $(PYTHON) -m flake8 app/ ../tests/
 	@echo "✅ Backend linting completed"
 
 lint-frontend:
 	@echo "🔍 Linting TypeScript/React code..."
-	cd frontend && npm run lint
+	@if cd frontend && node -e "const s=require('./package.json').scripts||{}; process.exit(s.lint?0:1)"; then \
+		cd frontend && npm run lint; \
+	else \
+		echo "ℹ️  Skipping frontend lint: no 'lint' script in frontend/package.json"; \
+	fi
 	@echo "✅ Frontend linting completed"
 
 # Format code
@@ -207,12 +214,16 @@ format: format-backend format-frontend
 
 format-backend:
 	@echo "🎨 Formatting Python code..."
-	cd backend && $(PYTHON) -m black app/ tests/
+	cd backend && $(PYTHON) -m black app/ ../tests/
 	@echo "✅ Backend formatting completed"
 
 format-frontend:
 	@echo "🎨 Formatting TypeScript/React code..."
-	cd frontend && npm run format
+	@if cd frontend && node -e "const s=require('./package.json').scripts||{}; process.exit(s.format?0:1)"; then \
+		cd frontend && npm run format; \
+	else \
+		echo "ℹ️  Skipping frontend format: no 'format' script in frontend/package.json"; \
+	fi
 	@echo "✅ Frontend formatting completed"
 
 # Development helpers
@@ -240,8 +251,17 @@ setup-env:
 		echo "OPENAI_API_KEY=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"; \
 		echo "# OpenAI API key used for chat and embeddings"; \
 		echo ""; \
-		echo "MODEL_NAME=gpt-5.2"; \
-		echo "# Default chat model name"; \
+		echo "LLM_PROVIDER=openai"; \
+		echo "# LLM provider selector"; \
+		echo ""; \
+		echo "MODEL_NAME=gpt-5.4"; \
+		echo "# Default chat model name (legacy key)"; \
+		echo ""; \
+		echo "LLM_MAIN_MODEL=gpt-5.4"; \
+		echo "# Main runtime model selected by llm factory"; \
+		echo ""; \
+		echo "LLM_MINI_MODEL=gpt-5.4-mini"; \
+		echo "# Mini runtime model selected by llm factory"; \
 		echo ""; \
 		echo "MODEL_TEMPERATURE=1.0"; \
 		echo "# Sampling temperature (0.0–2.0)"; \
@@ -249,7 +269,7 @@ setup-env:
 		echo "MODEL_MAX_TOKENS=128000"; \
 		echo "# Max tokens in a single model response"; \
 		echo ""; \
-		echo "AVAILABLE_MODELS=[\"gpt-5.2\",\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5.4-mini\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
+		echo "AVAILABLE_MODELS=[\"gpt-5.4\",\"gpt-5.4-mini\",\"gpt-5.4-nano\",\"gpt-5.2\",\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
 		echo "# Whitelisted chat models for the UI selector"; \
 		echo ""; \
 		echo "# === Server + CORS ==="; \
@@ -288,8 +308,16 @@ setup-env:
 		echo "# Max chars for log previews"; \
 		echo ""; \
 		echo "# === Database + Storage ==="; \
-		echo "DB_PATH=app/data/syx.db"; \
+		echo "DB_PATH=../data/db/syx.db"; \
 		echo "# SQLite database file path (or full URL like sqlite:///...)"; \
+		echo ""; \
+		echo "DATA_ROOT=../data"; \
+		echo "RUNTIME_ROOT=../runtime"; \
+		echo "MEMORY_ROOT=../data/memory"; \
+		echo "RUNS_DIR=../runtime/runs"; \
+		echo "LOGS_DIR=../runtime/logs"; \
+		echo "LOCK_DIR=../runtime/state"; \
+		echo "# Runtime and storage roots"; \
 		echo ""; \
 		echo "MAX_UPLOAD_MB=10"; \
 		echo "# Max size per uploaded file (MB)"; \
@@ -301,6 +329,9 @@ setup-env:
 		echo "# Per-project storage cap (MB)"; \
 		echo ""; \
 		echo "# === Embeddings + Indexing ==="; \
+		echo "EMBEDDING_PROVIDER=openai"; \
+		echo "# Embedding provider selector"; \
+		echo ""; \
 		echo "EMBEDDING_MODEL=text-embedding-3-large"; \
 		echo "# Embedding model for document indexing"; \
 		echo ""; \
@@ -321,61 +352,64 @@ setup-env:
 		echo "# If true, inject retrieved context into chat when index exists"; \
 		echo ""; \
 		echo "BASE_TOP_K=6"; \
-		echo "# DELTA-A.4.1: Base top-K used to derive per-source retrieval K"; \
+		echo "# Base top-K used to derive per-source retrieval K"; \
 		echo ""; \
 		echo "RETRIEVAL_MULTIPLIER=2.0"; \
-		echo "# DELTA-A.4.1: PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)"; \
+		echo "# PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)"; \
 		echo ""; \
 		echo "RAG_SCORE_THRESHOLD=0.5"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
 		echo "# === Daily Memory + Daily RAG ==="; \
 		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
-		echo "# V2.3: Number of prompt/response pairs kept in working memory:: 10 is working well"; \
+		echo "# Number of prompt/response pairs kept in working memory:: 10 is working well"; \
 		echo ""; \
 		echo "DAILY_RAG_ENABLED=true"; \
-		echo "# V2.3: Global default toggle; per-project override via UI"; \
+		echo "# Global default toggle; per-project override via UI"; \
 		echo ""; \
 		echo "DAILY_RAG_SCORE_THRESHOLD=0.40"; \
-		echo "# V2.3: Similarity threshold for daily results"; \
+		echo "# Similarity threshold for daily results"; \
 		echo ""; \
 		echo "DAILY_RAG_WEIGHT=1.2"; \
-		echo "# V2.3: Weight multiplier for daily scores before merging"; \
+		echo "# Weight multiplier for daily scores before merging"; \
 		echo ""; \
 		echo "# === Deduplication (Daily + Main) ==="; \
 		echo "DEDUPE_EXACT=true"; \
-		echo "# V2.3: Remove exact-text duplicates across daily/main"; \
+		echo "# Remove exact-text duplicates across daily/main"; \
 		echo ""; \
 		echo "DEDUPE_NEAR=true"; \
-		echo "# V2.3: Remove near-duplicates by similarity"; \
+		echo "# Remove near-duplicates by similarity"; \
 		echo ""; \
 		echo "DEDUPE_SIMILARITY_THRESHOLD=0.98"; \
-		echo "# V2.3: Cosine threshold for near-duplicate detection"; \
+		echo "# Cosine threshold for near-duplicate detection"; \
 		echo ""; \
 		echo "DEDUPE_KEEP_DAILY=true"; \
-		echo "# V2.3: Prefer keeping the daily hit on dedupe"; \
+		echo "# Prefer keeping the daily hit on dedupe"; \
 		echo ""; \
 		echo "# === Query Builder + Reranking ==="; \
 		echo "BUILDER_MODEL=gpt-5.4-mini"; \
-		echo "# V2.3.1: LLM for query builder/router"; \
+		echo "# LLM for query builder/router"; \
+		echo ""; \
+		echo "TAGGER_MODEL=gpt-5.4-mini"; \
+		echo "# LLM used for tagging"; \
 		echo ""; \
 		echo "BUILDER_CONFIDENCE_MIN=0.75"; \
-		echo "# V2.3.1: Confidence threshold for full retrieval"; \
+		echo "# Confidence threshold for full retrieval"; \
 		echo ""; \
 		echo "BUILDER_MAX_TOKENS=1024"; \
-		echo "# V2.3.1: Max tokens for builder output"; \
+		echo "# Max tokens for builder output"; \
 		echo ""; \
 		echo "BUILDER_CACHE=true"; \
-		echo "# V2.3.1: Enable in-memory builder cache"; \
+		echo "# Enable in-memory builder cache"; \
 		echo ""; \
 		echo "TOPIC_BOOST=1.10"; \
-		echo "# V2.3.1: Multiplicative boost for topic overlap"; \
+		echo "# Multiplicative boost for topic overlap"; \
 		echo ""; \
 		echo "DECISION_BOOST=1.05"; \
-		echo "# V2.3.1: Multiplicative boost for decision overlap"; \
+		echo "# Multiplicative boost for decision overlap"; \
 		echo ""; \
 		echo "QUESTION_BOOST=1.02"; \
-		echo "# V2.3.1: Multiplicative boost for open-question overlap"; \
+		echo "# Multiplicative boost for open-question overlap"; \
 		echo ""; \
 		echo "# === Working Memory ==="; \
 		echo "CHAT_HISTORY_LIMIT=20"; \
@@ -383,23 +417,23 @@ setup-env:
 		echo ""; \
 		echo "# === Project Defaults (seeded files) ==="; \
 		echo "DEFAULT_SYSTEM_PROMPT_PATH=app/config/defaults/system_prompt.txt"; \
-		echo "# V2.6: Default system prompt file path (relative to backend/ cwd)"; \
+		echo "# Default system prompt file path (relative to backend/ cwd)"; \
 		echo ""; \
 		echo "DEFAULT_PERSONALITY_PROMPT_PATH=app/config/defaults/personality.json"; \
-		echo "# V2.6: Default personality JSON file path (relative to backend/ cwd)"; \
+		echo "# Default personality JSON file path (relative to backend/ cwd)"; \
 		echo ""; \
 		echo "# === Sleep Cycle + Verification ==="; \
 		echo "ENABLE_SCHEDULER=true"; \
-		echo "# V3.1: Enable daily sleep scheduler"; \
+		echo "# Enable daily sleep scheduler"; \
 		echo ""; \
 		echo "SLEEP_CYCLE_HOUR=3"; \
-		echo "# V3.1: Local hour of day (0-23) to run sleep cycle"; \
+		echo "# Local hour of day (0-23) to run sleep cycle"; \
 		echo ""; \
 		echo "SLEEP_CYCLE_MINUTE=0"; \
-		echo "# V3.1: Local minute of day (0-59) to run sleep cycle"; \
+		echo "# Local minute of day (0-59) to run sleep cycle"; \
 		echo ""; \
 		echo "VERIFY_RAG=true"; \
-		echo "# V3.3: Enable post-rebuild verification"; \
+		echo "# Enable post-rebuild verification"; \
 		echo ""; \
 		echo "FORCE_RAG_REBUILD_ON_STARTUP=true"; \
 		echo "# Optional startup sweep: rebuild all project RAG indexes from uploads"; \
@@ -414,52 +448,52 @@ setup-env:
 		echo "INSTRUMENTATION_RUN_ID=test_run"; \
 		echo "# Optional run id override; when set, all turns use this run id"; \
 		echo ""; \
-		echo "INSTRUMENTATION_RUNS_DIR=runs"; \
+		echo "INSTRUMENTATION_RUNS_DIR=../runtime/runs"; \
 		echo "# Root folder for instrumentation outputs"; \
 		echo ""; \
 		echo "INSTRUMENTATION_PROMPT_TOL_ABS_TOKENS=25"; \
-		echo "# V5.9: Absolute prompt token tolerance for accounting validation"; \
+		echo "# Absolute prompt token tolerance for accounting validation"; \
 		echo ""; \
 		echo "INSTRUMENTATION_PROMPT_TOL_PCT=0.02"; \
-		echo "# V5.9: Relative prompt token tolerance (fraction)"; \
+		echo "# Relative prompt token tolerance (fraction)"; \
 		echo ""; \
 		echo "# === Streaming Chat ==="; \
 		echo "STREAMING_ENABLED=true"; \
-		echo "# V3.5: Enable streaming chat endpoint"; \
+		echo "# Enable streaming chat endpoint"; \
 		echo ""; \
 		echo "STREAM_FLUSH_MS=50"; \
-		echo "# V3.5: Flush cadence for streaming chunks (ms)"; \
+		echo "# Flush cadence for streaming chunks (ms)"; \
 		echo ""; \
 		echo "STREAM_TIMEOUT_MS=60000"; \
-		echo "# V3.5: Overall stream timeout (ms)"; \
+		echo "# Overall stream timeout (ms)"; \
 		echo ""; \
 		echo "TAGGER_CURRENT_RESPONSE_MIDDLE_CUT_PERCENT=50"; \
-		echo "# V3.x tagger prompt optimization: percent removed from center of current assistant text (range: 10-90, int)"; \
+		echo "# Tagger prompt optimization: percent removed from center of current assistant text (range: 10-90, int)"; \
 		echo ""; \
 		echo "TAGGER_PREVIOUS_RESPONSE_MIDDLE_CUT_PERCENT=75"; \
-		echo "# V3.x tagger prompt optimization: percent removed from center of previous assistant text (range: 10-90, int)"; \
+		echo "# Tagger prompt optimization: percent removed from center of previous assistant text (range: 10-90, int)"; \
 		echo ""; \
 		echo "TAGGER_MIN_RESPONSE_LENGTH_FOR_CHOP=600"; \
-		echo "# V3.x tagger prompt optimization: apply chopping only when assistant text length is greater than this value"; \
+		echo "# Tagger prompt optimization: apply chopping only when assistant text length is greater than this value"; \
 		echo ""; \
 		echo "# === Dream Pipeline ==="; \
 		echo "ENABLE_DREAM=true"; \
-		echo "# V4.1: Enable Dream orchestrator"; \
+		echo "# Enable Dream orchestrator"; \
 		echo ""; \
 		echo "MAX_WORKERS=1"; \
-		echo "# V4.1: Dream executor workers"; \
+		echo "# Dream executor workers"; \
 		echo ""; \
-		echo "DREAM_MODEL=gpt-5.2"; \
+		echo "DREAM_MODEL=gpt-5.4"; \
 		echo "DREAM_TEMPERATURE=1.0"; \
 		echo "DREAM_MAX_TOKENS=32000"; \
 		echo "DREAM_ENABLE_REMOTE_RESEARCH=true"; \
 		echo "DREAM_REMOTE_CONTEXT_MAX_TOKENS=32000"; \
 		echo "DREAM_TOPIC_BOOST=1.5"; \
-		echo "# V4.1.2: Dream agent configuration"; \
+		echo "# Dream agent configuration"; \
 		echo ""; \
 		echo "# === Debug / Observability ==="; \
 		echo "GENERATE_DEBUG_FILES=true"; \
-		echo "# V4.1.3.1: Enable debug file generation (e.g., debug_context.txt)"; \
+		echo "# Enable debug file generation (e.g., debug_context.txt)"; \
 		echo ""; \
 		echo "VITE_SHOW_DEBUG_VALUES=false"; \
 		echo "# Frontend: show stats/debug values bar in chat UI"; \
@@ -468,19 +502,19 @@ setup-env:
 	@echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
 
 unlock-sleep:
-	@rm -f backend/runtime/sleep.lock backend/app/runtime/sleep.lock 2>/dev/null || true
+	@rm -f runtime/state/sleep.lock 2>/dev/null || true
 	@echo "✅ Sleep lock cleared (if it existed)"
 
 # Docker: create host directories for bind mounts (run before first docker-compose up)
 docker-data-dirs:
 	@echo "📁 Creating host directories for Docker bind mounts..."
-	@mkdir -p data/memory data/db data/logs data/runtime data/runs
-	@echo "✅ Created data/memory data/db data/logs data/runtime data/runs"
+	@mkdir -p data/memory data/db runtime/logs runtime/runs runtime/state
+	@echo "✅ Created data/memory data/db runtime/logs runtime/runs runtime/state"
 
 # Docker: set permissions so container process can read/write (container typically runs as root)
 docker-data-permissions:
-	@chmod -R 755 data 2>/dev/null || true
-	@echo "✅ Set permissions on data/ (755)"
+	@chmod -R 755 data runtime 2>/dev/null || true
+	@echo "✅ Set permissions on data/ and runtime/ (755)"
 
 # Docker: full host prep for first run (dirs + permissions)
 docker-setup: docker-data-dirs docker-data-permissions

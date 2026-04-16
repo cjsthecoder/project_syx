@@ -12,11 +12,13 @@ import time
 from typing import Optional
 import logging
 
+from .config import get_settings
+
 logger = logging.getLogger(__name__)
 
 _sleeping: bool = False
 _since_ts: Optional[float] = None
-_LOCK_PATH = os.path.join("runtime", "sleep.lock")
+_LOCK_PATH = os.path.join(get_settings().lock_dir, "sleep.lock")
 
 
 def lock_path() -> str:

@@ -29,7 +29,7 @@ def write_debug_file(project_id: str, filename: str, content: str) -> None:
         return
 
     try:
-        base_dir = os.path.join("memory", project_id, "debug")
+        base_dir = os.path.join(settings.memory_root, project_id, "debug")
         debug_path = os.path.join(base_dir, filename)
         os.makedirs(os.path.dirname(debug_path), exist_ok=True)
         with open(debug_path, "w", encoding="utf-8", newline="\n") as dbg:

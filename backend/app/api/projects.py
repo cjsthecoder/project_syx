@@ -33,8 +33,9 @@ from ..utils.errors import handle_project_error, log_error_context
 import uuid
 import os
 from ..core.memory import get_memory_manager, get_last_context_tokens
-from ..core.tagger import tag_pair
-from ..core.daily_rag import append_pair, daily_stats, rebuild_daily_cache, start_daily_cache_rebuild
+from ..tagging.tagger import tag_pair
+from ..rag.daily_store import append_pair, daily_stats, rebuild_daily_cache, start_daily_cache_rebuild
+from ..core.config import get_settings
 from filelock import FileLock
 from ..core.personality import (
     load_project_system_prompt,
@@ -45,7 +46,7 @@ from ..core.personality import (
 )
 from ..core.database import get_session
 from ..core.db_models import ChatMessage
-from ..core.rag_manager import rebuild_faiss_index
+from ..rag.manager import rebuild_faiss_index
 from ..utils.debug_utils import write_debug_file
 import shutil
 
@@ -201,7 +202,7 @@ async def get_projects() -> JSONResponse:
 async def get_project_dream(project_id: str) -> JSONResponse:
     """Return dream.json content for a project, if present and well-formed."""
     request_logger.log_request(endpoint="/projects/{project_id}/dream", method="GET", user_id=project_id)
-    dream_path = os.path.join("memory", project_id, "dream.json")
+    dream_path = os.path.join(get_settings().memory_root, project_id, "dream.json")
     try:
         if not os.path.isfile(dream_path):
             return JSONResponse(status_code=200, content={"project_id": project_id, "dream": None})
@@ -286,10 +287,18 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
         failures = []
 
         # Prepare dream_summary.txt append
-        base_dir = os.path.join("memory", project_id)
+        base_dir = os.path.join(get_settings().memory_root, project_id)
         os.makedirs(base_dir, exist_ok=True)
         summary_path = os.path.join(base_dir, "dream_summary.txt")
-        summary_lock_path = os.path.join(base_dir, "dream_summary.lock")
+        state_dir = os.path.join(base_dir, "state")
+        os.makedirs(state_dir, exist_ok=True)
+        summary_lock_path = os.path.join(state_dir, "dream_summary.lock")
+        legacy_summary_lock_path = os.path.join(base_dir, "dream_summary.lock")
+        if os.path.isfile(legacy_summary_lock_path) and not os.path.exists(summary_lock_path):
+            try:
+                os.replace(legacy_summary_lock_path, summary_lock_path)
+            except OSError as exc:
+                logger.warning("projects dream_summary lock migration failed project_id=%s detail=%s", project_id, exc)
 
         # Pass 1: tag all items (and build pair text, tokens, tags_block, embed_text)
         tagged: List[Dict[str, Any]] = []
@@ -431,7 +440,7 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                 failures.append(f"rebuild_cache: {rb}")
 
         deleted = False
-        dream_path = os.path.join("memory", project_id, "dream.json")
+        dream_path = os.path.join(get_settings().memory_root, project_id, "dream.json")
         if successes == len(to_process) and not failures:
             try:
                 # Append END footer on successful completion before deleting dream.json
@@ -493,16 +502,16 @@ async def create_or_switch_project(request: ProjectRequest) -> JSONResponse:
                 obj = Project(id=new_id, name=request.project_name.strip(), description=request.project_name.strip(), system=False)
                 session.add(obj)
                 session.commit()
-                # V2.6: seed default prompt/personality files
+                # Seed default prompt/personality files
                 try:
                     seed_project_defaults(obj.id)
                 except Exception as e:
                     logger.warning("[PROJECT] Failed to seed defaults for project %s: %s", obj.id, e, exc_info=True)
                 _current_project = obj.id
                 message = f"Created and switched to new project '{obj.name}'"
-                # V2.8: Seed DEFAULT_RAG.txt and rebuild RAG
+                # Seed DEFAULT_RAG.txt and rebuild RAG
                 try:
-                    uploads_dir = os.path.join("memory", obj.id, "uploads")
+                    uploads_dir = os.path.join(get_settings().memory_root, obj.id, "uploads")
                     os.makedirs(uploads_dir, exist_ok=True)
                     default_src = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "defaults", "DEFAULT_RAG.txt"))
                     default_dst = os.path.join(uploads_dir, "DEFAULT_RAG.txt")
@@ -591,7 +600,7 @@ async def delete_project(project_id: str) -> JSONResponse:
             session.delete(obj)
             session.commit()
         # Delete disk directories
-        base = os.path.join("memory", project_id)
+        base = os.path.join(get_settings().memory_root, project_id)
         try:
             if os.path.isdir(base):
                 for root, dirs, files in os.walk(base, topdown=False):
@@ -659,7 +668,7 @@ async def project_stats(project_id: str) -> JSONResponse:
         tokens_indexed = sum(r.token_count for r in rows)
         file_count = len(rows)
     # index size
-    base = os.path.join("memory", project_id, "faiss")
+    base = os.path.join(get_settings().memory_root, project_id, "faiss")
     index_size = 0
     if os.path.isdir(base):
         for root, _, files in os.walk(base):

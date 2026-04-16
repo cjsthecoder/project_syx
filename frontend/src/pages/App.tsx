@@ -26,7 +26,6 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [ragBuilding, setRagBuilding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [model, setModel] = useState('gpt-5.4')
   const [models, setModels] = useState<ModelItem[]>(['gpt-5.4'])
@@ -555,7 +554,6 @@ export default function App() {
               )}
             </div>
           ))}
-          {ragBuilding && !loading && <div className="text-sm text-gray-500">Building RAG Query…</div>}
           {loading && <div className="text-sm text-gray-500">Thinking…</div>}
         </div>
       </main>

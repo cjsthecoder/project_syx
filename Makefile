@@ -183,7 +183,11 @@ test-backend:
 
 test-frontend:
 	@echo "🧪 Running frontend tests..."
-	cd frontend && npm test -- --run
+	@if cd frontend && node -e "const s=require('./package.json').scripts||{}; process.exit(s.test?0:1)"; then \
+		cd frontend && npm run test -- --run; \
+	else \
+		echo "ℹ️  Skipping frontend tests: no 'test' script in frontend/package.json"; \
+	fi
 	@echo "✅ Frontend tests completed"
 
 # Run linting
@@ -197,7 +201,11 @@ lint-backend:
 
 lint-frontend:
 	@echo "🔍 Linting TypeScript/React code..."
-	cd frontend && npm run lint
+	@if cd frontend && node -e "const s=require('./package.json').scripts||{}; process.exit(s.lint?0:1)"; then \
+		cd frontend && npm run lint; \
+	else \
+		echo "ℹ️  Skipping frontend lint: no 'lint' script in frontend/package.json"; \
+	fi
 	@echo "✅ Frontend linting completed"
 
 # Format code
@@ -211,7 +219,11 @@ format-backend:
 
 format-frontend:
 	@echo "🎨 Formatting TypeScript/React code..."
-	cd frontend && npm run format
+	@if cd frontend && node -e "const s=require('./package.json').scripts||{}; process.exit(s.format?0:1)"; then \
+		cd frontend && npm run format; \
+	else \
+		echo "ℹ️  Skipping frontend format: no 'format' script in frontend/package.json"; \
+	fi
 	@echo "✅ Frontend formatting completed"
 
 # Development helpers
@@ -490,7 +502,7 @@ setup-env:
 	@echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
 
 unlock-sleep:
-	@rm -f runtime/state/sleep.lock backend/runtime/sleep.lock backend/app/runtime/sleep.lock 2>/dev/null || true
+	@rm -f runtime/state/sleep.lock 2>/dev/null || true
 	@echo "✅ Sleep lock cleared (if it existed)"
 
 # Docker: create host directories for bind mounts (run before first docker-compose up)

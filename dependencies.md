@@ -46,13 +46,13 @@ Notes:
 | python-dotenv | `1.0.0` | No imports found | Remove | Low | Remove if env loading is not reintroduced |
 | python-multipart | `0.0.9` | FastAPI `UploadFile/File` endpoints in `backend/app/api/files.py` imply runtime parser dependency | Upgrade (`0.0.26`) | Low | Keep and upgrade patch |
 | structlog | `23.2.0` | No imports found | Remove | Low | Remove from `requirements.txt` |
-| pytest | `7.4.3` | Tests under `tests/` | Upgrade (`9.0.x`) | Medium | Upgrade with test-runner ticket |
+| pytest | `9.0.3` | Tests under `tests/` | Keep current stable line | Medium | Upgraded; targeted + full backend suite passes |
 | pytest-asyncio | `0.21.1` | No async test markers/usages found | Remove (or upgrade only if async tests planned) | Low | Remove for now as unused |
 | black | `23.11.0` | Makefile/pyproject tooling | Upgrade (`26.x`) | Low | Safe-now tooling upgrade |
 | flake8 | `6.1.0` | Makefile lint target | Upgrade (`7.3.x`) | Low | Safe-now tooling upgrade |
 | isort | `5.12.0` | `pyproject.toml` has isort config | Upgrade (`8.x`) | Low | Safe-now tooling upgrade |
-| faiss-cpu | `1.13.0` | `import faiss` in `backend/app/rag/manager.py`, `backend/app/rag/daily_store.py` | Upgrade patch (`1.13.2`) | Medium | Upgrade carefully; verify wheel/platform behavior |
-| tiktoken | `0.7.0` | Multiple runtime token-estimation imports (`chat`, `rag`, `memory`, `dream`, etc.) | Upgrade within major (`0.12.x`) | Medium | Upgrade with prompt/token regression checks |
+| faiss-cpu | `1.13.2` | `import faiss` in `backend/app/rag/manager.py`, `backend/app/rag/daily_store.py` | Keep current patch line | Medium | Upgraded; create/add/search + write/read smoke passed |
+| tiktoken | `0.12.0` | Multiple runtime token-estimation imports (`chat`, `rag`, `memory`, `dream`, etc.) | Keep current stable line | Medium | Upgraded; `get_encoding` and `encoding_for_model` smoke passed |
 | filelock | `3.16.0` | Locks in `backend/app/core/memory.py`, `backend/app/api/projects.py`, `backend/app/sleep/cycle.py`, `backend/app/rag/daily_store.py` | Upgrade (`3.28.x`) | Low | Safe-now upgrade candidate |
 | sqlmodel | `0.0.38` | DB models/session/select in `backend/app/core/database.py`, `backend/app/core/db_models.py`, project/chat paths | Keep current latest stable | Medium | Upgraded; round-trip migrations validated |
 | alembic | `1.18.4` | Migrations and runtime bootstrap in `backend/alembic/*`, `backend/app/core/database.py` | Keep current latest stable | Medium | Upgraded; round-trip migrations validated |
@@ -131,6 +131,26 @@ Notes:
 - Migration smoke:
   - `make upgrade`
   - run app startup and verify `/health`, `/chat`, `/projects`, `/sleep`, `/dream` paths
+
+## Pytest + FAISS + Tiktoken upgrade results
+
+- Final pinned versions:
+  - `pytest==9.0.3`
+  - `faiss-cpu==1.13.2`
+  - `tiktoken==0.12.0`
+- Install and resolver evidence:
+  - `venv/bin/python -m pip install -r requirements.txt` succeeded
+  - `venv/bin/python -m pip check` returned `No broken requirements found.`
+- FAISS and tiktoken smoke evidence:
+  - validated FAISS `IndexFlatIP` create/add/search and index write/read round-trip
+  - validated tiktoken `get_encoding("cl100k_base")`
+  - validated tiktoken `encoding_for_model("gpt-4")`
+- pytest 9 execution evidence:
+  - targeted run `test_main.py`, `test_llm.py`, `test_models.py`: 21 passed
+  - full backend suite `../tests/`: 21 passed
+- Observed caveats:
+  - existing Pydantic deprecation warnings remain (class-based `config`, `datetime.utcnow()`), unrelated to the three dependency upgrades
+  - FAISS SWIG deprecation warnings appear during tests/import, non-blocking for current runtime behavior
 
 ## SQLModel + Alembic compatibility pass results
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/pages/app/api'
 import { toDreamViewState } from '@/pages/app/dream'
 import { extractErrorMessage, readJsonSafe, throwRequestError } from '@/pages/app/request'
@@ -31,6 +31,8 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
   const [domainFocus, setDomainFocus] = useState('')
 
   const [dragOver, setDragOver] = useState(false)
+  const refreshInFlightRef = useRef<Set<string>>(new Set())
+  const personalityInFlightRef = useRef<Set<string>>(new Set())
 
   const loadProjects = useCallback(async () => {
     try {
@@ -98,10 +100,16 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
   const refreshProjectData = useCallback(
     async (pid: string, loadChats: (projectId: string) => Promise<void>) => {
       if (!pid) return
+      if (refreshInFlightRef.current.has(pid)) {
+        return
+      }
+      refreshInFlightRef.current.add(pid)
       try {
         await Promise.all([loadChats(pid), loadFiles(pid), loadStats(pid), loadProjectInfo(pid), loadDreamSummary(pid)])
       } catch (e) {
         console.error('Failed to refresh project data:', e)
+      } finally {
+        refreshInFlightRef.current.delete(pid)
       }
     },
     [loadDreamSummary, loadFiles, loadProjectInfo, loadStats],
@@ -193,6 +201,11 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
 
   const loadPersonality = useCallback(
     async (pid: string) => {
+      if (!pid) return
+      if (personalityInFlightRef.current.has(pid)) {
+        return
+      }
+      personalityInFlightRef.current.add(pid)
       try {
         const data = await api<{ project_id: string; personality: any; system_prompt: string }>(`/projects/${pid}/personality`)
         const p = data.personality || {}
@@ -204,6 +217,8 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
         setDomainFocus(Array.isArray(p.domain_focus) ? p.domain_focus.join(', ') : '')
       } catch (e: unknown) {
         onError(e instanceof Error ? e.message : 'Failed to load personality')
+      } finally {
+        personalityInFlightRef.current.delete(pid)
       }
     },
     [onError],

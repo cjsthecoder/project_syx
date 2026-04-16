@@ -22,12 +22,16 @@ import { PersonalityDialog } from '@/components/app-dialogs/PersonalityDialog'
 import { ManageProjectDialog } from '@/components/app-dialogs/ManageProjectDialog'
 import { DreamAnalysisDialog } from '@/components/app-dialogs/DreamAnalysisDialog'
 
+// Survives component remounts in the same page session.
+const bootstrappedProjects = new Set<string>()
+
 export default function App() {
   const showDebugValues = !['false', '0', 'no', 'off'].includes(
     String(import.meta.env.VITE_SHOW_DEBUG_VALUES ?? 'true').trim().toLowerCase(),
   )
   const [error, setError] = useState<string | null>(null)
   const dismissError = useCallback(() => setError(null), [])
+  const handleError = useCallback((message: string) => setError(message), [])
 
   const {
     projects,
@@ -75,8 +79,13 @@ export default function App() {
     saveDreamItems,
   } = useProjectData({
     showDebugValues,
-    onError: (message) => setError(message),
+    onError: handleError,
   })
+
+  const handleBeforeSend = useCallback(() => {
+    setProjectSummary(null)
+    setError(null)
+  }, [setProjectSummary])
 
   const [model, setModel] = useState('gpt-5.4')
   const [models, setModels] = useState<ModelItem[]>(['gpt-5.4'])
@@ -88,6 +97,10 @@ export default function App() {
   const [renameProjectName, setRenameProjectName] = useState('')
   const [showDreamModal, setShowDreamModal] = useState(false)
   const [showPersonalityModal, setShowPersonalityModal] = useState(false)
+  const streamHandlersRef = useRef<{
+    loadStats: (pid: string) => Promise<void>
+    loadChats: (pid: string) => Promise<void>
+  } | null>(null)
 
   const {
     messages,
@@ -101,25 +114,27 @@ export default function App() {
   } = useChatStream({
     projectId,
     model,
-    onBeforeSend: () => {
-      setProjectSummary(null)
-      setError(null)
-    },
-    onError: (message) => setError(message),
+    onBeforeSend: handleBeforeSend,
+    onError: handleError,
     checkSleeping,
-    onAfterStream: async (pid) => {
+    onAfterStream: useCallback(async (pid: string) => {
+      const handlers = streamHandlersRef.current
+      if (!handlers) return
       try {
-        await loadStats(pid)
+        await handlers.loadStats(pid)
       } catch (e) {
         console.info('post-stream stats refresh failed', e)
       }
       try {
-        await loadChats(pid)
+        await handlers.loadChats(pid)
       } catch (e) {
         console.info('post-stream chat refresh failed', e)
       }
-    },
+    }, []),
   })
+  useEffect(() => {
+    streamHandlersRef.current = { loadStats, loadChats }
+  }, [loadChats, loadStats])
 
   const toggleDreamKeep = (idx: number) => {
     setDreamItems((prev) => prev.map((it, i) => (i === idx ? { ...it, keep: !it.keep } : it)))
@@ -153,13 +168,22 @@ export default function App() {
 
   // Refresh project data when project changes
   useEffect(() => {
+    if (!projectId) {
+      // Clear state when no project selected
+      setMessages([])
+      return
+    }
+
+    // Guard against repeated bootstraps for the same project, even across remounts.
+    if (bootstrappedProjects.has(projectId)) {
+      return
+    }
+    bootstrappedProjects.add(projectId)
+
     if (projectId) {
       refreshProjectData(projectId, loadChats)
       // Preload personality when switching projects
       loadPersonality(projectId)
-    } else {
-      // Clear state when no project selected
-      setMessages([])
     }
   }, [loadChats, loadPersonality, projectId, refreshProjectData, setMessages])
 

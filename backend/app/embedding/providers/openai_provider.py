@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 
 class OpenAIEmbeddingProvider:
     def __init__(self, *, api_key: str) -> None:
-        self._client = OpenAI(api_key=api_key)
+        settings = get_settings()
+        self._timeout_s = float(getattr(settings, "embedding_request_timeout_s", 45.0) or 45.0)
+        self._client = OpenAI(api_key=api_key, timeout=self._timeout_s)
 
     @staticmethod
     def _is_rate_limit_error(exc: Exception) -> bool:
@@ -57,6 +59,11 @@ class OpenAIEmbeddingProvider:
         except (TypeError, ValueError):
             return None
 
+    @staticmethod
+    def _is_timeout_error(exc: Exception) -> bool:
+        msg = str(exc or "").lower()
+        return ("timed out" in msg) or ("timeout" in msg)
+
     def embed(
         self,
         texts: List[str],
@@ -77,7 +84,11 @@ class OpenAIEmbeddingProvider:
         while True:
             try:
                 t0 = time.monotonic()
-                resp = self._client.embeddings.create(model=str(use_model), input=clean)
+                resp = self._client.embeddings.create(
+                    model=str(use_model),
+                    input=clean,
+                    timeout=self._timeout_s,
+                )
                 vectors: List[List[float]] = []
                 data = getattr(resp, "data", None)
                 if data is None:
@@ -105,6 +116,17 @@ class OpenAIEmbeddingProvider:
                 return EmbedResult(vectors=vectors, model=str(use_model))
             except Exception as exc:
                 last_err = exc
+                if self._is_timeout_error(exc):
+                    logger.warning(
+                        "embedding provider request timed out model=%s timeout_s=%.2f attempt_general=%s/%s attempt_rate_limit=%s/%s detail=%s",
+                        str(use_model),
+                        float(self._timeout_s),
+                        int(general_attempt + 1),
+                        int(retries),
+                        int(rate_limit_attempt),
+                        int(rate_limit_retries),
+                        str(exc),
+                    )
                 if self._is_rate_limit_error(exc):
                     rate_limit_attempt += 1
                     retry_after_s = self._extract_retry_after_seconds(exc)

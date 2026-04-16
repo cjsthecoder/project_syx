@@ -305,7 +305,12 @@ from .core.state import clear_stale_lock
 @app.middleware("http")
 async def sleep_guard(request: Request, call_next):
     try:
-        if is_sleeping() and request.method.upper() != "GET":
+        method = request.method.upper()
+        path = request.url.path.rstrip("/") or "/"
+        sleep_recovery_allowlist = {
+            ("POST", "/sleep/unlock"),
+        }
+        if is_sleeping() and method != "GET" and (method, path) not in sleep_recovery_allowlist:
             return JSONResponse(status_code=423, content={"error": "System is sleeping. Try again later."})
     except Exception as exc:
         logger.warning("[SLEEP] sleep_guard state check failed; method=%s detail=%s", request.method, exc)

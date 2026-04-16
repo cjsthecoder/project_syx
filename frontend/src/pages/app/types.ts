@@ -1,5 +1,6 @@
 export type Message = {
   id?: number
+  clientId?: string
   role: 'user' | 'assistant'
   content: string
   forget?: boolean

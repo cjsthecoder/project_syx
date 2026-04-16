@@ -6,19 +6,38 @@ type DreamViewState = {
   dreamItems: DreamItem[]
 }
 
-function _normalizeDreamItems(items: any[]): DreamItem[] {
+type DreamResearchPayload = {
+  research_topic?: unknown
+  research_summary?: unknown
+}
+
+type DreamItemPayload = {
+  id?: unknown
+  origin_text?: unknown
+  assistant_response?: unknown
+  origin_type?: unknown
+  source_resolution?: unknown
+  research?: unknown
+}
+
+type DreamPayload = {
+  project_summary?: unknown
+  items?: unknown
+}
+
+function _normalizeDreamItems(items: DreamItemPayload[]): DreamItem[] {
   return items
-    .filter((it: any) => it && (it.origin_text || it.assistant_response))
-    .map((it: any) => ({
-      id: it.id,
-      origin_text: it.origin_text,
-      assistant_response: it.assistant_response,
-      origin_type: it.origin_type,
-      source_resolution: it.source_resolution,
+    .filter((it) => it && (it.origin_text || it.assistant_response))
+    .map((it) => ({
+      id: typeof it.id === 'string' ? it.id : undefined,
+      origin_text: typeof it.origin_text === 'string' ? it.origin_text : undefined,
+      assistant_response: typeof it.assistant_response === 'string' ? it.assistant_response : undefined,
+      origin_type: typeof it.origin_type === 'string' ? it.origin_type : undefined,
+      source_resolution: typeof it.source_resolution === 'string' ? it.source_resolution : undefined,
       research: Array.isArray(it.research)
-        ? it.research.map((r: any) => ({
-            research_topic: r?.research_topic,
-            research_summary: r?.research_summary,
+        ? (it.research as DreamResearchPayload[]).map((r) => ({
+            research_topic: typeof r?.research_topic === 'string' ? r.research_topic : undefined,
+            research_summary: typeof r?.research_summary === 'string' ? r.research_summary : undefined,
           }))
         : [],
       keep: false,
@@ -26,9 +45,10 @@ function _normalizeDreamItems(items: any[]): DreamItem[] {
     }))
 }
 
-export function toDreamViewState(dream: any): DreamViewState {
-  const summary = dream?.project_summary
-  const items = Array.isArray(dream?.items) ? dream.items : []
+export function toDreamViewState(dream: unknown): DreamViewState {
+  const payload = (dream && typeof dream === 'object' ? dream : {}) as DreamPayload
+  const summary = payload.project_summary
+  const items = Array.isArray(payload.items) ? (payload.items as DreamItemPayload[]) : []
   const hasSummary = typeof summary === 'string' && summary.trim().length > 0
   return {
     projectSummary: hasSummary ? summary.trim() : null,

@@ -20,6 +20,11 @@ export function useChatStream({
   checkSleeping,
   onAfterStream,
 }: UseChatStreamArgs) {
+  const makeClientId = () =>
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -53,7 +58,8 @@ export function useChatStream({
       setLoading(false)
       return
     }
-    const userMsg: Message = { role: 'user', content: input }
+    const userMsg: Message = { clientId: makeClientId(), role: 'user', content: input }
+    const assistantClientId = makeClientId()
     setMessages((m) => [...m, userMsg])
     const toSend = input
     setInput('')
@@ -96,7 +102,7 @@ export function useChatStream({
               if (!assistantCreated) {
                 assistantCreated = true
                 setLoading(false)
-                return [...m, { role: 'assistant', content: text }]
+                return [...m, { clientId: assistantClientId, role: 'assistant', content: text }]
               }
               const copy = [...m]
               const idx = copy.length - 1

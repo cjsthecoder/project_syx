@@ -281,7 +281,7 @@ export default function App() {
             </div>
           )}
           {messages.map((m, i) => (
-            <div key={i} className={m.role === 'user' ? 'text-right' : 'text-left'}>
+            <div key={m.id ?? m.clientId ?? i} className={m.role === 'user' ? 'text-right' : 'text-left'}>
               <div
                 className={`inline-block rounded px-3 py-2 whitespace-pre-wrap break-words max-w-[800px] w-fit text-left ${
                   m.role === 'user'
@@ -303,9 +303,9 @@ export default function App() {
                         const next = e.target.checked
                         try {
                           await api(`/projects/${projectId}/chats/${m.id}`, { method: 'PATCH', body: JSON.stringify({ forget: next }) })
-                          setMessages((list) => list.map((mm, idx) => idx === i ? { ...mm, forget: next } : mm))
-                        } catch (err: any) {
-                          setError(err?.message || 'Failed to update forget flag')
+                          setMessages((list) => list.map((mm) => (mm.id === m.id ? { ...mm, forget: next } : mm)))
+                        } catch (err: unknown) {
+                          setError(err instanceof Error ? err.message : 'Failed to update forget flag')
                         }
                       }}
                     />
@@ -314,15 +314,15 @@ export default function App() {
                   <label className="inline-flex items-center gap-2">
                     <input
                       type="checkbox"
-                      checked={!!(m as any).keep}
+                      checked={!!m.keep}
                       onChange={async (e) => {
                         if (!projectId || m.id == null) return
                         const next = e.target.checked
                         try {
                           await api(`/projects/${projectId}/chats/${m.id}`, { method: 'PATCH', body: JSON.stringify({ keep: next }) })
-                          setMessages((list) => list.map((mm, idx) => idx === i ? { ...mm, keep: next } : mm))
-                        } catch (err: any) {
-                          setError(err?.message || 'Failed to update keep flag')
+                          setMessages((list) => list.map((mm) => (mm.id === m.id ? { ...mm, keep: next } : mm)))
+                        } catch (err: unknown) {
+                          setError(err instanceof Error ? err.message : 'Failed to update keep flag')
                         }
                       }}
                     />

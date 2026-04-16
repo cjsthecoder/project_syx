@@ -14,11 +14,74 @@ from ..base import LLMResponse, LLMUsage, Message
 logger = logging.getLogger(__name__)
 
 
+def _as_mapping(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    try:
+        dumped = getattr(value, "model_dump", None)
+        if callable(dumped):
+            obj = dumped(mode="python")
+            if isinstance(obj, dict):
+                return obj
+    except Exception as exc:
+        logger.debug("openai_provider model_dump parse skipped detail=%s", exc)
+    return {}
+
+
+def _coerce_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _extract_text_parts(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        out: List[str] = []
+        for item in value:
+            if isinstance(item, str):
+                out.append(item)
+                continue
+            md = _as_mapping(item)
+            text = md.get("text")
+            if isinstance(text, str) and text:
+                out.append(text)
+                continue
+            if isinstance(text, dict):
+                nested = text.get("value")
+                if isinstance(nested, str) and nested:
+                    out.append(nested)
+                    continue
+            if md.get("type") == "output_text":
+                maybe = md.get("text")
+                if isinstance(maybe, str) and maybe:
+                    out.append(maybe)
+        return "".join(out)
+    return ""
+
+
 def _safe_usage_from_chat(usage: Any) -> LLMUsage:
     try:
-        prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
-        completion = int(getattr(usage, "completion_tokens", 0) or 0)
-        total = int(getattr(usage, "total_tokens", 0) or (prompt + completion))
+        usage_map = _as_mapping(usage)
+        prompt = _coerce_int(getattr(usage, "prompt_tokens", None), _coerce_int(usage_map.get("prompt_tokens", 0)))
+        completion = _coerce_int(
+            getattr(usage, "completion_tokens", None),
+            _coerce_int(usage_map.get("completion_tokens", 0)),
+        )
+        # SDK 2.x can surface input/output naming in some envelopes.
+        if prompt <= 0:
+            prompt = _coerce_int(getattr(usage, "input_tokens", None), _coerce_int(usage_map.get("input_tokens", 0)))
+        if completion <= 0:
+            completion = _coerce_int(
+                getattr(usage, "output_tokens", None),
+                _coerce_int(usage_map.get("output_tokens", 0)),
+            )
+        total = _coerce_int(
+            getattr(usage, "total_tokens", None),
+            _coerce_int(usage_map.get("total_tokens", prompt + completion)),
+        )
         return LLMUsage(
             prompt_tokens_reported=prompt,
             completion_tokens_reported=completion,
@@ -37,13 +100,19 @@ def _safe_usage_from_chat(usage: Any) -> LLMUsage:
 
 def _safe_usage_from_responses(usage: Any) -> LLMUsage:
     try:
-        prompt = int(getattr(usage, "input_tokens", 0) or 0)
-        completion = int(getattr(usage, "output_tokens", 0) or 0)
-        total = int(getattr(usage, "total_tokens", 0) or (prompt + completion))
+        usage_map = _as_mapping(usage)
+        prompt = _coerce_int(getattr(usage, "input_tokens", None), _coerce_int(usage_map.get("input_tokens", 0)))
+        completion = _coerce_int(getattr(usage, "output_tokens", None), _coerce_int(usage_map.get("output_tokens", 0)))
+        total = _coerce_int(
+            getattr(usage, "total_tokens", None),
+            _coerce_int(usage_map.get("total_tokens", prompt + completion)),
+        )
         extra: Dict[str, Any] = {}
         for k in ("input_token_details", "output_token_details", "reasoning_tokens", "cached_tokens"):
             try:
                 v = getattr(usage, k, None)
+                if v is None:
+                    v = usage_map.get(k)
                 if v is not None:
                     extra[k] = v
             except Exception as exc:
@@ -68,18 +137,37 @@ def _safe_usage_from_responses(usage: Any) -> LLMUsage:
 def _responses_output_text(resp: Any) -> str:
     try:
         output_text = getattr(resp, "output_text", None)
-        if isinstance(output_text, str) and output_text:
-            return output_text
+        parsed = _extract_text_parts(output_text)
+        if parsed:
+            return parsed
     except Exception as exc:
         logger.warning("openai_provider failed reading output_text detail=%s", exc)
     out: List[str] = []
     try:
-        for item in getattr(resp, "output", []) or []:
-            if getattr(item, "type", "") != "message":
+        items = getattr(resp, "output", None)
+        if items is None:
+            items = _as_mapping(resp).get("output", [])
+        for item in items or []:
+            item_type = getattr(item, "type", None)
+            if not item_type:
+                item_type = _as_mapping(item).get("type")
+            if item_type != "message":
                 continue
-            for c in getattr(item, "content", []) or []:
-                if getattr(c, "type", "") == "output_text":
-                    out.append(getattr(c, "text", "") or "")
+            content = getattr(item, "content", None)
+            if content is None:
+                content = _as_mapping(item).get("content", [])
+            for c in content or []:
+                c_type = getattr(c, "type", None)
+                if not c_type:
+                    c_type = _as_mapping(c).get("type")
+                if c_type != "output_text":
+                    continue
+                text = getattr(c, "text", None)
+                if text is None:
+                    text = _as_mapping(c).get("text")
+                parsed = _extract_text_parts(text)
+                if parsed:
+                    out.append(parsed)
     except Exception as exc:
         logger.warning("openai_provider failed iterating response output detail=%s", exc)
     return "".join(out).strip()
@@ -121,7 +209,10 @@ class OpenAILLMProvider:
             choices = getattr(resp, "choices", []) or []
             if choices:
                 msg = getattr(choices[0], "message", None)
-                text = str(getattr(msg, "content", "") or "")
+                content = getattr(msg, "content", None)
+                if content is None:
+                    content = _as_mapping(msg).get("content")
+                text = _extract_text_parts(content).strip()
         except Exception as exc:
             logger.warning("openai_provider chat text parse failed detail=%s", exc)
 
@@ -169,8 +260,10 @@ class OpenAILLMProvider:
                     continue
                 delta = getattr(choices[0], "delta", None)
                 piece = getattr(delta, "content", None)
-                if isinstance(piece, str) and piece:
-                    yield piece, None
+                # Preserve exact whitespace/newlines in streaming chunks.
+                parsed = _extract_text_parts(piece)
+                if parsed != "":
+                    yield parsed, None
             except Exception as exc:
                 logger.warning("openai_provider stream chunk parse failed detail=%s", exc)
 
@@ -209,9 +302,14 @@ class OpenAILLMProvider:
         try:
             resp = self._client.responses.create(**kwargs)
         except Exception as exc:
-            if "input" in str(exc).lower():
+            detail = str(exc).lower()
+            if "input" in detail:
                 fallback_input = (system_prompt or "") + "\n\n" + str(user_prompt)
                 kwargs["input"] = fallback_input
+                resp = self._client.responses.create(**kwargs)
+            elif "text" in detail and require_json_object:
+                # SDK compatibility fallback when text.format contract changes.
+                kwargs.pop("text", None)
                 resp = self._client.responses.create(**kwargs)
             else:
                 raise

@@ -14,7 +14,7 @@ This is the main FastAPI application that provides the backend API for the Syx c
 It includes endpoints for chat, RAG queries, projects, and sleep cycle management.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -49,7 +49,7 @@ from .embedding.factory import get_embedding_client
 import shutil
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from .api.sleep import start_sleep_cycle_async, is_sleeping
+from .api.sleep import start_sleep_cycle_async
 
 # Setup logging (only once, check if already configured)
 setup_logging()
@@ -303,7 +303,7 @@ from fastapi.responses import JSONResponse
 from .core.state import clear_stale_lock
 
 @app.middleware("http")
-async def sleep_guard(request, call_next):
+async def sleep_guard(request: Request, call_next):
     try:
         if is_sleeping() and request.method.upper() != "GET":
             return JSONResponse(status_code=423, content={"error": "System is sleeping. Try again later."})

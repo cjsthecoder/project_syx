@@ -54,6 +54,8 @@ def _run_migrations() -> None:
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # backend/app
         alembic_ini = os.path.join(base_dir, "..", "alembic.ini")
         cfg = Config(alembic_ini)
+        # Resolve script_location absolutely so migrations run correctly regardless of current working directory.
+        cfg.set_main_option("script_location", os.path.join(base_dir, "..", "alembic"))
         command.upgrade(cfg, "head")
     except Exception as exc:
         logger.warning("database._run_migrations failed; falling back to create_all detail=%s", exc)

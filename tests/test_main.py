@@ -11,7 +11,8 @@ Use of this software requires explicit written permission from the copyright hol
 Tests for main FastAPI application.
 """
 
-import pytest
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -29,8 +30,10 @@ def test_health_endpoint():
     response = client.get("/health")
     assert response.status_code == 200
     data = response.json()
-    assert "status" in data
-    assert "service" in data
+    assert "status" in data and isinstance(data["status"], str)
+    assert "service" in data and isinstance(data["service"], str)
+    assert "version" in data and isinstance(data["version"], str)
+    assert "dependencies" in data and isinstance(data["dependencies"], dict)
 
 
 def test_api_docs():
@@ -43,3 +46,21 @@ def test_redoc():
     """Test ReDoc documentation endpoint."""
     response = client.get("/api/redoc")
     assert response.status_code == 200
+
+
+@patch("app.api.chat.get_llm_client")
+def test_chat_stream_contract(mock_get_llm_client):
+    """Streaming endpoint returns plain text tokens and completion marker."""
+    class _FakeClient:
+        @staticmethod
+        def stream_chat(**_kwargs):
+            yield "Hello", None
+            yield " world", None
+
+    mock_get_llm_client.return_value = _FakeClient()
+    response = client.post("/chat/stream", json={"message": "hi"})
+    assert response.status_code == 200
+    assert response.headers.get("content-type", "").startswith("text/plain")
+    body = response.text
+    assert "Hello world" in body
+    assert "::event: done" in body

@@ -75,10 +75,17 @@ async def lifespan(app: FastAPI):
     try:
         get_llm_client()
         get_llm_client_mini()
-        get_embedding_client()
-        logger.info("[INIT] Factory clients initialized at startup")
     except Exception as exc:
-        logger.warning("[INIT] Factory client startup initialization failed: %s", exc, exc_info=True)
+        logger.warning("[INIT] LLM factory startup initialization failed: %s", exc, exc_info=True)
+    try:
+        get_embedding_client()
+    except Exception as exc:
+        if str(get_settings().embedding_provider or "").strip().lower() == "sentence_transformers":
+            logger.error("[INIT] sentence_transformers embedding provider failed to initialize: %s", exc, exc_info=True)
+            raise
+        logger.warning("[INIT] Embedding factory startup initialization failed: %s", exc, exc_info=True)
+    else:
+        logger.info("[INIT] Factory clients initialized at startup")
     # Initialize instrumentation facade and start process run if enabled.
     try:
         git_commit = "unknown"

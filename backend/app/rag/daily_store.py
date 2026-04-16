@@ -21,7 +21,7 @@ from filelock import FileLock
 import faiss  # type: ignore
 import numpy as np  # type: ignore
 
-from ..core.config import get_settings
+from ..core.config import get_active_embedding_model, get_settings
 from ..embedding.batching import iter_token_batches
 from ..embedding.vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
 from ..embedding.factory import get_embedding_client
@@ -202,7 +202,7 @@ def get_daily_source(project_id: str) -> Optional[DailySource]:
     if cache is None or cache.vs is None:
         return None
     # If runtime model changed vs cache, rebuild but do not retry this request.
-    if cache.embedding_model != settings.embedding_model:
+    if cache.embedding_model != get_active_embedding_model():
         start_daily_cache_rebuild(project_id, reason="get_source_model_mismatch")
         return None
     return DailySource(
@@ -327,7 +327,7 @@ def reset_daily(project_id: str) -> None:
 def rebuild_daily_cache(project_id: str, reason: str) -> bool:
     """Force rebuild of the in-memory cache from daily.json (updating metadata as required)."""
     settings = get_settings()
-    runtime_model = settings.embedding_model
+    runtime_model = get_active_embedding_model()
     meta_path, lock_path, _txt_path = _project_daily_paths(project_id)
     lock = _get_project_lock(project_id)
     with lock:
@@ -479,7 +479,7 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
 def ensure_daily_cache(project_id: str, reason: str = "warm") -> bool:
     """Ensure a project's in-memory cache exists and matches daily.json + EMBEDDING_MODEL."""
     settings = get_settings()
-    runtime_model = settings.embedding_model
+    runtime_model = get_active_embedding_model()
     meta_path, lock_path, _txt_path = _project_daily_paths(project_id)
     lock = _get_project_lock(project_id)
     with lock:
@@ -533,7 +533,7 @@ def append_pair(
             # The in-memory FAISS cache is rebuilt from daily.json; preserve vector content explicitly.
             "embed_text": text_for_embed,
             "tokens": int(tokens),
-            "embedding_model": settings.embedding_model,
+            "embedding_model": get_active_embedding_model(),
             "source": "chat",
             "scope": "daily",
             "keep": bool(keep),
@@ -606,13 +606,13 @@ def append_pair(
                 start_daily_cache_rebuild(project_id, reason="append_missing_cache")
                 return False
             # If cache model mismatched, rebuild and return error for this request (no retry)
-            if cache.embedding_model != settings.embedding_model:
+            if cache.embedding_model != get_active_embedding_model():
                 start_daily_cache_rebuild(project_id, reason="append_model_mismatch")
                 return False
             # If empty cache, create a new vectorstore with this single entry
             if cache.vs is None:
                 llm = get_embedding_client()
-                vecs = llm.embed([text_for_embed], model=settings.embedding_model).vectors
+                vecs = llm.embed([text_for_embed], model=get_active_embedding_model()).vectors
                 if not vecs:
                     start_daily_cache_rebuild(project_id, reason="append_embed_empty")
                     return False
@@ -627,7 +627,7 @@ def append_pair(
                 vs.add(item_id=str(entry.get("id") or f"daily::seq={entry.get('day_sequence')}"), vector=vecs[0], text=text_for_embed, metadata=md0)
                 with _CACHE_LOCK:
                     _CACHE[project_id] = _DailyCache(
-                        embedding_model=settings.embedding_model,
+                        embedding_model=get_active_embedding_model(),
                         vs=vs,
                         meta_by_id={str(entry.get("id")): entry} if entry.get("id") else {},
                         id_by_seq={int(entry.get("day_sequence")): str(entry.get("id"))}
@@ -637,7 +637,7 @@ def append_pair(
                 return True
             # Normal path: incremental add
             llm = get_embedding_client()
-            vecs2 = llm.embed([text_for_embed], model=settings.embedding_model).vectors
+            vecs2 = llm.embed([text_for_embed], model=get_active_embedding_model()).vectors
             if not vecs2:
                 start_daily_cache_rebuild(project_id, reason="append_embed_empty")
                 return False

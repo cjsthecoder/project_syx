@@ -27,7 +27,7 @@ import threading
 import faiss  # type: ignore
 import numpy as np  # type: ignore
 
-from ..core.config import get_settings, compute_per_source_k
+from ..core.config import get_settings, compute_per_source_k, get_active_embedding_model
 import os
 
 logger = logging.getLogger(__name__)
@@ -321,8 +321,9 @@ def canonical_retrieve_candidates(
 
     # Embed ONCE (shared query vector) via LLMClient boundary (plain-data; no vendor SDK outside llm_model)
     qvec: Optional[List[float]] = None
+    active_embedding_model = get_active_embedding_model()
     try:
-        qvec = get_embedding_client().embed_query(query or "", model=settings.embedding_model)
+        qvec = get_embedding_client().embed_query(query or "", model=active_embedding_model)
     except Exception as e:
         logger.warning("RAG: failed to embed query for canonical retrieval project=%s: %s", project_id, e)
         return []

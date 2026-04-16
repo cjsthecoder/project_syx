@@ -1,52 +1,39 @@
 # Syx AGI Chatbot Framework - Backend Dependencies
 
 # FastAPI and ASGI server
-fastapi==0.123
-uvicorn[standard]==0.24.0
+fastapi==0.135.3
+uvicorn[standard]==0.44.0
 
-# LangChain and OpenAI integration (latest versions)
-openai==1.67.0
+# OpenAI provider SDK
+openai==2.32.0
 
 # Data validation and serialization
-pydantic==2.9.2
-pydantic-settings==2.1.0
-
-# HTTP client for external API calls
-httpx==0.25.2
-
-# Environment variable management
-python-dotenv==1.0.0
+pydantic==2.13.1
+pydantic-settings==2.13.1
 
 # CORS middleware
-python-multipart==0.0.9
-
-# Logging and monitoring
-structlog==23.2.0
+python-multipart==0.0.26
 
 # Testing dependencies
 pytest==7.4.3
-pytest-asyncio==0.21.1
 
 # Development dependencies
-black==23.11.0
-flake8==6.1.0
-isort==5.12.0
+black==26.3.1
+flake8==7.3.0
+isort==8.0.1
 
 # Future dependencies (for V2-V4)
 # faiss-cpu: pin to a version available for Python 3.13 on macOS
 faiss-cpu==1.13.0
 tiktoken==0.7.0
-filelock==3.16.0
+filelock==3.28.0
 
 # Database support (V2)
-sqlmodel==0.0.16
-alembic==1.13.1
+sqlmodel==0.0.38
+alembic==1.18.4
 
-# PDF parsing (V2)
-pypdf==4.3.1
-beautifulsoup4
+# Tooling scripts (chat import/extract utilities)
+beautifulsoup4==4.14.3
 
 # Background task processing (V3)
-# celery==5.3.4
-# redis==5.0.1
-APScheduler==3.10.4
+APScheduler==3.11.2

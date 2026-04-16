@@ -523,75 +523,8 @@ class MemoryManager:
         }
 
 
-class RAGProvider:
-    """RAG (Retrieval-Augmented Generation) provider - V2."""
-    
-    def __init__(self):
-        """Initialize the RAG provider."""
-        logger.info("RAG provider initialized (stub mode)")
-    
-    def index_documents(
-        self, 
-        documents: List[str], 
-        project_id: Optional[str] = None
-    ) -> bool:
-        """
-        Index documents for RAG search.
-        
-        Args:
-            documents: List of documents to index
-            project_id: Project context
-            
-        Returns:
-            True if indexed successfully
-        """
-        # TODO: Implement FAISS indexing in Version 2
-        logger.info(f"Document indexing requested (stub - will be implemented in V2)")
-        return True
-    
-    def search_documents(
-        self, 
-        query: str, 
-        project_id: Optional[str] = None,
-        max_results: int = 5
-    ) -> List[Dict[str, Any]]:
-        """
-        Search indexed documents.
-        
-        Args:
-            query: Search query
-            project_id: Project context
-            max_results: Maximum number of results
-            
-        Returns:
-            List of relevant documents
-        """
-        # TODO: Implement FAISS search in Version 2
-        logger.info(f"RAG search requested: '{query}' (stub - will be implemented in V2)")
-        
-        return [{
-            "content": f"RAG search for '{query}' not yet implemented",
-            "relevance_score": 0.0,
-            "source": "stub",
-            "project_id": project_id
-        }]
-    
-    def get_rag_stats(self) -> Dict[str, Any]:
-        """Get RAG system statistics."""
-        return {
-            "indexed_documents": 0,
-            "rag_mode": "stub",
-            "features_available": {
-                "document_indexing": False,
-                "semantic_search": False,
-                "project_isolation": False
-            }
-        }
-
-
 # Global instances
 _memory_manager: Optional[MemoryManager] = None
-_rag_provider: Optional[RAGProvider] = None
 
 
 def get_memory_manager() -> MemoryManager:
@@ -600,14 +533,6 @@ def get_memory_manager() -> MemoryManager:
     if _memory_manager is None:
         _memory_manager = MemoryManager()
     return _memory_manager
-
-
-def get_rag_provider() -> RAGProvider:
-    """Get the global RAG provider instance."""
-    global _rag_provider
-    if _rag_provider is None:
-        _rag_provider = RAGProvider()
-    return _rag_provider
 
 
 # Convenience functions
@@ -642,11 +567,3 @@ def search_conversation_memory(
     return manager.search_memory(query, conversation_id)
 
 
-def perform_rag_search(
-    query: str, 
-    project_id: Optional[str] = None,
-    max_results: int = 5
-) -> List[Dict[str, Any]]:
-    """Perform RAG search."""
-    rag = get_rag_provider()
-    return rag.search_documents(query, project_id, max_results)

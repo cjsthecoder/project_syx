@@ -116,35 +116,40 @@ class _ChatPipeline:
         NOTE: current behavior is lossy truncation; keep stable until replaced.
         """
         try:
-            # New behavior: pass ONLY the most recent assistant tag JSON block into the builder.
-            # This lets query_builder build "Context/Intent/Type" without using chopped pairs.
-            if conversation_history:
-                for m in reversed(conversation_history):
-                    if (m.get("role") or "").lower() != "assistant":
-                        continue
-                    tj = m.get("tags_meta_json")
-                    if isinstance(tj, str) and tj.strip():
-                        return tj.strip()[:2000]
-
-            # Fallback: after sleep flush, ChatMessage history is wiped. Use Project.last_semantic_handle
-            # to seed the builder summary with a minimal JSON block containing only semantic_handle.
-            if project_id:
-                try:
-                    with get_session() as session:
-                        p = session.get(Project, project_id)
-                        h = getattr(p, "last_semantic_handle", None) if p is not None else None
-                        if isinstance(h, str) and h.strip():
-                            return json.dumps({"semantic_handle": h.strip()}, ensure_ascii=False)[:2000]
-                except Exception as exc:
-                    logger.warning(
-                        "chat.builder_summary failed fallback lookup project_id=%s detail=%s",
-                        project_id,
-                        exc,
-                    )
-
-            return ""
+            direct_summary = self._latest_assistant_tags_meta(conversation_history)
+            if direct_summary:
+                return direct_summary
+            return self._project_semantic_handle_summary(project_id)
         except Exception:
             return ""
+
+    def _latest_assistant_tags_meta(self, conversation_history: Optional[list[dict]]) -> str:
+        if not conversation_history:
+            return ""
+        for msg in reversed(conversation_history):
+            if (msg.get("role") or "").lower() != "assistant":
+                continue
+            tags_meta_json = msg.get("tags_meta_json")
+            if isinstance(tags_meta_json, str) and tags_meta_json.strip():
+                return tags_meta_json.strip()[:2000]
+        return ""
+
+    def _project_semantic_handle_summary(self, project_id: Optional[str]) -> str:
+        if not project_id:
+            return ""
+        try:
+            with get_session() as session:
+                project = session.get(Project, project_id)
+                handle = getattr(project, "last_semantic_handle", None) if project is not None else None
+                if isinstance(handle, str) and handle.strip():
+                    return json.dumps({"semantic_handle": handle.strip()}, ensure_ascii=False)[:2000]
+        except Exception as exc:
+            logger.warning(
+                "chat.builder_summary failed fallback lookup project_id=%s detail=%s",
+                project_id,
+                exc,
+            )
+        return ""
 
     def previous_pair_text(self, conversation_history: Optional[list[dict]]) -> Optional[str]:
         """Immediately previous active pair text + prior tags, or None."""

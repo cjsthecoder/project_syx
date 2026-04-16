@@ -14,6 +14,7 @@ import { Select } from '@/components/ui/select'
 import { Toast } from '@/components/ui/toast'
 import { Dialog, DialogHeader, DialogFooter } from '@/components/ui/dialog'
 import { api } from '@/pages/app/api'
+import { toDreamViewState } from '@/pages/app/dream'
 import { DreamItem, Message, ModelItem, Project, ProjectInfo, ProjectStats } from '@/pages/app/types'
 
 export default function App() {
@@ -143,34 +144,10 @@ export default function App() {
   const loadDreamSummary = useCallback(async (pid: string) => {
     try {
       const data = await api<{ project_id?: string; dream?: any; error?: any }>(`/projects/${pid}/dream`)
-      const dream = data?.dream
-      const summary = dream?.project_summary
-      const items = Array.isArray(dream?.items) ? dream.items : []
-      if (typeof summary === 'string' && summary.trim().length > 0) {
-        setProjectSummary(summary.trim())
-        setHasDreamItems(items.length > 0)
-      } else {
-        setProjectSummary(null)
-        setHasDreamItems(false)
-      }
-      const normalizedItems: DreamItem[] = items
-        .filter((it: any) => it && (it.origin_text || it.assistant_response))
-        .map((it: any) => ({
-          id: it.id,
-          origin_text: it.origin_text,
-          assistant_response: it.assistant_response,
-          origin_type: it.origin_type,
-          source_resolution: it.source_resolution,
-          research: Array.isArray(it.research)
-            ? it.research.map((r: any) => ({
-                research_topic: r?.research_topic,
-                research_summary: r?.research_summary,
-              }))
-            : [],
-          keep: false,
-          remember: false,
-        }))
-      setDreamItems(normalizedItems)
+      const state = toDreamViewState(data?.dream)
+      setProjectSummary(state.projectSummary)
+      setHasDreamItems(state.hasDreamItems)
+      setDreamItems(state.dreamItems)
     } catch (e: any) {
       setProjectSummary(null)
       setHasDreamItems(false)

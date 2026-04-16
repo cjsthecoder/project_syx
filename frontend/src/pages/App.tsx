@@ -26,8 +26,9 @@ import { DreamAnalysisDialog } from '@/components/app-dialogs/DreamAnalysisDialo
 const bootstrappedProjects = new Set<string>()
 
 export default function App() {
-  const showDebugValues = !['false', '0', 'no', 'off'].includes(
-    String(import.meta.env.VITE_SHOW_DEBUG_VALUES ?? 'true').trim().toLowerCase(),
+  // Opt-in: unset or non-truthy strings keep the stats bar hidden (matches Makefile default false).
+  const showDebugValues = ['true', '1', 'yes', 'on'].includes(
+    String(import.meta.env.VITE_SHOW_DEBUG_VALUES ?? '').trim().toLowerCase(),
   )
   const [error, setError] = useState<string | null>(null)
   const dismissError = useCallback(() => setError(null), [])

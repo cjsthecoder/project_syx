@@ -14,7 +14,7 @@ This is the main FastAPI application that provides the backend API for the Syx c
 It includes endpoints for chat, RAG queries, projects, and sleep cycle management.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -41,13 +41,15 @@ from .core.state import init_from_disk, is_sleeping
 from .core.personality import backfill_all_projects
 from .core.database import get_session
 from .core.db_models import Project
-from .core.rag_manager import rebuild_faiss_index
+from .rag.manager import rebuild_faiss_index
 from .core.route_policy import load_and_validate_route_policy
-from .core.tracking import init_instrumentation, get_instrumentation
+from .tracking import init_instrumentation, get_instrumentation
+from .llm_model.factory import get_llm_client, get_llm_client_mini
+from .embedding.factory import get_embedding_client
 import shutil
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from .api.sleep import start_sleep_cycle_async, is_sleeping
+from .api.sleep import start_sleep_cycle_async
 
 # Setup logging (only once, check if already configured)
 setup_logging()
@@ -69,7 +71,15 @@ except Exception as e:
 async def lifespan(app: FastAPI):
     logger.info("FastAPI startup")
     init_db()
-    # V5.0: initialize instrumentation facade and start process run if enabled.
+    # Initialize factory clients at startup so configuration is visible in logs.
+    try:
+        get_llm_client()
+        get_llm_client_mini()
+        get_embedding_client()
+        logger.info("[INIT] Factory clients initialized at startup")
+    except Exception as exc:
+        logger.warning("[INIT] Factory client startup initialization failed: %s", exc, exc_info=True)
+    # Initialize instrumentation facade and start process run if enabled.
     try:
         git_commit = "unknown"
         git_dirty = False
@@ -113,10 +123,9 @@ async def lifespan(app: FastAPI):
         run_cfg = {
             "config_snapshot": {
                 "models_configured": {
-                    "main_model": str(s.model_name),
+                    "main_model": str(s.llm_main_model or s.model_name),
                     "builder_model": str(s.builder_model),
-                    # Tagger currently uses builder_model in this implementation.
-                    "tagger_model": str(s.builder_model),
+                    "tagger_model": str(s.tagger_model),
                 },
                 "prompt_budgeting": {
                     "model_context_window_tokens": None,
@@ -179,24 +188,24 @@ async def lifespan(app: FastAPI):
         logger.info("[SLEEP] Cleared any existing lock on startup")
     except Exception as e:
         logger.warning("[SLEEP] Failed clearing startup lock: %s", e)
-    # V2.6: Backfill system prompt and personality defaults for existing projects
+    # Backfill system prompt and personality defaults for existing projects
     try:
         backfill_all_projects()
     except Exception as e:
         logger.warning("[PROJECT] Backfill defaults failed: %s", e, exc_info=True)
-    # V2.7: Initialize sleep lock from disk if present
+    # Initialize sleep lock from disk if present
     try:
         init_from_disk()
     except Exception as e:
         logger.warning("[SLEEP] Failed to init lock from disk: %s", e, exc_info=True)
-    # V2.8: Seed DEFAULT_RAG for Continuum if present and missing
+    # Seed DEFAULT_RAG for Continuum if present and missing
     try:
         from sqlmodel import select
         with get_session() as session:
             row = session.exec(select(Project).where(Project.name.ilike("Continuum"))).first()
         if row:
             pid = row.id
-            uploads_dir = os.path.join("memory", pid, "uploads")
+            uploads_dir = os.path.join(settings.memory_root, pid, "uploads")
             os.makedirs(uploads_dir, exist_ok=True)
             default_src = os.path.abspath(os.path.join(os.path.dirname(__file__), "config", "defaults", "DEFAULT_RAG.txt"))
             default_dst = os.path.join(uploads_dir, "DEFAULT_RAG.txt")
@@ -234,7 +243,7 @@ async def lifespan(app: FastAPI):
             logger.info("[INIT] FORCE_RAG_REBUILD_ON_STARTUP disabled; skipping full RAG rebuild.")
     except Exception as e:
         logger.warning("[INIT] Startup RAG rebuild sweep failed: %s", e, exc_info=True)
-    # V3.1: Start daily scheduler if enabled
+    # Start daily scheduler if enabled
     try:
         if get_settings().enable_scheduler:
             sched = BackgroundScheduler(timezone=None)
@@ -289,12 +298,12 @@ app.include_router(files_api.router, tags=["files"])
 app.include_router(llm_models.router, tags=["models"])
 app.include_router(dream_api.router, tags=["dream"])
 
-# V2.7: Write-blocking middleware during sleep
+# Write-blocking middleware during sleep
 from fastapi.responses import JSONResponse
 from .core.state import clear_stale_lock
 
 @app.middleware("http")
-async def sleep_guard(request, call_next):
+async def sleep_guard(request: Request, call_next):
     try:
         if is_sleeping() and request.method.upper() != "GET":
             return JSONResponse(status_code=423, content={"error": "System is sleeping. Try again later."})
@@ -355,7 +364,7 @@ async def health_check():
         
         dependencies = {
             "openai": api_key_status,
-            "langchain": llm_health["status"]
+            "llm": llm_health["status"]
         }
         
         return HealthResponse(

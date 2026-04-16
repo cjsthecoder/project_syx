@@ -19,8 +19,8 @@ import sqlalchemy as sa
 
 revision = '0002a'
 down_revision = '0002'
-branch_labels = 'None'
-depends_on = 'None'
+branch_labels = None
+depends_on = None
 
 def upgrade() -> None:
     # No-op migration retained for history; consolidates chain between 0002 and 0003

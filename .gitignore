@@ -4,50 +4,45 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
+.pytest_cache/
 .eggs/
-lib/
-!frontend/src/lib/
-!frontend/src/lib/*
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
 *.egg
-MANIFEST
+build/
+dist/
+sdist/
+wheels/
+
+# Local scratch artifacts
 questions.txt
 idea_prompt.txt
 output.txt
-research _output.txt
+research_output.txt
 research.txt
 
-# Langfuse local data and secrets
-langfuse-server/data/
-langfuse-server/.env
-
-# Virtual Environment
+# Virtual environments
 venv/
+.venv/
 env/
 ENV/
-env.bak/
-venv.bak/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 .env.old
 
-# IDE
+# IDE/editor
+.cursor/
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# OS junk
 .DS_Store
 .DS_Store?
 ._*
@@ -56,90 +51,32 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Node.js
+# Node/frontend
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .npm
 .yarn-integrity
+.eslintcache
+.cache
+.parcel-cache
+*.tgz
+.node_repl_history
 
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Database
-backend/app/data/*.db
-
-# Logs
-logs
-*.log
-runs/
-
-# Runtime data
+# Runtime/generated data
+runtime/
+data/
 pids
 *.pid
 *.seed
 *.pid.lock
-data/
-backend/memory/*
+*.log
 
-# Coverage directory used by tools like istanbul
+# Coverage/test outputs
 coverage/
 *.lcov
-
-# nyc test coverage
 .nyc_output
-
-# Dependency directories
-jspm_packages/
-
-# Optional npm cache directory
-.npm
-
-# Optional eslint cache
-.eslintcache
-
-# Microbundle cache
-.rpt2_cache/
-.rts2_cache_cjs/
-.rts2_cache_es/
-.rts2_cache_umd/
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# dotenv environment variables file
-.env
-.env.test
-
-# parcel-bundler cache (https://parceljs.org/)
-.cache
-.parcel-cache
-
-# Next.js build output
-.next
-
-# Nuxt.js build / generate output
-.nuxt
-dist
-
-# Gatsby files
-.cache/
-public
-
-# Storybook build outputs
-.out
-.storybook-out
 
 # Temporary folders
 tmp/

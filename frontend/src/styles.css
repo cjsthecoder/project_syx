@@ -1,18 +1,18 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 html, body, #root {
   height: 100%;
 }
 
 body {
-  @apply bg-white text-black;
+  background-color: #ffffff;
+  color: #000000;
 }
 
 @media (prefers-color-scheme: dark) {
   body {
-    @apply bg-black text-white;
+    background-color: #000000;
+    color: #ffffff;
   }
 }
 

@@ -22,6 +22,8 @@ import logging
 import os
 from typing import Any, Dict, Optional, Tuple
 
+from sqlmodel import select
+
 from .config import get_settings
 from .database import get_session
 from .db_models import Project
@@ -37,7 +39,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "..", "..", ".."))
 
 
 def _project_dir(project_id: str) -> str:
-    return os.path.join("memory", project_id)
+    return os.path.join(get_settings().memory_root, project_id)
 
 
 def _project_prompt_path(project_id: str) -> str:
@@ -141,7 +143,7 @@ def backfill_all_projects() -> None:
     """Ensure all existing projects have default files present."""
     try:
         with get_session() as session:
-            rows = session.query(Project).all()  # type: ignore[attr-defined]
+            rows = session.exec(select(Project)).all()
             for p in rows or []:
                 seed_project_defaults(p.id)
     except Exception as exc:

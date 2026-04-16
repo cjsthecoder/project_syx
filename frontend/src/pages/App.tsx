@@ -13,30 +13,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Toast } from '@/components/ui/toast'
 import { Dialog, DialogHeader, DialogFooter } from '@/components/ui/dialog'
-
-type Message = { id?: number; role: 'user' | 'assistant'; content: string; forget?: boolean; keep?: boolean }
-type Project = { id: string; name?: string }
-type ModelItem = string
-type DreamResearch = { research_topic?: string; research_summary?: string }
-type DreamItem = {
-  id?: string
-  origin_text?: string
-  assistant_response?: string
-  origin_type?: string
-  source_resolution?: string
-  research?: DreamResearch[]
-  keep?: boolean
-  remember?: boolean
-}
-
-async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
-}
+import { api } from '@/pages/app/api'
+import { toDreamViewState } from '@/pages/app/dream'
+import { DreamItem, Message, ModelItem, Project, ProjectInfo, ProjectStats } from '@/pages/app/types'
 
 export default function App() {
   const showDebugValues = !['false', '0', 'no', 'off'].includes(
@@ -47,22 +26,21 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [ragBuilding, setRagBuilding] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [model, setModel] = useState('gpt-5.2')
-  const [models, setModels] = useState<ModelItem[]>(['gpt-5.2'])
+  const [model, setModel] = useState('gpt-5.4')
+  const [models, setModels] = useState<ModelItem[]>(['gpt-5.4'])
 
-  // V2.1 UI state
+  // UI state
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showManageModal, setShowManageModal] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [renameProjectName, setRenameProjectName] = useState('')
   const [files, setFiles] = useState<any[]>([])
-  const [stats, setStats] = useState<{ storage_bytes: number; index_size_bytes: number; tokens_indexed: number; context_tokens: number; file_count: number; daily_index_size_bytes?: number; daily_tokens_indexed?: number; daily_vector_count?: number; active_pairs?: number } | null>(null)
-  const [projectInfo, setProjectInfo] = useState<{ name?: string; description?: string; created_at?: string; system?: boolean; daily_rag_enabled?: boolean } | null>(null)
+  const [stats, setStats] = useState<ProjectStats | null>(null)
+  const [projectInfo, setProjectInfo] = useState<ProjectInfo | null>(null)
   const [showSleepModal, setShowSleepModal] = useState(false)
   const [sleepSince, setSleepSince] = useState<string | null>(null)
-  // FR-4.5.1 Dream UI
+  // Dream UI
   const [projectSummary, setProjectSummary] = useState<string | null>(null)
   const [dreamWarning, setDreamWarning] = useState<string | null>(null)
   const [hasDreamItems, setHasDreamItems] = useState(false)
@@ -82,7 +60,7 @@ export default function App() {
     )
   }
 
-  // V2.6 Personality UI state
+  // Personality UI state
   const [showPersonalityModal, setShowPersonalityModal] = useState(false)
   const [systemPrompt, setSystemPrompt] = useState('')
   const [tone, setTone] = useState<'analytical'|'friendly'|'creative'|'formal'>('analytical')
@@ -161,38 +139,14 @@ export default function App() {
     }
   }, [])
 
-  // FR-4.5.2: Load dream summary and items data
+  // Load dream summary and items data
   const loadDreamSummary = useCallback(async (pid: string) => {
     try {
       const data = await api<{ project_id?: string; dream?: any; error?: any }>(`/projects/${pid}/dream`)
-      const dream = data?.dream
-      const summary = dream?.project_summary
-      const items = Array.isArray(dream?.items) ? dream.items : []
-      if (typeof summary === 'string' && summary.trim().length > 0) {
-        setProjectSummary(summary.trim())
-        setHasDreamItems(items.length > 0)
-      } else {
-        setProjectSummary(null)
-        setHasDreamItems(false)
-      }
-      const normalizedItems: DreamItem[] = items
-        .filter((it: any) => it && (it.origin_text || it.assistant_response))
-        .map((it: any) => ({
-          id: it.id,
-          origin_text: it.origin_text,
-          assistant_response: it.assistant_response,
-          origin_type: it.origin_type,
-          source_resolution: it.source_resolution,
-          research: Array.isArray(it.research)
-            ? it.research.map((r: any) => ({
-                research_topic: r?.research_topic,
-                research_summary: r?.research_summary,
-              }))
-            : [],
-          keep: false,
-          remember: false,
-        }))
-      setDreamItems(normalizedItems)
+      const state = toDreamViewState(data?.dream)
+      setProjectSummary(state.projectSummary)
+      setHasDreamItems(state.hasDreamItems)
+      setDreamItems(state.dreamItems)
     } catch (e: any) {
       setProjectSummary(null)
       setHasDreamItems(false)
@@ -201,7 +155,7 @@ export default function App() {
     }
   }, [])
 
-  // FR-4.5.1.1: Refresh all project data
+  // Refresh all project data
   const refreshProjectData = useCallback(async (pid: string) => {
     if (!pid) return
     try {
@@ -238,7 +192,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // FR-4.5.1.1: Refresh project data when project changes
+  // Refresh project data when project changes
   useEffect(() => {
     if (projectId) {
       refreshProjectData(projectId)
@@ -253,7 +207,7 @@ export default function App() {
     }
   }, [projectId, refreshProjectData])
 
-  // FR-4.5.1.1: Monitor sleep status and refresh when sleep ends
+  // Monitor sleep status and refresh when sleep ends
   useEffect(() => {
     if (!showSleepModal || !projectId) return
 
@@ -431,7 +385,7 @@ export default function App() {
     }
   }
 
-  // V2.6: Personality endpoints
+  // Personality endpoints
   async function loadPersonality(pid: string) {
     try {
       const data = await api<{ project_id: string; personality: any; system_prompt: string }>(`/projects/${pid}/personality`)
@@ -600,7 +554,6 @@ export default function App() {
               )}
             </div>
           ))}
-          {ragBuilding && !loading && <div className="text-sm text-gray-500">Building RAG Query…</div>}
           {loading && <div className="text-sm text-gray-500">Thinking…</div>}
         </div>
       </main>
@@ -662,7 +615,7 @@ export default function App() {
         </DialogFooter>
       </Dialog>
 
-      {/* Dream Analysis Modal (placeholder for FR-4.5.1.3) */}
+      {/* Dream Analysis Modal */}
       <Dialog
         open={showDreamModal}
         onClose={() => setShowDreamModal(false)}
@@ -800,7 +753,7 @@ export default function App() {
         </DialogFooter>
       </Dialog>
 
-      {/* Personality Modal (V2.6) */}
+      {/* Personality Modal */}
       <Dialog open={showPersonalityModal} onClose={() => setShowPersonalityModal(false)}>
         <DialogHeader>Project Personality</DialogHeader>
         <div className="space-y-4 px-4 pb-2">
@@ -859,7 +812,7 @@ export default function App() {
             {projectInfo?.system && <div className="text-amber-600">System project</div>}
           </div>
 
-          {/* V2.6: Personality manager entry point */}
+          {/* Personality manager entry point */}
           <div className="flex items-center justify-start">
             <Button
               className="bg-black !text-white hover:bg-gray-900 border-transparent dark:!bg-black dark:!text-white dark:hover:!bg-gray-900"

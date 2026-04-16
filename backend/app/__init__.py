@@ -10,9 +10,9 @@ Use of this software requires explicit written permission from the copyright hol
 """
 Syx AGI Chatbot Framework - Backend Application
 
-This package contains the FastAPI backend application with LangChain integration.
+This package contains the FastAPI backend application and model factories.
 """
 
 __version__ = "1.0.0"
 __author__ = "Syx Team"
-__description__ = "AGI Chatbot Framework with FastAPI and LangChain"
+__description__ = "AGI Chatbot Framework with FastAPI and provider factories"

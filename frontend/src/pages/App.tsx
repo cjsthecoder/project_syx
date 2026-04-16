@@ -95,7 +95,9 @@ export default function App() {
         setModels(data.models)
         if (!data.models.includes(model)) setModel(data.models[0])
       }
-    } catch {}
+    } catch (e) {
+      console.warn('loadModels failed', e)
+    }
   }, [model])
 
   const loadFiles = useCallback(async (pid: string) => {
@@ -182,7 +184,9 @@ export default function App() {
         setShowSleepModal(true)
         return true
       }
-    } catch {}
+    } catch (e) {
+      console.info('checkSleeping status request failed', e)
+    }
     return false
   }
 
@@ -228,8 +232,9 @@ export default function App() {
           // Refresh all project data when sleep ends
           await refreshProjectData(projectId)
         }
-      } catch {
-        // Ignore polling errors, continue checking
+      } catch (e) {
+        // Expected to be best-effort; continue polling even if a check fails.
+        console.info('sleep status polling failed', e)
       }
     }, 5000) // Poll every 5 seconds while sleep modal is visible
 
@@ -308,8 +313,16 @@ export default function App() {
       }
       // Refresh stats/chats to sync with DB-persisted assistant entry
       if (projectId) {
-        try { await loadStats(projectId) } catch {}
-        try { await loadChats(projectId) } catch {}
+        try {
+          await loadStats(projectId)
+        } catch (e) {
+          console.info('post-stream stats refresh failed', e)
+        }
+        try {
+          await loadChats(projectId)
+        } catch (e) {
+          console.info('post-stream chat refresh failed', e)
+        }
       }
     } catch (e: any) {
       setError(e?.message || 'Stream failed')
@@ -374,8 +387,8 @@ export default function App() {
           try {
             const parsed = JSON.parse(raw)
             detail = parsed?.error || parsed?.detail || parsed?.message || raw
-          } catch {
-            // Keep raw response text when body is not JSON.
+          } catch (parseErr) {
+            console.info('upload error response was non-JSON; using raw text', parseErr)
           }
         }
         throw new Error(detail || `Upload failed (HTTP ${res.status})`)
@@ -429,7 +442,11 @@ export default function App() {
       setShowPersonalityModal(false)
       // Return to Manage Project modal after saving
       if (projectId) {
-        try { await loadProjectInfo(projectId) } catch {}
+        try {
+          await loadProjectInfo(projectId)
+        } catch (e) {
+          console.info('post-save project info refresh failed', e)
+        }
       }
       setTimeout(() => setShowManageModal(true), 0)
     } catch (e: any) {

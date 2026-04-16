@@ -54,7 +54,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
     Main chat endpoint for user-AI conversation.
     
     This endpoint handles the core chat functionality using the shared LLM factory.
-    It supports conversation history and project context (stubbed for V4).
+    It supports conversation history and project context (stubbed).
     """
     try:
         t0 = time.time()
@@ -332,7 +332,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
     """
-    Streaming chat endpoint (V3.5).
+    Streaming chat endpoint.
     Streams model tokens to the client as they arrive.
     """
     settings = get_settings()

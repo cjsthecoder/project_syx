@@ -9,7 +9,7 @@ Use of this software requires explicit written permission from the copyright hol
 """
 from __future__ import annotations
 """
-Project system prompt and personality management (V2.6).
+Project system prompt and personality management.
 
 Responsibilities:
 - Load per-project `system_prompt.txt` and `personality.json` with caching

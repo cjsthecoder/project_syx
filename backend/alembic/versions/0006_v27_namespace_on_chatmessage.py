@@ -7,7 +7,7 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
-"""v2.7 add namespace to chat_message
+"""Add namespace to chat_message
 
 Revision ID: 0006
 Revises: 0005

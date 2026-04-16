@@ -8,7 +8,7 @@ Unauthorized copying, modification, distribution, or use of this software is str
 Use of this software requires explicit written permission from the copyright holder.
 """
 """
-File upload endpoints (V2): upload files to a project and store to disk.
+File upload endpoints: upload files to a project and store to disk.
 """
 import os
 import time

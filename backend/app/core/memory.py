@@ -10,7 +10,7 @@ Use of this software requires explicit written permission from the copyright hol
 """
 Memory management for Syx AGI Chatbot Framework.
 
-V2.2: Implements per-project working memory deques mirrored to DB `ChatMessage`.
+Implements per-project working memory deques mirrored to DB `ChatMessage`.
 System (RAG) messages are not stored. Provides last_context_tokens per project for stats.
 """
 
@@ -42,7 +42,7 @@ class MemoryManager:
         s = get_settings()
         self.limit = s.chat_history_limit
         self.pair_limit = s.chat_history_limit_pairs
-        logger.info("Memory manager initialized (v2.2 persistent mode)")
+        logger.info("Memory manager initialized (persistent mode)")
 
     @staticmethod
     def _normalize_question_candidates(value: Any) -> List[Dict[str, str]]:
@@ -145,7 +145,7 @@ class MemoryManager:
                     })
         except Exception as e:
             logger.error(f"Failed to load history for {project_id}: {e}")
-        # Cleanup unpaired trailing user and orphan leading assistant per V2.3 spec
+        # Cleanup unpaired trailing user and orphan leading assistant per current spec.
         self._cleanup_unpaired_edges(project_id, dq)
         self.project_deques[project_id] = dq
 
@@ -451,7 +451,7 @@ class MemoryManager:
         conversation_id: str,
         limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
-        # Deprecated in V2.2 (project-scoped history is used instead)
+        # Deprecated (project-scoped history is used instead).
         return []
     
     def search_memory(
@@ -461,7 +461,7 @@ class MemoryManager:
         limit: int = 5
     ) -> List[Dict[str, Any]]:
         """
-        Search through stored memories (RAG functionality - V2).
+        Search through stored memories (RAG functionality).
         
         Args:
             query: Search query
@@ -471,8 +471,8 @@ class MemoryManager:
         Returns:
             List of relevant memories
         """
-        # TODO: Implement FAISS-based search in Version 2
-        logger.info(f"Memory search requested: '{query}' (stub - will be implemented in V2)")
+        # TODO: Implement FAISS-based search.
+        logger.info(f"Memory search requested: '{query}' (stub - not yet implemented)")
         
         return [{
             "content": f"Memory search for '{query}' not yet implemented",
@@ -487,7 +487,7 @@ class MemoryManager:
         conversation_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Clean up old memories (Memory Pruning - V3).
+        Clean up old memories (memory pruning).
         
         Args:
             retention_days: Number of days to retain memories
@@ -496,8 +496,8 @@ class MemoryManager:
         Returns:
             Cleanup statistics
         """
-        # TODO: Implement memory pruning in Version 3
-        logger.info(f"Memory cleanup requested (stub - will be implemented in V3)")
+        # TODO: Implement memory pruning.
+        logger.info("Memory cleanup requested (stub - not yet implemented)")
         
         return {
             "items_cleaned": 0,

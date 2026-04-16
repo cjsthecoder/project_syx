@@ -7,7 +7,7 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
-"""v2.2 add chatmessage table for persistent chat history
+"""Add chatmessage table for persistent chat history
 
 Revision ID: 0003
 Revises: 0002

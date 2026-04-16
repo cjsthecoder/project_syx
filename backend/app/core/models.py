@@ -33,7 +33,7 @@ class BaseResponse(BaseModel):
 class ChatRequest(BaseModel):
     """Request model for chat endpoint."""
     message: str = Field(..., min_length=1, max_length=200000, description="User message")
-    project_id: Optional[str] = Field(default=None, description="Project context (stub for V4)")
+    project_id: Optional[str] = Field(default=None, description="Project context (stub)")
     conversation_id: Optional[str] = Field(default=None, description="Conversation ID for context")
     model: Optional[str] = Field(default=None, description="Override model for this request")
     
@@ -68,7 +68,7 @@ class ChatResponse(BaseResponse):
         }
 
 
-# RAG Models (V2)
+# RAG Models
 class RAGRequest(BaseModel):
     """Request model for RAG query endpoint."""
     query: str = Field(..., min_length=1, max_length=2000, description="RAG query")
@@ -105,7 +105,7 @@ class RAGResponse(BaseResponse):
         }
 
 
-# Project Models (V4)
+# Project Models
 class ProjectRequest(BaseModel):
     """Request model for project operations."""
     project_id: Optional[str] = Field(default=None, description="Project ID to switch to")
@@ -139,7 +139,7 @@ class ProjectResponse(BaseResponse):
         }
 
 
-# Sleep Cycle Models (V3)
+# Sleep Cycle Models
 class SleepCycleRequest(BaseModel):
     """Request model for sleep cycle endpoint."""
     project_id: Optional[str] = Field(default=None, description="Project to clean up")

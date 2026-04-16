@@ -8,7 +8,7 @@ Unauthorized copying, modification, distribution, or use of this software is str
 Use of this software requires explicit written permission from the copyright holder.
 """
 """
-Models API endpoint - returns available chat models (V2).
+Models API endpoint - returns available chat models.
 """
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse

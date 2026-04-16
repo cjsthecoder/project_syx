@@ -176,7 +176,7 @@ class Settings(BaseSettings):
     enable_scheduler: bool = Field(default=True, description="Enable sleep cycle scheduler (daily)")
     sleep_cycle_hour: int = Field(default=3, ge=0, le=23, description="Local hour (0-23) to run sleep cycle")
     sleep_cycle_minute: int = Field(default=0, ge=0, le=59, description="Local minute (0-59) to run sleep cycle")
-    verify_rag: bool = Field(default=True, description="V3.3: enable post-rebuild verification step")
+    verify_rag: bool = Field(default=True, description="Enable post-rebuild verification step")
     force_rag_rebuild_on_startup: bool = Field(
         default=False,
         description="Force rebuilding all project FAISS indexes during server startup",
@@ -207,7 +207,7 @@ class Settings(BaseSettings):
     dream_enable_remote_research: bool = Field(default=True, description="Enable OpenAI web_search for Dream")
     dream_remote_context_max_tokens: int = Field(default=32000, gt=0, description="Max tokens for remote context inclusion")
     # Debug file generation
-    generate_debug_files: bool = Field(default=False, description="V4.1.3.1: Enable writing debug files (e.g., debug_context.txt)")
+    generate_debug_files: bool = Field(default=False, description="Enable writing debug files (e.g., debug_context.txt)")
     # Frontend-only Vite flags may live in the same .env; keep backend parsing tolerant.
     vite_show_debug_values: Optional[str] = Field(
         default=None,

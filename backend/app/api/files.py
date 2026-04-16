@@ -22,6 +22,7 @@ from ..core.config import get_settings
 from ..rag.manager import rebuild_faiss_index, _read_file_text
 from ..core.database import get_session
 from ..core.db_models import File as FileRow
+from ..utils.tokens import count_tokens
 
 
 router = APIRouter()
@@ -40,14 +41,7 @@ def _compute_file_stats(path: str) -> tuple[int, int]:
         for raw_text, meta in _read_file_text(path):
             if meta.get("page_number"):
                 page_count = max(page_count, int(meta["page_number"]))
-            # Lazy import to avoid tight coupling
-            try:
-                import tiktoken  # type: ignore
-                enc = tiktoken.get_encoding("cl100k_base")
-                total_tokens += len(enc.encode(raw_text))
-            except Exception as exc:
-                logger.info("files.compute_file_stats token fallback path=%s detail=%s", path, exc)
-                total_tokens += len((raw_text or "").split())
+            total_tokens += int(count_tokens(raw_text or ""))
     except Exception as exc:
         logger.warning("files.compute_file_stats failed path=%s detail=%s", path, exc)
     return (page_count, total_tokens)

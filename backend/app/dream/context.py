@@ -12,13 +12,9 @@ import os
 import re
 from typing import Any, Dict, List
 
-try:
-    import tiktoken  # type: ignore
-except Exception:
-    tiktoken = None
-
 from ..core.config import get_settings
 from ..rag.manager import retrieve_context
+from ..utils.tokens import count_tokens
 from .llm import dream_llm_call
 from .prompts import build_project_summary_prompt
 from app.utils.debug_utils import write_debug_file
@@ -30,20 +26,7 @@ _CONTEXT_CACHE: Dict[str, str] = {}
 
 
 def _count_tokens(text: str) -> int:
-    if not text:
-        return 0
-    if not tiktoken:
-        return len(text.split())
-    try:
-        enc = tiktoken.get_encoding("cl100k_base")
-        return len(enc.encode(text))
-    except Exception as e:
-        # If tiktoken fails for any reason, fall back to a simple word-based count.
-        logger.warning(
-            "[DREAM][CONTEXT] tiktoken get_encoding failed; falling back to word-based token count: %s",
-            e,
-        )
-        return len(text.split())
+    return int(count_tokens(text or ""))
 
 
 def _read_file_safe(path: str) -> str:

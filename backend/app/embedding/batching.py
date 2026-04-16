@@ -9,10 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
-try:
-    import tiktoken  # type: ignore
-except Exception:
-    tiktoken = None  # token estimation optional until installed
+from ..utils.tokens import count_tokens
 
 
 def estimate_tokens(text: str, *, model_name: Optional[str] = None) -> int:
@@ -23,21 +20,7 @@ def estimate_tokens(text: str, *, model_name: Optional[str] = None) -> int:
       can differ slightly. Callers should leave headroom (e.g., 250k vs 300k cap).
     - If tiktoken isn't installed, falls back to a word-count approximation.
     """
-    if not text:
-        return 0
-    if not tiktoken:
-        return len(text.split())
-    try:
-        if model_name:
-            enc = tiktoken.encoding_for_model(model_name)
-        else:
-            enc = tiktoken.get_encoding("cl100k_base")
-    except Exception:
-        enc = tiktoken.get_encoding("cl100k_base")
-    try:
-        return int(len(enc.encode(text)))
-    except Exception:
-        return len(text.split())
+    return int(count_tokens(text or "", model_name=model_name))
 
 
 def iter_token_batches(

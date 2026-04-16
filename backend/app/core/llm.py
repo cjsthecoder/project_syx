@@ -11,18 +11,13 @@ from typing import Any, Dict, List, Optional
 from .config import get_settings, validate_openai_key
 from ..llm_model.factory import get_llm_client
 from ..tracking import get_instrumentation
+from ..utils.tokens import count_tokens
 
 logger = logging.getLogger(__name__)
 
 
 def _estimate_tokens(text: str) -> int:
-    try:
-        import tiktoken  # type: ignore
-
-        enc = tiktoken.get_encoding("cl100k_base")
-        return int(len(enc.encode(text or "")))
-    except Exception:
-        return int(len((text or "").split()))
+    return int(count_tokens(text or ""))
 
 
 def _build_messages(

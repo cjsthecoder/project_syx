@@ -48,6 +48,7 @@ from ..core.database import get_session
 from ..core.db_models import ChatMessage
 from ..rag.manager import rebuild_faiss_index
 from ..utils.debug_utils import write_debug_file
+from ..utils.tokens import count_tokens
 import shutil
 
 logger = logging.getLogger(__name__)
@@ -336,12 +337,7 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                 assistant_resp_full = (assistant_resp or "(no summary)").strip()
 
             pair_text = f"User: {origin_text}\nAssistant: {assistant_resp_full}"
-            try:
-                import tiktoken  # type: ignore
-                enc = tiktoken.get_encoding("cl100k_base")
-                tokens = len(enc.encode(pair_text))
-            except Exception:
-                tokens = len((pair_text or "").split())
+            tokens = int(count_tokens(pair_text))
 
             tags_meta = None
             try:
@@ -691,13 +687,7 @@ async def project_stats(project_id: str) -> JSONResponse:
             history = mm.get_project_history(project_id) or []
             combined_text = "\n".join((m.get("content") or "") for m in history)
             if combined_text.strip():
-                try:
-                    import tiktoken  # type: ignore
-                    enc = tiktoken.get_encoding("cl100k_base")
-                    context_tokens = len(enc.encode(combined_text))
-                except Exception:
-                    # Fallback: rough estimate by whitespace tokens if encoder unavailable
-                    context_tokens = len([w for w in combined_text.split() if w])
+                context_tokens = int(count_tokens(combined_text))
                 # cache for future stats calls
                 mm.set_last_context_tokens(project_id, int(context_tokens))
         except Exception:

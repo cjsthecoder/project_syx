@@ -7,26 +7,76 @@
  *
  * Use of this software requires explicit written permission from the copyright holder.
  */
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Toast } from '@/components/ui/toast'
-import { Dialog, DialogHeader, DialogFooter } from '@/components/ui/dialog'
 import { api } from '@/pages/app/api'
-import { toDreamViewState } from '@/pages/app/dream'
-import { DreamItem, Message, ModelItem, Project, ProjectInfo, ProjectStats } from '@/pages/app/types'
+import { ModelItem } from '@/pages/app/types'
+import { useProjectData } from '@/hooks/useProjectData'
+import { useChatStream } from '@/hooks/useChatStream'
+import { SleepDialog } from '@/components/app-dialogs/SleepDialog'
+import { CreateProjectDialog } from '@/components/app-dialogs/CreateProjectDialog'
+import { PersonalityDialog } from '@/components/app-dialogs/PersonalityDialog'
+import { ManageProjectDialog } from '@/components/app-dialogs/ManageProjectDialog'
+import { DreamAnalysisDialog } from '@/components/app-dialogs/DreamAnalysisDialog'
 
 export default function App() {
   const showDebugValues = !['false', '0', 'no', 'off'].includes(
     String(import.meta.env.VITE_SHOW_DEBUG_VALUES ?? 'true').trim().toLowerCase(),
   )
-  const [projects, setProjects] = useState<Project[]>([])
-  const [projectId, setProjectId] = useState<string>('')
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const {
+    projects,
+    projectId,
+    setProjectId,
+    files,
+    stats,
+    projectInfo,
+    showSleepModal,
+    setShowSleepModal,
+    sleepSince,
+    setSleepSince,
+    projectSummary,
+    setProjectSummary,
+    hasDreamItems,
+    setHasDreamItems,
+    dreamItems,
+    setDreamItems,
+    savingDream,
+    dragOver,
+    setDragOver,
+    systemPrompt,
+    setSystemPrompt,
+    tone,
+    setTone,
+    verbosity,
+    setVerbosity,
+    formatPref,
+    setFormatPref,
+    creativity,
+    setCreativity,
+    domainFocus,
+    setDomainFocus,
+    loadStats,
+    loadProjectInfo,
+    refreshProjectData,
+    checkSleeping,
+    createProject,
+    renameProject,
+    deleteProject,
+    uploadFiles,
+    deleteFile,
+    loadPersonality,
+    savePersonality,
+    saveDreamItems,
+  } = useProjectData({
+    showDebugValues,
+    onError: (message) => setError(message),
+  })
+
   const [model, setModel] = useState('gpt-5.4')
   const [models, setModels] = useState<ModelItem[]>(['gpt-5.4'])
 
@@ -35,58 +85,53 @@ export default function App() {
   const [showManageModal, setShowManageModal] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [renameProjectName, setRenameProjectName] = useState('')
-  const [files, setFiles] = useState<any[]>([])
-  const [stats, setStats] = useState<ProjectStats | null>(null)
-  const [projectInfo, setProjectInfo] = useState<ProjectInfo | null>(null)
-  const [showSleepModal, setShowSleepModal] = useState(false)
-  const [sleepSince, setSleepSince] = useState<string | null>(null)
-  // Dream UI
-  const [projectSummary, setProjectSummary] = useState<string | null>(null)
-  const [dreamWarning, setDreamWarning] = useState<string | null>(null)
-  const [hasDreamItems, setHasDreamItems] = useState(false)
   const [showDreamModal, setShowDreamModal] = useState(false)
-  const [dreamItems, setDreamItems] = useState<DreamItem[]>([])
-  const [savingDream, setSavingDream] = useState(false)
+  const [showPersonalityModal, setShowPersonalityModal] = useState(false)
+
+  const {
+    messages,
+    setMessages,
+    input,
+    setInput,
+    loading,
+    canSend,
+    send,
+    loadChats,
+  } = useChatStream({
+    projectId,
+    model,
+    onBeforeSend: () => {
+      setProjectSummary(null)
+      setError(null)
+    },
+    onError: (message) => setError(message),
+    checkSleeping,
+    onAfterStream: async (pid) => {
+      try {
+        await loadStats(pid)
+      } catch (e) {
+        console.info('post-stream stats refresh failed', e)
+      }
+      try {
+        await loadChats(pid)
+      } catch (e) {
+        console.info('post-stream chat refresh failed', e)
+      }
+    },
+  })
 
   const toggleDreamKeep = (idx: number) => {
-    setDreamItems((prev) =>
-      prev.map((it, i) => (i === idx ? { ...it, keep: !it.keep } : it)),
-    )
+    setDreamItems((prev) => prev.map((it, i) => (i === idx ? { ...it, keep: !it.keep } : it)))
   }
 
   const toggleDreamRemember = (idx: number) => {
-    setDreamItems((prev) =>
-      prev.map((it, i) => (i === idx ? { ...it, remember: !it.remember } : it)),
-    )
+    setDreamItems((prev) => prev.map((it, i) => (i === idx ? { ...it, remember: !it.remember } : it)))
   }
-
-  // Personality UI state
-  const [showPersonalityModal, setShowPersonalityModal] = useState(false)
-  const [systemPrompt, setSystemPrompt] = useState('')
-  const [tone, setTone] = useState<'analytical'|'friendly'|'creative'|'formal'>('analytical')
-  const [verbosity, setVerbosity] = useState<'concise'|'balanced'|'detailed'>('concise')
-  const [formatPref, setFormatPref] = useState<'markdown'|'plain'|'html'>('markdown')
-  const [creativity, setCreativity] = useState(0.4)
-  const [domainFocus, setDomainFocus] = useState('')
 
   const listRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
-
-  const loadProjects = useCallback(async () => {
-    try {
-      const data = await api<{ available_projects?: string[]; current_project?: string; project_names?: Record<string,string> }>('/projects')
-      const ids = (data.available_projects ?? []).filter((id) => id !== 'default')
-      const namesMap = data.project_names || {}
-      const list = ids.map((id) => ({ id, name: namesMap[id] || id }))
-      setProjects(list)
-      const current = data.current_project ?? list[0]?.id
-      if (current) setProjectId(current)
-    } catch {
-      setProjects([])
-    }
-  }, [])
 
   const loadModels = useCallback(async () => {
     try {
@@ -100,116 +145,22 @@ export default function App() {
     }
   }, [model])
 
-  const loadFiles = useCallback(async (pid: string) => {
-    try {
-      const data = await api<{ project_id: string; files: any[]; storage_bytes: number; token_count: number }>(`/projects/${pid}/files`)
-      setFiles(data.files || [])
-    } catch {
-      setFiles([])
-    }
-  }, [])
-
-  const loadChats = useCallback(async (pid: string) => {
-    try {
-      const data = await api<{ project_id: string; messages: { id: number; role: 'user'|'assistant'; content: string; created_at: string; forget?: boolean|null; keep?: boolean|null }[] }>(`/projects/${pid}/chats`)
-      const msgs: Message[] = (data.messages || []).map(m => ({ id: m.id, role: m.role, content: m.content, forget: !!m.forget, keep: !!m.keep }))
-      setMessages(msgs)
-    } catch {
-      setMessages([])
-    }
-  }, [])
-
-  const loadStats = useCallback(async (pid: string) => {
-    if (!showDebugValues) {
-      setStats(null)
-      return
-    }
-    try {
-      const data = await api<{ storage_bytes: number; index_size_bytes: number; tokens_indexed: number; context_tokens: number; file_count: number; daily_index_size_bytes?: number; daily_tokens_indexed?: number; daily_vector_count?: number }>(`/projects/${pid}/stats`)
-      setStats(data)
-    } catch {
-      setStats(null)
-    }
-  }, [showDebugValues])
-
-  const loadProjectInfo = useCallback(async (pid: string) => {
-    try {
-      const data = await api<{ project: any }>(`/projects/${pid}`)
-      setProjectInfo(data.project || {})
-    } catch {
-      setProjectInfo(null)
-    }
-  }, [])
-
-  // Load dream summary and items data
-  const loadDreamSummary = useCallback(async (pid: string) => {
-    try {
-      const data = await api<{ project_id?: string; dream?: any; error?: any }>(`/projects/${pid}/dream`)
-      const state = toDreamViewState(data?.dream)
-      setProjectSummary(state.projectSummary)
-      setHasDreamItems(state.hasDreamItems)
-      setDreamItems(state.dreamItems)
-    } catch (e: any) {
-      setProjectSummary(null)
-      setHasDreamItems(false)
-      setDreamItems([])
-      console.warn('loadDreamSummary failed', e)
-    }
-  }, [])
-
-  // Refresh all project data
-  const refreshProjectData = useCallback(async (pid: string) => {
-    if (!pid) return
-    try {
-      await Promise.all([
-        loadChats(pid),
-        loadFiles(pid),
-        loadStats(pid),
-        loadProjectInfo(pid),
-        loadDreamSummary(pid),
-      ])
-    } catch (e) {
-      // Log but don't block - individual load functions handle their own errors
-      console.error('Failed to refresh project data:', e)
-    }
-  }, [loadChats, loadFiles, loadStats, loadProjectInfo, loadDreamSummary])
-
-  async function checkSleeping(): Promise<boolean> {
-    try {
-      const r = await fetch('/sleep/status')
-      if (!r.ok) return false
-      const j = await r.json()
-      if (j && j.sleeping) {
-        setSleepSince(j.since || null)
-        setShowSleepModal(true)
-        return true
-      }
-    } catch (e) {
-      console.info('checkSleeping status request failed', e)
-    }
-    return false
-  }
-
   useEffect(() => {
-    loadProjects()
     loadModels()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [loadModels])
 
   // Refresh project data when project changes
   useEffect(() => {
     if (projectId) {
-      refreshProjectData(projectId)
+      refreshProjectData(projectId, loadChats)
       // Preload personality when switching projects
       loadPersonality(projectId)
     } else {
       // Clear state when no project selected
       setMessages([])
-      setFiles([])
-      setStats(null)
-      setProjectInfo(null)
     }
-  }, [projectId, refreshProjectData])
+  }, [loadChats, loadPersonality, projectId, refreshProjectData, setMessages])
 
   // Monitor sleep status and refresh when sleep ends
   useEffect(() => {
@@ -230,7 +181,7 @@ export default function App() {
           setShowSleepModal(false)
           setSleepSince(null)
           // Refresh all project data when sleep ends
-          await refreshProjectData(projectId)
+          await refreshProjectData(projectId, loadChats)
         }
       } catch (e) {
         // Expected to be best-effort; continue polling even if a check fails.
@@ -242,95 +193,7 @@ export default function App() {
       cancelled = true
       clearInterval(interval)
     }
-  }, [showSleepModal, projectId, refreshProjectData])
-
-  const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading])
-
-  async function send() {
-    if (!canSend) return
-    // Clear dream UI so it rolls off when a new chat starts
-    setProjectSummary(null)
-    setDreamWarning(null)
-    setError(null)
-    setLoading(true)
-    // If sleeping, show modal and bail early
-    if (await checkSleeping()) {
-      setLoading(false)
-      return
-    }
-    const userMsg: Message = { role: 'user', content: input }
-    // Add user only; defer assistant bubble until first token arrives
-    setMessages((m) => [...m, userMsg])
-    const toSend = input
-    setInput('')
-    try {
-      const res = await fetch('/chat/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: projectId, message: toSend, model }),
-      })
-      if (!res.ok || !res.body) {
-        const txt = await res.text().catch(() => '')
-        if (res.status === 423 || /sleep/i.test(txt)) {
-          await checkSleeping()
-          throw new Error('System is sleeping')
-        }
-        throw new Error(txt || `HTTP ${res.status}`)
-      }
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let done = false
-      let assistantCreated = false
-      while (!done) {
-        const { value, done: d } = await reader.read()
-        done = d
-        if (value) {
-          const chunk = decoder.decode(value, { stream: true })
-          const text = chunk.replace(/\n::event:\s*done\s*\n?/g, '')
-          // Only act on non-whitespace text
-          if (text && text.trim().length > 0) {
-            setMessages((m) => {
-              if (m.length === 0) return m
-              // Create assistant bubble on first token
-              if (!assistantCreated) {
-                assistantCreated = true
-                // Hide "Thinking..." once real content starts streaming
-                setLoading(false)
-                return [...m, { role: 'assistant', content: text }]
-              }
-              // Append to latest assistant message
-              const copy = [...m]
-              const idx = copy.length - 1
-              if (copy[idx]?.role !== 'assistant') {
-                // If somehow last isn't assistant, create one
-                return [...copy, { role: 'assistant', content: text }]
-              }
-              copy[idx] = { ...copy[idx], content: (copy[idx].content || '') + text }
-              return copy
-            })
-          }
-        }
-      }
-      // Refresh stats/chats to sync with DB-persisted assistant entry
-      if (projectId) {
-        try {
-          await loadStats(projectId)
-        } catch (e) {
-          console.info('post-stream stats refresh failed', e)
-        }
-        try {
-          await loadChats(projectId)
-        } catch (e) {
-          console.info('post-stream chat refresh failed', e)
-        }
-      }
-    } catch (e: any) {
-      setError(e?.message || 'Stream failed')
-    } finally {
-      // If no content ever arrived, clear "Thinking..." now
-      setLoading(false)
-    }
-  }
+  }, [loadChats, projectId, refreshProjectData, setShowSleepModal, setSleepSince, showSleepModal])
 
   function fmtMB(bytes?: number) {
     if (bytes === undefined || bytes === null) return '—'
@@ -339,123 +202,7 @@ export default function App() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  async function createProject() {
-    if (!newProjectName.trim()) return
-    try {
-      await api('/projects', { method: 'POST', body: JSON.stringify({ project_name: newProjectName.trim() }) })
-      await loadProjects()
-      setNewProjectName('')
-      setShowCreateModal(false)
-    } catch (e: any) {
-      setError(e?.message || 'Create project failed')
-    }
-  }
-
-  async function renameProject() {
-    if (!renameProjectName.trim() || !projectId) return
-    try {
-      await api(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ project_name: renameProjectName.trim() }) })
-      setRenameProjectName('')
-      await loadProjects()
-      await loadProjectInfo(projectId)
-    } catch (e: any) {
-      setError(e?.message || 'Rename failed')
-    }
-  }
-
-  async function deleteProject() {
-    if (!projectId) return
-    try {
-      await api(`/projects/${projectId}`, { method: 'DELETE' })
-      await loadProjects()
-      setShowManageModal(false)
-    } catch (e: any) {
-      setError(e?.message || 'Delete failed')
-    }
-  }
-
-  async function uploadFiles(selected: FileList) {
-    if (!projectId || !selected || selected.length === 0) return
-    const form = new FormData()
-    Array.from(selected).forEach((f) => form.append('files', f))
-    try {
-      const res = await fetch(`/projects/${projectId}/files`, { method: 'POST', body: form })
-      if (!res.ok) {
-        const raw = await res.text().catch(() => '')
-        let detail = raw
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw)
-            detail = parsed?.error || parsed?.detail || parsed?.message || raw
-          } catch (parseErr) {
-            console.info('upload error response was non-JSON; using raw text', parseErr)
-          }
-        }
-        throw new Error(detail || `Upload failed (HTTP ${res.status})`)
-      }
-      await loadFiles(projectId)
-      await loadStats(projectId)
-    } catch (e: any) {
-      setError(e?.message || 'Upload failed')
-    }
-  }
-
-  async function deleteFile(fileId: number) {
-    if (!projectId) return
-    try {
-      await api(`/projects/${projectId}/files/${fileId}`, { method: 'DELETE' })
-      await loadFiles(projectId)
-      await loadStats(projectId)
-    } catch (e: any) {
-      setError(e?.message || 'Delete failed')
-    }
-  }
-
-  // Personality endpoints
-  async function loadPersonality(pid: string) {
-    try {
-      const data = await api<{ project_id: string; personality: any; system_prompt: string }>(`/projects/${pid}/personality`)
-      const p = data.personality || {}
-      setSystemPrompt(data.system_prompt || '')
-      setTone((p.tone || 'analytical').toLowerCase())
-      setVerbosity((p.verbosity || 'concise').toLowerCase())
-      setFormatPref((p.format || 'markdown').toLowerCase())
-      setCreativity(parseFloat(p.creativity ?? 0.4) || 0.4)
-      setDomainFocus(Array.isArray(p.domain_focus) ? p.domain_focus.join(', ') : '')
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load personality')
-    }
-  }
-
-  async function savePersonality() {
-    if (!projectId) return
-    try {
-      await api(`/projects/${projectId}/system_prompt`, { method: 'PUT', body: JSON.stringify({ content: systemPrompt }) })
-      const payload = {
-        tone,
-        verbosity,
-        format: formatPref,
-        creativity,
-        domain_focus: domainFocus.split(',').map((s) => s.trim()).filter(Boolean),
-      }
-      await api(`/projects/${projectId}/personality`, { method: 'PATCH', body: JSON.stringify(payload) })
-      setShowPersonalityModal(false)
-      // Return to Manage Project modal after saving
-      if (projectId) {
-        try {
-          await loadProjectInfo(projectId)
-        } catch (e) {
-          console.info('post-save project info refresh failed', e)
-        }
-      }
-      setTimeout(() => setShowManageModal(true), 0)
-    } catch (e: any) {
-      setError(e?.message || 'Failed to save personality')
-    }
-  }
-
   // Drag-and-drop handlers
-  const [dragOver, setDragOver] = useState(false)
   const onDrop: React.DragEventHandler<HTMLDivElement> = async (e) => {
     e.preventDefault()
     setDragOver(false)
@@ -633,294 +380,101 @@ export default function App() {
         </div>
       </footer>
 
-      {/* System Sleeping Modal */}
-      <Dialog open={showSleepModal} onClose={() => setShowSleepModal(false)}>
-        <DialogHeader>System Sleeping</DialogHeader>
-        <div className="px-4 pb-2 text-sm">
-          The system is currently running its sleep cycle. Please try again after it finishes.
-          {sleepSince && <div className="mt-2 text-gray-600">Sleeping since: {sleepSince}</div>}
-        </div>
-        <DialogFooter>
-          <Button onClick={() => setShowSleepModal(false)}>OK</Button>
-        </DialogFooter>
-      </Dialog>
+      <SleepDialog open={showSleepModal} sleepSince={sleepSince} onClose={() => setShowSleepModal(false)} />
 
-      {/* Dream Analysis Modal */}
-      <Dialog
+      <DreamAnalysisDialog
         open={showDreamModal}
+        dreamItems={dreamItems}
+        savingDream={savingDream}
         onClose={() => setShowDreamModal(false)}
-        contentClassName="max-w-8xl w-[1280px] max-h-[90vh] h-[85vh] overflow-hidden flex flex-col"
-      >
-        <DialogHeader>Analyze Dreams</DialogHeader>
-        <div className="px-4 pb-2 text-sm flex-1 overflow-auto space-y-4">
-          {dreamItems.length === 0 && (
-            <div className="text-sm text-gray-600">No dream items available.</div>
-          )}
+        onToggleRemember={toggleDreamRemember}
+        onToggleKeep={toggleDreamKeep}
+        onSubmit={async () => {
+          const ok = await saveDreamItems()
+          if (ok) setShowDreamModal(false)
+        }}
+      />
 
-          {dreamItems.map((item, idx) => (
-            <div key={item.id || idx} className="space-y-2 border border-gray-200 rounded-lg p-3 bg-white">
-              <div className="text-xs font-semibold text-gray-600">
-                {item.origin_type && typeof item.origin_type === 'string'
-                  ? item.origin_type.charAt(0).toUpperCase() + item.origin_type.slice(1)
-                  : 'User/Agent'}
-              </div>
-              <div
-                className="rounded bg-gray-200 text-black px-3 py-2 whitespace-pre-wrap break-words"
-                style={{ width: 'calc(100% - 100px)' }}
-              >
-                {item.origin_text || '(no origin text)'}
-              </div>
+      <CreateProjectDialog
+        open={showCreateModal}
+        projectName={newProjectName}
+        onProjectNameChange={setNewProjectName}
+        onClose={() => setShowCreateModal(false)}
+        onCreate={async () => {
+          await createProject(newProjectName)
+          setNewProjectName('')
+          setShowCreateModal(false)
+        }}
+      />
 
-              <div className="text-xs font-semibold text-gray-600" style={{ paddingLeft: '100px' }}>
-                AI/Response
-              </div>
-              <div className="flex justify-end">
-                <div
-                  className="rounded px-3 py-2 whitespace-pre-wrap break-words text-left"
-                  style={{ backgroundColor: '#66b5ff', color: '#000', width: 'calc(100% - 100px)' }}
-                >
-                  {item.assistant_response || '(no response)'}
-                </div>
-              </div>
+      <PersonalityDialog
+        open={showPersonalityModal}
+        systemPrompt={systemPrompt}
+        tone={tone}
+        verbosity={verbosity}
+        formatPref={formatPref}
+        creativity={creativity}
+        domainFocus={domainFocus}
+        onClose={() => setShowPersonalityModal(false)}
+        onSave={async () => {
+          await savePersonality()
+          setShowPersonalityModal(false)
+          setTimeout(() => setShowManageModal(true), 0)
+        }}
+        onSystemPromptChange={setSystemPrompt}
+        onToneChange={setTone}
+        onVerbosityChange={setVerbosity}
+        onFormatPrefChange={setFormatPref}
+        onCreativityChange={setCreativity}
+        onDomainFocusChange={setDomainFocus}
+      />
 
-              {Array.isArray(item.research) && item.research.length > 0 && (
-                <div className="space-y-2">
-                  {item.research.map((r, rIdx) => (
-                    <div key={rIdx} className="rounded border border-gray-200 px-3 py-2 bg-white text-black">
-                      <div className="text-xs font-semibold text-gray-700 mb-1">[RESEARCH]</div>
-                      <div className="text-sm font-semibold text-black">Topic: {r?.research_topic || '(unknown topic)'}</div>
-                      <div className="text-sm whitespace-pre-wrap break-words text-black">
-                        {r?.research_summary || '(no summary)'}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex items-center gap-4">
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={!!item.remember}
-                    onChange={() => toggleDreamRemember(idx)}
-                  />
-                  <span className="text-sm text-gray-700">Remember</span>
-                </label>
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={!!item.keep}
-                    onChange={() => toggleDreamKeep(idx)}
-                  />
-                  <span className="text-sm text-gray-700">Keep</span>
-                </label>
-              </div>
-            </div>
-          ))}
-        </div>
-        <DialogFooter>
-          <Button onClick={() => setShowDreamModal(false)}>Close</Button>
-          <Button
-            onClick={async () => {
-              if (!projectId || dreamItems.length === 0) {
-                setShowDreamModal(false)
-                return
-              }
-              setSavingDream(true)
-              try {
-                const payload = {
-                  items: dreamItems.map((k) => ({
-                    id: k.id,
-                    origin_text: k.origin_text,
-                    assistant_response: k.assistant_response,
-                    origin_type: k.origin_type,
-                    source_resolution: k.source_resolution,
-                    research: k.research,
-                    keep: !!k.keep,
-                    remember: !!k.remember,
-                  })),
-                }
-                const res = await fetch(`/projects/${projectId}/dream/keep`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(payload),
-                })
-                if (!res.ok) {
-                  const txt = await res.text().catch(() => '')
-                  throw new Error(txt || `HTTP ${res.status}`)
-                }
-                const data = await res.json().catch(() => ({}))
-                if (data?.failed && data.failed > 0) {
-                  const msg = Array.isArray(data?.errors) ? data.errors.join('; ') : 'One or more dream items failed'
-                  throw new Error(msg)
-                }
-                setShowDreamModal(false)
-                setHasDreamItems(false)
-                setDreamItems([])
-                window.alert('Dream items saved')
-              } catch (e: any) {
-                setError(e?.message || 'Failed to save dream items')
-              } finally {
-                setSavingDream(false)
-              }
-            }}
-            disabled={savingDream || dreamItems.length === 0}
-          >
-            {savingDream ? 'Saving…' : 'Submit'}
-          </Button>
-        </DialogFooter>
-      </Dialog>
-
-      {/* Create Project Modal */}
-      <Dialog open={showCreateModal} onClose={() => setShowCreateModal(false)}>
-        <DialogHeader>New Project</DialogHeader>
-        <div className="space-y-3 px-4 pb-2">
-          <input className="border rounded px-2 py-1 w-full" placeholder="Project name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} />
-        </div>
-        <DialogFooter>
-          <Button onClick={() => setShowCreateModal(false)}>Cancel</Button>
-          <Button onClick={createProject}>Create</Button>
-        </DialogFooter>
-      </Dialog>
-
-      {/* Personality Modal */}
-      <Dialog open={showPersonalityModal} onClose={() => setShowPersonalityModal(false)}>
-        <DialogHeader>Project Personality</DialogHeader>
-        <div className="space-y-4 px-4 pb-2">
-          <div>
-            <label className="block text-sm mb-1">System Prompt</label>
-            <Textarea className="w-full min-h-[700px]" value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-3 gap-3 items-end">
-            <div>
-              <label className="block text-sm mb-1">Tone</label>
-              <Select value={tone} onChange={(e) => setTone(e.target.value as any)}>
-                {['analytical','friendly','creative','formal'].map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <label className="block text-sm mb-1">Verbosity</label>
-              <Select value={verbosity} onChange={(e) => setVerbosity(e.target.value as any)}>
-                {['concise','balanced','detailed'].map((v) => (
-                  <option key={v} value={v}>{v}</option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <label className="block text-sm mb-1">Format</label>
-              <Select value={formatPref} onChange={(e) => setFormatPref(e.target.value as any)}>
-                {['markdown','plain','html'].map((f) => (
-                  <option key={f} value={f}>{f}</option>
-                ))}
-              </Select>
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Creativity ({creativity.toFixed(2)})</label>
-            <input type="range" min={0} max={1} step={0.01} value={creativity} onChange={(e) => setCreativity(parseFloat(e.target.value))} className="w-full" />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Domain Focus (comma-separated)</label>
-            <input className="border rounded px-2 py-1 w-full" value={domainFocus} onChange={(e) => setDomainFocus(e.target.value)} placeholder="AI, neuroscience" />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={() => setShowPersonalityModal(false)}>Cancel</Button>
-          <Button onClick={savePersonality}>Save</Button>
-        </DialogFooter>
-      </Dialog>
-
-      {/* Manage Project Modal */}
-      <Dialog open={showManageModal} onClose={() => { setShowManageModal(false); if (projectId) loadStats(projectId) }}>
-        <DialogHeader>Manage Project</DialogHeader>
-        <div className="space-y-4 px-4 pb-2">
-          <div className="text-sm text-gray-700 dark:text-gray-300">
-            <div><strong>Name:</strong> {projectInfo?.name ?? projectId}</div>
-            {projectInfo?.created_at && <div><strong>Created:</strong> {new Date(projectInfo.created_at).toLocaleString()}</div>}
-            {projectInfo?.system && <div className="text-amber-600">System project</div>}
-          </div>
-
-          {/* Personality manager entry point */}
-          <div className="flex items-center justify-start">
-            <Button
-              className="bg-black !text-white hover:bg-gray-900 border-transparent dark:!bg-black dark:!text-white dark:hover:!bg-gray-900"
-              onClick={async () => {
-                if (projectId) {
-                  await loadPersonality(projectId)
-                }
-                setShowManageModal(false)
-                setTimeout(() => setShowPersonalityModal(true), 0)
-              }}
-            >
-              Personality
-            </Button>
-          </div>
-
-          {!projectInfo?.system && (
-            <div className="flex items-center gap-2">
-              <label className="text-sm">Keep Daily History</label>
-              <input
-                type="checkbox"
-                checked={!!projectInfo?.daily_rag_enabled}
-                onChange={async (e) => {
-                  if (!projectId) return
-                  try {
-                    await api(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ daily_rag_enabled: e.target.checked }) })
-                    await loadProjectInfo(projectId)
-                    await loadStats(projectId)
-                  } catch (err: any) {
-                    setError(err?.message || 'Failed to update setting')
-                  }
-                }}
-              />
-            </div>
-          )}
-
-          <div className="flex items-center gap-2">
-            <input className="border rounded px-2 py-1 flex-1" placeholder="Rename to…" value={renameProjectName} onChange={(e) => setRenameProjectName(e.target.value)} />
-            <Button onClick={renameProject} disabled={!!projectInfo?.system}>Rename</Button>
-          </div>
-
-          <div
-            className={`border-2 ${dragOver ? 'border-blue-500' : 'border-dashed border-gray-300'} rounded p-4 text-center`}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={onDrop}
-          >
-            Drag & drop files here, or
-            <label className="ml-2 underline cursor-pointer">
-              choose files<input type="file" multiple className="hidden" onChange={(e) => e.target.files && uploadFiles(e.target.files)} />
-            </label>
-          </div>
-
-          <div>
-            <div className="font-semibold mb-2">Files</div>
-            <ul className="space-y-2 max-h-64 overflow-auto">
-              {files.map((f: any) => (
-                <li key={f.id} className="flex items-center justify-between text-sm">
-                  <div className="truncate mr-3">{f.filename}</div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-gray-500">{(f.size_bytes / (1024*1024)).toFixed(1)} MB</span>
-                    <Button onClick={() => deleteFile(f.id)}>Delete</Button>
-                  </div>
-                </li>
-              ))}
-              {files.length === 0 && <li className="text-gray-500 text-sm">No files uploaded</li>}
-            </ul>
-          </div>
-
-          {!projectInfo?.system && (
-            <div className="flex items-center justify-end">
-              <Button onClick={deleteProject}>Delete Project</Button>
-            </div>
-          )}
-        </div>
-        <DialogFooter>
-          <Button onClick={() => { setShowManageModal(false); if (projectId) loadStats(projectId) }}>Close</Button>
-        </DialogFooter>
-      </Dialog>
+      <ManageProjectDialog
+        open={showManageModal}
+        projectId={projectId}
+        projectInfo={projectInfo}
+        renameProjectName={renameProjectName}
+        files={files}
+        dragOver={dragOver}
+        onClose={() => {
+          setShowManageModal(false)
+          if (projectId) void loadStats(projectId)
+        }}
+        onRenameProjectNameChange={setRenameProjectName}
+        onRename={async () => {
+          await renameProject(renameProjectName)
+          setRenameProjectName('')
+        }}
+        onDeleteProject={async () => {
+          await deleteProject()
+          setShowManageModal(false)
+        }}
+        onDeleteFile={deleteFile}
+        onUploadFiles={uploadFiles}
+        onOpenPersonality={async () => {
+          if (projectId) {
+            await loadPersonality(projectId)
+          }
+          setShowManageModal(false)
+          setTimeout(() => setShowPersonalityModal(true), 0)
+        }}
+        onToggleDailyHistory={async (next) => {
+          if (!projectId) return
+          try {
+            await api(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ daily_rag_enabled: next }) })
+            await loadProjectInfo(projectId)
+            await loadStats(projectId)
+          } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Failed to update setting')
+          }
+        }}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragOver(true)
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+      />
     </div>
   )
 }

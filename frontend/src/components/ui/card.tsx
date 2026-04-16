@@ -8,7 +8,7 @@
  * Use of this software requires explicit written permission from the copyright holder.
  */
 import * as React from 'react'
-import { cn } from '@/lib/utils.ts'
+import { cn } from '@/lib/utils'
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn('rounded-lg border bg-white dark:bg-black', className)} {...props} />

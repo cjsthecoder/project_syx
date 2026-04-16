@@ -30,8 +30,8 @@ Notes:
 - Several declared dependencies appear unused in current runtime paths:
   - Python: `httpx`, `python-dotenv`, `structlog`, `pypdf`
   - Node: `class-variance-authority`
-- Frontend toolchain versions in `package.json` are behind lockfile-resolved versions and can be safely aligned.
-- Major-version upgrades (React 18->19, Tailwind 3->4, Vite 5->8) should be deferred to dedicated tickets due higher compatibility risk.
+- Frontend toolchain versions have been upgraded to current major lines and validated with build + typecheck.
+- Tailwind configuration has been consolidated to a single canonical config source.
 
 ## Python dependency audit
 
@@ -74,8 +74,8 @@ Notes:
 
 | Package | Declared range | Installed current | Usage evidence | Intended target | Risk | Recommendation |
 |---|---:|---:|---|---|---|---|
-| react | `^18.3.1` | `18.3.1` | App/components in `frontend/src` | Keep React 18 line for now | Medium (to 19) | Keep now; defer React 19 migration |
-| react-dom | `^18.3.1` | `18.3.1` | `frontend/src/main.tsx` | Keep React 18 line for now | Medium (to 19) | Keep now; defer React 19 migration |
+| react | `^19.2.5` | `19.2.5` | App/components in `frontend/src` | Keep on current React 19 line | Medium | Completed major upgrade; monitor runtime regressions |
+| react-dom | `^19.2.5` | `19.2.5` | `frontend/src/main.tsx` | Keep on current React 19 line | Medium | Completed major upgrade; monitor runtime regressions |
 | clsx | `^2.1.1` | `2.1.1` | `frontend/src/lib/utils.ts` | Keep | Low | Keep as-is |
 | tailwind-merge | `^3.3.1` | `3.3.1` | `frontend/src/lib/utils.ts` | Upgrade to `^3.5.0` | Low | Safe-now upgrade candidate |
 | class-variance-authority | `^0.7.1` | `0.7.1` | No imports found | Remove | Low | Remove from dependencies |
@@ -84,15 +84,15 @@ Notes:
 
 | Package | Declared range | Installed current | Latest | Usage evidence | Intended target | Risk | Recommendation |
 |---|---:|---:|---:|---|---|---|---|
-| @types/react | `^18.3.5` | `18.3.25` | `19.2.14` | TS React typing | Update within React 18 (`^18.3.28`) | Low | Safe-now upgrade candidate |
-| @types/react-dom | `^18.3.0` | `18.3.7` | `19.2.3` | TS React DOM typing | Keep current React 18 type line | Low | Optional small bump |
-| @vitejs/plugin-react | `^4.3.1` | `4.7.0` | `6.0.1` | `frontend/vite.config.ts` | Keep plugin 4 line with Vite 5 | Medium/High to v6 | Keep now |
+| @types/react | `^19.2.14` | `19.2.14` | `19.2.14` | TS React typing | Keep aligned with React 19 | Low | Completed major alignment |
+| @types/react-dom | `^19.2.3` | `19.2.3` | `19.2.3` | TS React DOM typing | Keep aligned with React 19 | Low | Completed major alignment |
+| @vitejs/plugin-react | `^6.0.1` | `6.0.1` | `6.0.1` | `frontend/vite.config.ts` | Keep aligned with Vite 8 | Medium | Completed major alignment |
 | autoprefixer | `^10.4.20` | `10.4.21` | `10.5.0` | `frontend/postcss.config.js` | Upgrade to `^10.5.0` | Low | Safe-now upgrade candidate |
 | baseline-browser-mapping | `^2.9.19` | `2.9.19` | `2.10.19` | Lockfile transitive support | Upgrade to latest 2.x | Low | Safe-now upgrade candidate |
 | postcss | `^8.4.47` | `8.5.6` | `8.5.10` | Tailwind/PostCSS toolchain | Upgrade to `^8.5.10` | Low | Safe-now upgrade candidate |
-| tailwindcss | `^3.4.13` | `3.4.18` | `4.2.2` | Tailwind config files | Upgrade patch in v3 (`^3.4.19`) | Medium (to v4 high) | Keep v3 line now; defer v4 migration |
-| typescript | `^5.6.3` | `5.9.3` | `6.0.2` | TS build/typecheck | Keep on 5.x (`^5.9.3`) | Medium (to v6) | Safe-now minor update in v5 |
-| vite | `^5.4.8` | `5.4.20` | `8.0.8` | Build/dev scripts and config | Keep Vite 5 line (`^5.4.21`) | Medium/High to v8 | Safe-now patch update only |
+| tailwindcss | `^4.2.2` | `4.2.2` | `4.2.2` | Tailwind config files + `src/styles.css` | Keep on current Tailwind 4 line | Medium | Completed major upgrade; migrated PostCSS plugin |
+| typescript | `^6.0.2` | `6.0.2` | `6.0.2` | TS build/typecheck | Keep on current TS 6 line | Medium | Completed major upgrade; added deprecation guard |
+| vite | `^8.0.8` | `8.0.8` | `8.0.8` | Build/dev scripts and config | Keep on current Vite 8 line | Medium | Completed major upgrade and build validation |
 
 ## Recommended change set
 
@@ -106,13 +106,16 @@ Notes:
    - Node: `tailwind-merge`, `autoprefixer`, `baseline-browser-mapping`, `postcss`, `@types/react` (React 18 line), `vite` patch-level
 3. Pin `beautifulsoup4` explicitly (if kept) and mark it as tool-only dependency.
 
-### Defer to dedicated upgrade tickets
+### Completed major frontend upgrade ticket
 
-1. Frontend major upgrades:
-   - React 18 -> 19
-   - Tailwind 3 -> 4
-   - Vite 5 -> 8 and plugin alignment
-   - TypeScript 5 -> 6
+1. Frontend majors completed in one pass:
+   - React 18 -> 19 (`react`, `react-dom`, `@types/react`, `@types/react-dom`)
+   - Tailwind 3 -> 4 (including `@tailwindcss/postcss` migration and CSS directive update)
+   - Vite 5 -> 8 with plugin alignment (`@vitejs/plugin-react` 6.x)
+   - TypeScript 5 -> 6 (removed deprecated `baseUrl` usage from `tsconfig.json`)
+2. Config cleanup completed:
+   - Removed duplicate Tailwind config file and retained one canonical `tailwind.config.js`.
+   - Normalized UI imports from `@/lib/utils.ts` to `@/lib/utils` for TS 6 compatibility.
 
 ## Validation checklist for follow-up dependency-change PR
 
@@ -123,6 +126,7 @@ Notes:
 - Frontend:
   - `cd frontend && npm install`
   - `make build`
+  - `cd frontend && npx tsc -p tsconfig.json --noEmit`
   - `make test-frontend` (or explicit skip if no test script by design)
 - Migration smoke:
   - `make upgrade`

@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     }
     
     # OpenAI Configuration
-    openai_api_key: str = Field(..., description="OpenAI API key (required)")
+    openai_api_key: str = Field(default="", description="OpenAI API key")
     llm_provider: str = Field(default="openai", description="LLM provider selector (openai)")
     model_name: str = Field(default="gpt-5.4", description="Primary chat model name (legacy key)")
     llm_main_model: str = Field(default="gpt-5.4", description="Default model for main chat client")
@@ -75,8 +75,15 @@ class Settings(BaseSettings):
     storage_limit_mb: int = Field(default=500, gt=0, description="Total storage limit per project (MB)")
 
     # Embeddings and RAG
-    embedding_provider: str = Field(default="openai", description="Embedding provider selector (openai|local)")
+    embedding_provider: str = Field(
+        default="openai",
+        description="Embedding provider selector (openai|sentence_transformers)",
+    )
     embedding_model: str = Field(default="text-embedding-3-large", description="Embedding model name")
+    sentence_transformers_model_id: str = Field(
+        default="BAAI/bge-m3",
+        description="SentenceTransformers model id used when EMBEDDING_PROVIDER=sentence_transformers",
+    )
     chunk_size: int = Field(default=800, gt=0, description="Chunk size for embeddings")
     chunk_overlap: int = Field(default=100, ge=0, description="Chunk overlap for embeddings")
     max_embed_tokens_per_request: int = Field(
@@ -281,3 +288,16 @@ def get_model_config() -> dict:
         "temperature": settings.model_temperature,
         "max_tokens": settings.model_max_tokens,
     }
+
+
+def get_active_embedding_model() -> str:
+    """
+    Resolve active embedding model name by provider.
+
+    - openai -> EMBEDDING_MODEL
+    - sentence_transformers -> SENTENCE_TRANSFORMERS_MODEL_ID
+    """
+    provider = str(settings.embedding_provider or "openai").strip().lower()
+    if provider == "sentence_transformers":
+        return str(settings.sentence_transformers_model_id or "BAAI/bge-m3")
+    return str(settings.embedding_model or "text-embedding-3-large")

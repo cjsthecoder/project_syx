@@ -6,6 +6,7 @@ uvicorn[standard]==0.44.0
 
 # OpenAI provider SDK
 openai==2.32.0
+sentence-transformers==5.4.1
 
 # Data validation and serialization
 pydantic==2.13.1

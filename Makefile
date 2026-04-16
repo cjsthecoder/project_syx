@@ -324,39 +324,42 @@ setup-env:
 		echo "# Per-project storage cap (MB)"; \
 		echo ""; \
 		echo "# === Embeddings + Indexing ==="; \
-		echo "EMBEDDING_PROVIDER=openai"; \
-		echo "# Embedding provider selector"; \
+		echo "EMBEDDING_PROVIDER=sentence_transformers"; \
+		echo "# Embedding provider selector (openai|sentence_transformers)"; \
 		echo ""; \
 		echo "EMBEDDING_MODEL=text-embedding-3-large"; \
-		echo "# Embedding model for document indexing"; \
+		echo "# OpenAI embedding model for document indexing"; \
 		echo ""; \
-		echo "CHUNK_SIZE=800"; \
+		echo "SENTENCE_TRANSFORMERS_MODEL_ID=BAAI/bge-m3"; \
+		echo "# Local sentence-transformers model id (used when EMBEDDING_PROVIDER=sentence_transformers)"; \
+		echo ""; \
+		echo "CHUNK_SIZE=600"; \
 		echo "# Text chunk size used during embedding"; \
 		echo ""; \
-		echo "CHUNK_OVERLAP=100"; \
+		echo "CHUNK_OVERLAP=80"; \
 		echo "# Overlap between chunks during embedding"; \
 		echo ""; \
 		echo "MAX_EMBED_TOKENS_PER_REQUEST=250000"; \
 		echo "# Safety cap: max total tokens per embeddings API request (headroom under provider cap)"; \
 		echo ""; \
-		echo "RAG_EMBED_REBUILD_WORKERS=1"; \
+		echo "RAG_EMBED_REBUILD_WORKERS=3"; \
 		echo "# Parallel workers for LTM embedding during rebuild (range 1-8)"; \
 		echo ""; \
 		echo "# === RAG (Main / LTM) ==="; \
 		echo "RAG_ON_CHAT=true"; \
 		echo "# If true, inject retrieved context into chat when index exists"; \
 		echo ""; \
-		echo "BASE_TOP_K=5"; \
+		echo "BASE_TOP_K=6"; \
 		echo "# Base top-K used to derive per-source retrieval K"; \
 		echo ""; \
 		echo "RETRIEVAL_MULTIPLIER=2.0"; \
 		echo "# PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)"; \
 		echo ""; \
-		echo "RAG_SCORE_THRESHOLD=0.75"; \
+		echo "RAG_SCORE_THRESHOLD=0.50"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
 		echo "# === Daily Memory + Daily RAG ==="; \
-		echo "CHAT_HISTORY_LIMIT_PAIRS=10"; \
+		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
 		echo "# Number of prompt/response pairs kept in working memory"; \
 		echo ""; \
 		echo "DAILY_RAG_SCORE_THRESHOLD=0.70"; \
@@ -399,7 +402,7 @@ setup-env:
 		echo "VERIFY_RAG=true"; \
 		echo "# Enable post-rebuild verification"; \
 		echo ""; \
-		echo "FORCE_RAG_REBUILD_ON_STARTUP=false"; \
+		echo "FORCE_RAG_REBUILD_ON_STARTUP=true"; \
 		echo "# Optional startup sweep: rebuild all project RAG indexes from uploads"; \
 		echo ""; \
 		echo "# === Instrumentation (V5.0) ==="; \
@@ -446,7 +449,7 @@ setup-env:
 		echo "# Dream agent configuration"; \
 		echo ""; \
 		echo "# === Debug / Observability ==="; \
-		echo "GENERATE_DEBUG_FILES=false"; \
+		echo "GENERATE_DEBUG_FILES=true"; \
 		echo "# Enable debug file generation (e.g., debug_context.txt)"; \
 		echo ""; \
 		echo "VITE_SHOW_DEBUG_VALUES=false"; \

@@ -11,7 +11,7 @@ import faiss  # type: ignore
 import numpy as np  # type: ignore
 from sqlmodel import select
 
-from ..core.config import get_settings
+from ..core.config import get_settings, get_active_embedding_model
 from ..core.database import get_session
 from ..core.db_models import File as FileRow
 from ..embedding.batching import iter_token_batches
@@ -60,6 +60,7 @@ def trim_to_tokens(text: str, max_tokens: int) -> str:
 def rebuild_faiss_index(project_id: str) -> str:
     """Rebuild FAISS index for a project from uploads directory."""
     settings = get_settings()
+    active_embedding_model = get_active_embedding_model()
     memory_root = settings.memory_root
     uploads_dir = os.path.join(memory_root, project_id, "uploads")
     faiss_dir = os.path.join(memory_root, project_id, "faiss")
@@ -125,7 +126,7 @@ def rebuild_faiss_index(project_id: str) -> str:
         texts,
         metadatas=metadatas,
         max_tokens_per_batch=max_req_tokens,
-        model_name=settings.embedding_model,
+        model_name=active_embedding_model,
     ):
         if batch_metas is None:
             raise RuntimeError("RAG rebuild batching produced missing metadata.")
@@ -147,7 +148,7 @@ def rebuild_faiss_index(project_id: str) -> str:
             f"# timestamp: {embed_start_ts}\n"
             f"# project_id: {project_id}\n"
             f"# stage: embedding_start\n"
-            f"# embedding_model: {settings.embedding_model}\n"
+            f"# embedding_model: {active_embedding_model}\n"
             f"# total_batches: {int(len(prepared_batches))}\n"
             f"# workers: {int(worker_count)}\n"
             f"# max_embed_tokens_per_request: {int(max_req_tokens)}\n"
@@ -161,7 +162,7 @@ def rebuild_faiss_index(project_id: str) -> str:
         est_tokens: int,
     ) -> Dict[str, Any]:
         t0 = time.monotonic()
-        res = llm.embed(list(batch_texts), model=settings.embedding_model)
+        res = llm.embed(list(batch_texts), model=active_embedding_model)
         dt = time.monotonic() - t0
         return {
             "batch_id": int(batch_id),

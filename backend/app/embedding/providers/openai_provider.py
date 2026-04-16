@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
-from ...core.config import get_settings
+from ...core.config import get_active_embedding_model, get_settings
 from ..base import EmbedResult
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ class OpenAIEmbeddingProvider:
         rate_limit_retries: int = 10,
     ) -> EmbedResult:
         settings = get_settings()
-        use_model = model or settings.embedding_model
+        use_model = model or get_active_embedding_model()
         clean = [t if isinstance(t, str) else "" for t in (texts or [])]
         if not clean:
             return EmbedResult(vectors=[], model=str(use_model))

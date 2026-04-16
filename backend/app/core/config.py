@@ -84,6 +84,11 @@ class Settings(BaseSettings):
         gt=0,
         description="Max total tokens per embeddings API request (safety headroom under provider cap)",
     )
+    embedding_request_timeout_s: float = Field(
+        default=45.0,
+        gt=0.0,
+        description="Timeout in seconds for embedding provider HTTP requests",
+    )
     rag_embed_rebuild_workers: int = Field(
         default=1,
         ge=1,

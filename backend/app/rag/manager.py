@@ -49,6 +49,7 @@ from .manager_index_io import (
     LTM_MANIFEST_NAME as _LTM_MANIFEST_NAME,
     atomic_write_json as _atomic_write_json,
     cosine_to_01 as _cosine_to_01,
+    normalize_rows as _normalize_rows,
     safe_load_json as _safe_load_json,
 )
 

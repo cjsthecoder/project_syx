@@ -366,7 +366,20 @@ export default function App() {
     const form = new FormData()
     Array.from(selected).forEach((f) => form.append('files', f))
     try {
-      await fetch(`/projects/${projectId}/files`, { method: 'POST', body: form })
+      const res = await fetch(`/projects/${projectId}/files`, { method: 'POST', body: form })
+      if (!res.ok) {
+        const raw = await res.text().catch(() => '')
+        let detail = raw
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw)
+            detail = parsed?.error || parsed?.detail || parsed?.message || raw
+          } catch {
+            // Keep raw response text when body is not JSON.
+          }
+        }
+        throw new Error(detail || `Upload failed (HTTP ${res.status})`)
+      }
       await loadFiles(projectId)
       await loadStats(projectId)
     } catch (e: any) {

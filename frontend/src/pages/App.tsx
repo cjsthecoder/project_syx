@@ -27,6 +27,7 @@ export default function App() {
     String(import.meta.env.VITE_SHOW_DEBUG_VALUES ?? 'true').trim().toLowerCase(),
   )
   const [error, setError] = useState<string | null>(null)
+  const dismissError = useCallback(() => setError(null), [])
 
   const {
     projects,
@@ -336,7 +337,7 @@ export default function App() {
       </main>
 
       {error && (
-        <Toast message={error} onRetry={send} onClose={() => setError(null)} />
+        <Toast message={error} onClose={dismissError} />
       )}
 
       {/* Centered Analyze Dreams button above the prompt box */}

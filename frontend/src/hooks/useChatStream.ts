@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { api } from '@/pages/app/api'
+import { RequestError, throwRequestError } from '@/pages/app/request'
 import { Message } from '@/pages/app/types'
 
 type UseChatStreamArgs = {
@@ -63,12 +64,21 @@ export function useChatStream({
         body: JSON.stringify({ project_id: projectId, message: toSend, model }),
       })
       if (!res.ok || !res.body) {
-        const txt = await res.text().catch(() => '')
-        if (res.status === 423 || /sleep/i.test(txt)) {
+        let detail = ''
+        try {
+          await throwRequestError(res)
+        } catch (err) {
+          if (err instanceof RequestError) {
+            detail = err.message || ''
+          } else if (err instanceof Error) {
+            detail = err.message || ''
+          }
+        }
+        if (res.status === 423 || /sleep/i.test(detail)) {
           await checkSleeping()
           throw new Error('System is sleeping')
         }
-        throw new Error(txt || `HTTP ${res.status}`)
+        throw new Error(detail || `HTTP ${res.status}`)
       }
       const reader = res.body.getReader()
       const decoder = new TextDecoder()

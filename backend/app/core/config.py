@@ -36,7 +36,8 @@ class Settings(BaseSettings):
         "protected_namespaces": ("settings_",),
         "env_file": _ENV_FILE,
         "env_file_encoding": "utf-8",
-        "case_sensitive": False
+        "case_sensitive": False,
+        "extra": "ignore",
     }
     
     # OpenAI Configuration
@@ -55,7 +56,6 @@ class Settings(BaseSettings):
     
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Global logging level (legacy)")
-    log_format: str = Field(default="json", description="Log format (json or text)")
     log_level_console: str = Field(default="INFO", description="Console log level")
     log_level_file: str = Field(default="DEBUG", description="File log level")
     log_max_bytes: int = Field(default=10 * 1024 * 1024, description="Max bytes per log file before rotation")
@@ -124,20 +124,11 @@ class Settings(BaseSettings):
 
     # Daily RAG bridge controls (global defaults)
     chat_history_limit_pairs: int = Field(default=10, gt=0, description="Number of recent prompt/response pairs kept in working memory")
-    daily_rag_enabled: bool = Field(default=True, description="Enable daily RAG roll-off globally (per-project can override)")
     daily_rag_score_threshold: float = Field(default=0.70, ge=0.0, le=1.0, description="Similarity threshold for daily results — currently not enforced by retrieval selection")
-    daily_rag_weight: float = Field(default=1.2, gt=0.0, description="Weight multiplier applied to daily scores")
-
-    # Deduplication controls
-    dedupe_exact: bool = Field(default=True, description="Enable exact-text deduplication across daily/main snippets")
-    dedupe_near: bool = Field(default=True, description="Enable near-duplicate deduplication via cosine similarity")
-    dedupe_similarity_threshold: float = Field(default=0.98, ge=0.0, le=1.0, description="Cosine threshold for near-duplicate detection")
-    dedupe_keep_daily: bool = Field(default=True, description="Prefer keeping daily snippet on dedupe conflicts")
 
     # Builder and reranking
     builder_model: str = Field(default="gpt-5.4-mini", description="LLM used for query builder/router")
     tagger_model: str = Field(default="gpt-5.4-mini", description="LLM used for tagging")
-    builder_confidence_min: float = Field(default=0.75, ge=0.0, le=1.0, description="Minimum confidence for full retrieval")
     builder_max_tokens: int = Field(default=1024, gt=0, description="Max tokens for builder output")
     tagger_current_response_middle_cut_percent: int = Field(
         default=50,
@@ -157,9 +148,6 @@ class Settings(BaseSettings):
         description="Minimum assistant response length before center-chop is applied",
     )
     builder_cache: bool = Field(default=True, description="Enable in-memory cache for builder JSON")
-    topic_boost: float = Field(default=1.10, gt=0.0, description="Multiplicative boost for topic overlap")
-    decision_boost: float = Field(default=1.05, gt=0.0, description="Multiplicative boost for decision overlap")
-    question_boost: float = Field(default=1.02, gt=0.0, description="Multiplicative boost for open-question overlap")
 
     # Defaults and file paths
     default_system_prompt_path: str = Field(
@@ -171,8 +159,6 @@ class Settings(BaseSettings):
         description="Path to the default personality JSON file"
     )
     # Runtime/storage roots
-    data_root: str = Field(default="../data", description="Base directory for persistent application data")
-    runtime_root: str = Field(default="../runtime", description="Base directory for ephemeral runtime artifacts")
     memory_root: str = Field(default="../data/memory", description="Root directory for per-project memory artifacts")
     runs_dir: str = Field(default="../runtime/runs", description="Root directory for run artifacts")
     logs_dir: str = Field(default="../runtime/logs", description="Root directory for log files")
@@ -180,7 +166,6 @@ class Settings(BaseSettings):
     # Size caps
     system_prompt_max_bytes: int = Field(default=64 * 1024, gt=0, description="Max size of system_prompt.txt in bytes")
     personality_max_bytes: int = Field(default=8 * 1024, gt=0, description="Max size of personality.json in bytes")
-    payload_max_bytes: int = Field(default=128 * 1024, gt=0, description="Max size of combined request payload in bytes")
 
     # Sleep scheduler
     enable_scheduler: bool = Field(default=True, description="Enable sleep cycle scheduler (daily)")
@@ -208,18 +193,14 @@ class Settings(BaseSettings):
     )
     # Streaming
     streaming_enabled: bool = Field(default=True, description="Enable streaming chat endpoint")
-    stream_flush_ms: int = Field(default=50, gt=0, description="Flush cadence for streaming chunks in milliseconds")
-    stream_timeout_ms: int = Field(default=60000, gt=0, description="Overall stream timeout in milliseconds")
     # Dream orchestrator
     enable_dream: bool = Field(default=True, description="Enable Dream orchestrator")
-    max_workers: int = Field(default=1, description="Dream executor worker count (MAX_WORKERS)")
     # Dream agent configuration
     dream_model: str = Field(default="gpt-5.4", description="Dream LLM model")
     dream_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Dream LLM temperature")
     dream_max_tokens: int = Field(default=32000, gt=0, description="Max tokens for Dream LLM completion")
     dream_enable_remote_research: bool = Field(default=True, description="Enable OpenAI web_search for Dream")
     dream_remote_context_max_tokens: int = Field(default=32000, gt=0, description="Max tokens for remote context inclusion")
-    dream_topic_boost: float = Field(default=1.5, gt=0.0, description="Namespace boost used for topic hinting in RAG")
     # Debug file generation
     generate_debug_files: bool = Field(default=False, description="V4.1.3.1: Enable writing debug files (e.g., debug_context.txt)")
     # Frontend-only Vite flags may live in the same .env; keep backend parsing tolerant.

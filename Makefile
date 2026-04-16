@@ -100,7 +100,7 @@ copy-static:
 run: build
 	@echo "🚀 Starting Syx server..."
 	@echo "   Frontend: http://localhost:8000"
-	@echo "   API Docs: http://localhost:8000/docs"
+	@echo "   API Docs: http://localhost:8000/api/docs"
 	@echo "   Health:   http://localhost:8000/health"
 	@echo ""
 	@if [ -z "$$VIRTUAL_ENV" ]; then \
@@ -248,7 +248,7 @@ setup-env:
 		echo "# Edit values as needed. Comments are placed after each variable to avoid parser conflicts."; \
 		echo ""; \
 		echo "# === Core: OpenAI + Chat Model ==="; \
-		echo "OPENAI_API_KEY=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"; \
+		echo "OPENAI_API_KEY=your-openai-api-key-here"; \
 		echo "# OpenAI API key used for chat and embeddings"; \
 		echo ""; \
 		echo "LLM_PROVIDER=openai"; \
@@ -266,7 +266,7 @@ setup-env:
 		echo "MODEL_TEMPERATURE=1.0"; \
 		echo "# Sampling temperature (0.0–2.0)"; \
 		echo ""; \
-		echo "MODEL_MAX_TOKENS=128000"; \
+		echo "MODEL_MAX_TOKENS=32000"; \
 		echo "# Max tokens in a single model response"; \
 		echo ""; \
 		echo "AVAILABLE_MODELS=[\"gpt-5.4\",\"gpt-5.4-mini\",\"gpt-5.4-nano\",\"gpt-5.2\",\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
@@ -289,9 +289,6 @@ setup-env:
 		echo "LOG_LEVEL=INFO"; \
 		echo "# Log level (DEBUG, INFO, WARNING, ERROR)"; \
 		echo ""; \
-		echo "LOG_FORMAT=json"; \
-		echo "# Log format: json or text"; \
-		echo ""; \
 		echo "LOG_LEVEL_CONSOLE=INFO"; \
 		echo "# Console log level (DEBUG, INFO, WARNING, ERROR)"; \
 		echo ""; \
@@ -311,8 +308,6 @@ setup-env:
 		echo "DB_PATH=../data/db/syx.db"; \
 		echo "# SQLite database file path (or full URL like sqlite:///...)"; \
 		echo ""; \
-		echo "DATA_ROOT=../data"; \
-		echo "RUNTIME_ROOT=../runtime"; \
 		echo "MEMORY_ROOT=../data/memory"; \
 		echo "RUNS_DIR=../runtime/runs"; \
 		echo "LOGS_DIR=../runtime/logs"; \
@@ -335,56 +330,37 @@ setup-env:
 		echo "EMBEDDING_MODEL=text-embedding-3-large"; \
 		echo "# Embedding model for document indexing"; \
 		echo ""; \
-		echo "CHUNK_SIZE=600"; \
+		echo "CHUNK_SIZE=800"; \
 		echo "# Text chunk size used during embedding"; \
 		echo ""; \
-		echo "CHUNK_OVERLAP=80"; \
+		echo "CHUNK_OVERLAP=100"; \
 		echo "# Overlap between chunks during embedding"; \
 		echo ""; \
-		echo "MAX_EMBED_TOKENS_PER_REQUEST=180000"; \
+		echo "MAX_EMBED_TOKENS_PER_REQUEST=250000"; \
 		echo "# Safety cap: max total tokens per embeddings API request (headroom under provider cap)"; \
 		echo ""; \
-		echo "RAG_EMBED_REBUILD_WORKERS=3"; \
-		echo "# Parallel workers for LTM embedding during rebuild (range 1-8; default code fallback is 1)"; \
+		echo "RAG_EMBED_REBUILD_WORKERS=1"; \
+		echo "# Parallel workers for LTM embedding during rebuild (range 1-8)"; \
 		echo ""; \
 		echo "# === RAG (Main / LTM) ==="; \
 		echo "RAG_ON_CHAT=true"; \
 		echo "# If true, inject retrieved context into chat when index exists"; \
 		echo ""; \
-		echo "BASE_TOP_K=6"; \
+		echo "BASE_TOP_K=5"; \
 		echo "# Base top-K used to derive per-source retrieval K"; \
 		echo ""; \
 		echo "RETRIEVAL_MULTIPLIER=2.0"; \
 		echo "# PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)"; \
 		echo ""; \
-		echo "RAG_SCORE_THRESHOLD=0.5"; \
+		echo "RAG_SCORE_THRESHOLD=0.75"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
 		echo "# === Daily Memory + Daily RAG ==="; \
-		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
-		echo "# Number of prompt/response pairs kept in working memory:: 10 is working well"; \
+		echo "CHAT_HISTORY_LIMIT_PAIRS=10"; \
+		echo "# Number of prompt/response pairs kept in working memory"; \
 		echo ""; \
-		echo "DAILY_RAG_ENABLED=true"; \
-		echo "# Global default toggle; per-project override via UI"; \
-		echo ""; \
-		echo "DAILY_RAG_SCORE_THRESHOLD=0.40"; \
+		echo "DAILY_RAG_SCORE_THRESHOLD=0.70"; \
 		echo "# Similarity threshold for daily results"; \
-		echo ""; \
-		echo "DAILY_RAG_WEIGHT=1.2"; \
-		echo "# Weight multiplier for daily scores before merging"; \
-		echo ""; \
-		echo "# === Deduplication (Daily + Main) ==="; \
-		echo "DEDUPE_EXACT=true"; \
-		echo "# Remove exact-text duplicates across daily/main"; \
-		echo ""; \
-		echo "DEDUPE_NEAR=true"; \
-		echo "# Remove near-duplicates by similarity"; \
-		echo ""; \
-		echo "DEDUPE_SIMILARITY_THRESHOLD=0.98"; \
-		echo "# Cosine threshold for near-duplicate detection"; \
-		echo ""; \
-		echo "DEDUPE_KEEP_DAILY=true"; \
-		echo "# Prefer keeping the daily hit on dedupe"; \
 		echo ""; \
 		echo "# === Query Builder + Reranking ==="; \
 		echo "BUILDER_MODEL=gpt-5.4-mini"; \
@@ -393,34 +369,22 @@ setup-env:
 		echo "TAGGER_MODEL=gpt-5.4-mini"; \
 		echo "# LLM used for tagging"; \
 		echo ""; \
-		echo "BUILDER_CONFIDENCE_MIN=0.75"; \
-		echo "# Confidence threshold for full retrieval"; \
-		echo ""; \
 		echo "BUILDER_MAX_TOKENS=1024"; \
 		echo "# Max tokens for builder output"; \
 		echo ""; \
 		echo "BUILDER_CACHE=true"; \
 		echo "# Enable in-memory builder cache"; \
 		echo ""; \
-		echo "TOPIC_BOOST=1.10"; \
-		echo "# Multiplicative boost for topic overlap"; \
-		echo ""; \
-		echo "DECISION_BOOST=1.05"; \
-		echo "# Multiplicative boost for decision overlap"; \
-		echo ""; \
-		echo "QUESTION_BOOST=1.02"; \
-		echo "# Multiplicative boost for open-question overlap"; \
-		echo ""; \
 		echo "# === Working Memory ==="; \
 		echo "CHAT_HISTORY_LIMIT=20"; \
 		echo "# Number of recent messages kept per project in working memory"; \
 		echo ""; \
 		echo "# === Project Defaults (seeded files) ==="; \
-		echo "DEFAULT_SYSTEM_PROMPT_PATH=app/config/defaults/system_prompt.txt"; \
-		echo "# Default system prompt file path (relative to backend/ cwd)"; \
+		echo "DEFAULT_SYSTEM_PROMPT_PATH=backend/app/config/defaults/system_prompt.txt"; \
+		echo "# Default system prompt file path"; \
 		echo ""; \
-		echo "DEFAULT_PERSONALITY_PROMPT_PATH=app/config/defaults/personality.json"; \
-		echo "# Default personality JSON file path (relative to backend/ cwd)"; \
+		echo "DEFAULT_PERSONALITY_PROMPT_PATH=backend/app/config/defaults/personality.json"; \
+		echo "# Default personality JSON file path"; \
 		echo ""; \
 		echo "# === Sleep Cycle + Verification ==="; \
 		echo "ENABLE_SCHEDULER=true"; \
@@ -435,7 +399,7 @@ setup-env:
 		echo "VERIFY_RAG=true"; \
 		echo "# Enable post-rebuild verification"; \
 		echo ""; \
-		echo "FORCE_RAG_REBUILD_ON_STARTUP=true"; \
+		echo "FORCE_RAG_REBUILD_ON_STARTUP=false"; \
 		echo "# Optional startup sweep: rebuild all project RAG indexes from uploads"; \
 		echo ""; \
 		echo "# === Instrumentation (V5.0) ==="; \
@@ -445,8 +409,8 @@ setup-env:
 		echo "INSTRUMENTATION_MODE=metrics"; \
 		echo "# metrics|research (research permits artifact capture)"; \
 		echo ""; \
-		echo "INSTRUMENTATION_RUN_ID=test_run"; \
-		echo "# Optional run id override; when set, all turns use this run id"; \
+		echo "# INSTRUMENTATION_RUN_ID=<optional-run-id>"; \
+		echo "# Optional run id override; leave commented to use runtime-generated ids"; \
 		echo ""; \
 		echo "INSTRUMENTATION_RUNS_DIR=../runtime/runs"; \
 		echo "# Root folder for instrumentation outputs"; \
@@ -461,12 +425,6 @@ setup-env:
 		echo "STREAMING_ENABLED=true"; \
 		echo "# Enable streaming chat endpoint"; \
 		echo ""; \
-		echo "STREAM_FLUSH_MS=50"; \
-		echo "# Flush cadence for streaming chunks (ms)"; \
-		echo ""; \
-		echo "STREAM_TIMEOUT_MS=60000"; \
-		echo "# Overall stream timeout (ms)"; \
-		echo ""; \
 		echo "TAGGER_CURRENT_RESPONSE_MIDDLE_CUT_PERCENT=50"; \
 		echo "# Tagger prompt optimization: percent removed from center of current assistant text (range: 10-90, int)"; \
 		echo ""; \
@@ -480,19 +438,15 @@ setup-env:
 		echo "ENABLE_DREAM=true"; \
 		echo "# Enable Dream orchestrator"; \
 		echo ""; \
-		echo "MAX_WORKERS=1"; \
-		echo "# Dream executor workers"; \
-		echo ""; \
 		echo "DREAM_MODEL=gpt-5.4"; \
 		echo "DREAM_TEMPERATURE=1.0"; \
 		echo "DREAM_MAX_TOKENS=32000"; \
 		echo "DREAM_ENABLE_REMOTE_RESEARCH=true"; \
 		echo "DREAM_REMOTE_CONTEXT_MAX_TOKENS=32000"; \
-		echo "DREAM_TOPIC_BOOST=1.5"; \
 		echo "# Dream agent configuration"; \
 		echo ""; \
 		echo "# === Debug / Observability ==="; \
-		echo "GENERATE_DEBUG_FILES=true"; \
+		echo "GENERATE_DEBUG_FILES=false"; \
 		echo "# Enable debug file generation (e.g., debug_context.txt)"; \
 		echo ""; \
 		echo "VITE_SHOW_DEBUG_VALUES=false"; \

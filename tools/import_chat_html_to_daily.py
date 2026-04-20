@@ -11,7 +11,7 @@ Behavior:
   - pair USER with the next ASSISTANT
   - skip orphan ASSISTANT turns
   - replace unanswered USER with newer USER
-- Tag each pair via backend.app.core.tagger.tag_pair().
+- Tag each pair via backend.app.tagging.tagger.tag_pair().
 - Write <output_dir>/<input_root>.txt in daily.txt-compatible format:
   - BEGIN DAILY MEMORY header
   - BEGIN/END DAILY PAIR blocks
@@ -55,6 +55,9 @@ def _ensure_import_paths() -> None:
         sys.path.insert(0, str(repo_root))
 
 
+def _repo_root_from_this_file() -> Path:
+    return Path(__file__).resolve().parent.parent
+
 def _require_dependencies() -> tuple[Any, Any]:
     try:
         from bs4 import BeautifulSoup  # type: ignore
@@ -73,14 +76,13 @@ def _require_dependencies() -> tuple[Any, Any]:
 
 def _require_tagger() -> Any:
     try:
-        from backend.app.core.tagger import tag_pair  # type: ignore
+        from backend.app.tagging.tagger import tag_pair  # type: ignore
     except Exception as exc:
         raise RuntimeError(
-            "Failed importing backend.app.core.tagger.tag_pair. "
+            "Failed importing backend.app.tagging.tagger.tag_pair. "
             "Run from repository context with backend dependencies configured."
         ) from exc
     return tag_pair
-
 
 def _estimate_tokens(text: str, enc: Any) -> int:
     return len(enc.encode(str(text or "")))

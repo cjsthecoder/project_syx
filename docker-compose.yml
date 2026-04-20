@@ -11,6 +11,8 @@ services:
     container_name: syx
     ports:
       - "8000:8000"
+    environment:
+      - TZ=America/New_York
     volumes:
       # Option B: mount .env into container (read-only)
       - ./.env:/app/.env:ro

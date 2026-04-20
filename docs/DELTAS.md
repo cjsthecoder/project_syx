@@ -1,5 +1,45 @@
 # Engineering Deltas
 
+## DELTA-F — Provider Factories (LLM + Embeddings)
+
+### Intent
+
+Replace framework-coupled runtime calls with internal provider factories so model/embedding behavior is selected by configuration instead of direct third-party integration paths.
+
+### Status
+
+Implemented
+
+### Affected Requirements
+
+* FR-003 — LLM Provider Factory Integration
+* TR-003 — LLM Provider Interface
+* FR-007 — File Upload and RAG Initialization
+* TR-004 — Configuration
+
+### Change
+
+* Removed LangChain as a required runtime abstraction for chat and embeddings.
+* Standardized chat/model invocation through `backend.app.llm_model.factory`:
+  * `get_llm_client()`
+  * `get_llm_client_mini()`
+* Standardized embedding invocation through `backend.app.embedding.factory`:
+  * `get_embedding_client()`
+* Introduced provider-selectable configuration keys:
+  * `LLM_PROVIDER`
+  * `LLM_MAIN_MODEL`
+  * `LLM_MINI_MODEL`
+  * `EMBEDDING_PROVIDER`
+  * `SENTENCE_TRANSFORMERS_MODEL_ID`
+
+### New Invariants
+
+* Runtime LLM calls must resolve through `llm_model.factory`, not direct framework adapters.
+* Runtime embedding calls must resolve through `embedding.factory`, not direct framework adapters.
+* Provider/model swaps are configuration-driven and do not require endpoint-level refactors.
+
+---
+
 ## DELTA-A — Unified Daily and LTM Retrieval Pipeline
 
 ### Intent

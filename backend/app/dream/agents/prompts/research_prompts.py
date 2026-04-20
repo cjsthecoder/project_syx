@@ -7,8 +7,6 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
-
-
 def build_research_prompt(
     project_summary_text: str,
     origin_text: str,

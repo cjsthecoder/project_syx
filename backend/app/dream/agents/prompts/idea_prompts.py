@@ -7,8 +7,6 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
-
-
 def build_idea_prompt(dream_context: str) -> str:
     """
     Build the Idea Agent prompt with the provided dream context.

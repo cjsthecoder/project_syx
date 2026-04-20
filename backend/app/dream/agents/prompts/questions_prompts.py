@@ -7,8 +7,6 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
-
-
 def build_answer_question_prompt_local(question: str, topic: str, local_context: str) -> str:
     return f"""You are an assistant that answers a single question using only the information provided below.
 Your task is to write a direct and helpful answer.

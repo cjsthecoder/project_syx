@@ -248,7 +248,7 @@ setup-env:
 		echo "# Edit values as needed. Comments are placed after each variable to avoid parser conflicts."; \
 		echo ""; \
 		echo "# === Core: OpenAI + Chat Model ==="; \
-		echo "OPENAI_API_KEY=your-openai-api-key-here"; \
+		echo "#OPENAI_API_KEY=your-openai-api-key-here"; \
 		echo "# OpenAI API key used for chat and embeddings"; \
 		echo ""; \
 		echo "LLM_PROVIDER=openai"; \
@@ -266,7 +266,7 @@ setup-env:
 		echo "MODEL_TEMPERATURE=1.0"; \
 		echo "# Sampling temperature (0.0–2.0)"; \
 		echo ""; \
-		echo "MODEL_MAX_TOKENS=32000"; \
+		echo "MODEL_MAX_TOKENS=128000"; \
 		echo "# Max tokens in a single model response"; \
 		echo ""; \
 		echo "AVAILABLE_MODELS=[\"gpt-5.4\",\"gpt-5.4-mini\",\"gpt-5.4-nano\",\"gpt-5.2\",\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
@@ -339,7 +339,7 @@ setup-env:
 		echo "CHUNK_OVERLAP=80"; \
 		echo "# Overlap between chunks during embedding"; \
 		echo ""; \
-		echo "MAX_EMBED_TOKENS_PER_REQUEST=250000"; \
+		echo "MAX_EMBED_TOKENS_PER_REQUEST=180000"; \
 		echo "# Safety cap: max total tokens per embeddings API request (headroom under provider cap)"; \
 		echo ""; \
 		echo "RAG_EMBED_REBUILD_WORKERS=3"; \
@@ -362,7 +362,7 @@ setup-env:
 		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
 		echo "# Number of prompt/response pairs kept in working memory"; \
 		echo ""; \
-		echo "DAILY_RAG_SCORE_THRESHOLD=0.70"; \
+		echo "DAILY_RAG_SCORE_THRESHOLD=0.40"; \
 		echo "# Similarity threshold for daily results"; \
 		echo ""; \
 		echo "# === Query Builder + Reranking ==="; \

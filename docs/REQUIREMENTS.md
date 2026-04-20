@@ -1,12 +1,13 @@
 # Syx
 
 ## Project Overview
-Syx is a modular system that provides a web-based chat interface backed by a FastAPI server and LangChain for LLM integration.  
+Syx is a modular system that provides a web-based chat interface backed by a FastAPI server and provider-based LLM/embedding factories.  
 
 **Version 1 Goal:** Establish a working chatbot with a GUI and stable backend interfaces that can be extended later with RAG, memory pruning, and multi-project support.  
 **Version 2 Goal:** Add persistent Project Management, File Upload + RAG initialization, and dynamic Model Selection.
 **Version 3 Goal:** Implement autonomous long-term memory consolidation through a nightly Sleep Cycle that prunes, summarizes, and rebuilds each project’s RAG automatically. This release transforms Syx from a reactive chat system into one that learns and maintains knowledge over time, preparing the foundation for Dreaming (creative synthesis) in version 4.
 **Version 4 Goal:** Introduce the Dream Cycle as a post Sleep reasoning phase capable of autonomously analyzing the nightly memory summary and generating structured insight outputs. Version 4 establishes the Dream Orchestrator, the Dream Agent framework, and the first Dream function: extracting all open questions into a unified artifact. This transforms Syx from a system that only consolidates memory into one that begins to interpret, organize, and act on unresolved knowledge gaps during nightly maintenance.
+**Version 5 Goal:** Introduces Instrumentation as a first-class telemetry layer for Syx. Instrumentation collects structured, end to end metrics across the multi-module pipeline, including interactive chat turns and internal helper model calls. Its purpose is to generate defensible evidence for token usage and latency behavior over time, and to support profiling and optimization without changing core routing, retrieval, or memory logic.
 
 ---
 
@@ -33,18 +34,18 @@ Establish a working chatbot with a web UI and stable backend interfaces, laying 
 **Priority:** High  
 - **Requirement:** Backend endpoint for handling user messages.  
 - **Implementation:** FastAPI `/chat` route.  
-- **Flow:** Receive message → Forward to LangChain LLM → Return response.  
+- **Flow:** Receive message → Forward to LLM provider selected by `llm_model.factory` → Return response.  
 - **Validation:** Must return a valid response for every valid request.  
-- **Success Criteria:** End-to-end chat works (UI → FastAPI → LangChain → UI).
+- **Success Criteria:** End-to-end chat works (UI → FastAPI → LLM factory/provider → UI).
 
 ---
 
-#### 3. LangChain Integration (FR-003)
+#### 3. LLM Provider Factory Integration (FR-003)
 **Priority:** High  
-- **Requirement:** Use LangChain as the abstraction layer for LLM providers.  
+- **Requirement:** Use the internal provider factory (`backend.app.llm_model.factory`) as the abstraction layer for LLM providers.  
 - **Default Provider:** OpenAI GPT-5.  
 - **Future Proofing:** Should support Anthropic, LLaMA, etc. with minimal change.  
-- **Success Criteria:** Responses are generated via LangChain `ChatOpenAI` interface.
+- **Success Criteria:** Responses are generated via provider-selected clients exposed by `get_llm_client()` / `get_llm_client_mini()`.
 
 ---
 
@@ -68,7 +69,7 @@ Establish a working chatbot with a web UI and stable backend interfaces, laying 
 ---
 
 ### Acceptance Criteria
-- End-to-end chat works between UI and FastAPI via LangChain.
+- End-to-end chat works between UI and FastAPI via the provider factory layer.
 - Stub endpoints respond with placeholders and are invokable from the UI.
 - Requests accept `project_id` to establish future project context.
 
@@ -96,7 +97,7 @@ Establish a working chatbot with a web UI and stable backend interfaces, laying 
 
 ### 3. LLM Provider (TR-003)
 **Priority:** High  
-- **Interface:** LangChain `ChatOpenAI` (default OpenAI GPT-5).  
+- **Interface:** `backend.app.llm_model.factory` + provider implementation (default OpenAI provider).  
 - **Flexibility:** Must support provider swap by config, not refactor.  
 - **Success Criteria:** Swapping OpenAI → Anthropic requires minimal changes.
 
@@ -106,16 +107,21 @@ Establish a working chatbot with a web UI and stable backend interfaces, laying 
 **Priority:** High  
 - **Env Variables:**
   - `OPENAI_API_KEY` (required)
-  - `MODEL_NAME` (default: `gpt-5`)
+  - `LLM_PROVIDER` (default: `openai`)
+  - `MODEL_NAME` (legacy key; default: `gpt-5.4`)
+  - `LLM_MAIN_MODEL` (default: `gpt-5.4`)
+  - `LLM_MINI_MODEL` (default: `gpt-5.4-mini`)
   - `MODEL_TEMPERATURE` (default: `1.0`)
-  - `MODEL_MAX_TOKENS` (default: `32000`)
+  - `MODEL_MAX_TOKENS` (default: `128000`)
   - `DB_PATH` (e.g., `backend/app/data/syx.db`)
   - `MAX_UPLOAD_MB` (per-file limit; default `10`)
   - `MAX_BATCH_MB` (per-request batch limit; default `50`)
   - `STORAGE_LIMIT_MB` (per-project storage cap; default `500`)
+  - `EMBEDDING_PROVIDER` (default: `openai`)
   - `EMBEDDING_MODEL` (default: `text-embedding-3-large`)
-  - `CHUNK_SIZE` (default: `800`)
-  - `CHUNK_OVERLAP` (default: `100`)
+  - `SENTENCE_TRANSFORMERS_MODEL_ID` (default: `BAAI/bge-m3`)
+  - `CHUNK_SIZE` (default: `600`)
+  - `CHUNK_OVERLAP` (default: `80`)
 - **Success Criteria:** No API key leakage, flexible configuration per environment.
 
 ---
@@ -191,7 +197,7 @@ These upgrades make Syx a multi-project, persistent knowledge system.
 - Upload documents to embed and index in each project’s FAISS store.  
 - **Flow:**
   1. Upload → save to `memory/{project_id}/uploads/`.  
-  2. Process synchronously and embed via LangChain.  
+  2. Process synchronously and embed via the embedding provider factory (`backend.app.embedding.factory`).  
   3. Store vectors in FAISS index at `memory/{project_id}/faiss/`.  
 - **Formats:** `.txt`, `.md`, `.pdf`.  
 - **Success Criteria:** Uploaded content retrievable via future `/query_rag`.
@@ -446,7 +452,7 @@ On /chat:
 
 Insert the user message into DB.
 
-Generate assistant response via LangChain → OpenAI.
+Generate assistant response via `llm_model.factory` → provider-selected client (default OpenAI).
 
 Insert assistant message into DB.
 
@@ -499,8 +505,8 @@ Example:
 {
 "project_id": "proj_20251008_001",
 "messages": [
-{ "role": "user", "content": "What is LangChain?", "created_at": "2025-10-08T10:00:00Z" },
-{ "role": "assistant", "content": "LangChain is a framework for LLM apps.", "created_at": "2025-10-08T10:00:01Z" }
+{ "role": "user", "content": "What model is active for this project?", "created_at": "2025-10-08T10:00:00Z" },
+{ "role": "assistant", "content": "The active model comes from the configured LLM provider/model settings.", "created_at": "2025-10-08T10:00:01Z" }
 ]
 }
 
@@ -1707,7 +1713,7 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
 
 ## Dream LLM and Research Abstraction
 
-* Dream must not use the existing LangChain based `llm.py`.
+* Dream must use the Dream-specific OpenAI Responses wrapper and must not depend on legacy generic LLM wrappers.
 * Create `backend/app/core/dream_llm.py`:
 
   * Thin wrapper over the OpenAI Responses API.
@@ -1987,7 +1993,7 @@ The final block is a single concatenated string.
 
 * All RAG calls are read only.
 
-* Summaries use the OpenAI Responses API, not LangChain.
+* Summaries use the OpenAI Responses API through the project's provider abstractions.
 
 * Missing components are allowed but must produce warnings.
 

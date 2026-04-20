@@ -43,8 +43,13 @@ Establish a working chatbot with a web UI and stable backend interfaces, laying 
 #### 3. LLM Provider Factory Integration (FR-003)
 **Priority:** High  
 - **Requirement:** Use the internal provider factory (`backend.app.llm_model.factory`) as the abstraction layer for LLM providers.  
+- **Factory Functions (authoritative entry points):**
+  - `get_llm_client()` — primary chat/reasoning client.
+  - `get_llm_client_mini()` — secondary/lightweight client for helper calls.
 - **Default Provider:** OpenAI GPT-5.  
 - **Future Proofing:** Should support Anthropic, LLaMA, etc. with minimal change.  
+- **Invariant:** Runtime LLM calls MUST resolve through `llm_model.factory`; request-path modules MUST NOT instantiate provider SDK clients directly.
+- **Invariant:** Provider/model swaps are configuration-driven (`LLM_PROVIDER`, `LLM_MAIN_MODEL`, `LLM_MINI_MODEL`) and MUST NOT require endpoint-level refactors.
 - **Success Criteria:** Responses are generated via provider-selected clients exposed by `get_llm_client()` / `get_llm_client_mini()`.
 
 ---
@@ -98,8 +103,10 @@ Establish a working chatbot with a web UI and stable backend interfaces, laying 
 ### 3. LLM Provider (TR-003)
 **Priority:** High  
 - **Interface:** `backend.app.llm_model.factory` + provider implementation (default OpenAI provider).  
+- **Entry Points:** `get_llm_client()` (main) and `get_llm_client_mini()` (mini); all runtime LLM usage routes through these.
 - **Flexibility:** Must support provider swap by config, not refactor.  
-- **Success Criteria:** Swapping OpenAI → Anthropic requires minimal changes.
+- **Invariant:** Runtime LLM calls MUST resolve through `llm_model.factory`, not direct third-party SDK imports or framework adapters in request-path modules.
+- **Success Criteria:** Swapping OpenAI → Anthropic requires configuration changes only.
 
 ---
 
@@ -122,6 +129,7 @@ Establish a working chatbot with a web UI and stable backend interfaces, laying 
   - `SENTENCE_TRANSFORMERS_MODEL_ID` (default: `BAAI/bge-m3`)
   - `CHUNK_SIZE` (default: `600`)
   - `CHUNK_OVERLAP` (default: `80`)
+- **Invariant:** Provider/model selection for both LLM (`LLM_PROVIDER`, `LLM_MAIN_MODEL`, `LLM_MINI_MODEL`) and embeddings (`EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `SENTENCE_TRANSFORMERS_MODEL_ID`) is driven entirely by the above environment keys; swaps MUST NOT require endpoint-level refactors.
 - **Success Criteria:** No API key leakage, flexible configuration per environment.
 
 ---
@@ -197,15 +205,19 @@ These upgrades make Syx a multi-project, persistent knowledge system.
 - Upload documents to embed and index in each project’s FAISS store.  
 - **Flow:**
   1. Upload → save to `memory/{project_id}/uploads/`.  
-  2. Process synchronously and embed via the embedding provider factory (`backend.app.embedding.factory`).  
+  2. Process synchronously and embed via the embedding provider factory (`backend.app.embedding.factory`, entry point `get_embedding_client()`).  
   3. Store vectors in FAISS index at `memory/{project_id}/faiss/`.  
 - **Formats:** `.txt`, `.md`, `.pdf`.  
+- **Invariant:** Runtime embedding calls MUST resolve through `embedding.factory`; request-path modules MUST NOT instantiate embedding provider SDK clients directly.
+- **Invariant:** Embedding provider/model swaps are configuration-driven (`EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `SENTENCE_TRANSFORMERS_MODEL_ID`) and MUST NOT require endpoint-level refactors.
 - **Success Criteria:** Uploaded content retrievable via future `/query_rag`.
 
 - **Embedding & RAG Policy (V2):**
   - Embedding model: `text-embedding-3-large` (3072D)
   - Chunking: size `800`, overlap `100` using `RecursiveCharacterTextSplitter`
-  - Metadata per chunk: `project_id`, `filename`, `page_number`, `chunk_id`, `timestamp`
+  - Metadata per chunk: `project_id`, `filename`, `page_number`, `chunk_id`, `timestamp`, `doc_id`, `chunk_seq`
+    - `doc_id` identifies the source document for adjacency purposes (for PDFs: `(filename, page_number)`; for other formats: `filename`). Required for FR-2.3-3.4.1 compliance.
+    - `chunk_seq` is a monotonic, gap-free integer sequence within a `doc_id`, enabling O(1) adjacency resolution (`prev = chunk_seq - 1`, `next = chunk_seq + 1`). Required for FR-2.3-3.4.1 compliance.
   - Reindex behavior: recreate FAISS index on each upload for consistency
   - PDF parsing: `pypdf`
 
@@ -388,17 +400,16 @@ The backend must validate that a project is selected for all file actions.
 #### RAG on Chat
 - Enabled only when the active project's index exists with ≥1 vector; otherwise disabled
 - Fallback: if no project selected, use Continuum for RAG
-- Threshold: only include snippets with similarity ≥ `RAG_SCORE_THRESHOLD`
-- Injection: prepend a single system message with a "Context:" block containing concatenated snippets, separated clearly; cap the context block at `RAG_CONTEXT_MAX_TOKENS`
-- If no snippet meets threshold, proceed without RAG
+- Retrieval runs through the unified RAG pipeline (FR-2.3-3); per-source K, retained count, and adjacency expansion come from `route_policy.json` (FR-2.3-3.3). No similarity threshold is applied in V2.5+; ranking is purely score-based (FR-2.3-3.2) and bounded by `max_keep` (FR-2.3-3.3).
+- Injection: prepend a single system message with a "Context:" block containing concatenated snippet groups (FR-2.3-3.4.3 pass 5), separated clearly; cap the context block at `RAG_CONTEXT_MAX_TOKENS`.
+- If retrieval returns zero candidates, proceed without RAG
 - Do not index chat transcripts in V2.1
 
 Env controls:
 - `RAG_ON_CHAT=true`
-- `RAG_TOP_K=5`
+- `BASE_TOP_K=5`
 - `RAG_SNIPPET_MAX_TOKENS=500`
 - `RAG_CONTEXT_MAX_TOKENS=5000`
-- `RAG_SCORE_THRESHOLD=0.75`
 
 #### Endpoints (Shapes)
 - `POST /projects` → returns: `id`, `name`, `description`, `created_at`, `updated_at`, `storage_bytes` (0), `token_count` (0), `file_count` (0)
@@ -575,12 +586,12 @@ Maintain an in-memory deque of the most recent N prompt/response pairs.
   - On startup/load, if a trailing unpaired user message exists, delete it
   - If an orphan assistant message is detected, delete it as well (rare)
 
-#### FR-2.3.2 — Incremental Embedding → Daily FAISS
-Append embeddings to a single FAISS file per project: `memory/{project_id}/daily.faiss`.
+#### FR-2.3.2 — Incremental Embedding → Daily FAISS (In-Memory Cache)
+Each project maintains a single Daily FAISS index as an **in-memory cache** rebuilt from `memory/{project_id}/daily.json`. The Daily FAISS index is not persisted to disk; the legacy directory `memory/{project_id}/daily_faiss/` is deprecated and MUST NOT be written going forward (no cleanup required for any pre-existing contents).
 
-- Do not rebuild the index each time; use incremental adds
-- Embed each rolled-off prompt/response pair as a single chunk (do not apply file `CHUNK_SIZE`/`CHUNK_OVERLAP`); use the same `EMBEDDING_MODEL`
-- Maintain a companion metadata file `memory/{project_id}/daily.json` with one entry per embedded pair using this schema:
+- **Authoritative store:** `memory/{project_id}/daily.json` is the sole authoritative persistent store for Daily memory. Daily FAISS data may be discarded and rebuilt at any time without data loss.
+- **Incremental adds:** Embed each rolled-off prompt/response pair as a single chunk (do not apply file `CHUNK_SIZE`/`CHUNK_OVERLAP`); use the currently configured `EMBEDDING_MODEL`. Append the new vector to the in-memory index and append the corresponding metadata entry to `daily.json`.
+- **Daily metadata schema:** Maintain one entry per embedded pair in `daily.json` using:
   {
     "id": "<uuid or sequential int>",
     "project_id": "<project_name_or_uuid>",
@@ -596,23 +607,284 @@ Append embeddings to a single FAISS file per project: `memory/{project_id}/daily
     "tags": ["rolled_off"],
     "day_sequence": <integer incrementing for chronological ordering>
   }
-- Write strategy: persist after each add and use lightweight file locking to prevent concurrent write corruption
-- Embedding model changes: if `EMBEDDING_MODEL` changes, drop `daily.faiss` and `daily.json` and start fresh (main index remains)
-- Corruption recovery: if FAISS or metadata is corrupt, reset both and log an error
-- Failure path: if embedding/index write fails, log error, drop the pair from memory, delete its two DB rows, and do not retry
+- **Write strategy:** Per-append FAISS load/save is removed. Persist only the `daily.json` update after each add, serialized with `daily.lock` to prevent concurrent write corruption to `daily.json`. No file locking is required for the in-memory index.
+- **Cache warming (lazy, per project):** The in-memory Daily FAISS index for a project is warmed on the first project-scoped request observed for that project after startup (i.e., "project selected" ≈ first request using `project_id`). A single in-memory FAISS index is maintained per project during runtime.
+- **Rebuild triggers:** Rebuild the in-memory Daily FAISS index from `daily.json` when any of the following occurs:
+  - The in-memory cache is not present yet for that project.
+  - The runtime `EMBEDDING_MODEL` differs from the `embedding_model` recorded in `daily.json`.
+  - An exception occurs during daily search/add operations.
+  - The in-memory index appears corrupted or incompatible (e.g., dimension mismatch).
+- **Embedding model change:** On rebuild triggered by `EMBEDDING_MODEL` change:
+  - Do NOT delete `daily.json`.
+  - Re-embed from `daily.json` and update each entry's `embedding_model` field to the new model.
+  - The main index is unaffected.
+- **Rebuild during an operation:** If a rebuild trigger fires during an active operation (retrieve/add), rebuild the cache but return empty/error for that request; do not automatically retry the operation.
+- **Sleep interaction:** On sleep merge cleanup, clear the in-memory Daily cache for the project being merged. Other sleep cleanup behaviors remain unchanged.
+- **Failure path (embedding/index write):** If embedding/index add fails, log error, drop the pair from memory, delete its two DB rows, and do not retry.
 
-#### FR-2.3-3 — Retrieval Flow
-On every `/chat` call:
+#### FR-2.3-3 — Unified RAG Retrieval Pipeline
+On every `/chat` call, retrieval is performed by a single canonical pipeline that is applied uniformly to Daily and LTM (main project FAISS) sources. The pipeline has four ordered stages:
 
-- Retrieve K results from `daily.faiss` using `DAILY_RAG_K` and threshold `DAILY_RAG_SCORE_THRESHOLD`
-- Retrieve K results from main project RAG using `RAG_TOP_K` and threshold `RAG_SCORE_THRESHOLD`
-- Weight daily results by `DAILY_RAG_WEIGHT` (score' = score × weight) and merge by weighted score
-- De-duplicate results according to env flags (see FR-2.3-5)
-- Token budgeting: fill up to `DAILY_RAG_MAX_TOKENS` from daily first, then fill the remaining global `RAG_CONTEXT_MAX_TOKENS` from main
-- Context assembly: label sections explicitly and order as:
-  - Daily:
-  - Main:
-- Inject the combined Context block as a single system message before user input
+1. Canonical Retrieval Entry Point — FR-2.3-3.1
+2. Deterministic Score Ordering — FR-2.3-3.2
+3. Policy-Driven Selection & Pruning — FR-2.3-3.3
+4. Rehydration & Chunk Expansion — FR-2.3-3.4 (materialization → identity dedup → per-source ordering → boundary overlap trimming → snippet-group collapse)
+
+Policy inputs come from the system-wide `route_policy.json` (see FR-2.3-3.3) and the environment (see FR-2.3.5). The builder route (FR-2.3.1.2) selects the policy row. If `rag=false` (or the policy row has `retrieval_multiplier = 0`, e.g. `CHITCHAT`), retrieval is skipped entirely. Otherwise the pipeline runs end-to-end and the final snippet-group list is injected as a single `Context:` system message before user input, subject to `RAG_CONTEXT_MAX_TOKENS`.
+
+##### FR-2.3-3.1 — Canonical Retrieval Entry Point
+A single retrieval function is responsible for all RAG memory queries. It accepts a normalized query string, the list of memory sources to query (at minimum: `daily` and `ltm`), and a retrieval configuration object.
+
+- The query embedding MUST be computed exactly once via `embedding.factory` (FR-007) using `settings.embedding_model`, and the same query vector MUST be reused across all queried sources.
+- Retrieval-stage limits are controlled only by:
+  - `BASE_TOP_K` (environment)
+  - `retrieval_multiplier` (per-route, from `route_policy.json`)
+  - Derived: `PER_SOURCE_K = ceil(BASE_TOP_K * retrieval_multiplier)`
+- Each source is queried with `PER_SOURCE_K`. Results are normalized to a single canonical candidate shape:
+  - `source`: `"daily"` | `"ltm"`
+  - `text`: string
+  - `score`: float (raw cosine similarity in `[0.0, 1.0]`)
+  - `metadata`:
+    - `id`: optional string
+    - `timestamp`: optional string
+    - `route`: optional string
+    - `tags`: optional list
+    - `topics`: optional list
+    - `intent`: optional string
+    - `type`: optional string
+    - `tags_meta`: optional object
+    - `keep`: optional boolean
+    - `day_sequence`: optional integer
+    - `pair_ids`: optional list
+    - `source_document_id`: optional string (required for adjacency; see FR-2.3-3.4.1)
+    - `chunk_index`: optional integer (required for adjacency; see FR-2.3-3.4.1)
+- For `daily` candidates, canonical metadata is sourced authoritatively from `daily.json` via a stable daily entry identifier joined to the retrieved vector. If the join fails (lossy recall), the candidate is still returned with `metadata.id` absent and daily-only fields (`tags_meta`, `topics`, `intent`, `type`, `keep`, `day_sequence`, `pair_ids`) absent; `metadata.route` MAY be populated best-effort from the FAISS document metadata namespace if present.
+- For `ltm` candidates, missing metadata fields are permitted and left absent; no parsing from retrieved text is performed in this stage.
+- `ltm` includes all content embedded in the project's main FAISS index regardless of origin (uploads, sleep summaries, dream artifacts, etc.).
+
+Behavior and boundaries (this stage):
+- No namespace boosts, thresholding, route-based `rag_k`, score filtering, source branching, deduplication, or prompt injection are performed.
+- An empty result from one source MUST NOT block other sources.
+- If querying a source fails, that source degrades to an empty candidate list for the current request (no in-request retry). Rebuild/repair is owned by the source subsystem and runs best-effort asynchronously.
+- If query embedding fails, retrieval is unavailable for the request and the function returns an empty candidate list.
+
+Output contract:
+- A flat list of retrieval candidates with no filtering beyond per-source query execution limits (`PER_SOURCE_K`).
+- Per-source original retrieval order is preserved; source attribution is preserved on every candidate. Cross-source ordering is defined by FR-2.3-3.2, not here.
+
+Invariants:
+- All RAG retrieval MUST pass through this single code path.
+- Candidate shape is uniform across sources; enrichment is conditional on source metadata availability.
+- Retrieval consistency is guaranteed across memory tiers prior to ordering and selection.
+
+##### FR-2.3-3.2 — Deterministic Score Ordering
+- All candidates produced by FR-2.3-3.1 MUST be sorted in descending order of the raw cosine similarity score (`[0.0, 1.0]`) prior to any selection, truncation, or prompt assembly.
+- Sorting uses full-precision floating-point values with no rounding, boosts, or weights applied.
+- Sort MUST be stable: for ties, the pre-sort order from FR-2.3-3.1 is preserved. No additional tie-breaker is introduced.
+- No candidates are dropped or filtered at this stage.
+- This produces a single global ordering across all sources; Daily and LTM candidates MAY interleave purely by score.
+
+Architectural constraints:
+- Candidate retrieval, ordering, selection, and prompt assembly MUST be implemented as separate, single-responsibility stages.
+- Ordering logic MUST be isolated in its own function or module.
+- Retrieval-stage code MUST NOT perform prompt formatting, enforce token budgets, or apply selection/thresholding rules.
+- Prompt assembly code MUST NOT modify retrieval ordering or selection decisions.
+
+Invariants:
+- Higher similarity score always implies earlier presentation to the model.
+- Ordering is reproducible across identical inputs.
+- The model MUST NOT be relied upon to infer relevance ordering from unsorted context.
+
+##### FR-2.3-3.3 — Policy-Driven Selection & Pruning
+Inputs:
+- The globally ordered candidate list from FR-2.3-3.2.
+- The route-derived retrieval policy from `route_policy.json` (loaded and validated once at startup; cached for process lifetime; reload on restart only).
+- Environment-level configuration (`BASE_TOP_K`).
+
+Per-route policy parameters:
+- `retrieval_multiplier`: scalar applied to `BASE_TOP_K` for per-source K (also consumed by FR-2.3-3.1).
+- `max_keep`: absolute initial cap on retained candidates. The effective keep limit MAY grow via the adjacent-chunk rule below.
+- `expansion.max_before` / `expansion.max_after`: adjacency depth (consumed by FR-2.3-3.4.2).
+
+Derived:
+- `RETRIEVAL_K = ceil(BASE_TOP_K * retrieval_multiplier * N_SOURCES)` where `N_SOURCES` is the number of sources attempted.
+
+Selection process:
+1. Maintain an effective keep limit, initially equal to `max_keep`.
+2. Iterate candidates in FR-2.3-3.2 order (highest score first).
+3. For each candidate:
+   - If retained count ≥ effective keep limit, stop.
+   - If the ordered list is exhausted, stop.
+   - Otherwise append the candidate to the retained list.
+   - **Adjacent-chunk rule**: if the candidate just retained is directly adjacent to the previously retained candidate (same `source_document_id` AND `chunk_index` differs by exactly 1), increment the effective keep limit by 1. This compensates for downstream identity dedup in FR-2.3-3.4.3 (pass 2) and increases breadth across distinct sources without unbounded growth.
+4. No reordering, skipping, thresholding, boosting, or deduplication occurs in this stage.
+
+Source handling:
+- Candidates from different sources (Daily, LTM) are treated uniformly during selection.
+- Source attribution is preserved but does not influence order or retention count.
+
+Output:
+- A truncated, ordered list of retained candidates (`kept_candidates`), each preserving text, score, source, and metadata. No new metadata is introduced.
+
+`route_policy.json` — canonical schema:
+
+```json
+{
+  "<ROUTE>": {
+    "retrieval_multiplier": <number>,
+    "max_keep": <int>,
+    "expansion": { "max_before": <int>, "max_after": <int> }
+  }
+}
+```
+
+Routes and defaults (current baseline; tunable via configuration):
+
+| Route       | retrieval_multiplier | max_keep | expansion.max_before | expansion.max_after |
+|-------------|----------------------|----------|----------------------|---------------------|
+| CHITCHAT    | 0                    | 0        | 0                    | 0                   |
+| DIRECT      | 1                    | 12       | 0                    | 2                   |
+| PROCEDURAL  | 1.5                  | 16       | 1                    | 3                   |
+| EXPLORATORY | 2                    | 20       | 1                    | 4                   |
+| SYNTHESIS   | 2.5                  | 24       | 2                    | 4                   |
+| OTHER       | 1.75                 | 10       | 1                    | 2                   |
+
+Validation and fallback:
+- `route_policy.json` MUST be loaded and validated at startup. Missing or invalid policy MUST fail fast on startup (no per-request fallbacks).
+- Every route entry MUST include `retrieval_multiplier`, `max_keep`, `expansion.max_before`, and `expansion.max_after`.
+- `CHITCHAT` has `retrieval_multiplier = 0`, which disables retrieval for that turn (equivalent to `rag=false`).
+- Unknown or new routes fall back to `OTHER` at runtime (stable compatibility behavior).
+
+Error and edge handling:
+- If the ordered candidate list is empty, the output is an empty list.
+- Selection failure does not block request execution (best-effort with empty result as the degraded path).
+
+Invariants:
+- Selection is positional and deterministic.
+- Higher-ranked candidates are always retained before lower-ranked candidates.
+- Retained count is between `0` and `len(ordered_list)`; at least `max_keep` when the list is long enough and no adjacency bonuses apply, possibly greater than `max_keep` when the adjacency bonus applies.
+- Context size is bounded before prompt assembly.
+- Identical inputs and configuration produce identical outputs.
+
+##### FR-2.3-3.4 — Rehydration & Chunk Expansion
+After selection, the pipeline rehydrates `kept_candidates` into semantically complete context by expanding to adjacent chunks and collapsing the expanded set into coherent snippet groups. No relevance scoring, ranking, or pruning decisions are introduced at this stage. Rehydration is staged:
+
+###### FR-2.3-3.4.1 — Chunk Adjacency & Full-Chunk Return
+- The system MUST maintain a stable chunk adjacency index enabling deterministic O(1) lookup of the previous and next chunk of any retrieved chunk.
+- Adjacency is defined only within the same source document.
+  - For PDFs, adjacency is defined only within the same `(filename, page_number)`; each such pair is treated as its own source document. No cross-page adjacency.
+- Canonical model is a per-document linear sequence:
+  - `doc_id` identifies the source document (for PDFs: `(filename, page_number)`).
+  - `chunk_seq` is a monotonic, gap-free integer sequence within a `doc_id`.
+  - `prev` / `next` resolve structurally as `chunk_seq - 1` / `chunk_seq + 1` within the same `doc_id`.
+- Retrieved candidates MUST carry sufficient metadata (`source_document_id` / `doc_id` and `chunk_index` / `chunk_seq`) to deterministically derive neighbors without semantic inference.
+- When a chunk is retrieved due to a similarity match, the entire chunk MUST be returned. Partial reads based on match offset are prohibited; match position MUST NOT affect returned text.
+- Chunk text MUST be returned verbatim. No rewriting, trimming, summarization, or deduplication at this stage.
+- Implementations MAY reformat retrieved chunk content into a structured representation (e.g. JSON with `chunk_id`, `text`, adjacency refs, source metadata) at retrieval/assembly time, but MUST NOT alter semantic content.
+
+Rebuild and compatibility:
+- Adjacency metadata MUST be rebuilt when any of the following change:
+  - uploads added / removed / modified for a project
+  - `CHUNK_SIZE` or `CHUNK_OVERLAP`
+  - adjacency metadata is missing or corrupt for an index claiming FR-2.3-3.4.1 compliance
+- `EMBEDDING_MODEL` changes MUST NOT invalidate adjacency (though embeddings may still be rebuilt for retrieval correctness).
+- Legacy-compat: indexes that predate adjacency MAY omit adjacency fields; absence is treated as expected and MUST NOT auto-trigger rebuild. If an FR-2.3-3.4.1-compliant index has missing/invalid adjacency at query time, the system MUST degrade to full-chunk-only retrieval for that request and trigger a best-effort background rebuild (no in-request retry/blocking).
+
+Invariants:
+- A retrieved chunk is always consumed as a whole.
+- Match position within a chunk never affects returned text.
+- Adjacency lookup is purely structural, not semantic.
+- Any loss of adjacency metadata MUST result in less expansion, never partial context.
+
+###### FR-2.3-3.4.2 — Rank-Weighted Adjacency Expansion
+Inputs:
+- The ordered retained candidate list `kept_candidates` from FR-2.3-3.3.
+- Per-candidate `source_document_id` and `chunk_index` (0-based).
+- Per-route `expansion.max_before` / `expansion.max_after` from `route_policy.json`.
+
+Tiering over `kept_candidates` (let `K = len(kept_candidates)`):
+- Tier 1 (top third): `i < ceil(K / 3)` — full expansion.
+- Tier 2 (middle third): `ceil(K / 3) ≤ i < ceil(2K / 3)` — half expansion.
+- Tier 3 (bottom third): `i ≥ ceil(2K / 3)` — minimal expansion.
+
+Per-candidate counts:
+- Tier 1: `before_count = max_before`, `after_count = max_after`.
+- Tier 2: `before_count = ceil(max_before / 2)`, `after_count = ceil(max_after / 2)`.
+- Tier 3: `before_count = min(1, max_before)`, `after_count = min(1, max_after)`.
+
+Requested chunk identifiers:
+- Central: `(source_document_id, chunk_index)`.
+- Preceding: `(source_document_id, chunk_index - n)` for `n` in `1..before_count`.
+- Following: `(source_document_id, chunk_index + n)` for `n` in `1..after_count`.
+- Out-of-range indices are skipped. Expansion MUST NOT cross document boundaries.
+- Identifiers are emitted in **before…central…after** order per candidate. Identifiers MAY repeat across candidates; consolidation and deduplication occur in FR-2.3-3.4.3.
+
+Scope:
+- Applies to both `ltm` and `daily` candidates.
+- For `daily`, the document boundary is the synthetic `source_document_id = "daily"` and `chunk_index` corresponds to `day_sequence`.
+
+Missing/invalid adjacency:
+- If adjacency is unavailable for a candidate, expansion MUST degrade to the central chunk only (no neighbors).
+- For LTM indexes claiming FR-2.3-3.4.1 compliance, missing/corrupt adjacency SHOULD trigger a best-effort background rebuild (no in-request blocking/retry).
+- For legacy indexes (pre-FR-2.3-3.4.1), absence is expected; expansion is treated as disabled (central-only) and MUST NOT auto-trigger rebuild.
+- If a requested neighbor cannot be fetched, it is a non-fatal skip-neighbor event.
+- If the in-memory Daily FAISS cache is cold/unavailable, skip Daily neighbors for that request (no rebuild trigger).
+
+Output:
+- An ordered list of requested chunk identifiers (duplicates permitted across candidates), or — if the implementation materializes expansion inline — per-candidate ordered chunk lists, provided no relevance scoring, deduplication, or token-budget enforcement is introduced at this step.
+
+Invariants:
+- Higher-ranked candidates always request equal or greater adjacency than lower-ranked candidates.
+- Expansion intent is deterministic for identical inputs and configuration.
+- Absence of adjacency metadata results in fewer requested chunks, never partial content.
+
+###### FR-2.3-3.4.3 — Structural Dedup & Assembly (Five Passes)
+The expansion-intent output from FR-2.3-3.4.2 is collapsed into a single, coherent, non-repeating chunk sequence by five ordered passes. The staging exists to keep each transformation easy to reason about and debug.
+
+**Pass 1 — Structured Expansion Materialization.**
+Iterate retained candidates in the order of `kept_candidates`. For each candidate, materialize an ordered list of chunk objects in **before…central…after** order. Each chunk object uses canonical fields `source_document_id`, `chunk_index`, `text`. Candidate-level ordering and per-candidate chunk ordering are preserved exactly as materialized. No deduplication, cross-candidate reordering, text modification, or token budgeting at this pass. If adjacency is unavailable for a candidate, emit the central chunk only (consistent with FR-2.3-3.4.2).
+
+**Pass 2 — Chunk Identity Deduplication.**
+Walk the expanded results in `kept_candidates` order. Maintain an ordered mapping keyed by `(source_document_id, chunk_index)`. For each chunk:
+- If the key is not present in the mapping, insert it.
+- Otherwise skip the chunk (first-seen wins, preserving relevance priority without requiring score comparisons).
+No merging, trimming, or text modification occurs. Output is a collection of unique chunks keyed by `(source_document_id, chunk_index)`. Cross-document ordering is not yet enforced.
+
+**Pass 3 — Source-Document Ordering & Narrative Coherence.**
+Organize the unique chunk set into per-source timelines:
+- Determine the distinct set of `source_document_id` values. Chunks with missing/null `source_document_id` (sparse/legacy) are handled per compatibility policy — grouped under a synthetic source or appended in first-seen order.
+- Each `source_document_id` is an independent timeline; within a source, chunks are sorted by `chunk_index` ascending.
+- Across sources, ordering is deterministic and implementation-defined (e.g. first-seen, alphabetical, or stable sort by `source_document_id`).
+- Emit an ordered sequence of chunks (or per-source ordered segments). Chunk shape, identity, and text are unchanged. No token budgeting.
+
+**Pass 4 — Adjacent Chunk Overlap Trimming.**
+Inputs: ordered, unique, narratively-coherent chunk list from Pass 3; `CHUNK_OVERLAP` (and optionally `CHUNK_SIZE`) used by the encoder/splitter when the index was built.
+
+Scope: operates only within a document, only on adjacent chunks. Only the prefix of the second chunk is trimmed (the suffix of the first chunk is kept). Chunk identity and order are never changed. Only exact-duplicate boundary text is removed; no fuzzy or semantic trimming.
+
+Procedure for each consecutive same-`source_document_id` pair `(A, B)`:
+1. `max_overlap = min(CHUNK_OVERLAP, len(A.text), len(B.text))`.
+2. Find the longest `k` in `1..max_overlap` such that `A.text[-k:] == B.text[:k]` (exact string match).
+3. If `k > 0`: set `B.text = B.text[k:]`. If `k == len(B.text)` (B would become empty), do not trim (leave B unchanged or use a minimal placeholder per implementation policy).
+
+Chunks with missing or invalid `source_document_id` (sparse/legacy) are skipped for adjacency (neither trimmed nor used to trim a neighbor). Single-chunk documents and the last chunk in a document require no trim. If no exact suffix-of-A equals prefix-of-B in the window, no trim is performed.
+
+**Pass 5 — Snippet-Group Collapse.**
+Walk the trimmed chunk list in order and group consecutive chunks that share the same `(source_document_id, source)`:
+- Chunks with missing/invalid `source_document_id` do not merge with neighbors; each forms its own single-chunk group.
+- Different `source` values (e.g. `ltm` vs `daily`) never merge.
+
+For each group, emit one entry with the same shape as a single chunk:
+- `source`, `score`: from the first chunk in the group (all chunks in an expanded set share the same score).
+- `text`: concatenation of all chunk texts in the group, joined with a single newline (`\n`); no extra spacing.
+- `metadata`: from the first chunk in the group; MAY include a display-friendly range for `chunk_index` when the group has more than one chunk (e.g. `"199..201"`) so debug and logs show the span.
+
+The resulting list of snippet-group entries replaces the per-chunk list as `kept_candidates` for all downstream consumers (prompt formatting, debug dumps, token counting). Prompt assembly emits one `Snippet N` header and one separator per entry; token counting uses the concatenated text once per group. The snippet-group list is injected as a single `Context:` system message before user input, subject to `RAG_CONTEXT_MAX_TOKENS`.
+
+Invariants (global for FR-2.3-3.4.3):
+- No chunk content is dropped except through identity-level dedup (pass 2) and exact-boundary overlap trim (pass 4).
+- Group boundaries are determined only by consecutive same `(source_document_id, source)`.
+- Deterministic for identical inputs and configuration.
 
 #### FR-2.3-4 — Logging / Debug Visibility
 When a pair is rolled off:
@@ -628,19 +900,12 @@ Ensure logs are readable for inspection and troubleshooting. Use the standard ap
 
 #### FR-2.3.5 — Environment Variables
 
-- `CHAT_HISTORY_LIMIT_PAIRS=10` — number of prompt/response pairs kept in working memory
-- `DAILY_RAG_ENABLED=true` — global default toggle; per-project toggle overrides
-- `DAILY_RAG_K=3` — top-K from daily
-- `DAILY_RAG_SCORE_THRESHOLD=0.70` — similarity threshold for daily
-- `DAILY_RAG_MAX_TOKENS=2500` — max tokens contributed by daily layer
-- `DAILY_RAG_WEIGHT=1.2` — weight multiplier applied to daily scores before merging
-- Deduping controls:
-  - `DEDUPE_EXACT=true` — remove exact-text duplicates
-  - `DEDUPE_NEAR=true` — remove near-duplicates by similarity
-  - `DEDUPE_SIMILARITY_THRESHOLD=0.98` — cosine threshold for near-duplicate detection
-  - `DEDUPE_KEEP_DAILY=true` — when deduping, prefer keeping the daily hit
+- `CHAT_HISTORY_LIMIT_PAIRS=10` — number of prompt/response pairs kept in working memory.
+- `DAILY_RAG_ENABLED=true` — global default toggle for Daily RAG; per-project toggle overrides.
+- `BASE_TOP_K` — baseline retrieval size consumed by FR-2.3-3.1; `PER_SOURCE_K = ceil(BASE_TOP_K * retrieval_multiplier)` where `retrieval_multiplier` comes from `route_policy.json` (FR-2.3-3.3).
+- `RAG_CONTEXT_MAX_TOKENS` — final prompt context token cap enforced during prompt assembly (downstream of FR-2.3-3.4.3).
 
-(Daily RAG values are tuned separately from main RAG for recall vs precision.)
+All per-source K values, score thresholds, retained counts, and adjacency depths are controlled by `route_policy.json` (FR-2.3-3.3) and not by environment variables.
 
 #### FR-2.3.6 — UI Integration
 In the Manage Project modal display:
@@ -650,23 +915,23 @@ In the Manage Project modal display:
 - Per-project toggle: “Keep Daily History” (maps to `daily_rag_enabled`, default true)
 
 ### Lifecycle
-`daily.faiss` persists across days until merged during 3.0 sleep cycle.
+`daily.json` (and its companion `daily.txt`, per FR-2.7.1) are the persistent Daily artifacts; they persist across days until consumed/reset during the 3.0 sleep cycle. The Daily FAISS index is an in-memory cache with the lifetime of the server process, warmed lazily per project on first project-scoped request and rebuildable from `daily.json` at any time (see FR-2.3.2).
 
 Sleep cycle logic will:
 
-- Read and prune `daily.faiss`
-- Merge summarized chunks into `index.faiss`
-- Reset `daily.faiss` for the next run
+- Read and prune Daily memory via `daily.json` / `daily.txt`.
+- Merge summarized chunks into `index.faiss`.
+- Reset Daily persistent artifacts for the next run and clear the in-memory Daily FAISS cache for the merged project.
 
 ### Acceptance Criteria
 
 - Oldest chat pair removed from memory and DB when limit exceeded.
-- Rolled-off pair embedded and appended to `daily.faiss`; metadata appended to `daily.json`.
+- Rolled-off pair embedded and appended to the in-memory Daily FAISS cache; metadata appended to `daily.json` under `daily.lock`.
 - Debug log clearly shows prompt + response text.
-- Retrieval includes results from both daily and main RAGs, with daily weighted per `DAILY_RAG_WEIGHT`.
-- De-duplication applied per env settings.
-- Corruption/model-change resets are handled cleanly with logging.
-- System operates with incremental writes and file locking.
+- Retrieval MUST execute the unified pipeline defined in FR-2.3-3; Daily and LTM candidates are produced by a single canonical entry point (FR-2.3-3.1), globally sorted by raw similarity (FR-2.3-3.2), pruned per `route_policy.json` (FR-2.3-3.3), and rehydrated/deduplicated/collapsed into snippet groups (FR-2.3-3.4).
+- Identity-level deduplication at FR-2.3-3.4.3 (pass 2) is the only deduplication stage; no similarity-threshold or source-preference dedup is performed.
+- Corruption / `EMBEDDING_MODEL`-change rebuilds of the in-memory Daily FAISS cache are handled cleanly with logging; `daily.json` is never deleted on model change (it is re-embedded in place).
+- System operates with incremental in-memory adds; persistence writes are limited to `daily.json` (and `daily.txt` per FR-2.7.1), serialized via `daily.lock`.
 
 
 Version 2.3.1 — RAG Query Builder + Router (Topic-Aware Retrieval)
@@ -683,7 +948,7 @@ FR-2.3.1.1 — Mini Model Router + Query Builder
 • Input: 3–4 sentence summary of all in‑memory pairs (not rolled off) + current user turn.
 • Output (JSON): route, rag, standalone, paraphrases, hyde, entities, topics, reason, confidence.
 • Example schema:
-{ "route":"CHITCHAT|CODE|DOCS|OTHER", "rag":true, "standalone":"", "paraphrases":[], "hyde":"", "entities":[], "topics":[], "reason":"", "confidence":0.0 }
+{ "route":"CHITCHAT|DIRECT|PROCEDURAL|EXPLORATORY|SYNTHESIS|OTHER", "rag":true, "standalone":"", "paraphrases":[], "hyde":"", "entities":[], "topics":[], "reason":"", "confidence":0.0 }
 • Use `BUILDER_MODEL` over the same OpenAI channel as chat; no extra latency/budget constraints beyond `BUILDER_MAX_TOKENS`.
 
 FR-2.3.1.2 — Routing Logic
@@ -694,24 +959,7 @@ FR-2.3.1.2 — Routing Logic
 
 FR-2.3.1.3 — Topic and Entity Extraction
 • Builder emits topics and entities.
-• Sidecar metadata for main RAG: store per‑chunk metadata in `memory/{project}/faiss/meta_topics.json`, keyed by FAISS docstore ID (no full re‑index now). Merge sidecar with existing metadata during retrieval/rerank.
-• Biasing:
-– Exact match boost if topic appears in sidecar (#topics).
-– Partial/semantic boost via embedding similarity of topic terms (with in‑memory per‑project topic vector cache, LRU + TTL ~24h, max ~500 entries).
-
-FR-2.3.1.4 — Metadata-Aware Reranking
-• After cosine retrieval, adjust scores multiplicatively (topic → decision → open_question), then clamp to 1.0 before sorting/truncation.
-• Then apply token budget.
-• Optional ENV weights:
-TOPIC_BOOST=1.10
-DECISION_BOOST=1.05
-QUESTION_BOOST=1.02
-
-FR-2.3.1.5 — Query Expansion and Namespacing
-• Route selects a preferred namespace (e.g., "jira", "code", "docs").
-• Always search full corpus; strongly boost routed namespace (no hard filter).
-• Maintain file→namespace sidecar `memory/{project}/faiss/meta_namespaces.json`; default namespace "other" for unmapped; include "other" when route unknown.
-• Embed variants with optional prefix “query:”; include topic/entity terms for hybrid search.
+• Sidecar metadata for main RAG: store per‑chunk metadata in `memory/{project}/faiss/meta_topics.json`, keyed by FAISS docstore ID (no full re‑index now). Merge sidecar with existing metadata during retrieval for downstream consumers (e.g. tagging, dream). Topic/entity values MUST NOT be used to bias retrieval scoring or ordering (see FR-2.3-3.2).
 
 FR-2.3.1.6 — Prompt Template (for Builder)
 System: “You are a fast query builder and router for RAG. Return strict JSON. No prose.”
@@ -720,30 +968,14 @@ Rules:
 • If small-talk/joke/meta → route=CHITCHAT, rag=false.
 • Else choose domain route and return concise rewritten query set plus topics/entities.
 
-FR-2.3.1.7 — Retrieval Order and Context Assembly
-• Daily results queried and filled first (up to DAILY_RAG_MAX_TOKENS).
-• Main RAG fills remaining context budget (RAG_CONTEXT_MAX_TOKENS).
-• Label sections clearly in prompt:
-Context:
---- Daily:
-<daily snippets>
---- Main:
-
-<main snippets> • Deduplicate exact and near‑duplicates (cosine ≥ 0.98) after merging daily+main and before token budgeting.
-
 FR-2.3.1.8 — Environment Variables
 BUILDER_MODEL=gpt-4o-mini
 BUILDER_CONFIDENCE_MIN=0.75
 BUILDER_MAX_TOKENS=512
 BUILDER_CACHE=True
-TOPIC_BOOST=1.10
-DECISION_BOOST=1.05
-QUESTION_BOOST=1.02
-DEDUPE_SIMILARITY_THRESHOLD=0.98
 
 FR-2.3.1.9 — Logging / Debug Visibility
 • Log builder JSON into the existing app log (no separate file), including timestamp, route, rag, confidence, topics, and trimmed standalone; tag lines clearly (module logger/type="builder").
-• Log applied topic/decision/open_question boost values during reranking.
 • Optionally display route and confidence in chat UI for debug.
 
 FR-2.3.1.10 — Concurrency and Locking
@@ -756,9 +988,8 @@ Acceptance Criteria
 
 • Builder invoked on every turn and returns valid JSON.
 • Non-RAG turns bypass retrieval entirely.
-• RAG turns use rewritten queries and topic/entity expansion.
-• Topic/decision/open_question boosts reflected in scores and logs; boosted scores clamped to 1.0.
-• Context assembled as “Daily:” then “Main:”.
+• RAG turns use rewritten queries and topic/entity expansion via the unified pipeline in FR-2.3-3.
+• Retrieved candidates are globally sorted by raw cosine similarity (FR-2.3-3.2); no topic/decision/question score boosts are applied.
 • Performance target: ≤ 800 ms avg builder latency.
 
 ## Version 2.4 — Expanded Logging & Trace Flags
@@ -787,7 +1018,7 @@ Every chat request must include the following tagged log entries:
 - **[BUILDER]** – query-builder output (route, rag flag, confidence)
 - **[RETRIEVAL]** – RAG query details (hit count, avg similarity)
 - **[RESPONSE]** – model output summary (token count, short preview)
-- **[ROLLOFF]** – when a pair is embedded into `daily.faiss`
+- **[ROLLOFF]** – when a pair is embedded into the in-memory Daily FAISS cache
 - **[ERROR]** – any exception during request processing
 
 #### FR-2.4.3 — Optional Context Data
@@ -821,86 +1052,46 @@ This makes it easy to trace specific projects, conversations, and decisions.
 ## Version 2.5 — Route-Aware Retrieval
 
 ### Purpose
-Improve RAG precision and contextual relevance by adjusting retrieval behavior based on the semantic intent (“route”) identified by the query builder.
-Each incoming message is classified as CODE, DOCS, OTHER, or CHITCHAT, and retrieval parameters (namespaces, thresholds, K-values) are tuned accordingly.
+Adjust retrieval behavior based on the semantic route (`CHITCHAT | DIRECT | PROCEDURAL | EXPLORATORY | SYNTHESIS | OTHER`) identified by the query builder (FR-2.3.1.1). The route selects a row of `route_policy.json`, which configures per-source retrieval K, retained-candidate cap, and adjacency expansion for the unified pipeline in FR-2.3-3. Namespace-based routing, namespace boosting, and per-route score thresholds are removed; route behavior is expressed exclusively via `route_policy.json` and selection/expansion logic.
 
 ### Functional Requirements
 
 #### FR-2.5.1 — Builder Output Utilization
-Use the existing builder LLM output to extract route and rag flags:
+Use the existing builder LLM output (FR-2.3.1.1) to extract the `route` and `rag` fields, e.g.:
 
 ```
-{"route": "CODE", "rag": true, "confidence": 0.91}
+{"route": "PROCEDURAL", "rag": true, "confidence": 0.91}
 ```
 
-If `rag=false` or `route="CHITCHAT"`, skip retrieval entirely.
+If `rag=false` or the selected `route_policy.json` row has `retrieval_multiplier = 0` (e.g. `CHITCHAT`), retrieval is skipped entirely and the chat model answers directly using in-memory history only.
 
-#### FR-2.5.2 — Route Configuration Map
-Create `/app/config/meta_namespaces.json` defining namespaces and retrieval parameters per route:
+#### FR-2.5.2 — Route Policy Configuration
+Route-specific retrieval configuration is held in `backend/app/config/route_policy.json`. Canonical schema, routes, and defaults are defined in FR-2.3-3.3. `route_policy.json` is the authoritative per-route configuration source for:
+- `retrieval_multiplier` (per-source K via `ceil(BASE_TOP_K * retrieval_multiplier)`; consumed by FR-2.3-3.1)
+- `max_keep` (initial retained-candidate cap; consumed by FR-2.3-3.3)
+- `expansion.max_before` / `expansion.max_after` (adjacency depth; consumed by FR-2.3-3.4.2)
 
-```
-{
-  "CODE": {
-    "namespaces": ["code", "config", "api"],
-    "rag_k": 8,
-    "score_threshold": 0.70
-  },
-  "DOCS": {
-    "namespaces": ["docs", "requirements", "notes"],
-    "rag_k": 5,
-    "score_threshold": 0.75
-  },
-  "OTHER": {
-    "namespaces": ["general", "project"],
-    "rag_k": 6,
-    "score_threshold": 0.72
-  },
-  "CHITCHAT": {
-    "namespaces": [],
-    "rag_k": 0,
-    "score_threshold": 0.0
-  }
-}
-```
-
-#### FR-2.5.3 — Retrieval Logic Update
-Modify `rag_manager.retrieve_context()` to:
-- Load the route configuration from `meta_namespaces.json`.
-- Retrieve top-K results from both `daily.faiss` and `index.faiss` using the selected namespaces.
-- Filter by `score_threshold`.
-- Merge, rank by similarity, and return the top K items.
-
-#### FR-2.5.4 — Namespace Boosting
-When embeddings are stored, include metadata such as:
-
-```
-{"namespace": "docs", "source": "REQUIREMENTS.md"}
-```
-
-During retrieval, apply a small boost (e.g., `similarity *= 1.05`) if the namespace matches one of the configured route namespaces.
+`meta_namespaces.json` is deprecated and MUST NOT be used; namespace-based routing is removed.
 
 #### FR-2.5.5 — Logging Integration
-Add a `[ROUTE]` log event before retrieval:
+Add a `[ROUTE]` log event before retrieval and a `[RETRIEVAL]` log event after retrieval, e.g.:
 
 ```
-[ROUTE] route=CODE namespaces=['code','config','api'] k=8 threshold=0.70
+[ROUTE] route=PROCEDURAL retrieval_multiplier=1.5 max_keep=16 expansion={"max_before":1,"max_after":3}
+[RETRIEVAL] route=PROCEDURAL hits=24 kept=16 avg_similarity=0.78
 ```
 
-and after retrieval:
-
-```
-[RETRIEVAL] route=CODE hits=12 used=8 avg_similarity=0.82
-```
+Logged fields MUST reflect values resolved from `route_policy.json` and the FR-2.3-3 pipeline (no `namespaces` field).
 
 #### FR-2.5.6 — Fallback Behavior
-If the builder route is unknown or the config file is missing, default to the “OTHER” route configuration.
+If the builder returns an unknown route, routing MUST fall back to the `OTHER` row of `route_policy.json`. A missing or invalid `route_policy.json` at startup is a fail-fast condition (no per-request fallbacks; see FR-2.3-3.3).
 
 ### Acceptance Criteria
-- CODE and DOCS queries retrieve from different namespaces with tuned thresholds.
-- CHITCHAT messages bypass RAG retrieval.
-- Logging clearly displays route and applied settings.
-- Retrieval results align with route-specific context (e.g., code for technical prompts, docs for requirements).
-- No breaking changes to the existing RAG pipeline or database schema.
+- Builder-identified routes map deterministically to `route_policy.json` rows; runtime retrieval K, retained counts, and adjacency depth match the selected row.
+- CHITCHAT and `rag=false` turns bypass retrieval entirely.
+- Logging clearly displays the resolved route and applied policy values.
+- Unknown routes fall back to `OTHER`; missing/invalid `route_policy.json` fails fast at startup.
+- No breaking changes to the existing RAG pipeline beyond removal of namespace-based routing and namespace boosting.
 
 
 ## Version 2.6 — Project Personality & System Prompt Profiles
@@ -1053,15 +1244,15 @@ Finalize the 2.x foundation by polishing UI behavior and adding infrastructure n
 
 ### Functional Requirements
 
-#### FR-2.7.1 — Daily Text Snapshot for Pruning
-Ensure each project maintains a single plain‑text mirror of its daily context for summarization and review.
+#### FR-2.7.1 — Daily Text Snapshot
+Ensure each project maintains a single plain‑text mirror of its daily context for deterministic nightly consolidation (FR-3.2.3) and human review. Name retained historically; pruning no longer occurs at sleep time (see DELTA-A.5).
 
 - File path: `memory/{project}/daily.txt` (one file per project; no date‑based rotation)
 - Source of truth & flow:
   - Working chat history is persisted in the database (`ChatMessage`) per project.
   - When a user→assistant pair rolls off the working set, and the assistant’s `forget` flag is false, the pair is:
     - Appended to `daily.txt` as a text block
-    - Added to the daily FAISS index under `memory/{project}/daily_faiss/`
+    - Added to the in-memory Daily FAISS cache (see FR-2.3.2; the legacy on-disk directory `memory/{project}/daily_faiss/` is deprecated and not written)
     - Recorded in `daily.json` metadata for backfill and stats
   - Rolled‑off DB rows for that pair are deleted.
 - Generated automatically:
@@ -1075,8 +1266,8 @@ Ensure each project maintains a single plain‑text mirror of its daily context 
   ```
 - The daily text block MAY include tag metadata lines (e.g., `#topics/#intent/#type`) for rolled-off pairs when available.
 - Purpose:
-  - Human‑readable backup of the daily FAISS index (`memory/{project}/daily_faiss/`).
-  - Input source for future summarization and pruning logic.
+  - Human‑readable mirror of Daily memory (the Daily FAISS index itself is an in-memory cache per FR-2.3.2; `daily.json` is the persistent metadata store).
+  - Input source for deterministic nightly consolidation (FR-3.2.3).
 - Backfill policy on `/sleep/start`:
   - If `daily.json` has entries but `daily.txt` is missing, backfill each entry as a block in the above format and log a warning.
 - Remember/Forget policy:
@@ -1198,7 +1389,7 @@ Add a second toggle next to the existing Forget control to carry a “keep” fl
   - When `POST /sleep/start` performs backfill (if `daily.txt` missing), include `[keep: true|false]` in reconstructed headers using the `daily.json` metadata (default to `false` if missing).
 
 ### Acceptance Criteria
-- `daily.txt` is generated/updated automatically and mirrors `daily.faiss` content.
+- `daily.txt` is generated/updated automatically and mirrors the Daily memory represented by `daily.json` and the in-memory Daily FAISS cache (FR-2.3.2).
 - “Forget” toggles correctly prevent a chat pair from being embedded or written to daily memory.
 - System enters “sleeping” state when `/sleep/start` is called:
   - API returns **423 (Locked)** during the cycle.
@@ -1333,154 +1524,148 @@ Provide a stable framework for triggering and managing the Sleep Cycle automatic
 - Daily backfill (only if `daily.txt` is missing and `daily.json` exists) executes inside the sleep window; no summarization or RAG rebuilds occur in 3.1.
 
 
-## Version 3.2 — Daily Summarization Pipeline
+## Version 3.2 — Daily Consolidation Pipeline (Deterministic)
 
 ### Overview
-Version 3.2 extends the Sleep Cycle to perform nightly consolidation of daily memory.  
-Each project with a valid `daily.txt` is pruned and reformatted into a structured summary file (`sleep_summary.txt`).  
-This lays the groundwork for 3.3, which will rebuild the project RAG from these summaries.
+Version 3.2 performs nightly consolidation of daily memory for each project with a non-empty `daily.txt`. Consolidation is **deterministic** and **prompt-less**: no LLM pruning or formatting passes are performed at sleep time. Semantic enrichment (topics/intent/type/semantic_handle/questions) already happened at pair-roll-off via the tagger (FR-3.4.2) and was persisted into `daily.txt`, `daily.json`, and the in-memory Daily FAISS cache; sleep only rolls those enriched artifacts forward.
+
+The deterministic consolidation writes `sleep_summary.txt`, which is the input to FR-3.3 (per-cycle merge + RAG rebuild).
 
 ---
 
 ### Purpose
-Automate the transformation of each project's `daily.txt` into a structured long-term memory file using a two-step summarization process (Pruning → Formatting).
+Convert each project's tag-enriched `daily.txt` into a per-cycle `sleep_summary.txt` artifact using a single deterministic pass. Rationale: removing LLM prompts from sleep consolidation eliminates nightly maintenance token cost while preserving retrieval quality, because all semantic enrichment already lives in the per-pair tags produced at ingest time (see DELTA-A.5).
 
 ### Functional Requirements
 
 #### FR-3.2.1 — Project Scan
-- During the sleep thread (after lock engaged), iterate through all `memory/{project}/` directories.
+- During the sleep thread (after the global sleep lock is engaged), iterate through all `memory/{project}/` directories.
 - If `daily.txt` exists and is non-empty → process it.
-- Else, log `[SLEEP] Skipped project (no daily.txt)`.
+- Else, log `[SLEEP] Skipped project (no daily.txt) project={id}` and continue.
 
-#### FR-3.2.2 — Pruning Stage
-- Apply `generate_pruning_prompt(daily.txt)` using the LLM interface.
-- Output `memory/{project}/pruned.txt`.
-- Preserve all header lines, decisions, timestamps, and references.
-- Log `[SLEEP][PRUNE] Completed project={id}` with size/line count.
-
-#### FR-3.2.3 — Formatting Stage
-- Apply `generate_formatting_prompt(pruned.txt)` to structure content into topic sections with metadata and appendices.
-- Output `memory/{project}/sleep_summary.txt`.
-- Log `[SLEEP][FORMAT] Completed project={id}`.
+#### FR-3.2.3 — Deterministic Consolidation Stage
+- Read `daily.txt` verbatim.
+- Append an `=== END DAILY MEMORY: MM/DD/YYYY ===` closing tag in memory only (do not persist back to `daily.txt`; see FR-3.2.6).
+- Normalize line endings to `\n`.
+- Write the resulting text as-is to `memory/{project}/sleep_summary.txt`.
+- No LLM calls, no content transformation, no reordering, no pruning, no `[Open Questions]` appendix (open-question candidates flow through the separate `open_questions.jsonl` stream; see FR-3.4.6).
+- Log `[SLEEP][FORMAT] Deterministic summary complete project={id}`.
 
 #### FR-3.2.4 — Cleanup and Archival
-- Optionally remove intermediate files after verification (initially commented out for testing).
-
-Example code block (commented):
-```python
-# import os
-# try:
-#     os.remove(f"memory/{project}/daily.txt")
-#     os.remove(f"memory/{project}/pruned.txt")
-#     logger.info(f"[SLEEP][CLEANUP] Removed daily.txt and pruned.txt for project {project}")
-# except Exception as e:
-#     logger.warning(f"[SLEEP][CLEANUP][ERROR] {e}")
-```
-- Keep `sleep_summary.txt` for verification and later RAG rebuild (3.3).
-- Log `[SLEEP] Consolidation complete for {id}`.
+- `sleep_summary.txt` is the input to FR-3.3. Cleanup/removal of `sleep_summary.txt`, `daily.txt`, `daily.json`, and other per-project cycle artifacts is owned by FR-3.3.5 after a successful per-cycle merge + RAG rebuild.
+- No intermediate `pruned.txt` artifact is produced under deterministic consolidation.
 
 #### FR-3.2.5 — Logging
 - Mandatory log chain per project:
-  `[SLEEP] Lock engaged → [SLEEP][PRUNE] → [SLEEP][FORMAT] → [SLEEP] Completed → [SLEEP] Lock released`.
-- On exceptions, log `[SLEEP][ERROR] project={id}` and continue to next project.
+  `[SLEEP] Lock engaged → [SLEEP][FORMAT] → [SLEEP][MERGE] … → [SLEEP][CLEANUP] → [SLEEP] Lock released`.
+- On exceptions, log `[SLEEP][ERROR] project={id}` and continue to the next project.
 
 ---
 
 #### FR-3.2.6 — Daily File BEGIN/END Tags
-- When `daily.txt` is first created for a project, write a file header:
+- When `daily.txt` is first created for a project, write a file header line:
   ```
   === BEGIN DAILY MEMORY: MM/DD/YYYY ===
   ```
   (Local date; followed by a blank line.)
-- Immediately before the pruning stage runs during the sleep cycle, append a closing tag ONLY to the in‑memory content sent to the LLM (do not persist back to `daily.txt`):
+- During deterministic consolidation (FR-3.2.3), append a closing tag ONLY to the in‑memory content written to `sleep_summary.txt` (do not persist back to `daily.txt`):
   ```
   === END DAILY MEMORY: MM/DD/YYYY ===
   ```
   (Local date; surrounded by blank lines.)
-- The BEGIN/END tags bracket the daily memory window for clearer summarization context, without altering the on‑disk daily file beyond the first‑write header.
+- The BEGIN/END tags bracket the daily memory window for the per-cycle artifact without altering the on‑disk daily file beyond the first‑write header.
 
 ### Acceptance Criteria
-- Each project with a `daily.txt` produces `pruned.txt` and `sleep_summary.txt`.
-- Skipped projects are logged clearly.
+- Each project with a non-empty `daily.txt` produces `sleep_summary.txt` deterministically (no LLM calls).
+- No `pruned.txt` or `[Open Questions]` appendix is produced in V3.2 or later.
+- Skipped projects (missing/empty `daily.txt`) are logged clearly and do not block the sleep cycle.
 - Lock and thread behavior remain identical to 3.1.
-- Logs show `[PRUNE]` and `[FORMAT]` entries for each processed project.
-- Cleanup code for `daily.txt` and `pruned.txt` is present but commented out until verified.
-- No RAG rebuild yet — only summarization and cleanup verified.
+- Logs show a single `[SLEEP][FORMAT]` entry per processed project (no `[PRUNE]` entries; those are removed).
+- `sleep_summary.txt` is preserved for FR-3.3 (merge + RAG rebuild); its removal is owned by FR-3.3.5 after successful consolidation.
 
 
-## Version 3.3 — RAG Rebuild and Verification
+## Version 3.3 — RAG Rebuild and Verification (Per-Cycle Artifacts)
 
 ### Overview
-Version 3.3 completes the Sleep Cycle by merging the newly generated `sleep_summary.txt` from 3.2 directly into the project’s long-term memory and rebuilding the FAISS index immediately—no directory rescan required.
-
----
+Version 3.3 completes the Sleep Cycle by writing per-cycle artifacts from Sleep and Dream into the project's uploads tree and rebuilding the FAISS index once per cycle. There is no cumulative `sleep_summary_all.txt`; each sleep/dream cycle produces its own timestamped file so the RAG index treats every cycle as an independent, verifiable upload.
 
 ### Purpose
-Finalize nightly memory consolidation by updating each project’s RAG index using the freshly formatted, tagged, and delimited `sleep_summary.txt`.
+Roll the freshly-produced `sleep_summary.txt` (FR-3.2.3) and, when present, `dream_summary.txt` (FR-4.x) into per-cycle upload artifacts and rebuild the project's long-term memory index.
 
 ### Functional Requirements
 
-#### FR-3.3.1 — Immediate Merge Trigger
-- Executed directly after `sleep_summary.txt` is written during the same sleep thread.
-- For each processed project, confirm that:
-  - `sleep_summary.txt` exists.
-  - File size > 0 bytes.
+#### FR-3.3.1 — Per-Cycle Merge Trigger
+- Executed within the same sleep thread, after Dream completes (Dream runs between FR-3.2.3 and FR-3.3; see Version 4.1 and `backend/app/sleep/cycle.py`).
+- For each processed project, confirm that `sleep_summary.txt` exists and contains content beyond boundary tags alone.
+- If the content (excluding `=== BEGIN/END DAILY MEMORY ===` lines) is empty, log `[SLEEP][MERGE] Skipped (empty) project={id}` and continue.
 - Log `[SLEEP][MERGE] Initiating RAG update for {project}`.
 
-#### FR-3.3.2 — Append to Long-Term Summary
-- Append the existing, pre-delimited `sleep_summary.txt` to a persistent cumulative file:  
-  `memory/{project}/uploads/sleep_summary_all.txt`
-- Append the entire file verbatim (including `=== BEGIN/END DAILY MEMORY ===` tags).
-- If the cumulative file does not exist, create it and write the new content. On first create only, prepend a single header line `#source: sleep_summary` and never duplicate it on later appends.
-- Insert two newlines between appended summaries for readability.
-- If the cumulative file already exists but is missing the `#source: sleep_summary` header, leave it as-is (do not retroactively modify).
-- Guard appends with a per-project file lock: `memory/{project}/merge.lock` (covers append+rebuild for that project).
-- Log `[SLEEP][MERGE] Appended summary to uploads/sleep_summary_all.txt`.
+#### FR-3.3.2 — Per-Cycle Upload Artifacts
+For each project processed in the current sleep cycle, write per-cycle timestamped artifacts under the project's uploads tree and guard the merge with a per-project lock:
 
-#### FR-3.3.3 — Trigger RAG Rebuild
-- Immediately call:
+- Timestamp: filesystem-safe local time, format `YYYY-MM-DDTHH-MM-SS` (no `:`). Referred to below as `{cycle_ts}`.
+- Sleep artifact (always written when `sleep_summary.txt` has content beyond boundary tags):
+  - Path: `memory/{project}/uploads/sleep/sleep_{cycle_ts}.txt`
+  - Content: verbatim copy of `sleep_summary.txt` (includes `=== BEGIN/END DAILY MEMORY ===` tags).
+- Dream artifact (written only when `dream_summary.txt` is present and non-empty; see FR-4.x):
+  - Path: `memory/{project}/uploads/dream/dream_{cycle_ts}.txt`
+  - Content: verbatim copy of `dream_summary.txt`.
+- Collision policy: if a target path already exists (extremely unlikely in a sub-second window), append `_{time_ns}` to the filename rather than clobber.
+- Per-project merge lock: `memory/{project}/state/merge.lock` (covers the upload writes + rebuild). The legacy lock path `memory/{project}/merge.lock` MAY exist from earlier versions and MUST be migrated into `state/` on first use (best-effort `os.replace`; absence or migration failure is logged but does not abort the merge).
+- No cumulative `sleep_summary_all.txt` is written or maintained; the previous append-all behavior is obsolete.
+- Log: `[SLEEP][MERGE] Wrote uploads/sleep/sleep_{cycle_ts}.txt` (and, when applicable, `[SLEEP][DREAM_SUMMARY] Wrote uploads/dream/dream_{cycle_ts}.txt`).
+
+#### FR-3.3.3 — Single RAG Rebuild Per Cycle
+- After all per-cycle artifacts for a project have been written (sleep always; dream optional), call the shared upload-path rebuild function exactly once per project per cycle:
   ```python
-  rebuild_rag(project_id)
+  rebuild_faiss_index(project_id)
   ```
-- Use the same function used by the file-upload route; rebuild the entire uploads index (full rebuild).
-- Wait for completion (synchronous for prototype).
+- Use the same rebuild routine invoked by the file-upload route; the rebuild indexes all files currently in `memory/{project}/uploads/**` (each per-cycle artifact is a distinct input document).
+- Rebuild is synchronous and waits for completion before proceeding.
 - Log `[MERGE] RAG rebuild complete for {project}`.
 
 #### FR-3.3.4 — Optional Verification
-- Controlled by env `VERIFY_RAG` (default: true). If enabled, run `verify_rag(project_id)` to confirm:
-  - `index.faiss` and `index.json` exist and timestamps updated.
-  - Vector count > 0.
-- Log `[VERIFY] OK {project}` or `[VERIFY][ERROR]`.
+- Controlled by env `VERIFY_RAG` (default: true). When enabled, after rebuild run a lightweight verification (e.g. `load_faiss_index(project_id)`) confirming the project's FAISS index is loadable.
+- Log `[VERIFY] OK {project}` on success, `[VERIFY][ERROR] {project}` on failure.
 
 #### FR-3.3.5 — Cleanup
-- Delete `sleep_summary.txt` only when append + rebuild + (verify if enabled) all succeed.
-- If append succeeds but rebuild fails, leave `sleep_summary_all.txt` as-is, keep `sleep_summary.txt` for retry next cycle, and log an error.
-- If `sleep_summary.txt` is empty or contains only boundary tags, skip append/rebuild and log a warning (`[SLEEP][MERGE] Skipped (empty)`).
-- Retain `sleep_summary_all.txt` in uploads for historical context.
-- Log `[SLEEP][CLEANUP] Removed individual summary for {project}`.
+Cleanup runs only after all of (artifact write + rebuild + verify-if-enabled) succeed for a project. On success:
+
+- Remove `memory/{project}/sleep_summary.txt` (per-cycle intermediate; its content is now in `uploads/sleep/sleep_{cycle_ts}.txt`).
+- Remove `memory/{project}/dream_summary.txt` when a dream artifact was written for this cycle.
+- Clear Daily memory for the project (transitioning the day's content into main RAG):
+  - Under `daily.lock`, remove `daily.json` and `daily.txt`.
+  - Clear the in-memory Daily FAISS cache for this project (see FR-2.3.2).
+- Append-only ingest artifacts (e.g., `open_questions.jsonl` from FR-3.4.6) follow their own lifecycle policy and are NOT deleted by FR-3.3.5.
+- On failure at any step, leave per-project artifacts in place so the next cycle can retry; log the failure via the appropriate `[SLEEP]…[ERROR]` tag. Do not delete `sleep_summary.txt`, `dream_summary.txt`, `daily.json`, or `daily.txt` in that case.
+- Log `[SLEEP][CLEANUP] Removed individual summary for {project}` (and related per-artifact cleanup logs).
 
 #### FR-3.3.6 — Logging
-Required sequence for each project:
+Required sequence for each processed project (optional segments in brackets):
+
 ```
-[SLEEP][MERGE] Initiating RAG update
-[SLEEP][MERGE] Appended summary
-[MERGE] RAG rebuild complete
-[VERIFY] OK
-[SLEEP][CLEANUP]
+[SLEEP][MERGE] Initiating RAG update for {project}
+[SLEEP][MERGE] Wrote uploads/sleep/sleep_{cycle_ts}.txt
+[[SLEEP][DREAM_SUMMARY] Wrote uploads/dream/dream_{cycle_ts}.txt]
+[MERGE] RAG rebuild complete for {project}
+[[VERIFY] OK {project}]
+[SLEEP][CLEANUP] …
 ```
 
 ---
 
 ### Acceptance Criteria
-- After each sleep cycle, `sleep_summary.txt` is appended to `uploads/sleep_summary_all.txt`.
-- The project’s FAISS index rebuilds immediately.
-- Optional verification passes (when `VERIFY_RAG=true`).
-- All actions occur within the same sleep cycle (no rescan).
-- Log chain completes without errors.
+- After each sleep cycle, a per-cycle `uploads/sleep/sleep_{cycle_ts}.txt` exists for every processed project with non-empty daily content.
+- When Dream produced content for the cycle, a matching `uploads/dream/dream_{cycle_ts}.txt` exists and shares the same `{cycle_ts}`.
+- No `uploads/sleep_summary_all.txt` is created or maintained.
+- The project's FAISS index rebuilds exactly once per cycle, after both writes complete.
+- Optional verification passes when `VERIFY_RAG=true`.
+- On full success, `sleep_summary.txt`, `dream_summary.txt` (when applicable), `daily.json`, and `daily.txt` are removed; the in-memory Daily FAISS cache is cleared for the project.
+- On failure, the per-project artifacts are preserved for retry; append-only ingest artifacts (`open_questions.jsonl`) are never deleted by FR-3.3.5.
 
 Implementation Notes
-- 3.3 runs per project immediately after 3.2 formatting within the same sleep thread. If 3.2 fails for a project, skip 3.3 for that project and continue others; log the skip.
-- `sleep_summary_all.txt` may contain multiple BEGIN/END pairs over time; this is expected and desired (append verbatim without normalization).
+- FR-3.3 runs per project immediately after Dream (between FR-3.2.3 and final cleanup) within the same sleep thread. If FR-3.2.3 fails for a project, FR-3.3 is skipped for that project and the cycle continues with the next project.
+- `uploads/sleep/` and `uploads/dream/` accumulate per-cycle files until normal uploads-lifecycle operations remove or rotate them; the design intentionally treats each nightly cycle as a distinct indexed document.
 
 
 ## Version 3.4 — Rolling Context Tagger
@@ -1502,45 +1687,146 @@ The tags enrich the text stored in `daily_faiss`, improving daily retrieval qual
 - Before embedding into `daily_faiss`, run the tagger.
 
 #### FR-3.4.2 — Tagging Prompt
-For each rolled-off pair (optionally including the previous pair for brief context), call `BUILDER_MODEL` with a short prompt targeting a compact response:
+For each rolled-off pair, call `BUILDER_MODEL` with a single strict-JSON prompt. Tagging input includes the current rolled-off pair plus a best-effort context snippet (`last_rolled_off_pair`) drawn from the most recent prior rolled-off pair for the project (see "Previous Rolled-Off Pair Context" below).
 
+The tagger MUST return strict JSON only (no prose, no markdown fences) matching the following schema:
+
+```json
+{
+  "topics": "",
+  "intent": "",
+  "type": "",
+  "semantic_handle": "",
+  "questions": [
+    {
+      "question": "<exact or naturally rewritten question>",
+      "topic": "<topic title where the question originated>",
+      "resolution": "<ignore | answer_local | answer_remote>"
+    }
+  ]
+}
 ```
-Classify this exchange for memory tagging.
-Return 1-3 metadata lines only in this format:
-#topics: <keywords>
-#intent: <purpose>
-#type: <category such as technical, design, story, system, etc.>
-```
+
+Field semantics:
+- `topics` — comma-separated keywords describing subject matter (3–7 topics maximum).
+- `intent` — user's intent in the exchange (brief).
+- `type` — coarse category (e.g. technical, design, story, system).
+- `semantic_handle` — a short, human-readable handle for the pair suitable for later navigation/analytics.
+- `questions` — pair-local open-question candidates extracted from the exchange. See FR-3.4.6 for the downstream append-only stream contract. Each entry:
+  - `question`: the question text (exact or naturally rewritten).
+  - `topic`: the topic title where the question originated.
+  - `resolution`: one of `ignore | answer_local | answer_remote`. `remind_user` is NOT a valid resolution value (removed per DELTA-A.5.1.4).
+
+Contract rules:
+- All keys in the schema MUST be present in every response.
+- Unknown string values MUST be represented as `""` (empty string). The tagger MUST NOT emit `null`.
+- `questions` MUST be an array; use `[]` when no candidates are extracted. Preferring zero questions over weak questions is intentional.
+- Question extraction is pair-local: the tagger MUST NOT require full-memory/global resolution to decide whether to emit a candidate. Cross-turn consolidation and final open/answered status are handled downstream (see FR-4.1.1).
+- Questions MUST NOT be emitted from user-prompt text alone; they are extracted from the assistant-side of the exchange or from genuinely unresolved, durable implicit questions surfaced by the pair.
 
 Constraints:
-- Keep response minimal (≈ 3 short lines), fast (small tokens), and deterministic (temperature ~ 0).
-- Timeout budget is small; if exceeded, skip tags (see Fail‑Safe).
+- Use `BUILDER_MODEL` over the same channel as chat; enforce a small token budget and low/deterministic temperature.
+- Timeout budget is small; on timeout/error/invalid JSON, see Fail‑Safe (FR-3.4.4).
+
+##### Previous Rolled-Off Pair Context (`last_rolled_off_pair`)
+
+- **Intent:** Provide a stable, best-effort semantic context snippet for tagging by supplying the most recent prior rolled-off pair to the tagging prompt.
+- **State:**
+  - The system maintains an in-memory, per-project value `last_rolled_off_pair` representing the most recent rolled-off pair with `forget=false`.
+  - `last_rolled_off_pair` is ephemeral and MUST NOT be persisted as a first-class memory object.
+- **Resolution precedence (for each rolled-off pair):**
+  1. The in-memory `last_rolled_off_pair`, if present for the project.
+  2. A best-effort fallback loaded from the most recent non-forgotten entry in `daily.json` for the project, using the canonical stored pair text (not embedding-augmented text).
+  3. `None` if neither source is available.
+- **Tagging input:**
+  - When `last_rolled_off_pair` is available, prepend it to the tagging-prompt input before the current rolled-off pair.
+  - When unavailable, emit a debug log and tagging proceeds with the current rolled-off pair alone (best-effort).
+  - Any structured side outputs emitted by tagging at ingest time — such as question candidates consumed by downstream ingest-artifact streams — are derived from this same tagging-input contract.
+- **Forget handling:** If the rolled-off pair has `forget=true`, the system:
+  - Does not write the pair to daily memory.
+  - Does not update `last_rolled_off_pair`.
+  - Preserves the existing `last_rolled_off_pair` value for future roll-offs.
+- **Update rule:**
+  - `last_rolled_off_pair` is updated only when the rolled-off pair is actually persisted to daily memory (daily history is enabled for the project and the append operation reports success).
+  - After a successful persist of a `forget=false` pair, set `last_rolled_off_pair = current_pair_text`, where `current_pair_text` is the canonical rolled-off pair text as used for daily memory storage (user + assistant, unmodified).
+  - The `daily.txt` write is best-effort; the daily-memory append is the sole trigger for updating `last_rolled_off_pair`.
+- **Multi-pair prune order:** If multiple pairs roll off sequentially during a single pruning operation, the rules above apply in order; each roll-off MAY reference the immediately preceding rolled-off pair processed in the same operation.
+- **Reset / Invalidation:** `last_rolled_off_pair` is cleared for a project when:
+  - Daily memory is explicitly reset for that project.
+  - The sleep-cycle flush step clears active in-memory chat state for that project.
+  - The project is deleted.
+- **Restart semantics:**
+  - On process restart, `last_rolled_off_pair` is empty.
+  - When required and missing, the system MAY hydrate `last_rolled_off_pair` from `daily.json` as a best-effort fallback.
+  - Absence of `last_rolled_off_pair` MUST NOT block roll-off processing or tagging.
+- **Invariants:**
+  - `last_rolled_off_pair` follows semantic roll-off order, not conversational order.
+  - `last_rolled_off_pair` is ephemeral and is never persisted as an independent memory entry.
+  - `last_rolled_off_pair` is used exclusively to improve tagging quality.
 
 #### FR-3.4.3 — Integration
-- Prepend the returned lines to the text that is embedded into `daily_faiss`:
+The tagger returns a single JSON object (FR-3.4.2). The integration step derives downstream artifacts from that JSON:
+
+- Derive the `#topics / #intent / #type / #semantic_handle` tag lines from the JSON and prepend them to the text embedded into the in-memory Daily FAISS cache (FR-2.3.2) for the rolled-off pair:
   ```
   #topics: …
   #intent: …
   #type: …
+  #semantic_handle: …
   User: …
   Assistant: …
   ```
+  Empty-string fields MAY be omitted from the emitted tag-line block.
 - Include the same tag lines in `daily.txt` for the rolled-off pair (as metadata lines, not part of the user/assistant message text).
-- Optionally store the parsed fields in `daily.json` for analytics/backfill as:
-  `tags_meta: { topics, intent, type }` (optional).
+- Persist structured tag fields in `daily.json` for analytics/backfill as:
+  `tags_meta: { topics, intent, type, semantic_handle }`.
+- Append every extracted question candidate (zero or more) as a structured record to the per-project append-only stream `memory/{project}/open_questions.jsonl` per FR-3.4.6.
+- Stored text in daily artifacts (Daily FAISS vector, `daily.txt`, `daily.json`) consists solely of the current rolled-off pair plus tag metadata; `last_rolled_off_pair` (per FR-3.4.2) serves exclusively as tagging-prompt context and MUST NOT be stored in daily artifacts.
 
 #### FR-3.4.4 — Fail‑Safe
-- On timeout/error/invalid output, log `[TAGGER][WARN] …` and embed the original pair text unmodified (no tags).
+- On timeout/error/invalid JSON, log `[TAGGER][WARN] …` and embed the original pair text unmodified (no tags). No question candidates are appended to `open_questions.jsonl` when the tagger output is invalid.
 
 #### FR-3.4.5 — Logging
-- On success, log `[TAGGER] topics=…, intent=…, type=…` (truncate fields in logs for brevity).
+- On success, log `[TAGGER] topics=…, intent=…, type=…, semantic_handle=…, questions=<count>` (truncate long string fields in logs for brevity).
+
+#### FR-3.4.6 — Open Questions Append-Only Stream
+Purpose: make pair-local question candidates a first-class, auditable ingest artifact consumed by the Dream question pipeline (FR-4.1.1). Replaces the legacy `[Open Questions]` appendix inside `sleep_summary.txt` (removed in DELTA-A.5; see FR-3.2.3 and FR-4.1.1).
+
+- Path: `memory/{project}/open_questions.jsonl` (one project-scoped file).
+- Format: newline-delimited JSON (one record per line). Each record is produced per extracted question candidate (not per pair).
+- Record shape:
+  ```json
+  {
+    "project_id": "<string>",
+    "timestamp": "<ISO-8601 local time>",
+    "pair_id": "<opaque id of the rolled-off pair>",
+    "question": "<string>",
+    "topic": "<string>",
+    "resolution": "ignore | answer_local | answer_remote",
+    "route": "<builder route at pair-time, optional>",
+    "semantic_handle": "<tagger semantic_handle, optional>"
+  }
+  ```
+- Stable provenance fields (`project_id`, `timestamp`, `pair_id`, `topic`, `resolution`) are REQUIRED so downstream consolidation is deterministic and auditable. `route` and `semantic_handle` are OPTIONAL and MAY be omitted when unavailable.
+- Write policy:
+  - Append-only. Records are never mutated or reordered. Lines are never deleted by tagging or by the Sleep cycle (FR-3.3.5 MUST NOT remove this file).
+  - Writes are best-effort. If the write fails, tagging MUST log `[TAGGER][WARN] open_questions.jsonl write failed …` with project/pair identifiers and proceed without aborting daily-memory persistence.
+  - A lightweight file lock (e.g. `memory/{project}/state/open_questions.lock`) MAY be used to serialize concurrent appends; the existing `daily.lock` MAY be reused if that keeps implementation simpler.
+  - Empty `questions=[]` from the tagger MUST result in zero appended lines (no placeholder records).
+- Consumers:
+  - Dream (FR-4.1.1) reads this stream as its canonical question input, performs deterministic consolidation/status resolution, and forwards resolved questions to the Questions Agent (FR-4.1.2).
+  - Other consumers (analytics, debugging) MAY read the file read-only.
+- Lifecycle:
+  - The file persists across sleep cycles; it is not truncated by Sleep. Long-running projects are expected to accumulate records; downstream consumers MUST be tolerant of large files and MAY implement their own archival/rotation outside the scope of this FR.
 
 ---
 
 ### Acceptance Criteria
-- >90% of daily_faiss vectors for rolled‑off pairs include the three tag lines.
-- Daily retrieval quality measurably improves (qualitative check acceptable for V3).
-- Tags survive the daily retrieval path (as they are part of the embedded text).
+- The tagger returns a single strict-JSON object per rolled-off pair matching the FR-3.4.2 schema (all keys present).
+- ≥90% of Daily FAISS entries for rolled-off pairs include the derived tag lines (`#topics`, `#intent`, `#type`, optionally `#semantic_handle`).
+- Zero extracted questions from the tagger result in zero new lines in `open_questions.jsonl`; every non-empty `questions[]` entry appears as exactly one line with required provenance fields (FR-3.4.6).
+- `open_questions.jsonl` is never deleted or truncated by the Sleep cleanup step (FR-3.3.5).
+- Tagger failure path embeds the original pair text unmodified AND skips the `open_questions.jsonl` append for that pair.
 - Average tagging overhead < ~100 ms per rolled‑off pair.
 
 ---
@@ -1636,13 +1922,13 @@ Improve responsiveness and perceived latency during the “Awake Phase” by str
 
 ## Dream Cycle High Level Description
 
-Version 4.0 introduces the Dream Cycle as a new phase executed after the Sleep Cycle. Dreaming is responsible for analyzing the consolidated memory artifact sleep_summary.txt and producing structured insight outputs. Version 4.0 does not implement research or multi agent reasoning. It establishes the conceptual boundaries for Dream, introduces the Dream Orchestrator, and prepares the system for extension in Version 4.1 and beyond.
+Version 4.0 introduces the Dream Cycle as a new phase executed after the Sleep Cycle's deterministic consolidation (FR-3.2.3) and before the per-cycle merge + RAG rebuild (FR-3.3). Dreaming analyses the project's tag-enriched ingest artifacts — the per-project `open_questions.jsonl` stream (FR-3.4.6) for questions and `sleep_summary.txt` for daily-memory context — and produces structured insight outputs. Version 4.0 does not implement research or multi-agent reasoning. It establishes the conceptual boundaries for Dream, introduces the Dream Orchestrator, and prepares the system for extension in Version 4.1 and beyond.
 
 Goals of Version 4.0:
 
 * Define Dream as a post Sleep maintenance phase.
 * Introduce the Dream Orchestrator as the execution space for nightly agents (synchronous execution model).
-* Ensure Dream runs under controlled conditions. (Starting in 4.2.1, Dream may rewrite `sleep_summary.txt` to remove the `[Open Questions]` appendix before RAG merge; see FR‑4.2.1.)
+* Ensure Dream runs under controlled conditions.
 * Establish `dream.json` as the unified nightly Dream output file produced by the Dream Writer.
 * Provide the user GUI element Analyze Dreams when `dream.json` has content.
 
@@ -1652,47 +1938,76 @@ Goals of Version 4.0:
 
 # Version 4.1 Requirements
 
-## 4.1.1 JSON Extraction of Open Questions
+## 4.1.1 Deterministic Open-Question Consolidation
 
-* Sleep must generate a fully formatted sleep_summary.txt file that contains a final `[Open Questions]` appendix with a JSON object.
-* The JSON object must include a field "questions" which is a list of objects, each containing:
+Dream's question input is the per-project append-only stream `memory/{project}/open_questions.jsonl` (FR-3.4.6), produced at pair roll-off by the tagger (FR-3.4.2 / FR-3.4.3). There is no `[Open Questions]` appendix in `sleep_summary.txt` anymore, and there is no LLM-based extraction step inside Dream. Dream consumes the jsonl stream, performs deterministic consolidation/status resolution, and forwards the resulting question set to the downstream Questions Agent (FR-4.1.2).
 
-  * question
-  * topic
-  * resolution
-* The formatting prompt must filter out all questions with resolution set to "ignore" before returning the JSON.
-* Dream Orchestrator Integration (4.1.1 scope):
-  * Execution model:
-    * Dream executes synchronously within the Sleep cycle thread (no ThreadPoolExecutor).
-    * When `ENABLE_DREAM=false`, Dream is skipped entirely.
-    * `MAX_WORKERS` environment variable is no longer used (removed in refactoring).
-  * Submission timing:
-    * For each project, after Sleep finishes formatting `sleep_summary.txt` but **before** the RAG merge/cleanup sequence (3.3) runs for that project, call `dream(project_id, sleep_summary_text)` synchronously and wait for completion before proceeding. Sleep must hold the maintenance lock until Dream (including all Dream Agents) completes for that project.
-  * Inputs:
-    * Pass `(project_id, sleep_summary_text)` to Dream. Sleep must write `sleep_summary.txt` to disk first, then submit the in‑memory string (no read‑back).
-    * If the disk write fails, skip Dream for that project and log a warning.
-  * Behavior in 4.1.1 (no persistence yet):
-    * Run the Open Questions Agent against `sleep_summary_text`.
-* Do not write any Dream output files in 4.1.1 (no `dream_work/open_questions.json`, no `questions.json`).
-    * Log only a summary of the agent output: first 250 characters of the returned JSON string.
-    * If the agent returns invalid JSON or an empty payload, treat as zero questions and log at WARNING level (no retries).
-    * Implement `GET /dream/status` now, returning HTTP 200 with `{ "has_dreams": false, "count": 0 }` regardless of state in 4.1.1 (stub for UI integration). When `ENABLE_DREAM=false`, return the same stubbed payload.
-    * Do not implement `GET /dream` in 4.1.1 (deferred).
-  * Lock/idempotency:
-    * Keep existing Sleep idempotency: if Sleep is already running, further triggers are skipped; Dream is never double‑enqueued.
-  * No RAG retrieval in 4.1.1:
-    * Dream must not perform RAG lookups in this version (added in later 4.x).
-  * Logging:
-    * `[DREAM] Starting dreaming for project=...`
-    * `[DREAM] Project ... complete in duration=...s`
-    * `[DREAM][WARN] ...` for invalid/empty output; `[DREAM][ERROR] ...` for execution errors
-    * Log only a 250‑char preview for large payloads.
-* Feature flags and model:
-  * `ENABLE_DREAM` (default: true). When false, skip Dream entirely.
-  * `MAX_WORKERS` environment variable is deprecated (no longer used after refactoring to synchronous execution).
-  * Agent LLM binding uses the OpenAI Responses API with `gpt-5.1` at `temperature=1.0`.
-* Dream must not modify the RAG in Version 4.1.1. (Rewriting of `sleep_summary.txt` to remove the `[Open Questions]` appendix is introduced later in 4.2.1 as part of the Idea Agent pipeline; see FR‑4.2.1.)
-* sleep_summary.txt must not be deleted until Dream has finished the extraction/logging step for that project.
+### Input contract
+- Source file: `memory/{project}/open_questions.jsonl` (append-only; schema per FR-3.4.6).
+- Each line is parsed as JSON; malformed lines are logged at WARNING level and skipped (no retry).
+- If the file is missing, empty, or contains zero valid records after parsing, Dream runs with zero questions (valid, non-error state).
+
+### Deterministic consolidation pass
+Dream performs a single pure-Python pass over the parsed records — no LLM call, no prompt:
+
+1. **Filter** out any record with `resolution="ignore"`. These never reach the Questions Agent (per DELTA-A.5.1.4 narrowing).
+2. **Project-scope check**: records whose `project_id` does not match the active project are dropped with a WARNING log (defensive; should not happen in normal ingest).
+3. **Deduplication**: collapse records whose `(topic, normalized question text)` key is identical. Normalization is deterministic: lowercase, collapse whitespace, trim punctuation. Keep the most recent record (by `timestamp`) as the canonical entry; older duplicates are dropped.
+4. **Validation**: require non-empty `question`, `topic`, and a `resolution` in `{answer_local, answer_remote}` after filtering. Records failing validation are logged at WARNING level and skipped.
+5. **Ordering**: downstream ordering is deterministic and stable; records retain ingest order (earliest surviving `timestamp` first). Ordering MUST NOT be influenced by record count, RNG, or LLM output.
+
+The consolidated output of this pass is an in-memory list `[{ question, topic, resolution, pair_id, timestamp, ... }, ...]` passed to FR-4.1.2.
+
+### Dream Orchestrator integration
+- Execution model:
+  - Dream executes synchronously within the Sleep cycle thread (no ThreadPoolExecutor).
+  - When `ENABLE_DREAM=false`, Dream is skipped entirely.
+  - `MAX_WORKERS` is deprecated and unused.
+- Submission timing:
+  - For each project, after Sleep produces `sleep_summary.txt` (FR-3.2.3) and **before** the per-cycle merge/rebuild sequence (FR-3.3) runs for that project, call `dream(project_id)` synchronously and wait for completion. Sleep holds the maintenance lock until Dream (including all Dream agents) completes for that project.
+- Inputs:
+  - Dream loads `memory/{project}/open_questions.jsonl` itself. It does not read `sleep_summary.txt` for questions.
+  - Dream MAY still load `sleep_summary.txt` for other pipeline stages (e.g., the Dream Context Builder enriches context from project memory), but NOT for question extraction.
+- Lock/idempotency:
+  - Sleep idempotency is preserved: if Sleep is already running, further triggers are skipped; Dream is never double-enqueued.
+- No RAG writes:
+  - Dream MUST NOT rebuild or modify any RAG index. RAG is read-only during Dream.
+- Feature flags and model:
+  - `ENABLE_DREAM` (default: true). When false, skip Dream entirely.
+  - Dream agent LLMs are bound via the provider factory (see FR-003) using `DREAM_MODEL` / `DREAM_TEMPERATURE` / `DREAM_MAX_TOKENS`.
+- Logging:
+  - `[DREAM] Starting dreaming for project=<id>`
+  - `[DREAM][QUESTIONS] input=<parsed> ignored=<count> duplicates=<count> invalid=<count> forwarded=<count>`
+  - `[DREAM] Project <id> complete in duration=<seconds>s`
+  - `[DREAM][WARN] …` for malformed jsonl lines or validation failures; `[DREAM][ERROR] …` for execution errors.
+- GUI/status endpoint:
+  - `GET /dream/status` returns `{ "has_dreams": <bool>, "count": <int> }` based on the current `dream.json` artifact.
+- Lifecycle of `open_questions.jsonl`:
+  - Dream does NOT truncate, rewrite, or delete `open_questions.jsonl`. FR-3.4.6 owns its lifecycle; Sleep cleanup (FR-3.3.5) MUST NOT delete it.
+
+### FR-4.1.1.1 — Dream Debug Artifacts
+
+When `GENERATE_DEBUG_FILES=true`, the Dream pipeline SHOULD write human-readable per-stage debug files into the project's Dream workspace directory so that deterministic decisions made in FR-4.1.1 (and downstream Dream agents) are auditable without re-running the pipeline.
+
+- Directory: `memory/{project}/dream_work/` (create lazily; tolerate a pre-existing directory).
+- File format: plain `.txt` with labeled sections. Files SHOULD use a consistent structure such as:
+  ```
+  [INPUT]
+  <parsed input or upstream stage output>
+
+  [DECISION]
+  <counters, filters, or deterministic rules applied>
+
+  [OUTPUT]
+  <the artifact forwarded to the next stage>
+  ```
+- Suggested files (non-exhaustive; add as needed per agent):
+  - `debug_open_questions_input.txt` — raw parsed `open_questions.jsonl` records consumed by FR-4.1.1.
+  - `debug_open_questions_consolidated.txt` — post-consolidation list with filter/dedup/invalid counters.
+  - `debug_<agent>_input.txt` / `debug_<agent>_output.txt` — per-agent inputs and outputs for downstream Dream agents (Questions Agent, Context Builder, Idea Agent, Dream Writer).
+- Writes MUST be best-effort: a debug-write failure MUST NOT abort Dream execution and MUST be logged at WARNING level.
+- When `GENERATE_DEBUG_FILES` is false or unset, no files under `dream_work/` are created by Dream.
+- This FR does not replace agent-specific debug artifacts (e.g., NFR-4.2.1.9 for the Idea Agent); it establishes the common directory, naming convention, and gating flag.
 
 # Version 4.1.2 Requirements
 
@@ -1704,9 +2019,9 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
 
 ## Scope and Preconditions
 
-* Version 4.1.1 is complete and Dream already receives `(project_id, sleep_summary_text)` from Sleep.
-* `sleep_summary.txt` contains a valid `[Open Questions]` JSON block with a `questions` list of `{ question, topic, resolution }` objects.
-* Questions with `resolution="ignore"` have already been filtered out by Sleep formatting.
+* Version 4.1.1 is complete: Dream has performed deterministic consolidation of `memory/{project}/open_questions.jsonl` and produced the in-memory consolidated question list (per FR-4.1.1).
+* The consolidated list contains only records with `resolution ∈ {answer_local, answer_remote}`; `ignore` records are already filtered at consolidation time.
+* `remind_user` is not a valid resolution (removed in DELTA-A.5.1.4). Any legacy records bearing that value are treated as `ignore` and dropped during FR-4.1.1 consolidation.
 * No GUI changes are implemented in 4.1.2.
 
 ---
@@ -1724,7 +2039,6 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
     * `DREAM_MAX_TOKENS` (default: `32000`)
     * `DREAM_ENABLE_REMOTE_RESEARCH` (default: `true`)
     * `DREAM_REMOTE_CONTEXT_MAX_TOKENS` (default: `32000`, tokens; use tiktoken to count/trim)
-    * `DREAM_TOPIC_BOOST` (default: `1.5`)
 * Create `backend/app/core/agents/prompts/questions_prompts.py`:
 
   * Contains pure functions for building Dream question-answering prompts.
@@ -1743,7 +2057,6 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
   * Contains utility functions for token counting, trimming, and remote research.
   * Must expose: `count_tokens(text: str) -> int`, `trim_to_tokens(text: str, max_tokens: int) -> str`, `fetch_remote_research(question: str) -> str`.
   * Note: `run_open_question_pipeline` was moved to `backend/app/core/agents/questions_agent.py` as a private function `_run_open_question_pipeline`.
-  * If `resolution="remind_user"`, no LLM call is needed.
   * If `resolution="answer_local"`, fetch RAG context and run a single LLM answer prompt.
   * If `resolution="answer_remote"`, fetch RAG context and include optional remote research via the OpenAI web_search tool (enabled only when `DREAM_ENABLE_REMOTE_RESEARCH=true`).
 
@@ -1752,14 +2065,12 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
 ## RAG Usage
 
 * Dream must use `rag_manager.retrieve_context(...)` for all local memory retrieval.
-* `retrieve_context` must be called with:
+* `retrieve_context` MUST execute the unified pipeline in FR-2.3-3 and MUST be called with:
 
   * `project_id` set to the active project.
   * `query` set to the question text.
-  * Other parameters set via existing RAG settings (reuse `rag_top_k`, `rag_snippet_max_tokens`, `rag_score_threshold`, `rag_context_max_tokens`).
-  * Provide topic‑aware hints:
-    * `route_namespaces=[topic]`
-    * `namespace_boost=DREAM_TOPIC_BOOST` (default: 1.5)
+  * Pipeline parameters resolved from the route policy configured for Dream (typically the `OTHER` route of `route_policy.json`) and the environment (`BASE_TOP_K`, `RAG_SNIPPET_MAX_TOKENS`, `RAG_CONTEXT_MAX_TOKENS`).
+  * No namespace-based biasing, no per-call `route_namespaces`, no namespace boosts, and no similarity-threshold filter (all removed by FR-2.3-3; ranking is purely cosine-similarity-based per FR-2.3-3.2, bounded by `max_keep` per FR-2.3-3.3).
 * RAG is read only during Dream.
 * Dream must not rebuild or write any RAG data.
 
@@ -1767,11 +2078,8 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
 
 ## Per Question Processing Pipeline
 
-* For each `{ question, topic, resolution }` in the Open Questions JSON:
+* For each `{ question, topic, resolution }` in the consolidated question list produced by FR-4.1.1:
 
-  * If `resolution="remind_user"`:
-
-    * Produce `{ "question": ..., "topic": ..., "answer": "User input required" }`.
   * If `resolution="answer_local"`:
 
     * Retrieve local RAG context.
@@ -1825,11 +2133,11 @@ The Questions Agent MUST return an in-memory Python dictionary of the form:
 ## Execution Behavior
 
 * Dream executes synchronously within the Sleep cycle thread (no ThreadPoolExecutor or threading).
-* Sleep calls `dream(project_id, sleep_summary_text)` directly for each project and waits for completion.
-* Inside `dream()`, the questions agent processes all questions sequentially and returns an in-memory `questions_data` dictionary.
+* Sleep calls `dream(project_id)` directly for each project and waits for completion. Dream loads the consolidated open-question list from `memory/{project}/open_questions.jsonl` per FR-4.1.1; no summary text argument is passed.
+* Inside `dream()`, the questions agent processes the consolidated list sequentially and returns an in-memory `questions_data` dictionary.
 * Dream must treat RAG as read only.
 * Dream must not read or write data belonging to other projects.
-* The questions agent is implemented in `backend/app/core/agents/questions_agent.py` with the main entry point `run_questions_agent(project_id: str, summary_text: str) -> Dict[str, Any]`.
+* The questions agent is implemented in `backend/app/core/agents/questions_agent.py` with the main entry point `run_questions_agent(project_id: str, questions: List[Dict[str, Any]]) -> Dict[str, Any]`, where `questions` is the output of FR-4.1.1 consolidation (each item has at minimum `question`, `topic`, and `resolution ∈ {answer_local, answer_remote}`).
 
 ---
 
@@ -2098,14 +2406,11 @@ The builder SHALL perform a RAG retrieval pass for each extracted topic.
 #### Retrieval Rules
 
 * Each topic SHALL be queried independently.
-* Retrieval MUST use the same Project RAG Index and settings as existing Dream RAG calls:
-  * `rag_manager.retrieve_context(...)` over the main uploads index (which already includes `sleep_summary_all.txt`).
-  * No daily RAG (`daily_faiss`) participation in this enrichment step—daily content is already present via `sleep_summary.txt`.
-* Top-K retrieval SHALL be used per topic:
-  * Use existing `rag_top_k` and `rag_snippet_max_tokens` / `rag_context_max_tokens` settings (no new caps for now).
-* No namespace/route biasing:
-  * Do NOT pass `route_namespaces` or namespace boosts for these lookups.
-* A similarity threshold MUST be applied using the existing `rag_score_threshold`.
+* Retrieval MUST use the unified pipeline (FR-2.3-3) via `rag_manager.retrieve_context(...)` over the main uploads index (which already includes per-cycle `uploads/sleep/sleep_{ts}.txt` and `uploads/dream/dream_{ts}.txt` artifacts; see FR-3.3.2).
+  * Daily RAG (in-memory Daily FAISS cache) SHALL NOT participate in this enrichment step—current-day content is already present in the just-written `sleep_summary.txt` for this cycle.
+* Per-topic retrieval MUST use the route policy configured for Dream (typically the `OTHER` route of `route_policy.json`) and existing environment settings (`BASE_TOP_K`, `RAG_SNIPPET_MAX_TOKENS`, `RAG_CONTEXT_MAX_TOKENS`). No new caps are introduced.
+* No namespace/route biasing: do NOT pass `route_namespaces` or namespace boosts.
+* No similarity-threshold filter is applied (removed by FR-2.3-3.2); ranking is purely cosine-similarity-based and bounded by `max_keep` per FR-2.3-3.3.
 
 #### Returned Document Format
 
@@ -2859,7 +3164,7 @@ It assumes that the Dream pipeline (FR-4.1.x–4.4) has produced a `memory/{proj
 
 - FR-4.5.1 does **not** define:
   - How Dream items are curated or “Kept” for long-term memory.
-  - How Dream outputs are written into daily FAISS or merged into `sleep_summary_all.txt` / `dream_summary_all.txt`.
+  - How Dream outputs are written into daily FAISS or rolled into per-cycle `uploads/sleep/` and `uploads/dream/` artifacts (see FR-3.3.2).
   - Any changes to `dream.json` structure beyond the existing `"project_summary"` field.
 
 ## 4.5.2 Dream Items Layout
@@ -2924,15 +3229,15 @@ Populate the Dream analysis modal with dream entries from `dream.json`, rendered
   - Delete `dream.json` only if all kept items were successfully processed; otherwise log warnings and leave `dream.json` intact.
 - Items without `keep=true` are ignored/dropped silently.
 
-## 4.5.4 Dream Summary Post-Sleep Consolidation
-**Scope:** Sleep pipeline step to fold nightly Dream summaries into the long-term cumulative sleep summary without affecting the daily chat flow.
+## 4.5.4 Dream Summary Per-Cycle Consolidation
+**Scope:** Deterministic Sleep-pipeline step that folds the nightly Dream summary, when present, into the project's per-cycle upload artifacts alongside the sleep artifact.
 
 - Trigger: run at the end of every Sleep cycle **only if** `memory/{project}/dream_summary.txt` exists and is non-empty; skip silently otherwise.
-- Prune/format: reuse the same pruning + formatting pipeline used for `daily.txt` (same prompts/functions). Prompts already preserve either DAILY or DREAM boundary tags; keep whichever tags are present.
-- Append: append the fully formatted Dream summary **verbatim** (including BEGIN/END tags) to `memory/{project}/uploads/sleep_summary_all.txt`, inserting exactly one blank line before the appended block. Create the cumulative file if missing.
-- Debug: when `GENERATE_DEBUG_FILES` is enabled, reuse `write_debug_file` to emit `debug_dream_summary.txt` (no extra formatting beyond the produced text).
-- Cleanup: delete `dream_summary.txt` only after prune + format + append (and debug write, if enabled) all succeed. If any step fails, leave `dream_summary.txt` in place and log a warning with the reason.
-- Non-goal: does not change the daily roll-off process; daily.txt/FAISS behavior remains unchanged.
+- Transform: deterministic pass-through. Read `dream_summary.txt`, normalize line endings to `\n`, and treat the content as-is (including any BEGIN/END tags embedded by upstream agents). No LLM prompts, no pruning, no formatting pass. This aligns with the promptless sleep posture established in DELTA-A.5.
+- Write: produce a per-cycle artifact at `memory/{project}/uploads/dream/dream_{cycle_ts}.txt` with the same `{cycle_ts}` used for the sibling `uploads/sleep/sleep_{cycle_ts}.txt` (see FR-3.3.2). The file-lock, rebuild-once, and verify semantics are owned by FR-3.3.2 / FR-3.3.3 / FR-3.3.4; this step only contributes the dream artifact.
+- Debug: when `GENERATE_DEBUG_FILES` is enabled, reuse `write_debug_file` to emit `debug_dream_summary.txt` (verbatim).
+- Cleanup: `dream_summary.txt` is removed by FR-3.3.5 after the per-cycle merge + rebuild (and verify, if enabled) succeed. On failure, `dream_summary.txt` is preserved for the next cycle and the failure is logged.
+- Non-goal: does not change the daily roll-off process; daily.txt / Daily FAISS cache behavior remains unchanged.
 
 
 # 5 Instrumentation Overview
@@ -3210,9 +3515,9 @@ Each turn record MUST include enough fields to explain token growth or spikes:
 Field definitions and boundaries:
 - `route` MUST record the builder route exactly as returned; if builder fails/unavailable, it MUST default to `OTHER`.
 - `rag_enabled` indicates retrieval path enabled/attempted for the turn and MAY be `true` even when counts resolve to zero.
-- `retrieved_count` MUST be the total candidate count produced by canonical retrieval output (A.4.1), summed across attempted sources, before selection.
-- `kept_count` MUST be the retained candidate count after A.4.3 selection (including adjacent-chunk effective-limit bonuses), before A.4.4 expansion/dedup.
-- `expanded_unique_chunks_after_merge` MUST be computed immediately after A.4.4.3.2 identity dedup as the unique `(source_document_id, chunk_index)` count.
+- `retrieved_count` MUST be the total candidate count produced by the canonical retrieval entry point (FR-2.3-3.1), summed across attempted sources, before selection.
+- `kept_count` MUST be the retained candidate count after FR-2.3-3.3 selection (including adjacent-chunk effective-limit bonuses), before FR-2.3-3.4 expansion/dedup.
+- `expanded_unique_chunks_after_merge` MUST be computed immediately after FR-2.3-3.4.3 pass 2 (chunk identity deduplication) as the unique `(source_document_id, chunk_index)` count.
 - `final_context_tokens_est` MUST represent total final prompt context estimate actually sent to the main model (system + history + RAG + profile + other).
 - `final_context_clipped` MUST be `true` only when clipping/truncation occurred due to context/token budget enforcement; otherwise `false`.
 - `final_context_tokens_est` SHOULD equal the exact sum of:

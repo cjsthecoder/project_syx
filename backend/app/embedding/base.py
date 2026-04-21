@@ -11,7 +11,6 @@ Use of this software requires explicit written permission from the copyright hol
 Provider-agnostic embedding interfaces and result envelope.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import List, Optional, Protocol

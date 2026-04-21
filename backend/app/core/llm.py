@@ -11,7 +11,6 @@ Use of this software requires explicit written permission from the copyright hol
 LLM integration for Syx chatbot runtime (factory-based, no LangChain).
 """
 
-from __future__ import annotations
 
 import logging
 import time

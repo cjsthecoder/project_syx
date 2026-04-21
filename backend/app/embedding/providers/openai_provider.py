@@ -11,7 +11,6 @@ Use of this software requires explicit written permission from the copyright hol
 OpenAI embedding provider implementation.
 """
 
-from __future__ import annotations
 
 import logging
 import random

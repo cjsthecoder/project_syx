@@ -2,7 +2,6 @@
 OpenAI-backed implementations for chat + responses APIs.
 """
 
-from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Iterable, List, Optional, Tuple

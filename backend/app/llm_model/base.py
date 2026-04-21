@@ -2,7 +2,6 @@
 Provider-agnostic LLM client interfaces and data envelopes.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple

@@ -22,7 +22,6 @@ Output written to <test_run_dir>/judging:
   - judging_prompts.txt
 """
 
-from __future__ import annotations
 
 import argparse
 import json

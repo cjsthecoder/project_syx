@@ -18,7 +18,6 @@ Behavior:
 - Write one concatenated output file for this run: concatenated_daily.txt.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

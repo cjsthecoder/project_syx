@@ -15,7 +15,6 @@ Strict, fail-fast semantics:
 - policy is cached for process lifetime (reload on restart only).
 """
 
-from __future__ import annotations
 
 import json
 import os

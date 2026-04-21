@@ -11,7 +11,6 @@ Use of this software requires explicit written permission from the copyright hol
 Factory for provider-selected embedding client.
 """
 
-from __future__ import annotations
 
 import logging
 from typing import Optional

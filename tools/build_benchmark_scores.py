@@ -20,7 +20,6 @@ Behavior:
 - write one-column CSV (no header) with one row per turn
 """
 
-from __future__ import annotations
 
 import argparse
 import csv

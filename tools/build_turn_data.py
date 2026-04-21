@@ -18,7 +18,6 @@ Output format:
 - Web Part 2
 """
 
-from __future__ import annotations
 
 import argparse
 import csv

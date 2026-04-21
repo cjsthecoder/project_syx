@@ -14,7 +14,6 @@ Main code calls a shared Instrumentation instance directly.
 Enabled/disabled behavior is centralized here via Noop vs Real implementations.
 """
 
-from __future__ import annotations
 
 import atexit
 import hashlib

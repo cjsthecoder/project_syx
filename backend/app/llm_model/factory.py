@@ -2,7 +2,6 @@
 Factory functions for provider-selected LLM clients.
 """
 
-from __future__ import annotations
 
 import logging
 from typing import Optional

@@ -14,7 +14,6 @@ Replace every case-insensitive occurrence of "Morpheus" with "Syx" in top-level 
 - Files are rewritten in place only when the content changes.
 """
 
-from __future__ import annotations
 
 import argparse
 import logging

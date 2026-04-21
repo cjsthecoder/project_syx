@@ -21,7 +21,6 @@ Behavior:
   output file in <output_dir>/concatenated_daily.txt.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

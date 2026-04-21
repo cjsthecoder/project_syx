@@ -11,7 +11,6 @@ Use of this software requires explicit written permission from the copyright hol
 Chat pipeline helpers extracted from chat routes.
 """
 
-from __future__ import annotations
 
 import json
 import logging

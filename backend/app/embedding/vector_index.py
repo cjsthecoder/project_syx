@@ -16,7 +16,6 @@ This module defines the stable interface that both:
 must implement, so canonical retrieval can be source-agnostic.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Protocol

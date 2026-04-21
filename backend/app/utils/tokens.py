@@ -11,7 +11,6 @@ Use of this software requires explicit written permission from the copyright hol
 Shared tokenization helpers for best-effort counting and trimming.
 """
 
-from __future__ import annotations
 
 from functools import lru_cache
 from typing import Any, Iterable, Optional

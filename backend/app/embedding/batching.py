@@ -14,7 +14,6 @@ Goal: keep each embeddings request under a configurable total token budget
 to avoid provider-side "max tokens per request" errors on large corpora.
 """
 
-from __future__ import annotations
 
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 

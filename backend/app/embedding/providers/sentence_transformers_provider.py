@@ -11,7 +11,6 @@ Use of this software requires explicit written permission from the copyright hol
 SentenceTransformers embedding provider implementation.
 """
 
-from __future__ import annotations
 
 import logging
 from typing import List, Optional

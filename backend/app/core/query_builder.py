@@ -7,7 +7,6 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
-from __future__ import annotations
 """
 Query Builder / Router.
 

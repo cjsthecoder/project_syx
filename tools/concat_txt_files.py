@@ -11,7 +11,6 @@ Use of this software requires explicit written permission from the copyright hol
 Concatenate top-level .txt files from an input directory into one output file.
 """
 
-from __future__ import annotations
 
 import argparse
 from pathlib import Path

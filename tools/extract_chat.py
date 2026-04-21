@@ -11,7 +11,6 @@ Use of this software requires explicit written permission from the copyright hol
 Extract USER/ASSISTANT pairs from ChatGPT HTML exports and emit benchmark JSONL.
 """
 
-from __future__ import annotations
 
 import json
 import logging

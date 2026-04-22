@@ -621,7 +621,7 @@ async def delete_project(project_id: str) -> JSONResponse:
             except Exception as exc:
                 logger.info("[PROJECT] Failed clearing project deque project_id=%s: %s", project_id, exc)
             try:
-                mm.clear_last_rolled_off_pair(project_id)
+                mm.last_context_tokens_per_project.pop(project_id, None)
             except Exception as exc:
                 logger.info(
                     "[PROJECT] Failed clearing last_rolled_off_pair project_id=%s: %s",

@@ -197,7 +197,7 @@ def _sleep_cycle_worker():
                     try:
                         if pid in mem.project_deques:
                             mem.project_deques.pop(pid, None)
-                        mem.clear_last_rolled_off_pair(pid)
+                        mem.last_context_tokens_per_project.pop(pid, None)
                     except Exception as exc:
                         logger.warning(
                             "[SLEEP][FLUSH] Failed clearing in-memory caches project=%s detail=%s",

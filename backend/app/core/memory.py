@@ -27,7 +27,7 @@ from .database import get_session
 from .db_models import ChatMessage, Project
 from .config import get_settings
 from ..rag.daily_store import append_pair
-from ..utils.logging import get_message_id, get_namespace
+from ..utils.logging import get_namespace
 from ..utils.tokens import count_tokens
 from ..tagging.tagger import tag_pair
 
@@ -322,18 +322,14 @@ class MemoryManager:
         asst_text = asst_msg.get('content') or ''
         pair_text = f"User: {user_text}\nAssistant: {asst_text}"
         tokens = int(count_tokens(pair_text))
-        mid = get_message_id() or "-"
         limit = get_settings().log_preview_max_chars
-        pp = (user_msg.get('content') or '')[:limit]
         rp = (asst_msg.get('content') or '')[:limit]
         logger.debug(
-            "[ROLLOFF] project_id=%s message_id=%s user_id=%s assistant_id=%s tokens_approx=%s prompt_preview=\"%s\" response_preview=\"%s\"",
+            "[ROLLOFF] project_id=%s user_id=%s assistant_id=%s tokens_approx=%s response_preview=\"%s\"",
             project_id,
-            mid,
             str(user_msg.get("id")),
             str(asst_msg.get("id")),
             str(tokens),
-            pp,
             rp,
         )
         # Append to daily if enabled and not forgotten; on any error we still drop per spec

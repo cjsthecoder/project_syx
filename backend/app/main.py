@@ -439,8 +439,17 @@ if __name__ == "__main__":
             self.buffer = ""
 
         def write(self, text):
-            if text.strip():
-                self.logger.log(self.level, text.strip())
+            line = (text or "").strip()
+            if not line:
+                return
+            # sentence-transformers/tqdm prints weight-loading progress to stderr.
+            # Keep only the completed progress line and demote it to INFO so stderr
+            # redirection still preserves warning/error semantics for real failures.
+            if "Loading weights:" in line:
+                if "100%|" in line:
+                    self.logger.info(line)
+                return
+            self.logger.log(self.level, line)
 
         def flush(self):
             pass

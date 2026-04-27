@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Toast } from '@/components/ui/toast'
 import { api } from '@/pages/app/api'
-import { ModelItem } from '@/pages/app/types'
+import { Message, ModelItem } from '@/pages/app/types'
 import { useProjectData } from '@/hooks/useProjectData'
 import { useChatStream } from '@/hooks/useChatStream'
 import { SleepDialog } from '@/components/app-dialogs/SleepDialog'
@@ -144,6 +144,33 @@ export default function App() {
   const toggleDreamRemember = (idx: number) => {
     setDreamItems((prev) => prev.map((it, i) => (i === idx ? { ...it, remember: !it.remember } : it)))
   }
+
+  const setAssistantFlag = useCallback((
+    message: Message,
+    flag: 'forget' | 'keep',
+    value: boolean,
+  ) => {
+    setMessages((list) => list.map((mm) => {
+      const matchesPersisted = message.id != null && mm.id === message.id
+      const matchesPending = message.id == null && message.clientId != null && mm.clientId === message.clientId
+      return matchesPersisted || matchesPending ? { ...mm, [flag]: value } : mm
+    }))
+  }, [setMessages])
+
+  const updateAssistantFlag = useCallback(async (
+    message: Message,
+    flag: 'forget' | 'keep',
+    value: boolean,
+  ) => {
+    setAssistantFlag(message, flag, value)
+    if (!projectId || message.id == null) return
+    try {
+      await api(`/projects/${projectId}/chats/${message.id}`, { method: 'PATCH', body: JSON.stringify({ [flag]: value }) })
+    } catch (err: unknown) {
+      setAssistantFlag(message, flag, !value)
+      setError(err instanceof Error ? err.message : `Failed to update ${flag} flag`)
+    }
+  }, [projectId, setAssistantFlag])
 
   const listRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -317,22 +344,14 @@ export default function App() {
               >
                 {m.content}
               </div>
-              {m.role === 'assistant' && m.id != null && (
+              {m.role === 'assistant' && (m.id != null || m.streamComplete) && (
                 <div className="ml-[20%] mt-1 flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
                   <label className="inline-flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={!!m.forget}
-                      onChange={async (e) => {
-                        if (!projectId || m.id == null) return
-                        const next = e.target.checked
-                        try {
-                          await api(`/projects/${projectId}/chats/${m.id}`, { method: 'PATCH', body: JSON.stringify({ forget: next }) })
-                          setMessages((list) => list.map((mm) => (mm.id === m.id ? { ...mm, forget: next } : mm)))
-                        } catch (err: unknown) {
-                          setError(err instanceof Error ? err.message : 'Failed to update forget flag')
-                        }
-                      }}
+                      disabled={m.id == null}
+                      onChange={(e) => updateAssistantFlag(m, 'forget', e.target.checked)}
                     />
                     <span>Forget</span>
                   </label>
@@ -340,16 +359,8 @@ export default function App() {
                     <input
                       type="checkbox"
                       checked={!!m.keep}
-                      onChange={async (e) => {
-                        if (!projectId || m.id == null) return
-                        const next = e.target.checked
-                        try {
-                          await api(`/projects/${projectId}/chats/${m.id}`, { method: 'PATCH', body: JSON.stringify({ keep: next }) })
-                          setMessages((list) => list.map((mm) => (mm.id === m.id ? { ...mm, keep: next } : mm)))
-                        } catch (err: unknown) {
-                          setError(err instanceof Error ? err.message : 'Failed to update keep flag')
-                        }
-                      }}
+                      disabled={m.id == null}
+                      onChange={(e) => updateAssistantFlag(m, 'keep', e.target.checked)}
                     />
                     <span>Keep</span>
                   </label>

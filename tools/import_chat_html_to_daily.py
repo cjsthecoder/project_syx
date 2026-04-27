@@ -11,7 +11,7 @@ Behavior:
   - pair USER with the next ASSISTANT
   - skip orphan ASSISTANT turns
   - replace unanswered USER with newer USER
-- Tag each pair via backend.app.tagging.tagger.tag_pair().
+- Tag each pair via backend.app.tagging.tagger.tag_pair() unless tagger=false.
 - Write <output_dir>/<input_root>.txt in daily.txt-compatible format:
   - BEGIN DAILY MEMORY header
   - BEGIN/END DAILY PAIR blocks
@@ -82,6 +82,16 @@ def _require_tagger() -> Any:
             "Run from repository context with backend dependencies configured."
         ) from exc
     return tag_pair
+
+
+def _parse_bool_flag(value: str) -> bool:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ValueError(f"Invalid boolean value for tagger: {value!r}. Use true or false.")
+
 
 def _estimate_tokens(text: str, enc: Any) -> int:
     return len(enc.encode(str(text or "")))
@@ -260,7 +270,7 @@ def _process_one_file(
     input_path: Path,
     out_dir: Path,
     BeautifulSoup: Any,
-    tag_pair: Any,
+    tag_pair: Optional[Any],
     encoding: Any,
 ) -> Path:
     html_text = _read_html(input_path)
@@ -290,17 +300,20 @@ def _process_one_file(
         total_tokens_user_assistant += _estimate_tokens(user_text, encoding)
         total_tokens_user_assistant += _estimate_tokens(assistant_text, encoding)
 
-        tags = tag_pair(
-            user_text=user_text,
-            assistant_text=assistant_text,
-            previous_pair_text=previous_pair_text,
-            project_id=f"html-import:{root}",
-        )
-        if not isinstance(tags, dict):
-            raise RuntimeError(
-                f"tag_pair failed for pair #{idx}. "
-                "Tagger requires valid backend configuration/API key."
+        if tag_pair is not None:
+            tags = tag_pair(
+                user_text=user_text,
+                assistant_text=assistant_text,
+                previous_pair_text=previous_pair_text,
+                project_id=f"html-import:{root}",
             )
+            if not isinstance(tags, dict):
+                raise RuntimeError(
+                    f"tag_pair failed for pair #{idx}. "
+                    "Tagger requires valid backend configuration/API key."
+                )
+        else:
+            tags = {}
 
         topics = _normalize_tag_value(tags, "topics")
         intent = _normalize_tag_value(tags, "intent")
@@ -378,7 +391,7 @@ def _write_concatenated_output(out_dir: Path, output_files: list[Path]) -> Path:
     return concat_path
 
 
-def run(input_path_raw: str, output_dir: str) -> int:
+def run(input_path_raw: str, output_dir: str, tagger: bool = True) -> int:
     _setup_logging()
     _ensure_import_paths()
 
@@ -387,7 +400,7 @@ def run(input_path_raw: str, output_dir: str) -> int:
     _ensure_output_dir(out_dir)
 
     BeautifulSoup, tiktoken = _require_dependencies()
-    tag_pair = _require_tagger()
+    tag_pair = _require_tagger() if tagger else None
     encoding = tiktoken.get_encoding("cl100k_base")
 
     if not input_path.exists():
@@ -432,10 +445,11 @@ def run(input_path_raw: str, output_dir: str) -> int:
             logger.warning("Failed writing concatenated output file: %s", exc)
 
     logger.info(
-        "Run complete. processed=%s failed=%s input=%s",
+        "Run complete. processed=%s failed=%s input=%s tagger=%s",
         processed_count,
         failed_count,
         input_path,
+        tagger,
     )
     return 0 if (failed_count == 0 and not concat_failed) else 1
 
@@ -449,9 +463,15 @@ def main() -> int:
         help="Path to one .html/.htm file or a directory of top-level .html/.htm files",
     )
     parser.add_argument("output_dir", help="Output directory for <root>.txt and statistics.jsonl")
+    parser.add_argument(
+        "tagger",
+        nargs="?",
+        default="true",
+        help="Whether to run the tagger (true/false). Defaults to true.",
+    )
     args = parser.parse_args()
     try:
-        return run(args.input_path, args.output_dir)
+        return run(args.input_path, args.output_dir, _parse_bool_flag(args.tagger))
     except Exception as exc:
         logger.error("%s", exc)
         return 1

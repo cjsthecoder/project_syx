@@ -18,7 +18,7 @@ import sqlalchemy as sa
 from sqlalchemy.sql import table, column
 from sqlalchemy import String, Boolean, Integer, DateTime
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 revision = '0002'
 down_revision = '0001'
@@ -54,8 +54,8 @@ def upgrade() -> None:
                 'id': str(uuid.uuid4()),
                 'name': 'Continuum',
                 'desc': 'The continuous memory stream where all thoughts, ideas, and context flow beyond individual projects.',
-                'ca': datetime.utcnow(),
-                'ua': datetime.utcnow(),
+                'ca': datetime.now(timezone.utc),
+                'ua': datetime.now(timezone.utc),
                 'sys': True,
             }
         )

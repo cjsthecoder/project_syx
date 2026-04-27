@@ -19,7 +19,7 @@ import os
 import json
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Deque, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import deque
 
 from filelock import FileLock
@@ -268,7 +268,7 @@ class MemoryManager:
                 with open(artifact_path, "a", encoding="utf-8", newline="\n") as f:
                     for idx, q in enumerate(questions, start=1):
                         payload: Dict[str, Any] = {
-                            "ts": datetime.utcnow().isoformat() + "Z",
+                            "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                             "source": "tagger_ingest",
                             "project_id": project_id,
                             "assistant_message_id": assistant_message_id,
@@ -327,7 +327,7 @@ class MemoryManager:
         if not project_id:
             return
         self._ensure_loaded(project_id)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         with get_session() as session:
             msg = ChatMessage(project_id=project_id, role="user", content=content, created_at=now)
             session.add(msg)
@@ -355,7 +355,7 @@ class MemoryManager:
         if not project_id:
             return
         self._ensure_loaded(project_id)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         ns = (namespace or get_namespace() or "other").lower()
         tags_meta: Optional[Dict[str, Any]] = None
         tags_meta_json: Optional[str] = None
@@ -681,7 +681,7 @@ class MemoryManager:
             "content": f"Memory search for '{query}' not yet implemented",
             "relevance_score": 0.0,
             "source": "stub",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }]
     
     def cleanup_old_memories(

@@ -11,7 +11,7 @@ Use of this software requires explicit written permission from the copyright hol
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np  # type: ignore
@@ -175,7 +175,7 @@ def write_ltm_manifest_and_adjacency(
             {
                 "schema_version": ADJACENCY_SCHEMA_VERSION,
                 "project_id": project_id,
-                "built_at": datetime.utcnow().isoformat(),
+                "built_at": datetime.now(timezone.utc).isoformat(),
                 "by_doc_id": adj_list,
             },
         )
@@ -186,7 +186,7 @@ def write_ltm_manifest_and_adjacency(
                 "schema_version": ADJACENCY_SCHEMA_VERSION,
                 "index_kind": "ltm",
                 "project_id": project_id,
-                "built_at": datetime.utcnow().isoformat(),
+                "built_at": datetime.now(timezone.utc).isoformat(),
                 "chunk_size": int(chunk_size),
                 "chunk_overlap": int(chunk_overlap),
                 "index_dim": int(index_dim),

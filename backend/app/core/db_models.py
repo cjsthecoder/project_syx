@@ -7,18 +7,22 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlmodel import SQLModel, Field
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class Project(SQLModel, table=True):
     id: str = Field(primary_key=True, index=True)
     name: str
     description: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     system: bool = Field(default=False, description="System project (non-deletable/non-renamable)")
     daily_rag_enabled: bool = Field(default=True, description="Keep Daily History per project")
     # Persist a minimal "recent summary" seed across sleep flush (ChatMessage is wiped).
@@ -34,7 +38,7 @@ class File(SQLModel, table=True):
     filename: str
     size_bytes: int
     content_type: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
     embedding_status: str = Field(default="indexed", description="pending|indexed|failed")
     page_count: int = Field(default=1, description="Pages for PDFs; 1 for text files")
     token_count: int = Field(default=0, description="Tokens computed for this file")
@@ -47,7 +51,7 @@ class ChatMessage(SQLModel, table=True):
     project_id: str = Field(index=True, foreign_key="project.id")
     role: str = Field(description="user|assistant")
     content: str
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
     forget: bool = Field(default=False, description="If true, skip roll-off embedding and daily.txt")
     namespace: Optional[str] = Field(default=None, description="Primary namespace captured at assistant creation")
     keep: bool = Field(default=False, description="User preference tag propagated into daily headers/metadata")

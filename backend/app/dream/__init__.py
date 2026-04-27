@@ -10,6 +10,7 @@ Use of this software requires explicit written permission from the copyright hol
 # Dream package: dream cycle, context builder, and LLM helpers.
 
 from .dreams import dream, write_dream_output  # noqa: F401
+from .auto_accept import auto_accept_dreams  # noqa: F401
 from .llm import dream_llm_call  # noqa: F401
 from .context import build_dream_context, _strip_open_questions_section  # noqa: F401
 

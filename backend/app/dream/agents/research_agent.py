@@ -129,7 +129,12 @@ def run_research_agent(
             logger.debug("Research Agent prompt topic=%s", topic)
 
             try:
-                raw = dream_llm_call(prompt, max_output_tokens=settings.dream_max_tokens)
+                raw = dream_llm_call(
+                    prompt,
+                    max_output_tokens=settings.dream_max_tokens,
+                    project_id=project_id,
+                    purpose="research_agent",
+                )
             except Exception as exc:
                 logger.error(
                     "Research Agent LLM invocation failed project=%s topic=%s: %s",
@@ -186,24 +191,6 @@ def run_research_agent(
             entry_research.append(research_entry)
 
         entry["research"] = entry_research
-
-        # For research-backed remote entries, keep assistant_response concise in dream.json.
-        if entry_research:
-            unique_topics: List[str] = []
-            seen_topics = set()
-            for rr in entry_research:
-                if not isinstance(rr, dict):
-                    continue
-                t = str(rr.get("research_topic") or "").strip()
-                key = t.lower()
-                if not t or key in seen_topics:
-                    continue
-                seen_topics.add(key)
-                unique_topics.append(t)
-            if unique_topics:
-                entry["assistant_response"] = "To explore this idea, I researched: " + "; ".join(unique_topics) + "."
-            else:
-                entry["assistant_response"] = "To explore this idea, I researched relevant external sources."
 
         if topics_list and not entry_research:
             entry["research_failed"] = True

@@ -227,6 +227,9 @@ class Settings(BaseSettings):
 		echo "ENABLE_DREAM=true"; \
 		echo "# Enable Dream orchestrator"; \
 		echo ""; \
+		echo "AUTO_ACCEPT_DREAMS=true"; \
+		echo "# Automatically persist all pending dream.json items during sleep"; \
+		echo ""; \
 		echo "DREAM_MODEL=gpt-5.4"; \
 		echo "DREAM_TEMPERATURE=1.0"; \
 		echo "DREAM_MAX_TOKENS=32000"; \
@@ -460,6 +463,10 @@ class Settings(BaseSettings):
     streaming_enabled: bool = Field(default=True, description="Enable streaming chat endpoint")
     # Dream orchestrator
     enable_dream: bool = Field(default=True, description="Enable Dream orchestrator")
+    auto_accept_dreams: bool = Field(
+        default=False,
+        description="Automatically persist all pending dream.json items during the sleep cycle",
+    )
     # Dream agent configuration
     dream_model: str = Field(default="gpt-5.4", description="Dream LLM model")
     dream_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Dream LLM temperature")

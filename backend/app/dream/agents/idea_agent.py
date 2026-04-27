@@ -74,7 +74,12 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
 
     # Call Dream LLM
     try:
-        raw = dream_llm_call(prompt, max_output_tokens=settings.dream_max_tokens)
+        raw = dream_llm_call(
+            prompt,
+            max_output_tokens=settings.dream_max_tokens,
+            project_id=project_id,
+            purpose="idea_agent",
+        )
     except Exception as e:  # Defensive, though dream_llm_call already catches
         logger.error("Idea Agent LLM invocation failed project=%s: %s", project_id, e, exc_info=True)
         return {"date": _today_mmddyyyy(), "items": []}

@@ -95,7 +95,12 @@ def _run_open_question_pipeline(project_id: str, question: str, topic: str, reso
         prompt = build_answer_question_prompt_local(question, topic, local_context)
 
     # Call Dream LLM
-    raw = dream_llm_call(prompt, max_output_tokens=settings.dream_max_tokens)
+    raw = dream_llm_call(
+        prompt,
+        max_output_tokens=settings.dream_max_tokens,
+        project_id=project_id,
+        purpose="questions_agent",
+    )
     # Trim logs
     preview = (raw or "")[:250]
 

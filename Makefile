@@ -472,6 +472,9 @@ setup-env:
 		echo "ENABLE_DREAM=true"; \
 		echo "# Enable Dream orchestrator"; \
 		echo ""; \
+		echo "AUTO_ACCEPT_DREAMS=true"; \
+		echo "# Automatically persist all pending dream.json items during sleep"; \
+		echo ""; \
 		echo "DREAM_MODEL=gpt-5.4"; \
 		echo "DREAM_TEMPERATURE=1.0"; \
 		echo "DREAM_MAX_TOKENS=32000"; \

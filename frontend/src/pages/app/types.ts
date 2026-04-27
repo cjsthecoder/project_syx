@@ -14,6 +14,7 @@ export type Message = {
   content: string
   forget?: boolean
   keep?: boolean
+  streamComplete?: boolean
 }
 
 export type Project = { id: string; name?: string }

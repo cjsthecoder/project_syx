@@ -104,6 +104,7 @@ export function useChatStream({
         done = d
         if (value) {
           const chunk = decoder.decode(value, { stream: true })
+          const streamComplete = /\n::event:\s*done\s*\n?/.test(chunk)
           const text = chunk.replace(/\n::event:\s*done\s*\n?/g, '')
           if (text && text.trim().length > 0) {
             setMessages((m) => {
@@ -119,6 +120,16 @@ export function useChatStream({
                 return [...copy, { role: 'assistant', content: text }]
               }
               copy[idx] = { ...copy[idx], content: (copy[idx].content || '') + text }
+              return copy
+            })
+          }
+          if (streamComplete) {
+            setMessages((m) => {
+              const copy = [...m]
+              const idx = copy.length - 1
+              if (copy[idx]?.role === 'assistant') {
+                copy[idx] = { ...copy[idx], streamComplete: true }
+              }
               return copy
             })
           }

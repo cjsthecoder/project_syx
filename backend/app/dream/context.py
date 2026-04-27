@@ -138,7 +138,11 @@ def _get_project_context_summary(project_id: str) -> str:
     summ_src = _read_file_safe(summary_path)
     summary_prompt = build_project_summary_prompt(summ_src)
     write_debug_file(project_id, "debug_context_summary.txt", summary_prompt)
-    project_summary_text = dream_llm_call(summary_prompt)
+    project_summary_text = dream_llm_call(
+        summary_prompt,
+        project_id=project_id,
+        purpose="context_summary",
+    )
     if not (project_summary_text or "").strip():
         logger.warning("Project summary empty.")
         project_summary_text = "(empty)"

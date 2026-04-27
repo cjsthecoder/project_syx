@@ -1974,6 +1974,7 @@ The consolidated output of this pass is an in-memory list `[{ question, topic, r
   - Dream MUST NOT rebuild or modify any RAG index. RAG is read-only during Dream.
 - Feature flags and model:
   - `ENABLE_DREAM` (default: true). When false, skip Dream entirely.
+  - `AUTO_ACCEPT_DREAMS` (default: false). When true, Sleep auto-processes all pending `dream.json` items after Dream completes and before the per-cycle merge/rebuild sequence.
   - Dream agent LLMs are bound via the provider factory (see FR-003) using `DREAM_MODEL` / `DREAM_TEMPERATURE` / `DREAM_MAX_TOKENS`.
 - Logging:
   - `[DREAM] Starting dreaming for project=<id>`
@@ -2005,6 +2006,8 @@ When `GENERATE_DEBUG_FILES=true`, the Dream pipeline SHOULD write human-readable
   - `debug_open_questions_input.txt` — raw parsed `open_questions.jsonl` records consumed by FR-4.1.1.
   - `debug_open_questions_consolidated.txt` — post-consolidation list with filter/dedup/invalid counters.
   - `debug_<agent>_input.txt` / `debug_<agent>_output.txt` — per-agent inputs and outputs for downstream Dream agents (Questions Agent, Context Builder, Idea Agent, Dream Writer).
+  - `debug/dreaming/{timestamp}_{purpose}_prompt_to_execute.txt` — exact Dream LLM API submission payload rendered as system/user prompt sections for every Dream agent call, including estimated prompt tokens and requested output cap.
+  - `debug/dreaming/{timestamp}_{purpose}_response_usage.txt` — Dream LLM response text and provider-reported prompt/completion/total token usage for every successful Dream agent call.
 - Writes MUST be best-effort: a debug-write failure MUST NOT abort Dream execution and MUST be logged at WARNING level.
 - When `GENERATE_DEBUG_FILES` is false or unset, no files under `dream_work/` are created by Dream.
 - This FR does not replace agent-specific debug artifacts (e.g., NFR-4.2.1.9 for the Idea Agent); it establishes the common directory, naming convention, and gating flag.
@@ -3226,8 +3229,8 @@ Populate the Dream analysis modal with dream entries from `dream.json`, rendered
   - On success: show a success toast (“Dream items saved”), delete `dream.json` (handled by the backend), close the modal, and ensure the Analyze Dreams button disappears once `dream.json` is gone. The Project Summary card may remain until chat naturally clears it.
   - On failure: show an error toast (“Failed to save dream items”) with a brief reason if available; do not delete `dream.json`.
 - Backend processing (summary):
-  - For each kept item, tag the pair (using existing tagger) and append to daily RAG via the existing roll-off primitives (`tag_pair`, `append_pair`).
-  - Append kept pairs to `dream_summary.txt` using the daily.txt format; include research content folded into the response text.
+  - For each kept item, run the same response pruner used by chat persistence before the tagger and memory persistence, tag the pruned pair (using existing tagger), and append the pruned pair to daily RAG via the existing roll-off primitives (`tag_pair`, `append_pair`).
+  - Append kept pairs to `dream_summary.txt` using the daily.txt format; include pruned research content folded into the response text without adding a synthetic research-overview sentence.
   - Delete `dream.json` only if all kept items were successfully processed; otherwise log warnings and leave `dream.json` intact.
 - Items without `keep=true` are ignored/dropped silently.
 
@@ -3240,6 +3243,28 @@ Populate the Dream analysis modal with dream entries from `dream.json`, rendered
 - Debug: when `GENERATE_DEBUG_FILES` is enabled, reuse `write_debug_file` to emit `debug_dream_summary.txt` (verbatim).
 - Cleanup: `dream_summary.txt` is removed by FR-3.3.5 after the per-cycle merge + rebuild (and verify, if enabled) succeed. On failure, `dream_summary.txt` is preserved for the next cycle and the failure is logged.
 - Non-goal: does not change the daily roll-off process; daily.txt / Daily FAISS cache behavior remains unchanged.
+
+## 4.5.5 Auto-Accept Dream Processing
+**Scope:** Optional Sleep-pipeline step that persists pending Dream entries without requiring the frontend Analyze Dreams flow.
+
+- Trigger: after `dream(project_id)` completes and before FR-4.5.4 reads `dream_summary.txt`, run only when `AUTO_ACCEPT_DREAMS=true`.
+- Input: process all valid items currently present in `memory/{project}/dream.json`, including older unprocessed items preserved across prior Dream runs.
+- Processing:
+  - Use a backend helper that can run without the frontend endpoint.
+  - Apply the same remote-without-research filter used by manual Dream submission.
+  - For each processable item, run the same response pruner used by chat persistence before the tagger and memory persistence, call the tagger with the pruned response, and append the pruned pair to Daily RAG using the existing `append_pair` path.
+  - Tagger failure is non-fatal; persist the item without tags, matching manual Dream submission behavior.
+  - Auto-accepted items MUST use `keep=false` even though manual Dream submission currently persists remembered items with `keep=true`.
+  - Append accepted items to `dream_summary.txt` using the same Dream memory block format so the same Sleep cycle can fold them into `uploads/dream/dream_{cycle_ts}.txt`; research-backed responses MUST include pruned research blocks without adding a synthetic research-overview sentence.
+  - Before deleting `dream.json`, preserve its `project_summary` in `memory/{project}/latest_dream_summary.txt` when present.
+- Success cleanup:
+  - If all processable items succeed, delete `dream.json`.
+  - If filtering leaves zero processable items, log at DEBUG level and delete `dream.json`.
+- UI fallback:
+  - When `dream.json` is absent but `latest_dream_summary.txt` exists, `GET /projects/{project_id}/dream` SHALL return a summary-only Dream payload with an empty `items` array so the Project Summary card remains visible while Analyze Dreams remains hidden.
+- Failure cleanup:
+  - If any processable item fails to persist or post-processing fails, log a WARNING and rename `dream.json` beside the original file as `bad_dream_<timestamp>.json`.
+  - Do not silently swallow auto-accept failures; Sleep may continue with partial status.
 
 
 # 5 Instrumentation Overview

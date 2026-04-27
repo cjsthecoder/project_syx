@@ -32,7 +32,7 @@ from ..utils.logging import RequestLogger
 from ..utils.errors import handle_project_error, log_error_context
 import uuid
 import os
-from ..core.memory import get_memory_manager, get_last_context_tokens
+from ..core.memory import get_memory_manager, get_last_context_tokens, _prune_assistant_for_tagger
 from ..tagging.tagger import tag_pair
 from ..rag.daily_store import append_pair, daily_stats, rebuild_daily_cache, start_daily_cache_rebuild
 from ..core.config import get_settings
@@ -75,6 +75,27 @@ def _validate_dream_payload(data: Any) -> Optional[dict]:
         "project_summary": summary,
         "items": items or [],
     }
+
+
+def _read_latest_dream_summary(project_id: str) -> Optional[dict]:
+    summary_path = os.path.join(get_settings().memory_root, project_id, "latest_dream_summary.txt")
+    try:
+        if not os.path.isfile(summary_path):
+            return None
+        with open(summary_path, "r", encoding="utf-8") as f:
+            summary = f.read().strip()
+        if not summary:
+            return None
+        return {"project_summary": summary, "items": []}
+    except OSError as exc:
+        logger.warning(
+            "[PROJECT][DREAM] Failed reading latest dream summary project=%s path=%s detail=%s",
+            project_id,
+            summary_path,
+            exc,
+            exc_info=True,
+        )
+        return None
 
 
 def _normalize_resolution(value: Any) -> str:
@@ -206,18 +227,18 @@ async def get_project_dream(project_id: str) -> JSONResponse:
     dream_path = os.path.join(get_settings().memory_root, project_id, "dream.json")
     try:
         if not os.path.isfile(dream_path):
-            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": None})
+            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_dream_summary(project_id)})
         with open(dream_path, "r", encoding="utf-8") as f:
             raw = f.read().strip()
         if not raw:
-            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": None})
+            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_dream_summary(project_id)})
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
-            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": None})
+            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_dream_summary(project_id)})
         validated = _validate_dream_payload(data)
         if not validated:
-            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": None})
+            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_dream_summary(project_id)})
         filtered_items, dropped = _filter_remote_without_research(validated.get("items", []))
         validated["items"] = filtered_items
         if dropped:
@@ -310,39 +331,36 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
 
             resolution = _normalize_resolution(it.get("source_resolution"))
             research_entries = []
-            research_topics: List[str] = []
             for r in _valid_research_entries(it):
                 topic = r["research_topic"]
                 summary = r["research_summary"]
-                research_topics.append(topic)
                 research_entries.append(f"[RESEARCH]\nTopic: {topic}\n{summary}".strip())
 
-            # answer_remote: show concise research overview + detailed research blocks.
+            # answer_remote: persist detailed research blocks.
             # answer_local (or unknown): keep concise assistant answer text.
             if resolution == "answer_remote":
-                unique_topics: List[str] = []
-                seen_topics = set()
-                for t in research_topics:
-                    key = t.lower().strip()
-                    if not key or key in seen_topics:
-                        continue
-                    seen_topics.add(key)
-                    unique_topics.append(t)
-                overview = "To explore this idea, I researched: " + ", ".join(unique_topics) + "."
-                assistant_parts: List[str] = [overview]
-                if research_entries:
-                    assistant_parts.extend(research_entries)
-                assistant_resp_full = "\n\n".join(assistant_parts).strip()
+                assistant_resp_full = "\n\n".join(research_entries).strip() or (assistant_resp or "(no summary)").strip()
             else:
                 assistant_resp_full = (assistant_resp or "(no summary)").strip()
 
-            pair_text = f"User: {origin_text}\nAssistant: {assistant_resp_full}"
+            assistant_text_for_memory = _prune_assistant_for_tagger(
+                project_id=project_id,
+                assistant_text=assistant_resp_full,
+                settings=get_settings(),
+            )
+            pair_text = f"User: {origin_text}\nAssistant: {assistant_text_for_memory}"
             tokens = int(count_tokens(pair_text))
 
             tags_meta = None
             try:
-                tags_meta = tag_pair(origin_text, assistant_resp_full, previous_pair_text=previous_pair_text, project_id=project_id)
-            except Exception:
+                tags_meta = tag_pair(origin_text, assistant_text_for_memory, previous_pair_text=previous_pair_text, project_id=project_id)
+            except Exception as exc:
+                logger.warning(
+                    "[PROJECT][DREAM][KEEP] Tagger failed; persisting without tags project=%s item_id=%s detail=%s",
+                    project_id,
+                    str(it.get("id") or ""),
+                    exc,
+                )
                 tags_meta = None
 
             tags_block = ""
@@ -356,14 +374,20 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                     if semantic_handle is not None:
                         lines.append(f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}")
                     tags_block = "\n".join(lines) + "\n"
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "[PROJECT][DREAM][KEEP] Failed formatting tags block project=%s item_id=%s detail=%s",
+                    project_id,
+                    str(it.get("id") or ""),
+                    exc,
+                )
                 tags_block = ""
 
             embed_text = (tags_block + pair_text) if tags_block else pair_text
             tagged.append({
                 "it": it,
                 "origin_text": origin_text,
-                "assistant_resp_full": assistant_resp_full,
+                "assistant_resp_full": assistant_text_for_memory,
                 "pair_text": pair_text,
                 "tokens": tokens,
                 "tags_meta": tags_meta,

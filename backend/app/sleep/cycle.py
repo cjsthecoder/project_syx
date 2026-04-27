@@ -30,6 +30,7 @@ from sqlmodel import select
 from ..rag.daily_store import backfill_daily_txt_from_meta, append_pair_text_only
 from ..tagging.tagger import tag_pair as tag_pair_tagger
 from ..dream import dream
+from ..dream.auto_accept import auto_accept_dreams
 import time
 from ..utils.logging import RequestLogger
 from ..utils.errors import handle_memory_error, log_error_context
@@ -267,6 +268,34 @@ def _sleep_cycle_worker():
                     dream(pid)
                 except Exception as de:
                     logger.error("[SLEEP][DREAM][ERROR] project=%s: %s", pid, de, exc_info=True)
+                try:
+                    if bool(getattr(get_settings(), "auto_accept_dreams", False)):
+                        auto_result = auto_accept_dreams(pid)
+                        if auto_result.failed:
+                            status = "partial"
+                            errors.append(f"dream_auto_accept:{pid}")
+                            logger.warning(
+                                "[SLEEP][DREAM][AUTO_ACCEPT][WARN] project=%s processed=%s accepted=%s failed=%s bad_path=%s errors=%s",
+                                pid,
+                                auto_result.processed,
+                                auto_result.accepted,
+                                auto_result.failed,
+                                auto_result.renamed_bad_path,
+                                auto_result.errors,
+                            )
+                        elif auto_result.processed or auto_result.filtered_remote_without_research:
+                            logger.info(
+                                "[SLEEP][DREAM][AUTO_ACCEPT] project=%s processed=%s accepted=%s filtered=%s deleted_dream=%s",
+                                pid,
+                                auto_result.processed,
+                                auto_result.accepted,
+                                auto_result.filtered_remote_without_research,
+                                auto_result.deleted_dream,
+                            )
+                except Exception as de:
+                    status = "partial"
+                    errors.append(f"dream_auto_accept:{pid}")
+                    logger.warning("[SLEEP][DREAM][AUTO_ACCEPT][WARN] project=%s: %s", pid, de, exc_info=True)
 
                 # Filesystem-safe timestamp for per-cycle upload artifacts (no ':' in name).
                 cycle_ts = time.strftime("%Y-%m-%dT%H-%M-%S", time.localtime())
@@ -370,7 +399,7 @@ def _sleep_cycle_worker():
                             # Cleanup only if all succeeded
                             if ok:
                                 try:
-                                    # os.remove(summary_path)
+                                    os.remove(summary_path)
                                     logger.info("[SLEEP][CLEANUP] Removed individual summary for %s", pid)
                                 except Exception as ce:
                                     logger.warning("[SLEEP][CLEANUP] Failed removing summary for %s: %s", pid, ce)

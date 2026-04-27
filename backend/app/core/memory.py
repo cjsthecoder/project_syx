@@ -547,16 +547,13 @@ class MemoryManager:
                 )
                 pair_text = f"User: {user_text}\nAssistant: {asst_text}"
                 tokens = int(count_tokens(pair_text))
-                limit = get_settings().log_preview_max_chars
-                rp = (asst_text or "")[:limit]
                 logger.debug(
-                    "[ROLLOFF] project_id=%s user_id=%s assistant_id=%s tokens_approx=%s pruned_for_daily=%s response_preview=\"%s\"",
+                    "[ROLLOFF] project_id=%s user_id=%s assistant_id=%s tokens_approx=%s pruned_for_daily=%s",
                     project_id,
                     str(user_msg.get("id")),
                     str(asst_msg.get("id")),
                     str(tokens),
                     str(asst_text != (asst_msg.get("content") or "")).lower(),
-                    rp,
                 )
                 tags_block = ""
                 if isinstance(tags_meta, dict):

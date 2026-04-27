@@ -370,6 +370,48 @@ class Settings(BaseSettings):
         gt=0,
         description="Minimum assistant response length before center-chop is applied",
     )
+
+    # Deterministic response pruning
+    response_pruning_rules_path: str = Field(
+        default="backend/app/config/rules.json",
+        description="Path to deterministic response-pruning rule configuration",
+    )
+    response_pruning_max_front_units: int = Field(
+        default=3,
+        gt=0,
+        description="Maximum number of leading sentence units removed by response pruning",
+    )
+    response_pruning_similarity_threshold: int = Field(
+        default=90,
+        ge=0,
+        le=100,
+        description="Similarity threshold for duplicate-sentence response pruning",
+    )
+    response_pruning_whitespace_mode: str = Field(
+        default="compact_prose",
+        description="Response-pruning whitespace mode: off, compact_prose, or preserve_code",
+    )
+    response_pruning_enabled: bool = Field(default=True, description="Enable response pruning")
+    response_pruning_front_enabled: bool = Field(
+        default=True,
+        description="Enable response-pruning front sentence trimming",
+    )
+    response_pruning_end_enabled: bool = Field(
+        default=True,
+        description="Enable response-pruning trailing paragraph trimming",
+    )
+    response_pruning_markdown_enabled: bool = Field(
+        default=True,
+        description="Enable response-pruning markdown cleanup",
+    )
+    response_pruning_whitespace_enabled: bool = Field(
+        default=True,
+        description="Enable response-pruning whitespace cleanup",
+    )
+    response_pruning_similarity_enabled: bool = Field(
+        default=True,
+        description="Enable response-pruning duplicate-sentence similarity scan",
+    )
     builder_cache: bool = Field(default=True, description="Enable in-memory cache for builder JSON")
 
     # Defaults and file paths
@@ -459,6 +501,17 @@ class Settings(BaseSettings):
                 return value
         return value
 
+    @field_validator("response_pruning_whitespace_mode")
+    @classmethod
+    def _validate_response_pruning_whitespace_mode(cls, value: str) -> str:
+        normalized = str(value or "").strip()
+        if normalized not in {"off", "compact_prose", "preserve_code"}:
+            raise ValueError(
+                "response_pruning_whitespace_mode must be one of: "
+                "off, compact_prose, preserve_code"
+            )
+        return normalized
+
 # Global settings instance
 settings = Settings()
 
@@ -466,6 +519,18 @@ settings = Settings()
 def get_settings() -> Settings:
     """Get application settings."""
     return settings
+
+
+def get_response_pruning_stage_config() -> dict[str, bool]:
+    """Return stage toggles in the shape expected by PrunerConfig."""
+    return {
+        "enabled": bool(settings.response_pruning_enabled),
+        "front_enabled": bool(settings.response_pruning_front_enabled),
+        "end_enabled": bool(settings.response_pruning_end_enabled),
+        "markdown_enabled": bool(settings.response_pruning_markdown_enabled),
+        "whitespace_enabled": bool(settings.response_pruning_whitespace_enabled),
+        "similarity_enabled": bool(settings.response_pruning_similarity_enabled),
+    }
 
 
 def compute_per_source_k(base_top_k: int, retrieval_multiplier: float) -> int:

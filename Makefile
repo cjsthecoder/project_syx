@@ -437,6 +437,37 @@ setup-env:
 		echo "TAGGER_MIN_RESPONSE_LENGTH_FOR_CHOP=600"; \
 		echo "# Tagger prompt optimization: apply chopping only when assistant text length is greater than this value"; \
 		echo ""; \
+		echo "# === Response Pruning ==="; \
+		echo "RESPONSE_PRUNING_RULES_PATH=backend/app/config/rules.json"; \
+		echo "# JSON rule file for deterministic response pruning"; \
+		echo ""; \
+		echo "RESPONSE_PRUNING_MAX_FRONT_UNITS=3"; \
+		echo "# Max leading sentence units removed by response pruning"; \
+		echo ""; \
+		echo "RESPONSE_PRUNING_SIMILARITY_THRESHOLD=90"; \
+		echo "# Similarity threshold for duplicate-sentence response pruning (0-100)"; \
+		echo ""; \
+		echo "RESPONSE_PRUNING_WHITESPACE_MODE=compact_prose"; \
+		echo "# Response-pruning whitespace mode: off|compact_prose|preserve_code"; \
+		echo ""; \
+		echo "RESPONSE_PRUNING_ENABLED=true"; \
+		echo "# Enable deterministic response pruning"; \
+		echo ""; \
+		echo "RESPONSE_PRUNING_FRONT_ENABLED=true"; \
+		echo "# Enable response-pruning front sentence trimming"; \
+		echo ""; \
+		echo "RESPONSE_PRUNING_END_ENABLED=true"; \
+		echo "# Enable response-pruning trailing paragraph trimming"; \
+		echo ""; \
+		echo "RESPONSE_PRUNING_MARKDOWN_ENABLED=true"; \
+		echo "# Enable response-pruning markdown cleanup"; \
+		echo ""; \
+		echo "RESPONSE_PRUNING_WHITESPACE_ENABLED=true"; \
+		echo "# Enable response-pruning whitespace cleanup"; \
+		echo ""; \
+		echo "RESPONSE_PRUNING_SIMILARITY_ENABLED=true"; \
+		echo "# Enable response-pruning duplicate-sentence similarity scan"; \
+		echo ""; \
 		echo "# === Dream Pipeline ==="; \
 		echo "ENABLE_DREAM=true"; \
 		echo "# Enable Dream orchestrator"; \

@@ -17,6 +17,7 @@ System (RAG) messages are not stored. Provides last_context_tokens per project f
 import logging
 import os
 import json
+from pathlib import Path
 from typing import Optional, List, Dict, Any, Deque, Tuple
 from datetime import datetime, timedelta
 from collections import deque
@@ -25,13 +26,180 @@ from filelock import FileLock
 from sqlmodel import select
 from .database import get_session
 from .db_models import ChatMessage, Project
-from .config import get_settings
+from .config import get_response_pruning_stage_config, get_settings
+from ..pruning.light_response_pruner import Pruner, PrunerConfig, PruneResult
 from ..rag.daily_store import append_pair
 from ..utils.logging import get_namespace
 from ..utils.tokens import count_tokens
+from ..utils.debug_utils import write_debug_file
 from ..tagging.tagger import tag_pair
 
 logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_PRUNER_CACHE_KEY: Optional[tuple[Any, ...]] = None
+_PRUNER_CACHE: Optional[Pruner] = None
+
+
+def _resolve_response_pruning_rules_path(raw_path: str) -> Path:
+    path = Path(str(raw_path or "backend/app/config/rules.json"))
+    if path.is_absolute():
+        return path
+
+    cwd_path = Path.cwd() / path
+    if cwd_path.exists():
+        return cwd_path
+
+    return _REPO_ROOT / path
+
+
+def _get_response_pruner(settings: Any) -> Pruner:
+    global _PRUNER_CACHE
+    global _PRUNER_CACHE_KEY
+
+    rules_path = _resolve_response_pruning_rules_path(
+        getattr(settings, "response_pruning_rules_path", "backend/app/config/rules.json")
+    )
+    stage_config = get_response_pruning_stage_config()
+    cache_key = (
+        str(rules_path),
+        int(getattr(settings, "model_max_tokens", 128_000)),
+        int(getattr(settings, "response_pruning_max_front_units", 3)),
+        int(getattr(settings, "response_pruning_similarity_threshold", 90)),
+        str(getattr(settings, "response_pruning_whitespace_mode", "compact_prose")),
+        tuple(sorted(stage_config.items())),
+    )
+
+    if _PRUNER_CACHE is not None and _PRUNER_CACHE_KEY == cache_key:
+        return _PRUNER_CACHE
+
+    config = PrunerConfig(
+        max_response_size=cache_key[1],
+        max_front_units=cache_key[2],
+        similarity_threshold=cache_key[3],
+        whitespace_mode=cache_key[4],
+        response_pruning=stage_config,
+    )
+    _PRUNER_CACHE = Pruner.from_file(rules_path, config=config, strip_comment_keys=True)
+    _PRUNER_CACHE_KEY = cache_key
+    return _PRUNER_CACHE
+
+
+def _write_light_pruner_debug(
+    *,
+    project_id: str,
+    original_response: str,
+    pruned_response: str,
+    result: Optional[PruneResult],
+    error: Optional[Exception] = None,
+) -> None:
+    try:
+        start_tokens = count_tokens(original_response)
+        finished_tokens = count_tokens(pruned_response)
+        tokens_saved = start_tokens - finished_tokens
+        ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        fname = f"{ts}_light_pruner.txt"
+        body = (
+            f"# timestamp: {ts}\n"
+            f"# project_id: {project_id}\n"
+            f"# success: {str(error is None).lower()}\n"
+            f"# start_tokens: {start_tokens}\n"
+            f"# finished_tokens: {finished_tokens}\n"
+            f"# tokens_saved: {tokens_saved}\n"
+        )
+        if result is not None:
+            body += (
+                f"# changed: {str(bool(result.changed)).lower()}\n"
+                f"# trimmed_side: {result.trimmed_side}\n"
+                f"# front_units_removed: {result.front_units_removed}\n"
+                f"# end_span_removed: {result.end_span_removed}\n"
+                f"# blocked_by_safety: {str(bool(result.blocked_by_safety)).lower()}\n"
+            )
+        if error is not None:
+            body += f"# error: {str(error)}\n"
+        body += (
+            "\n"
+            "====== LIGHT PRUNER ORIGINAL RESPONSE ======\n"
+            + (original_response or "")
+            + "\n\n====== LIGHT PRUNER PRUNED RESPONSE ======\n"
+            + (pruned_response or "")
+            + "\n"
+        )
+        write_debug_file(project_id, f"prompts/{fname}", body)
+    except Exception as exc:
+        logger.warning(
+            "[LIGHT_PRUNER] Failed writing debug dump project_id=%s detail=%s",
+            project_id,
+            exc,
+        )
+
+
+def _prune_assistant_for_tagger(
+    *,
+    project_id: str,
+    assistant_text: str,
+    settings: Any,
+) -> str:
+    original = str(assistant_text or "")
+    try:
+        if not bool(getattr(settings, "response_pruning_enabled", True)):
+            start_tokens = count_tokens(original)
+            logger.debug(
+                "[LIGHT_PRUNER] project_id=%s enabled=false start_tokens=%s finished_tokens=%s tokens_saved=%s",
+                project_id,
+                start_tokens,
+                start_tokens,
+                0,
+            )
+            _write_light_pruner_debug(
+                project_id=project_id,
+                original_response=original,
+                pruned_response=original,
+                result=None,
+            )
+            return original
+
+        result = _get_response_pruner(settings).prune(original)
+        start_tokens = count_tokens(original)
+        finished_tokens = count_tokens(result.pruned_text)
+        logger.debug(
+            "[LIGHT_PRUNER] project_id=%s changed=%s trimmed_side=%s start_tokens=%s finished_tokens=%s tokens_saved=%s",
+            project_id,
+            bool(result.changed),
+            result.trimmed_side,
+            start_tokens,
+            finished_tokens,
+            start_tokens - finished_tokens,
+        )
+        _write_light_pruner_debug(
+            project_id=project_id,
+            original_response=original,
+            pruned_response=result.pruned_text,
+            result=result,
+        )
+        return result.pruned_text
+    except Exception as exc:
+        start_tokens = count_tokens(original)
+        logger.warning(
+            "[LIGHT_PRUNER] Failed pruning assistant response; project_id=%s detail=%s",
+            project_id,
+            exc,
+        )
+        logger.debug(
+            "[LIGHT_PRUNER] project_id=%s success=false start_tokens=%s finished_tokens=%s tokens_saved=%s",
+            project_id,
+            start_tokens,
+            start_tokens,
+            0,
+        )
+        _write_light_pruner_debug(
+            project_id=project_id,
+            original_response=original,
+            pruned_response=original,
+            result=None,
+            error=exc,
+        )
+        return original
 
 
 class MemoryManager:
@@ -194,6 +362,7 @@ class MemoryManager:
         semantic_handle: Optional[str] = None
         question_candidates: List[Dict[str, str]] = []
         source_user_message_id: Optional[int] = None
+        pruned_assistant_text: Optional[str] = None
         try:
             dq = self.project_deques.get(project_id)
             if dq:
@@ -201,14 +370,27 @@ class MemoryManager:
                 if isinstance(last, dict) and (last.get("role") == "user"):
                     uid = last.get("id")
                     source_user_message_id = int(uid) if isinstance(uid, int) else None
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "append_assistant_message source user lookup failed; project_id=%s detail=%s",
+                project_id,
+                exc,
+            )
             source_user_message_id = None
         # Tag immediately after assistant reply using the immediately previous active pair as context anchor.
         try:
             if (not bool(skip_tagger)) and (user_text_for_tagging is not None):
+                settings = get_settings()
+                assistant_text_for_tagging = _prune_assistant_for_tagger(
+                    project_id=project_id,
+                    assistant_text=content,
+                    settings=settings,
+                )
+                if assistant_text_for_tagging != str(content or ""):
+                    pruned_assistant_text = assistant_text_for_tagging
                 tagged = tag_pair(
                     user_text_for_tagging,
-                    content,
+                    assistant_text_for_tagging,
                     previous_pair_text=previous_pair_text_for_tagging,
                     project_id=project_id,
                 )
@@ -220,13 +402,26 @@ class MemoryManager:
                         # semantic_handle is required but may be empty; store None only if missing.
                         "semantic_handle": tagged.get("semantic_handle", None),
                     }
+                    if pruned_assistant_text is not None:
+                        # Private rolloff-only field: daily/LTM should carry pruned assistant text.
+                        tags_meta["_pruned_assistant_text"] = pruned_assistant_text
                     question_candidates = self._normalize_question_candidates(tagged.get("questions"))
                     semantic_handle = tags_meta.get("semantic_handle", None)  # type: ignore[assignment]
                     try:
                         tags_meta_json = json.dumps(tags_meta, ensure_ascii=False)
-                    except Exception:
+                    except Exception as exc:
+                        logger.warning(
+                            "append_assistant_message tag metadata serialization failed; project_id=%s detail=%s",
+                            project_id,
+                            exc,
+                        )
                         tags_meta_json = None
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "append_assistant_message tagging failed; project_id=%s detail=%s",
+                project_id,
+                exc,
+            )
             tags_meta = None
             tags_meta_json = None
             semantic_handle = None
@@ -268,6 +463,7 @@ class MemoryManager:
             "keep": False,
             "tags_meta_json": tags_meta_json,
             "semantic_handle": semantic_handle,
+            "pruned_content": pruned_assistant_text,
         })
         self._append_open_questions_artifact(
             project_id=project_id,
@@ -319,19 +515,6 @@ class MemoryManager:
         user_msg = dq.popleft()
         asst_msg = dq.popleft()
         user_text = user_msg.get('content') or ''
-        asst_text = asst_msg.get('content') or ''
-        pair_text = f"User: {user_text}\nAssistant: {asst_text}"
-        tokens = int(count_tokens(pair_text))
-        limit = get_settings().log_preview_max_chars
-        rp = (asst_msg.get('content') or '')[:limit]
-        logger.debug(
-            "[ROLLOFF] project_id=%s user_id=%s assistant_id=%s tokens_approx=%s response_preview=\"%s\"",
-            project_id,
-            str(user_msg.get("id")),
-            str(asst_msg.get("id")),
-            str(tokens),
-            rp,
-        )
         # Append to daily if enabled and not forgotten; on any error we still drop per spec
         try:
             if bool(asst_msg.get("forget")):
@@ -349,6 +532,32 @@ class MemoryManager:
                             tags_meta = parsed
                     except Exception:
                         tags_meta = None
+                pruned_from_meta = None
+                if isinstance(tags_meta, dict):
+                    pruned_candidate = tags_meta.get("_pruned_assistant_text")
+                    if isinstance(pruned_candidate, str) and pruned_candidate.strip():
+                        pruned_from_meta = pruned_candidate
+                pruned_from_deque = asst_msg.get("pruned_content")
+                asst_text = (
+                    pruned_from_deque
+                    if isinstance(pruned_from_deque, str) and pruned_from_deque.strip()
+                    else pruned_from_meta
+                    if isinstance(pruned_from_meta, str) and pruned_from_meta.strip()
+                    else asst_msg.get("content") or ""
+                )
+                pair_text = f"User: {user_text}\nAssistant: {asst_text}"
+                tokens = int(count_tokens(pair_text))
+                limit = get_settings().log_preview_max_chars
+                rp = (asst_text or "")[:limit]
+                logger.debug(
+                    "[ROLLOFF] project_id=%s user_id=%s assistant_id=%s tokens_approx=%s pruned_for_daily=%s response_preview=\"%s\"",
+                    project_id,
+                    str(user_msg.get("id")),
+                    str(asst_msg.get("id")),
+                    str(tokens),
+                    str(asst_text != (asst_msg.get("content") or "")).lower(),
+                    rp,
+                )
                 tags_block = ""
                 if isinstance(tags_meta, dict):
                     try:
@@ -372,7 +581,11 @@ class MemoryManager:
                     namespace=ns,
                     keep=keep,
                     embed_override=embed_text,
-                    tags_meta=tags_meta,
+                    tags_meta={
+                        key: value
+                        for key, value in dict(tags_meta or {}).items()
+                        if not str(key).startswith("_")
+                    },
                 )
             else:
                 logger.info("[DailyRAG] Skipping daily append (disabled for project=%s)", project_id)

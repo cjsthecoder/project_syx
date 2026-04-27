@@ -380,6 +380,9 @@ def write_dream_output(project_id: str, dream_data: dict, project_summary_text: 
                 rest = first.upper() + rest[1:]
             return prefix + rest
 
+        base_dir = os.path.join(get_settings().memory_root, project_id)
+        dream_path = os.path.join(base_dir, "dream.json")
+
         # Insert/overwrite project summary at top level.
         dream_data["project_summary"] = project_summary_text
 
@@ -401,14 +404,37 @@ def write_dream_output(project_id: str, dream_data: dict, project_summary_text: 
                 if "origin_text" in it:
                     it = {**it, "origin_text": _capitalize_first_letter(it.get("origin_text"))}
             normalized_items.append(it)
-        dream_data["items"] = normalized_items
+        existing_items: List[Any] = []
+        if os.path.isfile(dream_path):
+            existing_data = _read_json_file_safe(dream_path)
+            if isinstance(existing_data, dict):
+                pending_items = existing_data.get("items")
+                if isinstance(pending_items, list):
+                    existing_items = pending_items
+                else:
+                    logger.warning(
+                        "[DREAM] Existing dream.json has invalid items; project=%s preserving_new_items_only",
+                        project_id,
+                    )
+            else:
+                logger.warning(
+                    "[DREAM] Existing dream.json is invalid; project=%s preserving_new_items_only",
+                    project_id,
+                )
+        dream_data["items"] = existing_items + normalized_items
 
         # Serialize to JSON and write to memory/{project_id}/dream.json.
-        dream_path = os.path.join(get_settings().memory_root, project_id, "dream.json")
+        os.makedirs(base_dir, exist_ok=True)
         with open(dream_path, "w", encoding="utf-8", newline="\n") as df:
             json.dump(dream_data, df, ensure_ascii=False, indent=2)
 
-        logger.info("[DREAM] Dream output written successfully for project=%s", project_id)
+        logger.info(
+            "[DREAM] Dream output written successfully for project=%s pending_items=%s new_items=%s total_items=%s",
+            project_id,
+            len(existing_items),
+            len(normalized_items),
+            len(dream_data["items"]),
+        )
     except Exception as e:
         # Log error but do not propagate.
         logger.error("Dream Writer failed for project=%s: %s", project_id, e, exc_info=True)
@@ -629,9 +655,8 @@ def dream(project_id: str) -> None:
             logger.info("[DREAM] Project %s complete in duration=%.2fs", project_id, elapsed)
         except Exception as de:
             logger.error("project=%s %s", project_id, de, exc_info=True)
-    except Exception:
-        # Non-fatal; continue loop
-        pass
+    except Exception as exc:
+        logger.warning("[DREAM] Non-fatal dream cycle failure project=%s detail=%s", project_id, exc, exc_info=True)
 
 
 

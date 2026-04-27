@@ -12,7 +12,7 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
 import faiss  # type: ignore
@@ -88,7 +88,7 @@ def rebuild_faiss_index(project_id: str) -> str:
     file_token_sums: Dict[str, int] = {}
     file_page_max: Dict[str, int] = {}
 
-    now_iso = datetime.utcnow().isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
     for file_path in files:
         doc_id = uploads_relative_doc_id(uploads_dir, file_path)
         for raw_text, meta in read_file_text(file_path):

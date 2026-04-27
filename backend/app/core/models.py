@@ -16,17 +16,21 @@ This module defines all request and response models for the API endpoints.
 import logging
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Set up module-level logger
 logger = logging.getLogger(__name__)
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 # Base Response Model
 class BaseResponse(BaseModel):
     """Base response model with common fields."""
     success: bool = Field(default=True, description="Whether the request was successful")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")
+    timestamp: datetime = Field(default_factory=utc_now, description="Response timestamp")
 
 
 # Chat Models
@@ -181,7 +185,7 @@ class ErrorResponse(BaseModel):
     error: str = Field(..., description="Error message")
     error_code: Optional[str] = Field(default=None, description="Error code")
     details: Optional[Dict[str, Any]] = Field(default=None, description="Additional error details")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Error timestamp")
+    timestamp: datetime = Field(default_factory=utc_now, description="Error timestamp")
     
     class Config:
         json_schema_extra = {
@@ -201,7 +205,7 @@ class HealthResponse(BaseModel):
     status: str = Field(..., description="Service status")
     service: str = Field(default="syx-api", description="Service name")
     version: str = Field(default="1.0.0", description="Service version")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Health check timestamp")
+    timestamp: datetime = Field(default_factory=utc_now, description="Health check timestamp")
     dependencies: Dict[str, str] = Field(default={}, description="Dependency status")
     
     class Config:

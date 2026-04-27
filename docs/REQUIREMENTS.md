@@ -1738,7 +1738,8 @@ Constraints:
   1. The in-memory `last_rolled_off_pair`, if present for the project.
   2. A best-effort fallback loaded from the most recent non-forgotten entry in `daily.json` for the project, using the canonical stored pair text (not embedding-augmented text).
   3. `None` if neither source is available.
-- **Tagging input:**
+- **Tagging and memory input:**
+  - Before tagging and daily-memory persistence, assistant text SHOULD pass through the configured response pruner. The pruned assistant text is the canonical assistant text for daily memory, Dream memory, and downstream RAG artifacts.
   - When `last_rolled_off_pair` is available, prepend it to the tagging-prompt input before the current rolled-off pair.
   - When unavailable, emit a debug log and tagging proceeds with the current rolled-off pair alone (best-effort).
   - Any structured side outputs emitted by tagging at ingest time — such as question candidates consumed by downstream ingest-artifact streams — are derived from this same tagging-input contract.
@@ -1748,7 +1749,7 @@ Constraints:
   - Preserves the existing `last_rolled_off_pair` value for future roll-offs.
 - **Update rule:**
   - `last_rolled_off_pair` is updated only when the rolled-off pair is actually persisted to daily memory (daily history is enabled for the project and the append operation reports success).
-  - After a successful persist of a `forget=false` pair, set `last_rolled_off_pair = current_pair_text`, where `current_pair_text` is the canonical rolled-off pair text as used for daily memory storage (user + assistant, unmodified).
+  - After a successful persist of a `forget=false` pair, set `last_rolled_off_pair = current_pair_text`, where `current_pair_text` is the canonical rolled-off pair text as used for daily memory storage (user + pruned assistant).
   - The `daily.txt` write is best-effort; the daily-memory append is the sole trigger for updating `last_rolled_off_pair`.
 - **Multi-pair prune order:** If multiple pairs roll off sequentially during a single pruning operation, the rules above apply in order; each roll-off MAY reference the immediately preceding rolled-off pair processed in the same operation.
 - **Reset / Invalidation:** `last_rolled_off_pair` is cleared for a project when:

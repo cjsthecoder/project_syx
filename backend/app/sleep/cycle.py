@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 logger = logging.getLogger(__name__)
 
 from ..core.models import SleepCycleRequest, SleepCycleResponse, ErrorResponse
-from ..core.memory import get_memory_manager
+from ..core.memory import get_memory_manager, _prune_assistant_for_tagger
 from ..core.state import engage_lock, release_lock, is_sleeping, since, lock_path
 from ..core.database import get_session
 from ..core.db_models import Project, ChatMessage
@@ -130,13 +130,31 @@ def _sleep_cycle_worker():
                                         tags_meta = parsed
                                 except Exception:
                                     tags_meta = None
+                            pruned_from_meta = None
+                            if isinstance(tags_meta, dict):
+                                pruned_candidate = tags_meta.get("_pruned_assistant_text")
+                                if isinstance(pruned_candidate, str) and pruned_candidate.strip():
+                                    pruned_from_meta = pruned_candidate
+                            asst_text_for_memory = (
+                                pruned_from_meta
+                                if isinstance(pruned_from_meta, str) and pruned_from_meta.strip()
+                                else _prune_assistant_for_tagger(
+                                    project_id=pid,
+                                    assistant_text=asst_text,
+                                    settings=get_settings(),
+                                )
+                            )
+                            if asst_text_for_memory != asst_text and isinstance(tags_meta, dict):
+                                tags_meta = {**tags_meta, "_pruned_assistant_text": asst_text_for_memory}
                             if tags_meta is None:
                                 tags_meta = tag_pair_tagger(
                                     user_text,
-                                    asst_text,
+                                    asst_text_for_memory,
                                     previous_pair_text=previous_pair_text,
                                     project_id=pid,
                                 )
+                                if asst_text_for_memory != asst_text and isinstance(tags_meta, dict):
+                                    tags_meta = {**tags_meta, "_pruned_assistant_text": asst_text_for_memory}
                             created_at = getattr(u, "created_at", None) or getattr(a, "created_at", None)
                             created_at_iso = (
                                 created_at.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -149,7 +167,7 @@ def _sleep_cycle_worker():
                             ok = append_pair_text_only(
                                 pid,
                                 user_text,
-                                asst_text,
+                                asst_text_for_memory,
                                 created_at_iso,
                                 ns,
                                 keep,
@@ -167,7 +185,7 @@ def _sleep_cycle_worker():
                                         session.commit()
                                     flushed += 1
                                     items_out += 1
-                                    previous_pair_text = f"User: {user_text}\nAssistant: {asst_text}"
+                                    previous_pair_text = f"User: {user_text}\nAssistant: {asst_text_for_memory}"
                                 except Exception as de:
                                     logger.warning("[SLEEP][FLUSH] DB delete failed project=%s: %s", pid, de)
                             else:

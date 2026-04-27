@@ -3765,3 +3765,326 @@ Benchmark artifacts MUST permit partial metrics for non-instrumented sources:
 - `missing_fields` SHOULD enumerate intentionally absent metrics for analysis transparency.
 
 ---
+
+# Version 6 — Deterministic Response Pruning
+
+## Purpose
+
+Syx SHALL support deterministic, code-based pruning of low-information assistant-response text before text is used for storage, tagging, retrieval, benchmark export, or other memory-adjacent processing.
+
+The v6 goal is to reduce assistant-response boilerplate and duplicate phrasing without using an LLM and without rewriting substantive content such as explanations, decisions, lists, code, structured metadata, requirements, or user-visible facts.
+
+---
+
+## 6.1 Scope
+
+### 6.1.1 In Scope
+
+- Deterministic pruning without LLM calls.
+- Assistant-response text input.
+- Leading pruning from the front of a response.
+- Trailing pruning from a detected paragraph boundary to the end of a response.
+- JSON-based pruning-rule configuration.
+- Loading and merging multiple pruning-rule configuration files.
+- Conservative normalization-based prefix matching.
+- Markdown markup stripping for common non-code prose markup.
+- Whitespace compaction with fenced-code preservation.
+- Lightweight duplicate-sentence pruning based on sentence similarity.
+- Runtime configuration that can enable or disable the whole pruning pipeline and each major pruning stage.
+- Structured result metadata suitable for debugging and audit.
+- Safe behavior by default.
+
+### 6.1.2 Out of Scope
+
+- LLM-assisted pruning.
+- Arbitrary rewriting, summarization, or compression of retained text.
+- Mid-response deletion except for duplicate-sentence removal by the explicit similarity stage.
+- Regex-first pruning logic.
+- Automatic corpus mining of new rules.
+- Exact-match rule families separate from prefix rules.
+- Semantic meaning comparison beyond lightweight duplicate-sentence detection.
+
+---
+
+## 6.2 Definitions
+
+### 6.2.1 Response
+
+The assistant-produced text to be evaluated for pruning.
+
+### 6.2.2 Front Pruning
+
+Removal of one or more leading sentence units from the beginning of a response.
+
+### 6.2.3 End Pruning
+
+Removal of a paragraph boundary and all following content from a detected trailing prune point to the end of a response.
+
+### 6.2.4 Prefix Rule
+
+A configured string that is compared against the normalized start of a candidate text unit.
+
+### 6.2.5 Normalization
+
+A deterministic transformation applied only for comparison unless a separate transformation stage explicitly modifies output text.
+
+### 6.2.6 Cut Mode
+
+A named pruning behavior that defines what unit is removed when a match is detected.
+
+### 6.2.7 Similarity Scan
+
+A lightweight deterministic stage that detects repeated or near-repeated sentences and drops later duplicate sentences while preserving protected sentences and fenced code blocks.
+
+---
+
+## 6.3 Functional Requirements
+
+### 6.3.1 Core Behavior
+
+- FR-6.3.1.1 The pruning module SHALL expose a primary function or service method equivalent to `prune_response()`.
+- FR-6.3.1.2 The primary pruning API SHALL accept a response string as input.
+- FR-6.3.1.3 The primary pruning API SHALL return both the pruned text and metadata describing what changed.
+- FR-6.3.1.4 The pruning module SHALL perform deterministic rule-based pruning without requiring an LLM call.
+- FR-6.3.1.5 The pruning module SHALL preserve the original response when no safe trim or transformation is detected.
+- FR-6.3.1.6 The pruning module SHALL support load-once, prune-many usage through a stateful pruner object.
+- FR-6.3.1.7 The pruning module SHALL be usable inline before tagging, memory persistence, benchmark export, or other response-processing steps.
+
+### 6.3.2 Front Pruning
+
+- FR-6.3.2.1 Front pruning SHALL use prefix-based matching.
+- FR-6.3.2.2 Front pruning SHALL operate on sentence units.
+- FR-6.3.2.3 The pruning module SHALL inspect the leading sentence unit for configured prefix matches.
+- FR-6.3.2.4 If the normalized leading sentence begins with a configured normalized prefix, the pruning module SHALL remove that sentence.
+- FR-6.3.2.5 The pruning module MAY continue removing additional leading sentence units while matches continue and safety limits are satisfied.
+- FR-6.3.2.6 Front pruning SHALL stop at the first non-matching substantive sentence unit.
+- FR-6.3.2.7 Front pruning SHALL respect a configurable maximum number of leading sentence units to trim.
+- FR-6.3.2.8 Front pruning SHALL preserve the response if trimming would leave too little substantive content.
+
+### 6.3.3 End Pruning
+
+- FR-6.3.3.1 End pruning SHALL use prefix-based matching.
+- FR-6.3.3.2 End pruning SHALL use the configured cut mode to determine the removable trailing region.
+- FR-6.3.3.3 For `paragraph_to_end`, end pruning SHALL remove the matching paragraph and all following content to the end of the response.
+- FR-6.3.3.4 End pruning SHALL compare normalized candidate paragraph starts against normalized configured prefixes.
+- FR-6.3.3.5 End pruning SHALL trim trailing content only from a detected prune boundary to the end of the response.
+- FR-6.3.3.6 End pruning SHALL preserve the response if no safe trailing prune boundary is found.
+- FR-6.3.3.7 End pruning SHALL NOT prune trailing content when the candidate region appears substantive under configured safety rules.
+- FR-6.3.3.8 End pruning SHOULD inspect only trailing candidate paragraphs rather than arbitrary middle paragraphs.
+
+### 6.3.4 Markdown Cleanup
+
+- FR-6.3.4.1 The pruning module SHALL support a markdown cleanup stage for common assistant-response markup.
+- FR-6.3.4.2 Markdown cleanup SHALL remove common prose markup such as ATX heading markers, blockquote markers, bullet/list markers, links, images, inline code markers, emphasis, strong emphasis, and strikethrough markers.
+- FR-6.3.4.3 Markdown cleanup SHALL preserve fenced code block contents.
+- FR-6.3.4.4 Markdown cleanup SHALL preserve requirement-like numbered lines, Q/A numbered lines, and similar structured lines where removing numbering would alter meaning.
+- FR-6.3.4.5 Markdown cleanup SHALL be independently disableable through runtime configuration.
+
+### 6.3.5 Whitespace Cleanup
+
+- FR-6.3.5.1 The pruning module SHALL support whitespace cleanup for retained output text.
+- FR-6.3.5.2 Whitespace cleanup SHALL be configurable through a `whitespace_mode` setting.
+- FR-6.3.5.3 Supported `whitespace_mode` values SHALL include `off`, `compact_prose`, and `preserve_code`.
+- FR-6.3.5.4 In compaction modes, the pruning module SHALL collapse repeated spaces and tabs in prose.
+- FR-6.3.5.5 In compaction modes, the pruning module SHALL collapse repeated blank prose lines.
+- FR-6.3.5.6 Whitespace cleanup SHALL preserve fenced code block contents.
+- FR-6.3.5.7 Whitespace cleanup SHALL be independently disableable through runtime configuration.
+
+### 6.3.6 Duplicate-Sentence Similarity Scan
+
+- FR-6.3.6.1 The pruning module SHALL support a lightweight duplicate-sentence scan.
+- FR-6.3.6.2 The similarity scan SHALL split prose into sentence units and compare normalized sentences against previously retained normalized sentences.
+- FR-6.3.6.3 The similarity scan SHALL drop later duplicate or near-duplicate sentences when the configured similarity threshold is met.
+- FR-6.3.6.4 The similarity scan SHALL NOT perform broad semantic similarity or paraphrase reasoning.
+- FR-6.3.6.5 The similarity scan SHALL preserve fenced code block contents.
+- FR-6.3.6.6 The similarity scan SHALL preserve protected sentences that contain requirement IDs, numeric values, function-call-like text, snake_case identifiers, or dotted identifiers.
+- FR-6.3.6.7 The similarity scan SHALL use a configurable integer `similarity_threshold`.
+- FR-6.3.6.8 `similarity_threshold` SHALL be validated as an integer from `0` through `100`.
+- FR-6.3.6.9 The similarity scan SHALL be independently disableable through runtime configuration.
+
+### 6.3.7 Safety Behavior
+
+- FR-6.3.7.1 The pruning module SHALL avoid pruning inside fenced code blocks.
+- FR-6.3.7.2 The pruning module SHALL avoid trimming content that begins with code fences, headings, bullets, blockquotes, ordered lists, or structured metadata when that content appears substantive.
+- FR-6.3.7.3 The pruning module SHALL preserve responses that are too short for safe pruning.
+- FR-6.3.7.4 The pruning module SHALL provide guardrails to prevent returning an empty result unless explicitly allowed by a future documented requirement.
+- FR-6.3.7.5 The default behavior SHALL be conservative and prefer false negatives over false positives.
+- FR-6.3.7.6 Prefix matching SHALL use normalization-based comparison.
+- FR-6.3.7.7 Normalization SHALL be deterministic and documented.
+- FR-6.3.7.8 Normalization for matching SHALL NOT rewrite retained output text.
+- FR-6.3.7.9 The pruning module SHALL preserve the original unmodified response text in output metadata.
+- FR-6.3.7.10 The pruning module SHALL support Unicode-safe handling of apostrophe variants in the default normalizer.
+
+---
+
+## 6.4 Normalization Requirements
+
+For all configured prefix comparisons, the pruning module SHALL normalize both candidate text units and configured prefix strings using the following steps in order:
+
+- FR-6.4.1 Convert text to lowercase.
+- FR-6.4.2 Replace curly apostrophes with straight apostrophes.
+- FR-6.4.3 Trim leading and trailing whitespace.
+- FR-6.4.4 Collapse repeated whitespace characters, including spaces, tabs, and newlines, into a single space.
+- FR-6.4.5 Remove trailing `.`, `!`, or `?` characters occurring at the very end of the text.
+- FR-6.4.6 Trim leading and trailing whitespace again.
+- FR-6.4.7 Return the normalized result.
+- FR-6.4.8 Apply the same normalization procedure to configured prefixes and candidate text units.
+
+---
+
+## 6.5 Configuration Requirements
+
+### 6.5.1 Rule Configuration Ingestion
+
+- FR-6.5.1.1 The pruning module SHALL support loading pruning rules from one or more JSON files.
+- FR-6.5.1.2 The pruning module SHALL support loading pruning rules from in-memory objects.
+- FR-6.5.1.3 The pruning module SHALL validate all loaded rule inputs against the supported schema before use.
+- FR-6.5.1.4 The pruning module SHALL reject malformed rule configurations with clear errors.
+- FR-6.5.1.5 A valid rule configuration MAY contain `front`, `end`, or both sections.
+- FR-6.5.1.6 Rule loading MAY support stripping `_comment`-prefixed keys before validation.
+
+### 6.5.2 Rule Configuration Schema
+
+- FR-6.5.2.1 The `front` section SHALL support a `prefix` field and a `cut_mode` field.
+- FR-6.5.2.2 The `end` section SHALL support a `prefix` field and a `cut_mode` field.
+- FR-6.5.2.3 The `prefix` field SHALL contain a list of non-empty strings.
+- FR-6.5.2.4 The `cut_mode` field SHALL contain a supported cut mode string.
+- FR-6.5.2.5 The pruning module SHALL reject unsupported or invalid `cut_mode` values.
+- FR-6.5.2.6 The pruning module SHALL reject rule entries that are not strings within `prefix` lists.
+- FR-6.5.2.7 The pruning module SHALL deduplicate repeated prefix entries during load or merge.
+
+### 6.5.3 Rule Merge Behavior
+
+- FR-6.5.3.1 The pruning module SHALL support merging multiple valid rule configurations into one effective rule set.
+- FR-6.5.3.2 The pruning module SHALL merge `prefix` lists by deduplicated union.
+- FR-6.5.3.3 The pruning module SHALL preserve deterministic ordering of merged prefixes.
+- FR-6.5.3.4 The pruning module SHALL require compatible `cut_mode` values for the same section across merged configurations.
+- FR-6.5.3.5 The pruning module SHALL raise a validation error when merged configurations specify conflicting `cut_mode` values for the same section unless an explicit conflict policy is configured.
+- FR-6.5.3.6 The pruning module SHALL expose the final merged effective rule set for inspection or export.
+
+### 6.5.4 Runtime PrunerConfig
+
+- FR-6.5.4.1 The pruning module SHALL expose runtime configuration through a `PrunerConfig` or equivalent model.
+- FR-6.5.4.2 `PrunerConfig` SHALL include `max_response_size`.
+- FR-6.5.4.3 `max_response_size` SHALL be validated as an integer greater than `0`.
+- FR-6.5.4.4 `PrunerConfig` SHALL include `max_front_units`.
+- FR-6.5.4.5 `max_front_units` SHALL be validated as an integer greater than `0`.
+- FR-6.5.4.6 `PrunerConfig` SHALL include `similarity_threshold`.
+- FR-6.5.4.7 `similarity_threshold` SHALL be validated as an integer from `0` through `100`.
+- FR-6.5.4.8 `PrunerConfig` SHALL include `whitespace_mode`.
+- FR-6.5.4.9 `whitespace_mode` SHALL be validated against supported values.
+- FR-6.5.4.10 `PrunerConfig` SHALL include a `response_pruning` stage-toggle mapping or equivalent structured toggle model.
+- FR-6.5.4.11 `response_pruning.enabled=false` SHALL disable all pruning and cleanup stages.
+- FR-6.5.4.12 `response_pruning.front_enabled=false` SHALL disable front pruning while preserving other enabled stages.
+- FR-6.5.4.13 `response_pruning.end_enabled=false` SHALL disable end pruning while preserving other enabled stages.
+- FR-6.5.4.14 `response_pruning.markdown_enabled=false` SHALL disable markdown cleanup while preserving other enabled stages.
+- FR-6.5.4.15 `response_pruning.whitespace_enabled=false` SHALL disable whitespace cleanup while preserving other enabled stages.
+- FR-6.5.4.16 `response_pruning.similarity_enabled=false` SHALL disable duplicate-sentence similarity scanning while preserving other enabled stages.
+- FR-6.5.4.17 Unknown `response_pruning` keys SHALL be rejected.
+- FR-6.5.4.18 Non-boolean `response_pruning` values SHALL be rejected.
+- FR-6.5.4.19 The default `response_pruning` configuration SHALL enable all supported stages unless overridden by deployment configuration.
+
+---
+
+## 6.6 Supported Cut Modes
+
+- FR-6.6.1 The pruning module SHALL support `sentence` as the valid `front.cut_mode`.
+- FR-6.6.2 The pruning module SHALL support `paragraph_to_end` as the valid `end.cut_mode`.
+- FR-6.6.3 The pruning module SHALL reject unsupported cut modes during validation.
+
+---
+
+## 6.7 Output Requirements
+
+- FR-6.7.1 The pruning module SHALL return the pruned response text.
+- FR-6.7.2 The pruning module SHALL return whether any trimming or transformation occurred.
+- FR-6.7.3 The pruning module SHALL return which boundary side was trimmed: `none`, `front`, `end`, or `both`.
+- FR-6.7.4 The pruning module SHALL return enough metadata for debugging, including matched prefixes, removed front unit counts, removed end spans, and safety-block status.
+- FR-6.7.5 The pruning module SHALL make the original response text available for auditability.
+- FR-6.7.6 The pruning module SHALL expose whether pruning was blocked by a safety rule.
+- FR-6.7.7 If markdown cleanup, whitespace cleanup, or similarity scanning changes output without front/end boundary trimming, the result SHALL still indicate that the output changed.
+
+Suggested result structure:
+
+```python
+class PruneResult:
+    original_text: str
+    pruned_text: str
+    changed: bool
+    trimmed_front: bool
+    trimmed_end: bool
+    matched_front_prefixes: list[str]
+    matched_end_prefixes: list[str]
+    front_units_removed: int
+    end_span_removed: tuple[int, int] | None
+    blocked_by_safety: bool
+```
+
+---
+
+## 6.8 Supported Rule Configuration Shape
+
+```json
+{
+  "front": {
+    "prefix": ["got it", "absolutely", "good catch"],
+    "cut_mode": "sentence"
+  },
+  "end": {
+    "prefix": ["if you want", "let me know", "would you like"],
+    "cut_mode": "paragraph_to_end"
+  }
+}
+```
+
+Additional semantic constraints:
+
+- `front.cut_mode` MUST be `sentence` if `front` is present.
+- `end.cut_mode` MUST be `paragraph_to_end` if `end` is present.
+- Prefix entries SHOULD be normalized for comparison, but original configured values MAY be retained for reporting.
+- Duplicate prefixes SHOULD be removed in the effective merged rule set.
+- Conflicting `cut_mode` values across merged files SHALL raise a validation error by default.
+
+---
+
+## 6.9 Suggested Runtime API Shape
+
+```python
+pruner = Pruner.from_file(
+    "rules.json",
+    config=PrunerConfig(
+        max_response_size=50_000,
+        max_front_units=3,
+        similarity_threshold=90,
+        whitespace_mode="compact_prose",
+        response_pruning={
+            "enabled": True,
+            "front_enabled": True,
+            "end_enabled": True,
+            "markdown_enabled": True,
+            "whitespace_enabled": True,
+            "similarity_enabled": True,
+        },
+    ),
+    strip_comment_keys=True,
+)
+
+result = pruner.prune(response_text)
+```
+
+For one-off calls:
+
+```python
+result = prune_response(response_text, rules=rules, config=config)
+```
+
+---
+
+## 6.10 Non-Functional Requirements
+
+- NFR-6.10.1 The pruning module SHALL be lightweight and fast enough for inline use before tagging or storage.
+- NFR-6.10.2 The pruning module SHALL have no mandatory network dependency.
+- NFR-6.10.3 The pruning module SHALL be easy to inspect and debug.
+- NFR-6.10.4 The pruning module SHALL be deterministic and reproducible across runs for identical inputs, rules, and configuration.
+- NFR-6.10.5 The pruning module SHALL include tests covering safe trims, no-trim cases, merge behavior, schema validation, stage toggles, markdown cleanup, whitespace cleanup, duplicate-sentence pruning, and false-positive protection.
+- NFR-6.10.6 The default behavior SHALL favor preserving content over maximizing token reduction.

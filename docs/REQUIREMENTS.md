@@ -2937,6 +2937,7 @@ The Dream Writer SHALL be invoked with the following parameters:
 * Each `items` entry MAY include a `research` sub-array if research was performed
 
 The Dream Writer SHALL NOT modify, reorder, filter, or reinterpret any of the contents of `dream_data["items"]`.
+If a valid `memory/{project_id}/dream.json` already exists because the user has not processed prior Dream output, the Dream Writer SHALL preserve those pending existing items and append the new `dream_data["items"]` after them.
 
 ### FR-4.4.1.3 project_summary_text
 
@@ -2954,7 +2955,7 @@ The value MUST be exactly the `project_summary_text` string passed into the func
 
 ### FR-4.4.2.1 Output File Location
 
-The Dream Writer SHALL create (or overwrite) a file:
+The Dream Writer SHALL create a file, or update an existing valid file by appending new items to its pending items:
 
 ```text
 memory/{project_id}/dream.json
@@ -2978,7 +2979,8 @@ Where:
 
   * If `date` is missing, the Dream Writer MAY compute today’s date in `MM/DD/YYYY` format.
 * `project_summary` SHALL contain `project_summary_text`.
-* `items` SHALL be copied directly from `dream_data["items"]` (or an empty list if missing).
+* `items` SHALL be copied directly from `dream_data["items"]` (or an empty list if missing) when no valid prior `dream.json` exists.
+* If a valid prior `dream.json` exists with an `items` array, `items` SHALL be the prior pending items followed by the new `dream_data["items"]`, preserving the relative order of both lists.
 
 No additional top-level fields are required, but the Dream Writer SHALL preserve all other existing top-level keys in `dream_data` unchanged if they exist.
 
@@ -3006,7 +3008,7 @@ The Dream Writer SHALL NOT:
 * Generate or modify insights
 * Generate or modify research
 * Alter `origin_text`, `assistant_response`, or any `research_summary`
-* Filter, reorder, or group items
+* Filter, reorder, or group items, except for appending newly produced items after still-pending items from an existing valid `dream.json`
 * Perform any RAG operations
 * Interact with STM or LTM
 

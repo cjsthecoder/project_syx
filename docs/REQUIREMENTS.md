@@ -1070,8 +1070,6 @@ Route-specific retrieval configuration is held in `backend/app/config/route_poli
 - `max_keep` (initial retained-candidate cap; consumed by FR-2.3-3.3)
 - `expansion.max_before` / `expansion.max_after` (adjacency depth; consumed by FR-2.3-3.4.2)
 
-`meta_namespaces.json` is deprecated and MUST NOT be used; namespace-based routing is removed.
-
 #### FR-2.5.5 — Logging Integration
 Add a `[ROUTE]` log event before retrieval and a `[RETRIEVAL]` log event after retrieval, e.g.:
 

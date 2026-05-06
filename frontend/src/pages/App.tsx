@@ -88,8 +88,8 @@ export default function App() {
     setError(null)
   }, [setProjectSummary])
 
-  const [model, setModel] = useState('gpt-5.4')
-  const [models, setModels] = useState<ModelItem[]>(['gpt-5.4'])
+  const [model, setModel] = useState('gpt-5.5')
+  const [models, setModels] = useState<ModelItem[]>(['gpt-5.5'])
 
   // UI state
   const [showCreateModal, setShowCreateModal] = useState(false)

@@ -130,7 +130,7 @@ async def lifespan(app: FastAPI):
         run_cfg = {
             "config_snapshot": {
                 "models_configured": {
-                    "main_model": str(s.llm_main_model or s.model_name),
+                    "main_model": str(s.model_name),
                     "builder_model": str(s.builder_model),
                     "tagger_model": str(s.tagger_model),
                 },

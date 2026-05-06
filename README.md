@@ -45,13 +45,13 @@ Or add it to your `.env` file alongside other settings (generate with `make setu
 ## Key environment variables
 - OPENAI_API_KEY
 - LLM_PROVIDER (default openai)
-- MODEL_NAME / LLM_MAIN_MODEL (default gpt-5.4)
-- LLM_MINI_MODEL (default gpt-5.4-mini)
+- MODEL_NAME (default gpt-5.5)
+- LLM_MINI_MODEL (default gpt-5-mini)
 - MODEL_TEMPERATURE (default 1.0)
 - MODEL_MAX_TOKENS (default 32000)
-- BUILDER_MODEL (default gpt-5.4-mini)
-- TAGGER_MODEL (default gpt-5.4-mini)
-- DREAM_MODEL (default gpt-5.4)
+- BUILDER_MODEL (default gpt-5-mini)
+- TAGGER_MODEL (default gpt-5-mini)
+- DREAM_MODEL (default gpt-5.5)
 - LOG_LEVEL (default INFO)
 - DB_PATH
 - MAX_UPLOAD_MB, MAX_BATCH_MB, STORAGE_LIMIT_MB

@@ -32,7 +32,7 @@ def get_llm_client() -> OpenAILLMProvider:
     global _MAIN_CLIENT
     if _MAIN_CLIENT is None:
         settings = get_settings()
-        default_model = str(getattr(settings, "llm_main_model", settings.model_name))
+        default_model = str(settings.model_name)
         _MAIN_CLIENT = _new_provider(default_model=default_model)
         logger.info(
             "Initialized main LLM client provider=%s model=%s",

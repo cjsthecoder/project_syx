@@ -49,7 +49,7 @@ Establish a working chatbot with a web UI and stable backend interfaces, laying 
 - **Default Provider:** OpenAI GPT-5.  
 - **Future Proofing:** Should support Anthropic, LLaMA, etc. with minimal change.  
 - **Invariant:** Runtime LLM calls MUST resolve through `llm_model.factory`; request-path modules MUST NOT instantiate provider SDK clients directly.
-- **Invariant:** Provider/model swaps are configuration-driven (`LLM_PROVIDER`, `LLM_MAIN_MODEL`, `LLM_MINI_MODEL`) and MUST NOT require endpoint-level refactors.
+- **Invariant:** Provider/model swaps are configuration-driven (`LLM_PROVIDER`, `MODEL_NAME`, `LLM_MINI_MODEL`) and MUST NOT require endpoint-level refactors.
 - **Success Criteria:** Responses are generated via provider-selected clients exposed by `get_llm_client()` / `get_llm_client_mini()`.
 
 ---
@@ -115,9 +115,8 @@ Establish a working chatbot with a web UI and stable backend interfaces, laying 
 - **Env Variables:**
   - `OPENAI_API_KEY` (required)
   - `LLM_PROVIDER` (default: `openai`)
-  - `MODEL_NAME` (legacy key; default: `gpt-5.4`)
-  - `LLM_MAIN_MODEL` (default: `gpt-5.4`)
-  - `LLM_MINI_MODEL` (default: `gpt-5.4-mini`)
+  - `MODEL_NAME` (default: `gpt-5.5`)
+  - `LLM_MINI_MODEL` (default: `gpt-5-mini`)
   - `MODEL_TEMPERATURE` (default: `1.0`)
   - `MODEL_MAX_TOKENS` (default: `128000`)
   - `DB_PATH` (e.g., `backend/app/data/syx.db`)
@@ -129,7 +128,7 @@ Establish a working chatbot with a web UI and stable backend interfaces, laying 
   - `SENTENCE_TRANSFORMERS_MODEL_ID` (default: `BAAI/bge-m3`)
   - `CHUNK_SIZE` (default: `600`)
   - `CHUNK_OVERLAP` (default: `80`)
-- **Invariant:** Provider/model selection for both LLM (`LLM_PROVIDER`, `LLM_MAIN_MODEL`, `LLM_MINI_MODEL`) and embeddings (`EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `SENTENCE_TRANSFORMERS_MODEL_ID`) is driven entirely by the above environment keys; swaps MUST NOT require endpoint-level refactors.
+- **Invariant:** Provider/model selection for both LLM (`LLM_PROVIDER`, `MODEL_NAME`, `LLM_MINI_MODEL`) and embeddings (`EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `SENTENCE_TRANSFORMERS_MODEL_ID`) is driven entirely by the above environment keys; swaps MUST NOT require endpoint-level refactors.
 - **Success Criteria:** No API key leakage, flexible configuration per environment.
 
 ---

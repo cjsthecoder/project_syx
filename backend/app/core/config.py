@@ -40,13 +40,10 @@ class Settings(BaseSettings):
 		echo "LLM_PROVIDER=openai"; \
 		echo "# LLM provider selector"; \
 		echo ""; \
-		echo "MODEL_NAME=gpt-5.4"; \
-		echo "# Default chat model name (legacy key)"; \
+		echo "MODEL_NAME=gpt-5.5"; \
+		echo "# Main runtime chat model selected by llm factory"; \
 		echo ""; \
-		echo "LLM_MAIN_MODEL=gpt-5.4"; \
-		echo "# Main runtime model selected by llm factory"; \
-		echo ""; \
-		echo "LLM_MINI_MODEL=gpt-5.4-mini"; \
+		echo "LLM_MINI_MODEL=gpt-5-mini"; \
 		echo "# Mini runtime model selected by llm factory"; \
 		echo ""; \
 		echo "MODEL_TEMPERATURE=1.0"; \
@@ -55,7 +52,7 @@ class Settings(BaseSettings):
 		echo "MODEL_MAX_TOKENS=32000"; \
 		echo "# Max tokens in a single model response"; \
 		echo ""; \
-		echo "AVAILABLE_MODELS=[\"gpt-5.4\",\"gpt-5.4-mini\",\"gpt-5.4-nano\",\"gpt-5.2\",\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
+		echo "AVAILABLE_MODELS=[\"gpt-5.5\",\"gpt-5-mini\",\"gpt-5.2\",\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
 		echo "# Whitelisted chat models for the UI selector"; \
 		echo ""; \
 		echo "# === Server + CORS ==="; \
@@ -152,10 +149,10 @@ class Settings(BaseSettings):
 		echo "# Similarity threshold for daily results"; \
 		echo ""; \
 		echo "# === Query Builder + Reranking ==="; \
-		echo "BUILDER_MODEL=gpt-5.4-mini"; \
+		echo "BUILDER_MODEL=gpt-5-mini"; \
 		echo "# LLM for query builder/router"; \
 		echo ""; \
-		echo "TAGGER_MODEL=gpt-5.4-mini"; \
+		echo "TAGGER_MODEL=gpt-5-mini"; \
 		echo "# LLM used for tagging"; \
 		echo ""; \
 		echo "BUILDER_MAX_TOKENS=1024"; \
@@ -230,7 +227,7 @@ class Settings(BaseSettings):
 		echo "AUTO_ACCEPT_DREAMS=true"; \
 		echo "# Automatically persist all pending dream.json items during sleep"; \
 		echo ""; \
-		echo "DREAM_MODEL=gpt-5.4"; \
+		echo "DREAM_MODEL=gpt-5.5"; \
 		echo "DREAM_TEMPERATURE=1.0"; \
 		echo "DREAM_MAX_TOKENS=32000"; \
 		echo "DREAM_ENABLE_REMOTE_RESEARCH=true"; \
@@ -257,9 +254,8 @@ class Settings(BaseSettings):
     # OpenAI Configuration
     openai_api_key: str = Field(default="", description="OpenAI API key")
     llm_provider: str = Field(default="openai", description="LLM provider selector (openai)")
-    model_name: str = Field(default="gpt-5.4", description="Primary chat model name (legacy key)")
-    llm_main_model: str = Field(default="gpt-5.4", description="Default model for main chat client")
-    llm_mini_model: str = Field(default="gpt-5.4-mini", description="Default model for mini client")
+    model_name: str = Field(default="gpt-5.5", description="Primary chat model name")
+    llm_mini_model: str = Field(default="gpt-5-mini", description="Default model for mini client")
     model_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Model temperature")
     model_max_tokens: int = Field(default=128000, gt=0, description="Maximum tokens per response")
     
@@ -320,9 +316,8 @@ class Settings(BaseSettings):
     # Model list for selector
     available_models: list[str] = Field(
         default=[
-            "gpt-5.4",
-            "gpt-5.4-mini",
-            "gpt-5.4-nano",
+            "gpt-5.5",
+            "gpt-5-mini",
             "gpt-5.2",
             "gpt-5.1",
             "gpt-5.1-mini",
@@ -353,8 +348,8 @@ class Settings(BaseSettings):
     daily_rag_score_threshold: float = Field(default=0.40, ge=0.0, le=1.0, description="Similarity threshold for daily results — currently not enforced by retrieval selection")
 
     # Builder and reranking
-    builder_model: str = Field(default="gpt-5.4-mini", description="LLM used for query builder/router")
-    tagger_model: str = Field(default="gpt-5.4-mini", description="LLM used for tagging")
+    builder_model: str = Field(default="gpt-5-mini", description="LLM used for query builder/router")
+    tagger_model: str = Field(default="gpt-5-mini", description="LLM used for tagging")
     builder_max_tokens: int = Field(default=1024, gt=0, description="Max tokens for builder output")
     tagger_current_response_middle_cut_percent: int = Field(
         default=50,
@@ -468,7 +463,7 @@ class Settings(BaseSettings):
         description="Automatically persist all pending dream.json items during the sleep cycle",
     )
     # Dream agent configuration
-    dream_model: str = Field(default="gpt-5.4", description="Dream LLM model")
+    dream_model: str = Field(default="gpt-5.5", description="Dream LLM model")
     dream_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Dream LLM temperature")
     dream_max_tokens: int = Field(default=32000, gt=0, description="Max tokens for Dream LLM completion")
     dream_enable_remote_research: bool = Field(default=True, description="Enable OpenAI web_search for Dream")
@@ -567,7 +562,7 @@ def validate_openai_key() -> bool:
 def get_model_config() -> dict:
     """Get model configuration for main runtime LLM client."""
     return {
-        "model_name": settings.llm_main_model or settings.model_name,
+        "model_name": settings.model_name,
         "temperature": settings.model_temperature,
         "max_tokens": settings.model_max_tokens,
     }

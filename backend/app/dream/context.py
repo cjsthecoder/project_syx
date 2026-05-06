@@ -13,9 +13,10 @@ import re
 from typing import Any, Dict, List
 
 from ..core.config import get_settings
+from ..core.llm import generate_text_response
 from ..rag.manager import retrieve_context
 from ..utils.tokens import count_tokens
-from .llm import dream_llm_call
+from .debug import safe_dream_purpose, write_dream_prompt_to_execute, write_dream_response_usage_debug
 from .prompts import build_project_summary_prompt
 from app.utils.debug_utils import write_debug_file
 
@@ -138,11 +139,37 @@ def _get_project_context_summary(project_id: str) -> str:
     summ_src = _read_file_safe(summary_path)
     summary_prompt = build_project_summary_prompt(summ_src)
     write_debug_file(project_id, "debug_context_summary.txt", summary_prompt)
-    project_summary_text = dream_llm_call(
-        summary_prompt,
+    purpose = "context_summary"
+    max_tokens = int(settings.dream_max_tokens)
+    model = str(settings.dream_model)
+    write_dream_prompt_to_execute(
         project_id=project_id,
-        purpose="context_summary",
+        prompt=summary_prompt,
+        purpose=purpose,
+        model=model,
+        max_output_tokens=max_tokens,
     )
+    try:
+        response = generate_text_response(
+            summary_prompt,
+            override_model=model,
+            system_prompt=None,
+            temperature_override=float(settings.dream_temperature),
+            max_output_tokens=max_tokens,
+            purpose=f"dream:{safe_dream_purpose(purpose)}",
+        )
+        write_dream_response_usage_debug(
+            project_id=project_id,
+            response_text=response.text,
+            purpose=purpose,
+            model=model,
+            max_output_tokens=max_tokens,
+            usage=response.usage,
+        )
+        project_summary_text = response.text
+    except Exception as exc:
+        logger.warning("[DREAM][WARN] LLM call failed project=%s purpose=%s detail=%s", project_id, purpose, exc)
+        project_summary_text = '{"answer": "Dream agent failed to generate a valid answer."}'
     if not (project_summary_text or "").strip():
         logger.warning("Project summary empty.")
         project_summary_text = "(empty)"
@@ -396,7 +423,12 @@ def build_dream_context(project_id: str, questions_data: Dict[str, Any]) -> tupl
         # Minimal fallback: DAILY MEMORY only, project_summary_text set to "(empty)".
         try:
             daily_text = _get_daily_memory(project_id)
-        except Exception:
+        except Exception as daily_exc:
+            logger.warning(
+                "project=%s dream context fallback failed loading daily memory: %s",
+                project_id,
+                daily_exc,
+            )
             daily_text = "(empty)"
         fallback_parts = [
             "=== DAILY MEMORY ===\n",

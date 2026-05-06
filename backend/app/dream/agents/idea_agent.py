@@ -13,8 +13,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from ...core.config import get_settings
+from ...core.llm import generate_text_response
 from app.utils.debug_utils import write_debug_file
-from ..llm import dream_llm_call
+from ..debug import safe_dream_purpose, write_dream_prompt_to_execute, write_dream_response_usage_debug
 from .prompts.idea_prompts import build_idea_prompt
 
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
 
     This function:
       - Builds the idea prompt from dream_context.
-      - Invokes the Dream LLM via dream_llm_call.
+      - Invokes the Dream LLM via the shared core LLM runtime.
       - Parses and validates the returned JSON.
 
     Args:
@@ -72,17 +73,38 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
     # Debug: write prompt if enabled
     write_debug_file(project_id, "debug_idea_prompt.txt", prompt)
 
-    # Call Dream LLM
+    # Call Dream LLM through the shared core LLM runtime.
+    purpose = "idea_agent"
+    max_tokens = int(settings.dream_max_tokens)
+    model = str(settings.dream_model)
+    write_dream_prompt_to_execute(
+        project_id=project_id,
+        prompt=prompt,
+        purpose=purpose,
+        model=model,
+        max_output_tokens=max_tokens,
+    )
     try:
-        raw = dream_llm_call(
+        response = generate_text_response(
             prompt,
-            max_output_tokens=settings.dream_max_tokens,
-            project_id=project_id,
-            purpose="idea_agent",
+            override_model=model,
+            system_prompt=None,
+            temperature_override=float(settings.dream_temperature),
+            max_output_tokens=max_tokens,
+            purpose=f"dream:{safe_dream_purpose(purpose)}",
         )
-    except Exception as e:  # Defensive, though dream_llm_call already catches
+        write_dream_response_usage_debug(
+            project_id=project_id,
+            response_text=response.text,
+            purpose=purpose,
+            model=model,
+            max_output_tokens=max_tokens,
+            usage=response.usage,
+        )
+        raw = response.text
+    except Exception as e:
         logger.error("Idea Agent LLM invocation failed project=%s: %s", project_id, e, exc_info=True)
-        return {"date": _today_mmddyyyy(), "items": []}
+        raw = '{"answer": "Dream agent failed to generate a valid answer."}'
 
     # Debug: write raw response if enabled
     write_debug_file(project_id, "debug_idea_raw_response.txt", raw or "")

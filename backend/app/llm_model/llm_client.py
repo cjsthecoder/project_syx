@@ -1,13 +1,12 @@
 """
-Backward-compatible shim for embedding client access.
+Backward-compatible shim for LLM client access.
 
-Preferred import is now: app.embedding.factory.get_embedding_client
+Preferred import is now: app.llm_model.factory.get_llm_client.
 """
 
 
-from ..embedding.factory import get_embedding_client
+from .factory import get_llm_client, get_llm_client_mini, reset_llm_clients
 
 
-def get_llm_client():
-    return get_embedding_client()
+__all__ = ["get_llm_client", "get_llm_client_mini", "reset_llm_clients"]
 

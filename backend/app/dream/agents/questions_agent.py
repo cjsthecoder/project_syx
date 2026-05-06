@@ -15,7 +15,8 @@ import os
 
 from ..research import count_tokens, trim_to_tokens, fetch_remote_research
 from ...core.config import get_settings
-from ..llm import dream_llm_call
+from ...core.llm import generate_text_response
+from ..debug import safe_dream_purpose, write_dream_prompt_to_execute, write_dream_response_usage_debug
 from ...rag.manager import retrieve_context
 from app.utils.debug_utils import write_debug_file
 from .prompts.questions_prompts import (
@@ -94,13 +95,38 @@ def _run_open_question_pipeline(project_id: str, question: str, topic: str, reso
     else:
         prompt = build_answer_question_prompt_local(question, topic, local_context)
 
-    # Call Dream LLM
-    raw = dream_llm_call(
-        prompt,
-        max_output_tokens=settings.dream_max_tokens,
+    # Call Dream LLM through the shared core LLM runtime.
+    purpose = "questions_agent"
+    max_tokens = int(settings.dream_max_tokens)
+    model = str(settings.dream_model)
+    write_dream_prompt_to_execute(
         project_id=project_id,
-        purpose="questions_agent",
+        prompt=prompt,
+        purpose=purpose,
+        model=model,
+        max_output_tokens=max_tokens,
     )
+    try:
+        response = generate_text_response(
+            prompt,
+            override_model=model,
+            system_prompt=None,
+            temperature_override=float(settings.dream_temperature),
+            max_output_tokens=max_tokens,
+            purpose=f"dream:{safe_dream_purpose(purpose)}",
+        )
+        write_dream_response_usage_debug(
+            project_id=project_id,
+            response_text=response.text,
+            purpose=purpose,
+            model=model,
+            max_output_tokens=max_tokens,
+            usage=response.usage,
+        )
+        raw = response.text
+    except Exception as exc:
+        logger.warning("[DREAM][WARN] LLM call failed project=%s purpose=%s detail=%s", project_id, purpose, exc)
+        raw = '{"answer": "Dream agent failed to generate a valid answer."}'
     # Trim logs
     preview = (raw or "")[:250]
 

@@ -13,8 +13,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from ...core.config import get_settings
+from ...core.llm import generate_text_response
 from app.utils.debug_utils import write_debug_file
-from ..llm import dream_llm_call
+from ..debug import safe_dream_purpose, write_dream_prompt_to_execute, write_dream_response_usage_debug
 from .prompts.research_prompts import build_research_prompt
 
 logger = logging.getLogger(__name__)
@@ -128,23 +129,43 @@ def run_research_agent(
 
             logger.debug("Research Agent prompt topic=%s", topic)
 
+            purpose = "research_agent"
+            max_tokens = int(settings.dream_max_tokens)
+            model = str(settings.dream_model)
+            write_dream_prompt_to_execute(
+                project_id=project_id,
+                prompt=prompt,
+                purpose=purpose,
+                model=model,
+                max_output_tokens=max_tokens,
+            )
             try:
-                raw = dream_llm_call(
+                response = generate_text_response(
                     prompt,
-                    max_output_tokens=settings.dream_max_tokens,
-                    project_id=project_id,
-                    purpose="research_agent",
+                    override_model=model,
+                    system_prompt=None,
+                    temperature_override=float(settings.dream_temperature),
+                    max_output_tokens=max_tokens,
+                    purpose=f"dream:{safe_dream_purpose(purpose)}",
                 )
+                write_dream_response_usage_debug(
+                    project_id=project_id,
+                    response_text=response.text,
+                    purpose=purpose,
+                    model=model,
+                    max_output_tokens=max_tokens,
+                    usage=response.usage,
+                )
+                raw = response.text
             except Exception as exc:
                 logger.error(
                     "Research Agent LLM invocation failed project=%s topic=%s: %s",
                     project_id,
                     topic,
                     exc,
-                    exc_info=exc,
+                    exc_info=True,
                 )
-                entry_failures += 1
-                continue
+                raw = '{"answer": "Dream agent failed to generate a valid answer."}'
 
             raw_text = raw or ""
 

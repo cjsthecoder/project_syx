@@ -1,1 +1,7 @@
 # Engineering Deltas
+
+## DELTA-LLM-001 — Dream LLM Calls Use Core Runtime
+
+Dream agents no longer expose or call a `dream_llm_call` wrapper. Dream LLM access now calls `backend.app.core.llm.generate_text_response` directly so runtime model/provider access stays centralized in core and `llm_model.factory`.
+
+Dream-specific prompt and usage artifacts remain owned by the Dream package in `backend.app.dream.debug`; core LLM code must not know about Dream debug filenames or `dream_purpose` metadata. Dream prompt-to-execute snapshots are written under `debug/dreaming/`; `debug/prompts/` remains reserved for core chat, builder, tagger, and pruning prompt snapshots.

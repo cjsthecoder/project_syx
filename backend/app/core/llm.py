@@ -17,6 +17,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from .config import get_settings, validate_openai_key
+from ..llm_model.base import LLMResponse
 from ..llm_model.factory import get_llm_client
 from ..tracking import get_instrumentation
 from ..utils.tokens import count_tokens
@@ -234,6 +235,103 @@ def generate_chat_response(
         temperature_override=temperature_override,
         instrument=instrument,
     )
+
+
+def generate_text_response(
+    user_prompt: str,
+    *,
+    system_prompt: Optional[str] = None,
+    override_model: Optional[str] = None,
+    temperature_override: Optional[float] = None,
+    max_output_tokens: Optional[int] = None,
+    reasoning_effort: Optional[str] = None,
+    require_json_object: bool = False,
+    tools: Optional[List[Dict[str, Any]]] = None,
+    purpose: str = "main",
+    instrument: bool = True,
+) -> LLMResponse:
+    """Generate a non-chat text response through the shared LLM factory."""
+    settings = get_settings()
+    invocation_id = ""
+    invoke_start = time.perf_counter()
+    used_model = str(override_model or settings.model_name)
+
+    try:
+        instr = get_instrumentation()
+        if instrument:
+            instr.record_stage(
+                "prompt_assembly",
+                {
+                    "module": "llm",
+                    "purpose": str(purpose or "main"),
+                    "prompt_system_tokens_est": int(_estimate_tokens(system_prompt or "")),
+                    "prompt_other_tokens_est": int(_estimate_tokens(user_prompt or "")),
+                    "message_count": 1 + (1 if system_prompt else 0),
+                },
+            )
+            invocation_id = instr.start_invocation(
+                purpose=str(purpose or "main"),
+                model=used_model,
+                meta={"streaming": False, "api": "responses"},
+            )
+
+        response = get_llm_client().generate_response(
+            model=override_model or settings.model_name,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature_override,
+            max_output_tokens=max_output_tokens,
+            reasoning_effort=reasoning_effort,
+            require_json_object=require_json_object,
+            tools=tools,
+        )
+
+        if instrument and invocation_id:
+            usage_payload = {
+                "purpose": str(purpose or "main"),
+                "model": response.model,
+                "prompt_tokens_reported": int(response.usage.prompt_tokens_reported),
+                "completion_tokens_reported": int(response.usage.completion_tokens_reported),
+                "total_tokens_reported": int(response.usage.total_tokens_reported),
+                "usage_is_estimate": bool(response.usage.usage_is_estimate),
+            }
+            if response.usage.extra_usage:
+                usage_payload["extra_usage"] = response.usage.extra_usage
+            instr.end_invocation(
+                invocation_id,
+                usage=usage_payload,
+                timing={"ttlt_ms": int((time.perf_counter() - invoke_start) * 1000.0)},
+            )
+
+        return response
+    except Exception as exc:
+        try:
+            if instrument and invocation_id:
+                get_instrumentation().end_invocation(
+                    invocation_id,
+                    usage={
+                        "purpose": str(purpose or "main"),
+                        "model": used_model,
+                        "prompt_tokens_reported": 0,
+                        "completion_tokens_reported": 0,
+                        "total_tokens_reported": 0,
+                        "usage_is_estimate": True,
+                    },
+                    timing={"ttlt_ms": int((time.perf_counter() - invoke_start) * 1000.0)},
+                )
+        except Exception as finalize_exc:
+            logger.warning(
+                "llm.generate_text_response failed ending invocation invocation_id=%s detail=%s",
+                invocation_id,
+                finalize_exc,
+            )
+        logger.error(
+            "Error generating text response purpose=%s model=%s: %s",
+            str(purpose or "main"),
+            used_model,
+            exc,
+        )
+        raise
 
 
 def get_llm_health() -> Dict[str, str]:

@@ -13,7 +13,7 @@ Tests for LLM integration.
 
 import pytest
 from unittest.mock import patch, MagicMock
-from app.core.llm import LLMProvider, get_llm_provider, generate_chat_response
+from app.core.llm import LLMProvider, get_llm_provider, generate_chat_response, generate_text_response
 from app.llm_model.base import LLMResponse, LLMUsage
 
 
@@ -102,6 +102,35 @@ def test_llm_error_handling(mock_get_client, mock_openai_key):
     assert result["success"] is False
     assert "error" in result
     assert "API Error" in result["response"]
+
+
+@patch("app.core.llm.get_llm_client")
+def test_generate_text_response(mock_get_client, mock_openai_key):
+    """Test Responses API generation through core LLM helper."""
+    mock_client = MagicMock()
+    mock_client.generate_response.return_value = LLMResponse(
+        text='{"answer": "ok"}',
+        model="gpt-5.4",
+        usage=LLMUsage(
+            prompt_tokens_reported=8,
+            completion_tokens_reported=5,
+            total_tokens_reported=13,
+            usage_is_estimate=False,
+        ),
+    )
+    mock_get_client.return_value = mock_client
+
+    result = generate_text_response(
+        "Summarize this",
+        override_model="gpt-5.4",
+        temperature_override=1.0,
+        max_output_tokens=256,
+        purpose="dream:test",
+    )
+
+    assert result.text == '{"answer": "ok"}'
+    assert result.usage.total_tokens_reported == 13
+    mock_client.generate_response.assert_called_once()
 
 
 def test_get_llm_provider_singleton(mock_openai_key):

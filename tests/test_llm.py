@@ -44,7 +44,7 @@ def test_generate_response(mock_get_client, mock_openai_key):
     mock_client = MagicMock()
     mock_client.generate_chat.return_value = LLMResponse(
         text="Hello! How can I help you?",
-        model="gpt-5.4",
+        model="gpt-5.5",
         usage=LLMUsage(
             prompt_tokens_reported=10,
             completion_tokens_reported=15,
@@ -68,7 +68,7 @@ def test_generate_response_with_history(mock_get_client, mock_openai_key):
     mock_client = MagicMock()
     mock_client.generate_chat.return_value = LLMResponse(
         text="I remember our previous conversation!",
-        model="gpt-5.4",
+        model="gpt-5.5",
         usage=LLMUsage(
             prompt_tokens_reported=20,
             completion_tokens_reported=10,
@@ -110,7 +110,7 @@ def test_generate_text_response(mock_get_client, mock_openai_key):
     mock_client = MagicMock()
     mock_client.generate_response.return_value = LLMResponse(
         text='{"answer": "ok"}',
-        model="gpt-5.4",
+        model="gpt-5.5",
         usage=LLMUsage(
             prompt_tokens_reported=8,
             completion_tokens_reported=5,
@@ -122,7 +122,7 @@ def test_generate_text_response(mock_get_client, mock_openai_key):
 
     result = generate_text_response(
         "Summarize this",
-        override_model="gpt-5.4",
+        override_model="gpt-5.5",
         temperature_override=1.0,
         max_output_tokens=256,
         purpose="dream:test",

@@ -254,13 +254,10 @@ setup-env:
 		echo "LLM_PROVIDER=openai"; \
 		echo "# LLM provider selector"; \
 		echo ""; \
-		echo "MODEL_NAME=gpt-5.4"; \
-		echo "# Default chat model name (legacy key)"; \
+		echo "MODEL_NAME=gpt-5.5"; \
+		echo "# Main runtime chat model selected by llm factory"; \
 		echo ""; \
-		echo "LLM_MAIN_MODEL=gpt-5.4"; \
-		echo "# Main runtime model selected by llm factory"; \
-		echo ""; \
-		echo "LLM_MINI_MODEL=gpt-5.4-mini"; \
+		echo "LLM_MINI_MODEL=gpt-5-mini"; \
 		echo "# Mini runtime model selected by llm factory"; \
 		echo ""; \
 		echo "MODEL_TEMPERATURE=1.0"; \
@@ -269,7 +266,7 @@ setup-env:
 		echo "MODEL_MAX_TOKENS=128000"; \
 		echo "# Max tokens in a single model response"; \
 		echo ""; \
-		echo "AVAILABLE_MODELS=[\"gpt-5.4\",\"gpt-5.4-mini\",\"gpt-5.4-nano\",\"gpt-5.2\",\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
+		echo "AVAILABLE_MODELS=[\"gpt-5.5\",\"gpt-5-mini\",\"gpt-5.2\",\"gpt-5.1\",\"gpt-5.1-mini\",\"gpt-5.1-nano\",\"gpt-5\",\"gpt-5-nano\",\"gpt-4o\",\"gpt-4o-mini\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4.1-nano\"]"; \
 		echo "# Whitelisted chat models for the UI selector"; \
 		echo ""; \
 		echo "# === Server + CORS ==="; \
@@ -366,10 +363,10 @@ setup-env:
 		echo "# Similarity threshold for daily results"; \
 		echo ""; \
 		echo "# === Query Builder + Reranking ==="; \
-		echo "BUILDER_MODEL=gpt-5.4-mini"; \
+		echo "BUILDER_MODEL=gpt-5-mini"; \
 		echo "# LLM for query builder/router"; \
 		echo ""; \
-		echo "TAGGER_MODEL=gpt-5.4-mini"; \
+		echo "TAGGER_MODEL=gpt-5-mini"; \
 		echo "# LLM used for tagging"; \
 		echo ""; \
 		echo "BUILDER_MAX_TOKENS=1024"; \
@@ -475,7 +472,7 @@ setup-env:
 		echo "AUTO_ACCEPT_DREAMS=true"; \
 		echo "# Automatically persist all pending dream.json items during sleep"; \
 		echo ""; \
-		echo "DREAM_MODEL=gpt-5.4"; \
+		echo "DREAM_MODEL=gpt-5.5"; \
 		echo "DREAM_TEMPERATURE=1.0"; \
 		echo "DREAM_MAX_TOKENS=32000"; \
 		echo "DREAM_ENABLE_REMOTE_RESEARCH=true"; \

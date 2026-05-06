@@ -128,7 +128,9 @@ def test_auto_accept_processes_dream_json_with_keep_false(tmp_path, monkeypatch)
     assert result.filtered_remote_without_research == 1
     assert result.deleted_dream is True
     assert not dream_path.exists()
-    assert (project_dir / "latest_dream_summary.txt").read_text(encoding="utf-8").strip() == "Latest project summary"
+    assert (project_dir / "latest_sleep_summary.txt").read_text(encoding="utf-8").strip() == (
+        "Latest project summary\n\n[RESEARCH]\nTopic: topic"
+    )
     assert len(calls["append"]) == 2
     assert all(call["kwargs"]["keep"] is False for call in calls["append"])
     assert calls["rebuild"] == 1

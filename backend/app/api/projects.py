@@ -48,6 +48,7 @@ from ..core.database import get_session
 from ..core.db_models import ChatMessage
 from ..rag.manager import rebuild_faiss_index
 from ..utils.debug_utils import write_debug_file
+from ..utils.dream_summary import write_latest_sleep_summary
 from ..utils.tokens import count_tokens
 import shutil
 
@@ -77,8 +78,8 @@ def _validate_dream_payload(data: Any) -> Optional[dict]:
     }
 
 
-def _read_latest_dream_summary(project_id: str) -> Optional[dict]:
-    summary_path = os.path.join(get_settings().memory_root, project_id, "latest_dream_summary.txt")
+def _read_latest_sleep_summary(project_id: str) -> Optional[dict]:
+    summary_path = os.path.join(get_settings().memory_root, project_id, "latest_sleep_summary.txt")
     try:
         if not os.path.isfile(summary_path):
             return None
@@ -96,6 +97,27 @@ def _read_latest_dream_summary(project_id: str) -> Optional[dict]:
             exc_info=True,
         )
         return None
+
+
+def _read_pending_dream_project_summary(project_id: str, dream_path: str) -> Optional[str]:
+    try:
+        if not os.path.isfile(dream_path):
+            return None
+        with open(dream_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning(
+            "[PROJECT][DREAM] Failed reading pending dream summary project=%s path=%s detail=%s",
+            project_id,
+            dream_path,
+            exc,
+            exc_info=True,
+        )
+        return None
+    if not isinstance(data, dict):
+        return None
+    summary = data.get("project_summary")
+    return summary if isinstance(summary, str) and summary.strip() else None
 
 
 def _normalize_resolution(value: Any) -> str:
@@ -227,18 +249,18 @@ async def get_project_dream(project_id: str) -> JSONResponse:
     dream_path = os.path.join(get_settings().memory_root, project_id, "dream.json")
     try:
         if not os.path.isfile(dream_path):
-            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_dream_summary(project_id)})
+            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_sleep_summary(project_id)})
         with open(dream_path, "r", encoding="utf-8") as f:
             raw = f.read().strip()
         if not raw:
-            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_dream_summary(project_id)})
+            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_sleep_summary(project_id)})
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
-            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_dream_summary(project_id)})
+            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_sleep_summary(project_id)})
         validated = _validate_dream_payload(data)
         if not validated:
-            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_dream_summary(project_id)})
+            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_sleep_summary(project_id)})
         filtered_items, dropped = _filter_remote_without_research(validated.get("items", []))
         validated["items"] = filtered_items
         if dropped:
@@ -461,6 +483,7 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
 
         deleted = False
         dream_path = os.path.join(get_settings().memory_root, project_id, "dream.json")
+        pending_project_summary = _read_pending_dream_project_summary(project_id, dream_path)
         if successes == len(to_process) and not failures:
             try:
                 # Append END footer on successful completion before deleting dream.json
@@ -472,6 +495,13 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                                 sf.write(f"=== END DREAM MEMORY: {end_date} ===\n")
                     except Exception as fe:
                         failures.append(f"write_end_footer: {fe}")
+                if not failures:
+                    write_latest_sleep_summary(
+                        project_id=project_id,
+                        base_dir=base_dir,
+                        project_summary=pending_project_summary,
+                        accepted_items=[rec["it"] for rec in tagged],
+                    )
                 if os.path.isfile(dream_path):
                     os.remove(dream_path)
                 deleted = True

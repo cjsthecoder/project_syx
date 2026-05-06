@@ -3254,12 +3254,12 @@ Populate the Dream analysis modal with dream entries from `dream.json`, rendered
   - Tagger failure is non-fatal; persist the item without tags, matching manual Dream submission behavior.
   - Auto-accepted items MUST use `keep=false` even though manual Dream submission currently persists remembered items with `keep=true`.
   - Append accepted items to `dream_summary.txt` using the same Dream memory block format so the same Sleep cycle can fold them into `uploads/dream/dream_{cycle_ts}.txt`; research-backed responses MUST include pruned research blocks without adding a synthetic research-overview sentence.
-  - Before deleting `dream.json`, preserve its `project_summary` in `memory/{project}/latest_dream_summary.txt` when present.
+  - Before deleting `dream.json`, preserve its `project_summary` in `memory/{project}/latest_sleep_summary.txt` when present.
 - Success cleanup:
   - If all processable items succeed, delete `dream.json`.
   - If filtering leaves zero processable items, log at DEBUG level and delete `dream.json`.
 - UI fallback:
-  - When `dream.json` is absent but `latest_dream_summary.txt` exists, `GET /projects/{project_id}/dream` SHALL return a summary-only Dream payload with an empty `items` array so the Project Summary card remains visible while Analyze Dreams remains hidden.
+  - When `dream.json` is absent but `latest_sleep_summary.txt` exists, `GET /projects/{project_id}/dream` SHALL return a summary-only Dream payload with an empty `items` array so the Project Summary card remains visible while Analyze Dreams remains hidden.
 - Failure cleanup:
   - If any processable item fails to persist or post-processing fails, log a WARNING and rename `dream.json` beside the original file as `bad_dream_<timestamp>.json`.
   - Do not silently swallow auto-accept failures; Sleep may continue with partial status.

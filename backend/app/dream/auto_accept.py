@@ -21,6 +21,7 @@ from ..core.config import get_settings
 from ..core.memory import _prune_assistant_for_tagger
 from ..rag.daily_store import append_pair, rebuild_daily_cache
 from ..tagging.tagger import tag_pair
+from ..utils.dream_summary import write_latest_sleep_summary
 from ..utils.tokens import count_tokens
 
 logger = logging.getLogger(__name__)
@@ -131,24 +132,6 @@ def _delete_dream_file(project_id: str, dream_path: str) -> bool:
         return False
 
 
-def _persist_latest_project_summary(project_id: str, base_dir: str, dream_data: Dict[str, Any]) -> None:
-    summary = dream_data.get("project_summary")
-    if not isinstance(summary, str) or not summary.strip():
-        return
-    summary_path = os.path.join(base_dir, "latest_dream_summary.txt")
-    try:
-        with open(summary_path, "w", encoding="utf-8", newline="\n") as f:
-            f.write(summary.strip() + "\n")
-    except OSError as exc:
-        logger.warning(
-            "[DREAM][AUTO_ACCEPT] Failed writing latest dream summary project=%s path=%s detail=%s",
-            project_id,
-            summary_path,
-            exc,
-            exc_info=True,
-        )
-
-
 def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
     if not isinstance(tags_meta, dict):
         return ""
@@ -209,8 +192,6 @@ def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
         result.renamed_bad_path = _rename_bad_dream(project_id, dream_path)
         result.failed = 1
         return result
-    _persist_latest_project_summary(project_id, base_dir, data)
-
     entries: List[Dict[str, Any]] = [it for it in data.get("items", []) if isinstance(it, dict)]
     to_process, dropped_rows = _filter_remote_without_research_with_rows(entries)
     result.filtered_remote_without_research = len(dropped_rows)
@@ -221,6 +202,12 @@ def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
             project_id,
             len(entries),
             result.filtered_remote_without_research,
+        )
+        write_latest_sleep_summary(
+            project_id=project_id,
+            base_dir=base_dir,
+            project_summary=data.get("project_summary"),
+            accepted_items=[],
         )
         result.deleted_dream = _delete_dream_file(project_id, dream_path)
         if not result.deleted_dream:
@@ -359,6 +346,13 @@ def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
             result.failed = 1
             result.renamed_bad_path = _rename_bad_dream(project_id, dream_path)
             return result
+
+    write_latest_sleep_summary(
+        project_id=project_id,
+        base_dir=base_dir,
+        project_summary=data.get("project_summary"),
+        accepted_items=to_process,
+    )
 
     result.deleted_dream = _delete_dream_file(project_id, dream_path)
     if not result.deleted_dream:

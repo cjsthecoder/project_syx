@@ -10,7 +10,7 @@ Use of this software requires explicit written permission from the copyright hol
 import logging
 
 from ..core.config import get_settings
-from ..llm_model.factory import get_llm_client
+from ..core.llm import generate_text_response
 from ..utils.tokens import count_tokens as _count_tokens, trim_to_tokens as _trim_to_tokens
 
 logger = logging.getLogger(__name__)
@@ -31,13 +31,14 @@ def fetch_remote_research(query: str) -> str:
     """
     settings = get_settings()
     try:
-        response = get_llm_client().generate_response(
-            model=settings.dream_model,
+        response = generate_text_response(
+            f"Perform web research to gather concise factual context for: {query}",
+            override_model=settings.dream_model,
             system_prompt=None,
-            user_prompt=f"Perform web research to gather concise factual context for: {query}",
             tools=[{"type": "web_search"}],
-            temperature=float(settings.dream_temperature),
+            temperature_override=float(settings.dream_temperature),
             max_output_tokens=int(settings.dream_max_tokens),
+            purpose="dream:remote_research",
         )
         return response.text
     except Exception as e:

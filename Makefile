@@ -456,7 +456,7 @@ setup-env:
 		echo "RESPONSE_PRUNING_END_ENABLED=true"; \
 		echo "# Enable response-pruning trailing paragraph trimming"; \
 		echo ""; \
-		echo "RESPONSE_PRUNING_MARKDOWN_ENABLED=true"; \
+		echo "RESPONSE_PRUNING_MARKDOWN_ENABLED=false"; \
 		echo "# Enable response-pruning markdown cleanup"; \
 		echo ""; \
 		echo "RESPONSE_PRUNING_WHITESPACE_ENABLED=true"; \

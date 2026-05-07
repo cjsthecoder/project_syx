@@ -141,6 +141,29 @@ def _valid_research_entries(item: Dict[str, Any]) -> List[Dict[str, str]]:
     return out
 
 
+def _dream_memory_pairs_for_item(item: Dict[str, Any]) -> List[Dict[str, Any]]:
+    resolution = _normalize_resolution(item.get("source_resolution"))
+    if resolution == "answer_remote":
+        pairs = []
+        for r in _valid_research_entries(item):
+            pairs.append(
+                {
+                    "item": item,
+                    "user_text": r["research_topic"],
+                    "assistant_text": f"[RESEARCH]\n{r['research_summary']}".strip(),
+                }
+            )
+        return pairs
+
+    return [
+        {
+            "item": item,
+            "user_text": str(item.get("origin_text") or "").strip(),
+            "assistant_text": (str(item.get("assistant_response") or "").strip() or "(no summary)").strip(),
+        }
+    ]
+
+
 def _filter_remote_without_research(items: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
     kept: List[Dict[str, Any]] = []
     dropped = 0
@@ -344,86 +367,80 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
             except OSError as exc:
                 logger.warning("projects dream_summary lock migration failed project_id=%s detail=%s", project_id, exc)
 
-        # Pass 1: tag all items (and build pair text, tokens, tags_block, embed_text)
+        # Pass 1: expand remote research into per-topic pairs, then tag each pair independently.
         tagged: List[Dict[str, Any]] = []
         previous_pair_text: Optional[str] = None
         for it in to_process:
-            origin_text = (it.get("origin_text") or "").strip()
-            assistant_resp = (it.get("assistant_response") or "").strip()
+            for pair in _dream_memory_pairs_for_item(it):
+                user_text = str(pair.get("user_text") or "").strip()
+                assistant_resp_full = str(pair.get("assistant_text") or "").strip()
+                if not user_text or not assistant_resp_full:
+                    logger.warning(
+                        "[PROJECT][DREAM][KEEP] Skipping empty memory pair project=%s item_id=%s",
+                        project_id,
+                        str(it.get("id") or ""),
+                    )
+                    continue
 
-            resolution = _normalize_resolution(it.get("source_resolution"))
-            research_entries = []
-            for r in _valid_research_entries(it):
-                topic = r["research_topic"]
-                summary = r["research_summary"]
-                research_entries.append(f"[RESEARCH]\nTopic: {topic}\n{summary}".strip())
-
-            # answer_remote: persist detailed research blocks.
-            # answer_local (or unknown): keep concise assistant answer text.
-            if resolution == "answer_remote":
-                assistant_resp_full = "\n\n".join(research_entries).strip() or (assistant_resp or "(no summary)").strip()
-            else:
-                assistant_resp_full = (assistant_resp or "(no summary)").strip()
-
-            assistant_text_for_memory = _prune_assistant_for_tagger(
-                project_id=project_id,
-                assistant_text=assistant_resp_full,
-                settings=get_settings(),
-            )
-            pair_text = f"User: {origin_text}\nAssistant: {assistant_text_for_memory}"
-            tokens = int(count_tokens(pair_text))
-
-            tags_meta = None
-            try:
-                tags_meta = tag_pair(origin_text, assistant_text_for_memory, previous_pair_text=previous_pair_text, project_id=project_id)
-            except Exception as exc:
-                logger.warning(
-                    "[PROJECT][DREAM][KEEP] Tagger failed; persisting without tags project=%s item_id=%s detail=%s",
-                    project_id,
-                    str(it.get("id") or ""),
-                    exc,
+                assistant_text_for_memory = _prune_assistant_for_tagger(
+                    project_id=project_id,
+                    assistant_text=assistant_resp_full,
+                    settings=get_settings(),
                 )
+                pair_text = f"User: {user_text}\nAssistant: {assistant_text_for_memory}"
+                tokens = int(count_tokens(pair_text))
+
                 tags_meta = None
+                try:
+                    tags_meta = tag_pair(user_text, assistant_text_for_memory, previous_pair_text=previous_pair_text, project_id=project_id)
+                except Exception as exc:
+                    logger.warning(
+                        "[PROJECT][DREAM][KEEP] Tagger failed; persisting without tags project=%s item_id=%s detail=%s",
+                        project_id,
+                        str(it.get("id") or ""),
+                        exc,
+                    )
+                    tags_meta = None
 
-            tags_block = ""
-            try:
-                if isinstance(tags_meta, dict):
-                    topics = str(tags_meta.get("topics", "") or "")
-                    intent = str(tags_meta.get("intent", "") or "")
-                    tag_type = str(tags_meta.get("type", "") or "")
-                    semantic_handle = tags_meta.get("semantic_handle", None)
-                    lines = [f"#topics: {topics}", f"#intent: {intent}", f"#type: {tag_type}"]
-                    if semantic_handle is not None:
-                        lines.append(f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}")
-                    tags_block = "\n".join(lines) + "\n"
-            except Exception as exc:
-                logger.warning(
-                    "[PROJECT][DREAM][KEEP] Failed formatting tags block project=%s item_id=%s detail=%s",
-                    project_id,
-                    str(it.get("id") or ""),
-                    exc,
-                )
                 tags_block = ""
+                try:
+                    if isinstance(tags_meta, dict):
+                        topics = str(tags_meta.get("topics", "") or "")
+                        intent = str(tags_meta.get("intent", "") or "")
+                        tag_type = str(tags_meta.get("type", "") or "")
+                        semantic_handle = tags_meta.get("semantic_handle", None)
+                        lines = [f"#topics: {topics}", f"#intent: {intent}", f"#type: {tag_type}"]
+                        if semantic_handle is not None:
+                            lines.append(f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}")
+                        tags_block = "\n".join(lines) + "\n"
+                except Exception as exc:
+                    logger.warning(
+                        "[PROJECT][DREAM][KEEP] Failed formatting tags block project=%s item_id=%s detail=%s",
+                        project_id,
+                        str(it.get("id") or ""),
+                        exc,
+                    )
+                    tags_block = ""
 
-            embed_text = (tags_block + pair_text) if tags_block else pair_text
-            tagged.append({
-                "it": it,
-                "origin_text": origin_text,
-                "assistant_resp_full": assistant_text_for_memory,
-                "pair_text": pair_text,
-                "tokens": tokens,
-                "tags_meta": tags_meta,
-                "tags_block": tags_block,
-                "embed_text": embed_text,
-            })
-            previous_pair_text = pair_text
+                embed_text = (tags_block + pair_text) if tags_block else pair_text
+                tagged.append({
+                    "it": it,
+                    "user_text": user_text,
+                    "assistant_resp_full": assistant_text_for_memory,
+                    "pair_text": pair_text,
+                    "tokens": tokens,
+                    "tags_meta": tags_meta,
+                    "tags_block": tags_block,
+                    "embed_text": embed_text,
+                })
+                previous_pair_text = pair_text
 
         # Pass 2: append each to daily.json only (no cache update), write dream_summary blocks
         _BEGIN_DREAM_PAIR = "=== BEGIN DREAM PAIR ==="
         _END_DREAM_PAIR = "=== END DREAM PAIR ==="
         for rec in tagged:
             it = rec["it"]
-            origin_text = rec["origin_text"]
+            user_text = rec["user_text"]
             assistant_resp_full = rec["assistant_resp_full"]
             pair_text = rec["pair_text"]
             tokens = rec["tokens"]
@@ -454,7 +471,7 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                     f"{tags_block}"
                     f"\n"
                     f"--- USER (data-message-author-role: user) ---\n"
-                    f"{origin_text}\n"
+                    f"{user_text}\n"
                     f"\n"
                     f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
                     f"{assistant_resp_full}\n"
@@ -484,7 +501,7 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
         deleted = False
         dream_path = os.path.join(get_settings().memory_root, project_id, "dream.json")
         pending_project_summary = _read_pending_dream_project_summary(project_id, dream_path)
-        if successes == len(to_process) and not failures:
+        if successes == len(tagged) and not failures:
             try:
                 # Append END footer on successful completion before deleting dream.json
                 with FileLock(summary_lock_path):
@@ -513,7 +530,7 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
             status_code=status,
             content={
                 "project_id": project_id,
-                "processed": len(to_process),
+                "processed": len(tagged),
                 "kept": successes,
                 "failed": len(failures),
                 "deleted_dream": deleted,

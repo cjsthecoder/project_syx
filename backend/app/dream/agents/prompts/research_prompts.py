@@ -73,17 +73,20 @@ Instructions:
 
 Output Format (Important)
 
-Write a concise, factual research summary as structured plain text (markdown-style), not JSON.
+Write a concise, factual research summary as Markdown, not JSON.
 
 Format exactly like this:
-{research_topic}
-- Key findings:
-  - <bullet 1>
-  - <bullet 2>
-- Conditions / assumptions:
-  - <bullet>
-- Limitations / risks:
-  - <bullet>
+## {research_topic}
+
+### Key findings
+- <bullet 1>
+- <bullet 2>
+
+### Conditions / assumptions
+- <bullet>
+
+### Limitations / risks
+- <bullet>
 
 Rules for the summary:
 Do not repeat the origin text or the Idea Agent response.

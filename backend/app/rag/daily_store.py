@@ -511,6 +511,7 @@ def append_pair(
     tags_meta: Optional[Dict[str, Any]] = None,
     write_daily_md: bool = True,
     update_cache: bool = True,
+    created_at_iso_utc: Optional[str] = None,
 ) -> bool:
     """Append a single embedded pair to the daily index and metadata.
     Note: We don't persist raw FAISS here; we only track metadata and rely on embeddings at retrieval-time for simplicity.
@@ -523,10 +524,11 @@ def append_pair(
         entries = _load_metadata(meta_path)
         day_sequence = (entries[-1]["day_sequence"] + 1) if entries else 1
         ns = (namespace or "other").lower()
+        created_at = created_at_iso_utc or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         entry = {
             "id": f"{int(time.time()*1000)}-{len(entries)+1}",
             "project_id": project_id,
-            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "created_at": created_at,
             "pair_ids": [str(user_msg_id), str(assistant_msg_id)],
             "text": pair_text,
             # The in-memory FAISS cache is rebuilt from daily.json; preserve vector content explicitly.

@@ -27,7 +27,7 @@ from ..core.state import engage_lock, release_lock, is_sleeping, since, lock_pat
 from ..core.database import get_session
 from ..core.db_models import Project, ChatMessage
 from sqlmodel import select
-from ..rag.daily_store import backfill_daily_md_from_meta, append_pair_text_only
+from ..rag.daily_store import append_pair, backfill_daily_md_from_meta, rebuild_daily_cache
 from ..tagging.tagger import tag_pair as tag_pair_tagger
 from ..dream import dream
 from ..dream.auto_accept import auto_accept_dreams
@@ -38,6 +38,7 @@ import os
 import json
 import uuid
 from datetime import datetime
+from ..utils.tokens import count_tokens
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -72,14 +73,13 @@ def _sleep_cycle_worker():
         engage_lock()
         logger.debug("[SLEEP] Lock engaged")
         logger.info("[SLEEP] Thread started t=%s job_id=%s", start_iso, job_id)
-        # Flush active pairs from DB into daily.md only (tagger + append_pair_text_only); only delete on success.
+        # Flush active pairs from DB into Daily metadata and daily.md; rebuild the Daily cache before Dream.
         try:
-            from ..core.memory import get_memory_manager
             mem = get_memory_manager()
             settings = get_settings()
             pair_limit = int(getattr(settings, "chat_history_limit_pairs", 10) or 10)
             logger.info(
-                "[SLEEP][FLUSH] Starting: flushing active pairs to daily.md only (tagger + text-only append) per project (chat_history_limit_pairs=%s).",
+                "[SLEEP][FLUSH] Starting: flushing active pairs to indexed Daily memory per project (chat_history_limit_pairs=%s).",
                 pair_limit,
             )
             with get_session() as session:
@@ -128,7 +128,13 @@ def _sleep_cycle_worker():
                                     parsed = json.loads(tags_meta_json)
                                     if isinstance(parsed, dict):
                                         tags_meta = parsed
-                                except Exception:
+                                except json.JSONDecodeError as exc:
+                                    logger.warning(
+                                        "[SLEEP][FLUSH] Failed parsing tags_meta_json project=%s assistant_id=%s detail=%s",
+                                        pid,
+                                        getattr(a, "id", None),
+                                        exc,
+                                    )
                                     tags_meta = None
                             pruned_from_meta = None
                             if isinstance(tags_meta, dict):
@@ -164,14 +170,39 @@ def _sleep_cycle_worker():
                             ns = (getattr(a, "namespace", None) or "other")
                             ns = ns.lower() if isinstance(ns, str) else "other"
                             keep = bool(getattr(a, "keep", False))
-                            ok = append_pair_text_only(
+                            public_tags_meta = (
+                                {
+                                    key: value
+                                    for key, value in dict(tags_meta or {}).items()
+                                    if not str(key).startswith("_")
+                                }
+                                if isinstance(tags_meta, dict)
+                                else None
+                            )
+                            pair_text = f"User: {user_text}\nAssistant: {asst_text_for_memory}"
+                            tags_block = ""
+                            if isinstance(public_tags_meta, dict):
+                                topics = str(public_tags_meta.get("topics", "") or "")
+                                intent = str(public_tags_meta.get("intent", "") or "")
+                                tag_type = str(public_tags_meta.get("type", "") or "")
+                                semantic_handle = public_tags_meta.get("semantic_handle", None)
+                                lines = [f"#topics: {topics}", f"#intent: {intent}", f"#type: {tag_type}"]
+                                if semantic_handle is not None:
+                                    lines.append(f"#semantic_handle: {str(semantic_handle)}")
+                                tags_block = "\n".join(lines) + "\n"
+                            embed_text = (tags_block + pair_text) if tags_block else pair_text
+                            ok = append_pair(
                                 pid,
-                                user_text,
-                                asst_text_for_memory,
-                                created_at_iso,
-                                ns,
-                                keep,
-                                tags_meta=tags_meta,
+                                pair_text,
+                                int(getattr(u, "id", -1) or -1),
+                                int(getattr(a, "id", -2) or -2),
+                                int(count_tokens(pair_text)),
+                                namespace=ns,
+                                keep=keep,
+                                embed_override=embed_text,
+                                tags_meta=public_tags_meta,
+                                update_cache=False,
+                                created_at_iso_utc=created_at_iso,
                             )
                             if ok:
                                 try:
@@ -185,12 +216,12 @@ def _sleep_cycle_worker():
                                         session.commit()
                                     flushed += 1
                                     items_out += 1
-                                    previous_pair_text = f"User: {user_text}\nAssistant: {asst_text_for_memory}"
+                                    previous_pair_text = pair_text
                                 except Exception as de:
                                     logger.warning("[SLEEP][FLUSH] DB delete failed project=%s: %s", pid, de)
                             else:
                                 logger.warning(
-                                    "[SLEEP][FLUSH] append_pair_text_only failed for project=%s user_id=%s assistant_id=%s; pair not deleted.",
+                                    "[SLEEP][FLUSH] Daily append failed for project=%s user_id=%s assistant_id=%s; pair not deleted.",
                                     pid,
                                     getattr(u, "id", None),
                                     getattr(a, "id", None),
@@ -224,6 +255,14 @@ def _sleep_cycle_worker():
                             exc,
                         )
                     if flushed:
+                        if not rebuild_daily_cache(pid, reason="sleep_flush"):
+                            status = "partial"
+                            errors.append(f"daily_cache_rebuild:{pid}")
+                            logger.warning(
+                                "[SLEEP][FLUSH] Daily cache rebuild failed after flush project=%s flushed_pairs=%s",
+                                pid,
+                                flushed,
+                            )
                         logger.info("[SLEEP][FLUSH] flushed_pairs=%s project=%s", flushed, pid)
                 except Exception as fe:
                     projects_failed_count += 1

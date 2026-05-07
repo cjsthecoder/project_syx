@@ -149,19 +149,27 @@ def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
         return ""
 
 
-def _assistant_response_for_item(item: Dict[str, Any]) -> str:
-    assistant_resp = str(item.get("assistant_response") or "").strip()
+def _memory_pairs_for_item(item: Dict[str, Any]) -> List[Dict[str, Any]]:
     resolution = _normalize_resolution(item.get("source_resolution"))
-    research_entries = []
-    for r in _valid_research_entries(item):
-        topic = r["research_topic"]
-        summary = r["research_summary"]
-        research_entries.append(f"[RESEARCH]\nTopic: {topic}\n{summary}".strip())
+    if resolution == "answer_remote":
+        pairs = []
+        for r in _valid_research_entries(item):
+            pairs.append(
+                {
+                    "item": item,
+                    "user_text": r["research_topic"],
+                    "assistant_text": f"[RESEARCH]\n{r['research_summary']}".strip(),
+                }
+            )
+        return pairs
 
-    if resolution != "answer_remote":
-        return (assistant_resp or "(no summary)").strip()
-
-    return "\n\n".join(research_entries).strip() or (assistant_resp or "(no summary)").strip()
+    return [
+        {
+            "item": item,
+            "user_text": str(item.get("origin_text") or "").strip(),
+            "assistant_text": (str(item.get("assistant_response") or "").strip() or "(no summary)").strip(),
+        }
+    ]
 
 
 def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
@@ -229,40 +237,48 @@ def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
     tagged: List[Dict[str, Any]] = []
     previous_pair_text: Optional[str] = None
     for item in to_process:
-        origin_text = str(item.get("origin_text") or "").strip()
-        assistant_resp_full = _assistant_response_for_item(item)
-        assistant_text_for_memory = _prune_assistant_for_tagger(
-            project_id=project_id,
-            assistant_text=assistant_resp_full,
-            settings=get_settings(),
-        )
-        pair_text = f"User: {origin_text}\nAssistant: {assistant_text_for_memory}"
-        tokens = int(count_tokens(pair_text))
-        tags_meta = None
-        try:
-            tags_meta = tag_pair(origin_text, assistant_text_for_memory, previous_pair_text=previous_pair_text, project_id=project_id)
-        except Exception as exc:
-            logger.warning(
-                "[DREAM][AUTO_ACCEPT] Tagger failed; persisting without tags project=%s item_id=%s detail=%s",
-                project_id,
-                str(item.get("id") or ""),
-                exc,
+        for pair in _memory_pairs_for_item(item):
+            user_text = str(pair.get("user_text") or "").strip()
+            assistant_resp_full = str(pair.get("assistant_text") or "").strip()
+            if not user_text or not assistant_resp_full:
+                logger.warning(
+                    "[DREAM][AUTO_ACCEPT] Skipping empty memory pair project=%s item_id=%s",
+                    project_id,
+                    str(item.get("id") or ""),
+                )
+                continue
+            assistant_text_for_memory = _prune_assistant_for_tagger(
+                project_id=project_id,
+                assistant_text=assistant_resp_full,
+                settings=get_settings(),
             )
-        tags_block = _format_tags_block(tags_meta)
-        embed_text = (tags_block + pair_text) if tags_block else pair_text
-        tagged.append(
-            {
-                "item": item,
-                "origin_text": origin_text,
-                "assistant_resp_full": assistant_text_for_memory,
-                "pair_text": pair_text,
-                "tokens": tokens,
-                "tags_meta": tags_meta,
-                "tags_block": tags_block,
-                "embed_text": embed_text,
-            }
-        )
-        previous_pair_text = pair_text
+            pair_text = f"User: {user_text}\nAssistant: {assistant_text_for_memory}"
+            tokens = int(count_tokens(pair_text))
+            tags_meta = None
+            try:
+                tags_meta = tag_pair(user_text, assistant_text_for_memory, previous_pair_text=previous_pair_text, project_id=project_id)
+            except Exception as exc:
+                logger.warning(
+                    "[DREAM][AUTO_ACCEPT] Tagger failed; persisting without tags project=%s item_id=%s detail=%s",
+                    project_id,
+                    str(item.get("id") or ""),
+                    exc,
+                )
+            tags_block = _format_tags_block(tags_meta)
+            embed_text = (tags_block + pair_text) if tags_block else pair_text
+            tagged.append(
+                {
+                    "item": item,
+                    "user_text": user_text,
+                    "assistant_resp_full": assistant_text_for_memory,
+                    "pair_text": pair_text,
+                    "tokens": tokens,
+                    "tags_meta": tags_meta,
+                    "tags_block": tags_block,
+                    "embed_text": embed_text,
+                }
+            )
+            previous_pair_text = pair_text
 
     begin_dream_pair = "=== BEGIN DREAM PAIR ==="
     end_dream_pair = "=== END DREAM PAIR ==="
@@ -294,7 +310,7 @@ def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
                 f"{rec['tags_block']}"
                 f"\n"
                 f"--- USER (data-message-author-role: user) ---\n"
-                f"{rec['origin_text']}\n"
+                f"{rec['user_text']}\n"
                 f"\n"
                 f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
                 f"{rec['assistant_resp_full']}\n"
@@ -321,7 +337,7 @@ def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
                 exc_info=True,
             )
 
-    result.processed = len(to_process)
+    result.processed = len(tagged)
     if result.accepted > 0:
         try:
             rebuild_daily_cache(project_id, reason="dream_auto_accept")
@@ -329,9 +345,9 @@ def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
             failures.append(f"rebuild_cache: {exc}")
             logger.warning("[DREAM][AUTO_ACCEPT] Rebuild daily cache failed project=%s detail=%s", project_id, exc)
 
-    if failures or result.accepted != len(to_process):
+    if failures or result.accepted != len(tagged):
         result.errors = failures
-        result.failed = len(to_process) - result.accepted + (1 if any(err.startswith("rebuild_cache:") for err in failures) else 0)
+        result.failed = len(tagged) - result.accepted + (1 if any(err.startswith("rebuild_cache:") for err in failures) else 0)
         result.renamed_bad_path = _rename_bad_dream(project_id, dream_path)
         return result
 

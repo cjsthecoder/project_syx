@@ -2032,10 +2032,9 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
 * Dream must use the Dream-specific OpenAI Responses wrapper and must not depend on legacy generic LLM wrappers.
 * Create `backend/app/core/dream_llm.py`:
 
-  * Thin wrapper over the OpenAI Responses API.
-  * Must expose a function such as `dream_llm_call(prompt: str, max_output_tokens: int) -> str`.
+  * Uses the shared LLM runtime via `backend.app.core.llm.generate_text_response(...)` (Responses-style call through `llm_model.factory`).
   * Uses environment variables:
-    * `DREAM_MODEL` (default: `gpt-5.1`)
+    * `DREAM_MODEL` (default: `gpt-5.5`)
     * `DREAM_TEMPERATURE` (default: `1.0`)
     * `DREAM_MAX_TOKENS` (default: `32000`)
     * `DREAM_ENABLE_REMOTE_RESEARCH` (default: `true`)
@@ -2085,7 +2084,7 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
 
     * Retrieve local RAG context.
     * Build a prompt via `build_answer_question_prompt(question, topic, local_context, remote_context="")`.
-    * Call `dream_llm_call` once.
+    * Call `generate_text_response(...)` once.
     * Parse strict JSON.
   * If `resolution="answer_remote"`:
 
@@ -2093,7 +2092,7 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
     * Perform remote research using OpenAI web_search (only if `DREAM_ENABLE_REMOTE_RESEARCH=true`).
     * Build answer prompt including both contexts (local first, then remote).
     * Cap `remote_context` to `DREAM_REMOTE_CONTEXT_MAX_TOKENS` tokens (tiktoken). If web_search fails/empty, proceed with `remote_context=""` and log a warning (no retries in 4.1.2).
-    * Call `dream_llm_call`.
+    * Call `generate_text_response(...)`.
     * Parse strict JSON.
   * If invalid JSON is returned:
 
@@ -2559,9 +2558,9 @@ The returned string SHALL constitute the full and final prompt passed to the LLM
 
 ## FR-4.2.5 LLM Invocation
 The Idea Agent SHALL invoke the LLM using:
-`dream_llm_call(prompt: str, max_output_tokens: Optional[int])`
+`backend.app.core.llm.generate_text_response(user_prompt: str, ...)`
 The Idea Agent SHALL:
-- use only `dream_llm_call`
+- use only the shared core LLM runtime (no Dream-specific wrapper)
 - pass `max_output_tokens=settings.dream_max_tokens` (backed by `DREAM_MAX_TOKENS`, default 32000) for all Idea Agent calls
 - treat the returned value as raw JSON text produced by the model
 
@@ -2654,7 +2653,7 @@ It SHALL generate only `recommended_research` topics for downstream use by the R
 
 ## FR-4.2.12 Output of This Version
 The Idea Agent SHALL return a single Python dictionary produced by:
-1. Parsing the raw JSON returned from `dream_llm_call`.
+1. Parsing the raw JSON returned from the Dream LLM call.
 2. Validating and filtering entries through the manual field-by-field validation rules defined in FR-4.2.7.
 
 The returned dictionary SHALL contain exactly the following fields:
@@ -3134,7 +3133,8 @@ It assumes that the Dream pipeline (FR-4.1.x–4.4) has produced a `memory/{proj
    - Implementation note: this MAY be exposed via a backend endpoint such as:
      - `GET /projects/{project_id}/dream` → `{ "project_id": "...", "dream": { ... } }` or `{ "project_id": "...", "dream": null }`
      - The endpoint SHOULD read `memory/{project_id}/dream.json` and parse it as JSON, performing basic schema validation (e.g., top-level object, optional `date`, `project_summary` string, `items` list of objects).
-2. If `dream.json` exists and contains a top-level `"project_summary"` string, the GUI MUST render a **Project Summary card** in the main chat window:
+     - When `dream.json` is absent but `latest_sleep_summary.txt` is present (see FR-4.5.3 Auto-Accept + Cleanup), the endpoint SHOULD return a summary-only payload with `items=[]` so the Project Summary card remains visible while Analyze Dreams remains hidden.
+2. If a usable Dream summary string is available (from `dream.json.project_summary` or the summary-only fallback), the GUI MUST render a **Project Summary card** in the main chat window:
    - It MUST be visually distinct and **NOT** part of the normal chat `messages` list (i.e., it is not a user/assistant bubble and will not be rolled off as a chat message).
    - It MUST appear **above** the first chat pair in the scrollable chat area.
    - Styling requirements:
@@ -3142,8 +3142,9 @@ It assumes that the Dream pipeline (FR-4.1.x–4.4) has produced a `memory/{proj
      - Text color: black
      - The card MUST support multi-paragraph text (equivalent to CSS `white-space: pre-wrap`).
      - The card MUST include a small label or heading such as `Project Summary`.
-   - Content:
-     - Primary: `dream.project_summary` (the `"project_summary"` field from `dream.json`).
+  - Content:
+    - Primary: `dream.project_summary` (string).
+    - It MAY include an appended `[RESEARCH]` block listing accepted research topics (see FR-4.5.3 Auto-Accept + Cleanup and DELTA-DREAM-001 which has been rolled into this requirement).
      - Fallback: if `"project_summary"` is missing or empty, the implementation MAY choose to omit the card or derive a fallback summary from the rest of `dream.json` (exact fallback behavior is implementation-defined and SHOULD be documented if used).
 3. If no usable `dream.json` is available for the project, or the backend detects invalid JSON/schema when reading it, the Project Summary card MUST NOT be shown.
    - In this case, the frontend SHOULD display a small, non-blocking warning banner (e.g., “Dream summary unavailable for this project”) in the main chat view and MUST hide the Analyze Dreams button (see FR-4.5.1.3).
@@ -3255,6 +3256,15 @@ Populate the Dream analysis modal with dream entries from `dream.json`, rendered
   - Auto-accepted items MUST use `keep=false` even though manual Dream submission currently persists remembered items with `keep=true`.
   - Append accepted items to `dream_summary.txt` using the same Dream memory block format so the same Sleep cycle can fold them into `uploads/dream/dream_{cycle_ts}.txt`; research-backed responses MUST include pruned research blocks without adding a synthetic research-overview sentence.
   - Before deleting `dream.json`, preserve its `project_summary` in `memory/{project}/latest_sleep_summary.txt` when present.
+    - When accepted Dream items contain research entries, the preserved summary MUST append a `[RESEARCH]` block containing deduplicated `research_topic` values in first-seen order.
+    - Formatting:
+      ```
+      [RESEARCH]
+      Topic: <topic 1>
+
+      Topic: <topic 2>
+      ```
+    - The block MUST be omitted if no accepted research topics are present.
 - Success cleanup:
   - If all processable items succeed, delete `dream.json`.
   - If filtering leaves zero processable items, log at DEBUG level and delete `dream.json`.

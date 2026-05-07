@@ -134,7 +134,8 @@ def test_auto_accept_processes_dream_json_with_keep_false(tmp_path, monkeypatch)
     assert len(calls["append"]) == 2
     assert all(call["kwargs"]["keep"] is False for call in calls["append"])
     assert calls["rebuild"] == 1
-    summary = (project_dir / "dream_summary.txt").read_text(encoding="utf-8")
+    assert not (project_dir / "dream_summary.txt").exists()
+    summary = (project_dir / "dream_summary.md").read_text(encoding="utf-8")
     assert "#keep: false" in summary
     assert "local question" in summary
     assert "remote question" in summary
@@ -161,7 +162,8 @@ def test_auto_accept_prunes_before_tagger(tmp_path, monkeypatch):
     assert calls["pruner"][0]["assistant_text"] == "full assistant text"
     assert calls["tagger"][0]["args"][1] == "pruned assistant text"
     assert calls["append"][0]["args"][1] == "User: q\nAssistant: pruned assistant text"
-    summary = (project_dir / "dream_summary.txt").read_text(encoding="utf-8")
+    assert not (project_dir / "dream_summary.txt").exists()
+    summary = (project_dir / "dream_summary.md").read_text(encoding="utf-8")
     assert "pruned assistant text" in summary
     assert "full assistant text" not in summary
 

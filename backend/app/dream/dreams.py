@@ -487,7 +487,7 @@ def dream(project_id: str) -> None:
             except Exception as de:
                 logger.warning("[DREAM][DEBUG] Failed writing questions_out debug project=%s: %s", project_id, de)
 
-            # Build dream context after questions are processed and sleep_summary.txt
+            # Build dream context after questions are processed and sleep_summary.md
             dream_context, project_summary_text = build_dream_context(project_id, questions_data)
             try:
                 _write_dreaming_debug_txt(

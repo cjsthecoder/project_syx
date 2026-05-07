@@ -215,7 +215,7 @@ def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
             result.errors.append("delete_dream_json_failed")
         return result
 
-    summary_path = os.path.join(base_dir, "dream_summary.txt")
+    summary_path = os.path.join(base_dir, "dream_summary.md")
     state_dir = os.path.join(base_dir, "state")
     os.makedirs(state_dir, exist_ok=True)
     summary_lock_path = os.path.join(state_dir, "dream_summary.lock")
@@ -280,7 +280,7 @@ def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
                 keep=False,
                 embed_override=rec["embed_text"],
                 tags_meta=rec["tags_meta"],
-                write_daily_txt=False,
+                write_daily_md=False,
                 update_cache=False,
             )
             if not ok:

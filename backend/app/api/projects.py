@@ -278,7 +278,7 @@ async def get_project_dream(project_id: str) -> JSONResponse:
 @router.post("/projects/{project_id}/dream/keep")
 async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResponse:
     """
-    Persist kept dream items by tagging and appending to daily RAG, appending to dream_summary.txt,
+    Persist kept dream items by tagging and appending to daily RAG, appending to dream_summary.md,
     and deleting dream.json on full success.
     """
     try:
@@ -330,10 +330,10 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
         successes = 0
         failures = []
 
-        # Prepare dream_summary.txt append
+        # Prepare dream_summary.md append
         base_dir = os.path.join(get_settings().memory_root, project_id)
         os.makedirs(base_dir, exist_ok=True)
-        summary_path = os.path.join(base_dir, "dream_summary.txt")
+        summary_path = os.path.join(base_dir, "dream_summary.md")
         state_dir = os.path.join(base_dir, "state")
         os.makedirs(state_dir, exist_ok=True)
         summary_lock_path = os.path.join(state_dir, "dream_summary.lock")
@@ -441,7 +441,7 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                     keep=True,
                     embed_override=embed_text,
                     tags_meta=tags_meta,
-                    write_daily_txt=False,
+                    write_daily_md=False,
                     update_cache=False,
                 )
                 ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())

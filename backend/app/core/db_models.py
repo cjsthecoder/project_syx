@@ -52,7 +52,7 @@ class ChatMessage(SQLModel, table=True):
     role: str = Field(description="user|assistant")
     content: str
     created_at: datetime = Field(default_factory=utc_now, index=True)
-    forget: bool = Field(default=False, description="If true, skip roll-off embedding and daily.txt")
+    forget: bool = Field(default=False, description="If true, skip roll-off embedding and daily.md")
     namespace: Optional[str] = Field(default=None, description="Primary namespace captured at assistant creation")
     keep: bool = Field(default=False, description="User preference tag propagated into daily headers/metadata")
     # Store per-assistant metadata produced immediately after response.

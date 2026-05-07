@@ -42,11 +42,11 @@ def _read_file_safe(path: str) -> str:
 
 def _strip_open_questions_section(text: str) -> str:
     """
-    Remove the [Open Questions] section and its JSON block from sleep_summary.txt.
+    Remove the [Open Questions] section and its JSON block from sleep_summary.md.
     This prevents duplicate questions since they're already in questions_data.
     
     Args:
-        text: The full content of sleep_summary.txt
+        text: The full content of sleep_summary.md
         
     Returns:
         Text with [Open Questions] section removed
@@ -135,7 +135,7 @@ def _get_project_context_summary(project_id: str) -> str:
     """
     settings = get_settings()
     # Always use the latest sleep summary as source; skip RAG retrieval
-    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.txt")
+    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.md")
     summ_src = _read_file_safe(summary_path)
     summary_prompt = build_project_summary_prompt(summ_src)
     write_debug_file(project_id, "debug_context_summary.txt", summary_prompt)
@@ -220,13 +220,13 @@ def _format_question_answers(questions_data: Dict[str, Any]) -> str:
 
 def _get_daily_memory(project_id: str) -> str:
     """
-    Load daily memory from sleep_summary.txt with [Open Questions] section stripped.
+    Load daily memory from sleep_summary.md with [Open Questions] section stripped.
     Returns text or '(empty)' if missing or empty.
     """
-    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.txt")
+    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.md")
     daily_text = _read_file_safe(summary_path)
     if not daily_text.strip():
-        logger.warning("sleep_summary.txt missing or empty.")
+        logger.warning("sleep_summary.md missing or empty.")
         daily_text = "(empty)"
     else:
         # Strip [Open Questions] section to avoid duplicates (questions are already represented in questions_data)
@@ -240,15 +240,15 @@ def _get_daily_memory(project_id: str) -> str:
 
 def _extract_rag_topics(project_id: str) -> List[str]:
     """
-    Extract topic queries from sleep_summary.txt per 4.1.3.2.
+    Extract topic queries from sleep_summary.md per 4.1.3.2.
 
     Returns:
         Ordered, deduplicated list of topic queries (section titles + individual topics).
     """
-    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.txt")
+    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.md")
     text = _read_file_safe(summary_path)
     if not text.strip():
-        logger.debug("[DREAM][CONTEXT] RAG enrichment: sleep_summary.txt missing or empty for project=%s", project_id)
+        logger.debug("[DREAM][CONTEXT] RAG enrichment: sleep_summary.md missing or empty for project=%s", project_id)
         return []
 
     lines = text.splitlines()

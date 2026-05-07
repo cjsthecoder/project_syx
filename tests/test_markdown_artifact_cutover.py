@@ -97,6 +97,33 @@ def test_append_pair_writes_daily_md_not_daily_txt(tmp_path, monkeypatch):
     assert legacy_txt.read_text(encoding="utf-8") == "historical txt remains\n"
 
 
+def test_append_pair_preserves_created_at_for_daily_md_and_metadata(tmp_path, monkeypatch):
+    daily_store = _load_daily_store(monkeypatch)
+    monkeypatch.setattr(daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path)))
+    monkeypatch.setattr(daily_store, "get_active_embedding_model", lambda: "test-embedding")
+
+    project_id = "project-created-at"
+    project_dir = tmp_path / project_id
+    project_dir.mkdir()
+
+    ok = daily_store.append_pair(
+        project_id,
+        "User: timestamp question\nAssistant: timestamp answer",
+        10,
+        11,
+        5,
+        namespace="chat",
+        update_cache=False,
+        created_at_iso_utc="2026-05-07T13:45:04Z",
+    )
+
+    assert ok is True
+    entries = json.loads((project_dir / "daily.json").read_text(encoding="utf-8"))
+    assert entries[0]["created_at"] == "2026-05-07T13:45:04Z"
+    daily_md = (project_dir / "daily.md").read_text(encoding="utf-8")
+    assert "#timestamp: 05-07-2026_13:45:04" in daily_md
+
+
 def test_backfill_daily_md_from_meta_ignores_legacy_txt(tmp_path, monkeypatch):
     daily_store = _load_daily_store(monkeypatch)
     monkeypatch.setattr(daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path)))

@@ -9,6 +9,7 @@ Use of this software requires explicit written permission from the copyright hol
 """
 def build_research_prompt(
     project_summary_text: str,
+    local_context_text: str,
     origin_text: str,
     origin_type: str,
     assistant_response: str,
@@ -20,6 +21,7 @@ def build_research_prompt(
 
     Args:
         project_summary_text: Concise project context summary for grounding.
+        local_context_text: Expanded local project memory retrieved for this research topic.
         origin_text: The originating user or idea context text.
         origin_type: The DreamEntry origin_type (e.g., Open Question, Insight).
         assistant_response: The Idea Agent response associated with this entry.
@@ -36,6 +38,9 @@ The summary should be useful as durable technical background memory for future p
 
 Project Context Summary:
 {project_summary_text}
+
+Expanded Local Retrieval Context:
+{local_context_text}
 
 Origin Text:
 {origin_text}
@@ -54,7 +59,7 @@ Theme:
 
 Instructions:
 
-1. Understand why this research topic matters by considering the project context, origin_text, origin_type, and Idea Agent response.
+1. Understand why this research topic matters by considering the project context, expanded local retrieval context, origin_text, origin_type, and Idea Agent response.
 2. Perform research using the system research tool.
    Use the research_topic string exactly as provided.
 3. Write a concise research_summary that:
@@ -70,6 +75,16 @@ Instructions:
    - contains no tool citation artifacts
    - does not editorialize or add opinions
    - does not propose actions or recommendations
+
+How to use project context and retrieved memory:
+- Treat Project Context Summary, Origin Text, Origin Type, Idea Agent Response, Research Topic, and Theme as the frame for what facts will be useful to Syx.
+- Treat Expanded Local Retrieval Context as supporting project memory, not as external evidence and not as a source of new research topics.
+- The local retrieval context may contain partial chunks, duplicates, stale prior Dream outputs, adjacent material, or unrelated-but-similar snippets.
+- Use local context to understand what Syx already knows, what analogy or architecture concern motivated the topic, and which distinctions would be valuable in future chats.
+- Ignore local snippets that are off-topic, merely adjacent, too truncated to support a claim, or not relevant to the Research Topic.
+- Do not let local memory replace research; use research to provide factual grounding and use local memory to choose emphasis.
+- If research contradicts or complicates local assumptions, summarize the factual nuance without calling out the conflict as a process note.
+- Do not broaden the topic just because related concepts appear in local retrieval context.
 
 Output Format (Important)
 

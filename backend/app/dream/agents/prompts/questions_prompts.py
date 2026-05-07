@@ -19,8 +19,14 @@ Question:
 Topic:
 {topic}
 
-Local Project Memory:
+Expanded Local Retrieval Context:
 {local_context}
+
+Use of retrieved context:
+- The local context is automatically retrieved and may contain partial chunks, duplicates, older Dream outputs, or adjacent material.
+- Use only snippets that directly help answer the Question and Topic.
+- Ignore retrieved material that is off-topic, merely adjacent, or too truncated to support a claim.
+- Do not summarize the retrieved context broadly; answer the specific question.
 
 Answer requirements:
 1. Return a single JSON object.
@@ -48,11 +54,19 @@ Question:
 Topic:
 {topic}
 
-Local Project Memory:
+Expanded Local Retrieval Context:
 {local_context}
 
 Remote Research:
 {remote_context}
+
+Use of retrieved context and research:
+- The local context is automatically retrieved and may contain partial chunks, duplicates, older Dream outputs, or adjacent material.
+- Use Remote Research for external factual grounding.
+- Use Expanded Local Retrieval Context for project-specific framing, prior conclusions, or Syx analogies when they directly help answer the Question and Topic.
+- Ignore retrieved material that is off-topic, merely adjacent, or too truncated to support a claim.
+- If local memory and remote research conflict, mention the uncertainty briefly instead of forcing a false certainty.
+- Do not summarize all supplied material; answer the specific question.
 
 Answer requirements:
 1. Return a single JSON object.

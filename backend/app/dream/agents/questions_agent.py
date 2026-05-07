@@ -17,7 +17,7 @@ from ..research import count_tokens, trim_to_tokens, fetch_remote_research
 from ...core.config import get_settings
 from ...core.llm import generate_text_response
 from ..debug import safe_dream_purpose, write_dream_prompt_to_execute, write_dream_response_usage_debug
-from ...rag.manager import retrieve_context
+from ..rag import retrieve_dream_context
 from app.utils.debug_utils import write_debug_file
 from .prompts.questions_prompts import (
     build_answer_question_prompt_local,
@@ -60,10 +60,10 @@ def _run_open_question_pipeline(project_id: str, question: str, topic: str, reso
 
     # Retrieve local RAG context with topic-based hints
     try:
-        rc = retrieve_context(
+        rc = retrieve_dream_context(
             project_id=project_id,
             query=question,
-            score_threshold=settings.rag_score_threshold,
+            route="EXPLORATORY",
         )
         local_context = rc.get("context_text") or ""
     except Exception as e:

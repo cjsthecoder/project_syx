@@ -119,7 +119,7 @@ _END_DAILY_PAIR = "=== END DAILY PAIR ==="
 
 def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
     """
-    Format tag metadata lines for inclusion in daily.txt.
+    Format tag metadata lines for inclusion in daily.md.
 
     Uses the same 3-line convention as the roll-off tagger output.
     Returns a string that already ends with a newline (or "" if no tags).
@@ -152,8 +152,8 @@ def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
             os.replace(legacy_lock_path, lock_path)
         except OSError as exc:
             logger.warning("daily_store lock migration failed project_id=%s detail=%s", project_id, exc)
-    txt_path = os.path.join(base_dir, "daily.txt")
-    return meta_path, lock_path, txt_path
+    md_path = os.path.join(base_dir, "daily.md")
+    return meta_path, lock_path, md_path
 
 
 @dataclass
@@ -509,15 +509,15 @@ def append_pair(
     keep: bool = False,
     embed_override: Optional[str] = None,
     tags_meta: Optional[Dict[str, Any]] = None,
-    write_daily_txt: bool = True,
+    write_daily_md: bool = True,
     update_cache: bool = True,
 ) -> bool:
     """Append a single embedded pair to the daily index and metadata.
     Note: We don't persist raw FAISS here; we only track metadata and rely on embeddings at retrieval-time for simplicity.
-    When update_cache is False, only daily.json (and optionally daily.txt) are updated; caller is responsible for rebuilding the in-memory RAG once (e.g. dream batch).
+    When update_cache is False, only daily.json (and optionally daily.md) are updated; caller is responsible for rebuilding the in-memory RAG once (e.g. dream batch).
     """
     settings = get_settings()
-    meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    meta_path, lock_path, md_path = _project_daily_paths(project_id)
     text_for_embed = embed_override if embed_override else pair_text
     with FileLock(lock_path):
         entries = _load_metadata(meta_path)
@@ -544,17 +544,17 @@ def append_pair(
             entry["tags_meta"] = tags_meta
         entries.append(entry)
         _save_metadata(meta_path, entries)
-        # Append to daily.txt (human-readable) unless explicitly skipped
-        if write_daily_txt:
+        # Append to daily.md (human-readable) unless explicitly skipped
+        if write_daily_md:
             try:
                 # If first write, add BEGIN header with local date (MM/DD/YYYY)
                 try:
-                    if (not os.path.isfile(txt_path)) or os.path.getsize(txt_path) == 0:
+                    if (not os.path.isfile(md_path)) or os.path.getsize(md_path) == 0:
                         begin_date = time.strftime("%m/%d/%Y", time.localtime())
-                        with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                        with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
                             tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
                 except Exception as exc:
-                    logger.warning("DailyRAG: failed ensuring daily BEGIN header project=%s path=%s detail=%s", project_id, txt_path, exc)
+                    logger.warning("DailyRAG: failed ensuring daily BEGIN header project=%s path=%s detail=%s", project_id, md_path, exc)
                 ts = entry["created_at"]
                 # Split pair_text into user and assistant parts safely
                 if "\nAssistant:" in pair_text:
@@ -587,11 +587,11 @@ def append_pair(
                     f"{_END_DAILY_PAIR}\n"
                     f"\n"
                 )
-                with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
                     tf.write(_nl(block))
-                logger.debug("[DAILYTXT] project=%s wrote %s bytes", project_id, len(block.encode('utf-8')))
+                logger.debug("[DAILYMD] project=%s wrote %s bytes", project_id, len(block.encode('utf-8')))
             except Exception as te:
-                logger.error("DailyRAG: failed writing daily.txt: %s", te)
+                logger.error("DailyRAG: failed writing daily.md: %s", te)
     if not update_cache:
         return True
     # Update in-memory cache
@@ -685,22 +685,22 @@ def append_pair_text_only(
     tags_meta: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """
-    Append a single pair to daily.txt only (no FAISS, no daily.json).
+    Append a single pair to daily.md only (no FAISS, no daily.json).
     Used by Sleep flush to move active DB pairs into daily text at start of cycle.
     When tags_meta is provided, writes #topics, #intent, #type, #semantic_handle (same format as roll-off).
     """
-    _meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    _meta_path, lock_path, md_path = _project_daily_paths(project_id)
     ns = (namespace or "other").lower()
     with FileLock(lock_path):
         try:
             # Ensure BEGIN header exists
             try:
-                if (not os.path.isfile(txt_path)) or os.path.getsize(txt_path) == 0:
+                if (not os.path.isfile(md_path)) or os.path.getsize(md_path) == 0:
                     begin_date = time.strftime("%m/%d/%Y", time.localtime())
-                    with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                    with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
                         tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
             except Exception as exc:
-                logger.warning("DailyRAG: failed ensuring text-only BEGIN header project=%s path=%s detail=%s", project_id, txt_path, exc)
+                logger.warning("DailyRAG: failed ensuring text-only BEGIN header project=%s path=%s detail=%s", project_id, md_path, exc)
             ts = created_at_iso_utc or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             # Localize timestamp to MM-DD-YYYY_HH:MM:SS
             try:
@@ -725,12 +725,12 @@ def append_pair_text_only(
                 f"{_END_DAILY_PAIR}\n"
                 f"\n"
             )
-            with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+            with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
                 tf.write(_nl(block))
-            logger.info("[DAILYTXT] Text-only append project=%s bytes=%s", project_id, len(block.encode("utf-8")))
+            logger.info("[DAILYMD] Text-only append project=%s bytes=%s", project_id, len(block.encode("utf-8")))
             return True
         except Exception as e:
-            logger.error("[DAILYTXT][ERROR] Text-only append failed project=%s: %s", project_id, e)
+            logger.error("[DAILYMD][ERROR] Text-only append failed project=%s: %s", project_id, e)
             return False
 
 
@@ -762,17 +762,17 @@ def daily_stats(project_id: str) -> Dict[str, int]:
     return {"daily_index_size_bytes": size_bytes, "daily_tokens_indexed": tokens, "daily_vector_count": len(entries)}
 
 
-def backfill_daily_txt_from_meta(project_id: str) -> bool:
-    """If daily.json exists and daily.txt missing, write out text blocks for all entries (canonical format)."""
-    meta_path, lock_path, txt_path = _project_daily_paths(project_id)
-    if os.path.isfile(txt_path):
+def backfill_daily_md_from_meta(project_id: str) -> bool:
+    """If daily.json exists and daily.md is missing, write out text blocks for all entries (canonical format)."""
+    meta_path, lock_path, md_path = _project_daily_paths(project_id)
+    if os.path.isfile(md_path):
         return False
     with FileLock(lock_path):
         entries = _load_metadata(meta_path)
         if not entries:
             return False
         try:
-            with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+            with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
                 # Write BEGIN header once (local date MM/DD/YYYY)
                 begin_date = time.strftime("%m/%d/%Y", time.localtime())
                 tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
@@ -813,10 +813,10 @@ def backfill_daily_txt_from_meta(project_id: str) -> bool:
                         f"\n"
                     )
                     tf.write(_nl(block))
-            logger.warning("[DAILYTXT] Backfilled daily.txt (canonical format) for project=%s", project_id)
+            logger.warning("[DAILYMD] Backfilled daily.md (canonical format) for project=%s", project_id)
             return True
         except Exception as e:
-            logger.error("[DAILYTXT] Failed backfill for project=%s: %s", project_id, e)
+            logger.error("[DAILYMD] Failed backfill for project=%s: %s", project_id, e)
             return False
 
 

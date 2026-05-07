@@ -27,7 +27,7 @@ from ..core.state import engage_lock, release_lock, is_sleeping, since, lock_pat
 from ..core.database import get_session
 from ..core.db_models import Project, ChatMessage
 from sqlmodel import select
-from ..rag.daily_store import backfill_daily_txt_from_meta, append_pair_text_only
+from ..rag.daily_store import backfill_daily_md_from_meta, append_pair_text_only
 from ..tagging.tagger import tag_pair as tag_pair_tagger
 from ..dream import dream
 from ..dream.auto_accept import auto_accept_dreams
@@ -72,14 +72,14 @@ def _sleep_cycle_worker():
         engage_lock()
         logger.debug("[SLEEP] Lock engaged")
         logger.info("[SLEEP] Thread started t=%s job_id=%s", start_iso, job_id)
-        # Flush active pairs from DB into daily.txt only (tagger + append_pair_text_only); only delete on success.
+        # Flush active pairs from DB into daily.md only (tagger + append_pair_text_only); only delete on success.
         try:
             from ..core.memory import get_memory_manager
             mem = get_memory_manager()
             settings = get_settings()
             pair_limit = int(getattr(settings, "chat_history_limit_pairs", 10) or 10)
             logger.info(
-                "[SLEEP][FLUSH] Starting: flushing active pairs to daily.txt only (tagger + text-only append) per project (chat_history_limit_pairs=%s).",
+                "[SLEEP][FLUSH] Starting: flushing active pairs to daily.md only (tagger + text-only append) per project (chat_history_limit_pairs=%s).",
                 pair_limit,
             )
             with get_session() as session:
@@ -235,7 +235,7 @@ def _sleep_cycle_worker():
             status = "partial"
             errors.append("flush:global")
             logger.warning("[SLEEP][FLUSH][WARN] global flush step failed; operation=flush_pairs detail=%s", e)
-        # Backfill daily.txt if missing (current behavior).
+        # Backfill daily.md if missing from daily.json.
         try:
             with get_session() as session:
                 rows = session.exec(select(Project)).all()
@@ -243,14 +243,14 @@ def _sleep_cycle_worker():
             rows = []
         for p in rows or []:
             try:
-                if backfill_daily_txt_from_meta(p.id):
+                if backfill_daily_md_from_meta(p.id):
                     updated += 1
             except Exception as e:
                 projects_failed_count += 1
                 status = "partial"
                 errors.append(f"backfill:{p.id}")
                 logger.warning("[SLEEP] Backfill failed for project=%s: %s", p.id, e)
-        # Summarization pipeline (per project with non-empty daily.txt)
+        # Summarization pipeline (per project with non-empty daily.md)
         for p in rows or []:
             pid = p.id
             base_dir = os.path.join(get_settings().memory_root, pid)
@@ -258,10 +258,10 @@ def _sleep_cycle_worker():
                 consolidate_open_questions_artifact(pid)
             except Exception as qce:
                 logger.warning("[SLEEP][QUESTIONS][WARN] project=%s: %s", pid, qce)
-            daily_path = os.path.join(base_dir, "daily.txt")
+            daily_path = os.path.join(base_dir, "daily.md")
             if not os.path.isfile(daily_path) or os.path.getsize(daily_path) == 0:
                 skipped_no_daily += 1
-                logger.info("[SLEEP] Skipped project (no daily.txt) project=%s", pid)
+                logger.info("[SLEEP] Skipped project (no daily.md) project=%s", pid)
                 continue
             projects_processed += 1
             try:
@@ -271,10 +271,10 @@ def _sleep_cycle_worker():
                 end_tag_date = time.strftime("%m/%d/%Y", time.localtime())
                 source_text = daily_text.rstrip() + f"\n\n=== END DAILY MEMORY: {end_tag_date} ===\n\n"
             except Exception as e:
-                logger.warning("[SLEEP][ERROR] Failed reading daily.txt project=%s: %s", pid, e)
+                logger.warning("[SLEEP][ERROR] Failed reading daily.md project=%s: %s", pid, e)
                 continue
             # Deterministic consolidation: no sleep prompt calls.
-            summary_path = os.path.join(base_dir, "sleep_summary.txt")
+            summary_path = os.path.join(base_dir, "sleep_summary.md")
             try:
                 final = _nl(source_text)
                 with open(summary_path, "w", encoding="utf-8", newline="\n") as sf:
@@ -319,13 +319,13 @@ def _sleep_cycle_worker():
                 cycle_ts = time.strftime("%Y-%m-%dT%H-%M-%S", time.localtime())
                 sleep_upload_text: Optional[str] = None
                 dream_upload_text: Optional[str] = None
-                dream_summary_path = os.path.join(base_dir, "dream_summary.txt")
+                dream_summary_path = os.path.join(base_dir, "dream_summary.md")
 
-                # 3.3 Merge and RAG rebuild (uses the possibly cleaned sleep_summary.txt)
+                # 3.3 Merge and RAG rebuild (uses the possibly cleaned sleep_summary.md)
                 try:
                     # Validate summary presence and non-empty (beyond just boundary tags)
                     if not os.path.isfile(summary_path) or os.path.getsize(summary_path) == 0:
-                        logger.warning("[SLEEP][MERGE] Skipped project=%s (empty or missing sleep_summary.txt)", pid)
+                        logger.warning("[SLEEP][MERGE] Skipped project=%s (empty or missing sleep_summary.md)", pid)
                         continue
                     with open(summary_path, "r", encoding="utf-8") as fsum:
                         sum_text = fsum.read()
@@ -382,11 +382,11 @@ def _sleep_cycle_worker():
                             if (sleep_upload_text or "").strip():
                                 sleep_dir = os.path.join(uploads_dir, "sleep")
                                 os.makedirs(sleep_dir, exist_ok=True)
-                                sleep_name = f"sleep_{cycle_ts}.txt"
+                                sleep_name = f"sleep_{cycle_ts}.md"
                                 sleep_path = os.path.join(sleep_dir, sleep_name)
                                 if os.path.exists(sleep_path):
                                     # Extremely unlikely, but avoid clobbering if a file already exists.
-                                    sleep_path = os.path.join(sleep_dir, f"sleep_{cycle_ts}_{time.time_ns()}.txt")
+                                    sleep_path = os.path.join(sleep_dir, f"sleep_{cycle_ts}_{time.time_ns()}.md")
                                 with open(sleep_path, "w", encoding="utf-8", newline="\n") as sf:
                                     sf.write(_nl(sleep_upload_text or ""))
                                 logger.info("[SLEEP][MERGE] Wrote uploads/sleep/%s", os.path.basename(sleep_path))
@@ -394,11 +394,11 @@ def _sleep_cycle_worker():
                             if (dream_upload_text or "").strip():
                                 dream_dir = os.path.join(uploads_dir, "dream")
                                 os.makedirs(dream_dir, exist_ok=True)
-                                dream_name = f"dream_{cycle_ts}.txt"
+                                dream_name = f"dream_{cycle_ts}.md"
                                 dream_path = os.path.join(dream_dir, dream_name)
                                 if os.path.exists(dream_path):
                                     # Extremely unlikely, but avoid clobbering if a file already exists.
-                                    dream_path = os.path.join(dream_dir, f"dream_{cycle_ts}_{time.time_ns()}.txt")
+                                    dream_path = os.path.join(dream_dir, f"dream_{cycle_ts}_{time.time_ns()}.md")
                                 with open(dream_path, "w", encoding="utf-8", newline="\n") as df:
                                     df.write(_nl(dream_upload_text or ""))
                                 logger.info("[SLEEP][DREAM_SUMMARY] Wrote uploads/dream/%s", os.path.basename(dream_path))
@@ -422,20 +422,20 @@ def _sleep_cycle_worker():
                                 except Exception as ce:
                                     logger.warning("[SLEEP][CLEANUP] Failed removing summary for %s: %s", pid, ce)
 
-                                # Remove dream_summary.txt only after successful consolidation into uploads/dream/
+                                # Remove dream_summary.md only after successful consolidation into uploads/dream/
                                 if (dream_upload_text or "").strip() and os.path.isfile(dream_summary_path):
                                     try:
                                         os.remove(dream_summary_path)
                                     except Exception as de:
                                         logger.warning(
-                                            "[SLEEP][DREAM_SUMMARY] Failed removing dream_summary.txt for %s: %s",
+                                            "[SLEEP][DREAM_SUMMARY] Failed removing dream_summary.md for %s: %s",
                                             pid,
                                             de,
                                         )
 
                                 # Clear in-memory daily cache and remove daily.json so daily memory moves into main RAG.
                                 try:
-                                    meta_path, lock_path, txt_path = _project_daily_paths(pid)
+                                    meta_path, lock_path, md_path = _project_daily_paths(pid)
                                     with FileLock(lock_path):
                                         # remove daily.json
                                         if os.path.exists(meta_path):
@@ -447,14 +447,14 @@ def _sleep_cycle_worker():
                                                     pid,
                                                     exc,
                                                 )
-                                        # remove daily.txt
-                                        if os.path.exists(txt_path):
+                                        # remove daily.md
+                                        if os.path.exists(md_path):
                                             try:
-                                                os.remove(txt_path)
-                                                logger.info("[SLEEP][CLEANUP] Removed daily.txt for %s", pid)
+                                                os.remove(md_path)
+                                                logger.info("[SLEEP][CLEANUP] Removed daily.md for %s", pid)
                                             except Exception as te:
                                                 logger.warning(
-                                                    "[SLEEP][CLEANUP] Failed removing daily.txt for %s: %s", pid, te
+                                                    "[SLEEP][CLEANUP] Failed removing daily.md for %s: %s", pid, te
                                                 )
                                     try:
                                         clear_daily_cache(pid)

@@ -20,11 +20,81 @@ from filelock import FileLock
 from ..core.config import get_settings
 from ..core.memory import _prune_assistant_for_tagger
 from ..rag.daily_store import append_pair, rebuild_daily_cache
+from ..rag.syx_memory_artifact import (
+    generate_memory_id,
+    render_artifact_header,
+    render_memory_entry,
+    snake_case_value,
+    topics_to_list,
+)
 from ..tagging.tagger import tag_pair
 from ..utils.dream_summary import write_latest_sleep_summary
 from ..utils.tokens import count_tokens
 
 logger = logging.getLogger(__name__)
+
+
+def _origin_memory_ids(item: Dict[str, Any]) -> List[str]:
+    values: List[str] = []
+    for key in ("origin_memory_id", "memory_id"):
+        val = item.get(key)
+        if isinstance(val, str) and val.strip():
+            values.append(val.strip())
+    metadata = item.get("metadata")
+    if isinstance(metadata, dict):
+        val = metadata.get("origin_memory_id") or metadata.get("memory_id")
+        if isinstance(val, str) and val.strip():
+            values.append(val.strip())
+        vals = metadata.get("origin_memory_ids")
+        if isinstance(vals, list):
+            values.extend(str(v).strip() for v in vals if str(v or "").strip())
+    return list(dict.fromkeys(values))
+
+
+def _dream_markdown_block(
+    *,
+    memory_id: str,
+    timestamp: str,
+    route: str,
+    keep: bool,
+    tags_meta: Optional[Dict[str, Any]],
+    item: Dict[str, Any],
+    user_text: str,
+    assistant_text: str,
+) -> str:
+    tags = tags_meta if isinstance(tags_meta, dict) else {}
+    metadata: Dict[str, Any] = {
+        "memory_id": memory_id,
+        "entry_type": "dream_output",
+        "source": "dream",
+        "source_agent": "syx",
+        "source_scope": "dream",
+        "current_scope": "dream",
+        "timestamp": timestamp,
+        "route": route,
+        "keep": bool(keep),
+    }
+    accepted_item_id = str(item.get("id") or "").strip()
+    if accepted_item_id:
+        metadata["accepted_item_id"] = accepted_item_id
+    dream_output_type = snake_case_value(item.get("origin_type") or item.get("source_resolution"))
+    if dream_output_type:
+        metadata["dream_output_type"] = dream_output_type
+    origin_ids = _origin_memory_ids(item)
+    if origin_ids:
+        metadata["origin_memory_ids"] = origin_ids
+    topics = topics_to_list(tags.get("topics"))
+    if topics:
+        metadata["topics"] = topics
+    semantic_handle = tags.get("semantic_handle")
+    if semantic_handle is not None and str(semantic_handle).strip():
+        metadata["semantic_handle"] = str(semantic_handle).strip()
+    return render_memory_entry(
+        memory_id=memory_id,
+        metadata=metadata,
+        user_text=user_text,
+        assistant_text=assistant_text,
+    )
 
 
 @dataclass
@@ -280,12 +350,29 @@ def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
             )
             previous_pair_text = pair_text
 
-    begin_dream_pair = "=== BEGIN DREAM PAIR ==="
-    end_dream_pair = "=== END DREAM PAIR ==="
     failures: List[str] = []
     for rec in tagged:
         item = rec["item"]
         try:
+            ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())
+            accepted_item_id = str(item.get("id") or "").strip() or None
+            dream_output_type = snake_case_value(item.get("origin_type") or item.get("source_resolution")) or None
+            origin_memory_ids = _origin_memory_ids(item)
+            semantic_handle = None
+            if isinstance(rec["tags_meta"], dict) and rec["tags_meta"].get("semantic_handle") is not None:
+                semantic_handle = str(rec["tags_meta"].get("semantic_handle") or "").strip() or None
+            memory_id = generate_memory_id(
+                project_id=project_id,
+                timestamp=ts_local,
+                source="dream",
+                entry_type="dream_output",
+                route="other",
+                semantic_handle=semantic_handle,
+                dream_output_type=dream_output_type,
+                accepted_item_id=accepted_item_id,
+                origin_memory_ids=origin_memory_ids,
+                dream_content=rec["assistant_resp_full"],
+            )
             ok = append_pair(
                 project_id,
                 rec["pair_text"],
@@ -298,32 +385,39 @@ def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
                 tags_meta=rec["tags_meta"],
                 write_daily_md=False,
                 update_cache=False,
+                created_at_iso_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                memory_id=memory_id,
+                entry_type="dream_output",
+                source="dream",
+                source_agent="syx",
+                source_scope="dream",
+                current_scope="dream",
+                accepted_item_id=accepted_item_id,
+                dream_output_type=dream_output_type,
+                origin_memory_ids=origin_memory_ids,
             )
             if not ok:
                 raise RuntimeError("append_pair returned false")
-            ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())
-            block = (
-                f"{begin_dream_pair}\n"
-                f"#timestamp: {ts_local}\n"
-                f"#route: other\n"
-                f"#keep: false\n"
-                f"{rec['tags_block']}"
-                f"\n"
-                f"--- USER (data-message-author-role: user) ---\n"
-                f"{rec['user_text']}\n"
-                f"\n"
-                f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
-                f"{rec['assistant_resp_full']}\n"
-                f"\n"
-                f"{end_dream_pair}\n"
-                f"\n"
+            block = _dream_markdown_block(
+                memory_id=memory_id,
+                timestamp=ts_local,
+                route="other",
+                keep=False,
+                tags_meta=rec["tags_meta"],
+                item=item,
+                user_text=rec["user_text"],
+                assistant_text=rec["assistant_resp_full"],
             )
             with FileLock(summary_lock_path):
                 with open(summary_path, "a", encoding="utf-8", newline="\n") as sf:
                     need_begin = (not os.path.isfile(summary_path)) or os.path.getsize(summary_path) == 0
                     if need_begin:
-                        begin_date = time.strftime("%m/%d/%Y", time.localtime())
-                        sf.write(f"=== BEGIN DREAM MEMORY: {begin_date} ===\n\n")
+                        memory_date = time.strftime("%m-%d-%Y", time.localtime())
+                        sf.write(render_artifact_header(
+                            artifact_type="dream_memory",
+                            project_id=project_id,
+                            memory_date=memory_date,
+                        ))
                     sf.write(block)
             result.accepted += 1
         except Exception as exc:
@@ -350,18 +444,6 @@ def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
         result.failed = len(tagged) - result.accepted + (1 if any(err.startswith("rebuild_cache:") for err in failures) else 0)
         result.renamed_bad_path = _rename_bad_dream(project_id, dream_path)
         return result
-
-    with FileLock(summary_lock_path):
-        try:
-            if os.path.isfile(summary_path):
-                end_date = time.strftime("%m/%d/%Y", time.localtime())
-                with open(summary_path, "a", encoding="utf-8", newline="\n") as sf:
-                    sf.write(f"=== END DREAM MEMORY: {end_date} ===\n")
-        except OSError as exc:
-            result.errors.append(f"write_end_footer: {exc}")
-            result.failed = 1
-            result.renamed_bad_path = _rename_bad_dream(project_id, dream_path)
-            return result
 
     write_latest_sleep_summary(
         project_id=project_id,

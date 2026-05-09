@@ -27,6 +27,7 @@ from ..embedding.factory import get_embedding_client
 from ..utils.tokens import count_tokens as _count_tokens, trim_to_tokens as _trim_to_tokens
 from ..utils.debug_utils import write_debug_file
 from .chunk_utils import split_text_simple
+from .syx_memory_artifact import parse_syx_entries, unbounded_regions
 from .manager_index_io import (
     LTM_DOCSTORE_NAME,
     LTM_INDEX_FILE_NAME,
@@ -45,7 +46,7 @@ def is_rate_limit_error_message(err: Exception) -> bool:
     return ("rate limit" in msg) or ("too many requests" in msg) or ("429" in msg) or ("rate_limit_exceeded" in msg)
 
 
-def read_file_text(path: str) -> List[Tuple[str, dict]]:
+def read_file_text(path: str, *, artifact_path: str | None = None) -> List[Tuple[str, dict]]:
     """Return list of (text, metadata) chunks at file-level (before splitting)."""
     name = os.path.basename(path)
     _, ext = os.path.splitext(name)
@@ -53,6 +54,37 @@ def read_file_text(path: str) -> List[Tuple[str, dict]]:
     if ext in {".txt", ".md"}:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
+        if ext == ".md":
+            parsed = parse_syx_entries(content, artifact_path=artifact_path)
+            for warning in parsed.warnings:
+                logger.warning("RAG: Syx boundary parse warning path=%s detail=%s", path, warning)
+            if parsed.entries:
+                out: List[Tuple[str, dict]] = []
+                for entry in parsed.entries:
+                    md = dict(entry.metadata)
+                    md.update(
+                        {
+                            "filename": name,
+                            "memory_id": entry.memory_id,
+                            "entry_start_line": entry.start_line,
+                            "entry_end_line": entry.end_line,
+                            "doc_id": f"{artifact_path or name}::memory_id={entry.memory_id}",
+                            "source_document_id": f"{artifact_path or name}::memory_id={entry.memory_id}",
+                        }
+                    )
+                    out.append((entry.text, md))
+                for idx, region in enumerate(unbounded_regions(content, parsed.occupied_ranges), start=1):
+                    out.append(
+                        (
+                            region,
+                            {
+                                "filename": name,
+                                "doc_id": f"{artifact_path or name}::unbounded={idx}",
+                                "source_document_id": f"{artifact_path or name}::unbounded={idx}",
+                            },
+                        )
+                    )
+                return out
         return [(content, {"filename": name})]
     return []
 
@@ -91,10 +123,12 @@ def rebuild_faiss_index(project_id: str) -> str:
     now_iso = datetime.now(timezone.utc).isoformat()
     for file_path in files:
         doc_id = uploads_relative_doc_id(uploads_dir, file_path)
-        for raw_text, meta in read_file_text(file_path):
+        for raw_text, meta in read_file_text(file_path, artifact_path=doc_id):
             fname = meta.get("filename") or os.path.basename(file_path)
             file_token_sums[fname] = file_token_sums.get(fname, 0) + count_tokens(raw_text)
             file_page_max[fname] = 1
+            region_doc_id = str(meta.get("doc_id") or doc_id)
+            source_document_id = str(meta.get("source_document_id") or region_doc_id)
             for i, chunk in enumerate(
                 split_text_simple(
                     raw_text,
@@ -108,12 +142,17 @@ def rebuild_faiss_index(project_id: str) -> str:
                         "project_id": project_id,
                         "filename": fname,
                         "page_number": None,
-                        "doc_id": doc_id,
-                        "source_document_id": doc_id,
+                        "doc_id": region_doc_id,
+                        "source_document_id": source_document_id,
                         "chunk_seq": int(i),
                         "chunk_index": int(i),
                         "chunk_id": int(i),
                         "timestamp": now_iso,
+                        **{
+                            key: value
+                            for key, value in dict(meta or {}).items()
+                            if key not in {"filename", "doc_id", "source_document_id"}
+                        },
                     }
                 )
 

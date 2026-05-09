@@ -50,6 +50,52 @@ This delta does not introduce:
 
 Those belong in later deltas.
 
+## Delta Roadmap
+
+DELTA-A is being implemented as a staged migration from plain text memory artifacts toward markdown-based, agent-readable Syx memory. The early steps preserve existing retrieval behavior while adding the structure needed for later agent search, entry-level expansion, and Cursor/MCP integration.
+
+### DELTA-A.1 — Markdown Artifact Naming Cutover
+
+Newly generated Syx memory artifacts use `.md` instead of `.txt`.
+
+This step changes artifact names only. Existing `.txt` files remain valid RAG inputs, but new Daily, Sleep, and Dream memory artifacts are written as markdown files going forward.
+
+### DELTA-A.2 — Source-Neutral Memory IDs and Syx Entry Boundaries
+
+Each memory entry receives a stable `memory_id` and explicit Syx begin/end boundary markers.
+
+This step makes memory entries identifiable independently of file name, lifecycle stage, or markdown heading structure. It also allows nested markdown inside user and assistant messages without confusing Syx entry parsing.
+
+### DELTA-A.3 — Syx Boundary Metadata in RAG Chunk Metadata
+
+RAG indexing parses Syx markdown boundaries and attaches available entry metadata to generated chunks.
+
+This step should not change retrieval scoring, ranking, selection, or expansion behavior. It only enriches chunk metadata with fields such as `memory_id`, `entry_type`, `source_scope`, `current_scope`, `semantic_handle`, topics, and entry line bounds when available.
+
+### DELTA-A.4 — Agent-Memory Route and Entry-Boundary Expansion
+
+Introduce an internal `agent_memory` retrieval route that uses the existing retrieval pipeline but expands selected results to full Syx memory entries.
+
+Normal chat remains chunk-budgeted. The agent-memory route becomes entry-budgeted, selecting a smaller number of unique memory entries and expanding each selected result from Syx begin/end boundaries.
+
+### DELTA-A.5 — External Agent Memory Search Endpoint
+
+Expose the agent-memory route through a local search endpoint for trusted external agents.
+
+This endpoint allows tools such as Cursor to query Syx project memory and receive ranked, provenance-rich memory entries. It is read-only and does not write, update, or delete memory.
+
+### DELTA-A.6 — External Agent Memory Add Endpoint
+
+Add a controlled write-back endpoint for trusted local agents.
+
+This allows Cursor or another agent to write concise implementation notes, decisions, bug fixes, test results, or open questions into Daily memory. Agent writes are provenance-tagged and enter the normal sleep/consolidation lifecycle instead of writing directly to LTM.
+
+### DELTA-A.7 — Cursor MCP Wrapper
+
+Expose Syx memory search and add operations through a local MCP wrapper.
+
+This makes Syx usable as an external memory substrate for Cursor. Cursor can search prior design decisions before implementation and write back useful implementation summaries after meaningful changes.
+
 ---
 
 # DELTA-A.1 — Markdown Artifact Naming Cutover
@@ -802,7 +848,7 @@ The utility SHALL NOT:
 
 ## A.2.11 Index Metadata Preparation
 
-When markdown memory artifacts are indexed, chunks inside a Syx boundary SHALL carry boundary-derived metadata when available:
+When Syx-bounded memory artifacts are indexed, chunks inside a Syx boundary SHALL carry boundary-derived metadata when available:
 
 ```yaml
 memory_id: mem_20260507_214200_a8f3
@@ -840,11 +886,13 @@ Chunks SHALL NOT span across Syx entry boundaries.
 
 Each chunk produced from a bounded entry SHALL receive that entry's metadata, including `memory_id`, `entry_type`, `source`, `source_scope`, `current_scope`, `route`, `topics`, `semantic_handle`, `entry_start_line`, and `entry_end_line` when available.
 
-Unbounded text regions outside valid Syx boundary blocks SHALL still be indexed using the existing whole-file behavior, without duplicating bounded entry text.
+This A.2.11 preparation rule is superseded by DELTA-A.3 for files that contain valid Syx boundary blocks.
+
+Under A.3, unbounded envelope text outside valid Syx boundary blocks SHALL NOT be indexed as standalone memory content.
 
 Files without Syx boundaries SHALL continue to use the existing whole-file chunking behavior.
 
-If a boundary block is malformed, the indexer SHOULD log a warning and fall back conservatively for that malformed region.
+If Syx boundary markers are malformed, the indexer SHOULD log a warning and fall back conservatively according to the A.3 malformed boundary handling rule.
 
 ## Invariants
 
@@ -868,3 +916,427 @@ If a boundary block is malformed, the indexer SHOULD log a warning and fall back
 8. Duplicate memory IDs in a single artifact are detected.
 9. Legacy `.txt` pair blocks can be tagged with boundary markers using the utility.
 10. Existing retrieval ranking, ordering, and selection behavior remain unchanged.
+
+
+Note:
+
+A.3 is being added because A.2 created stable Syx memory entry boundaries, but the RAG index still needs to understand those boundaries structurally. If `memory_id` only exists as text inside the markdown, later expansion has to rely on chunk indexes and source-file scanning, which is fragile.
+
+The goal of A.3 is to make Syx-bounded memory entries first-class indexing regions. Each bounded entry should be chunked independently, carry its own metadata, and use a `source_document_id` that includes the `memory_id`. This lets the existing expansion logic stay inside one memory entry today, and makes future agent-memory expansion much easier because a hit can be expanded to the full entry without guessing boundaries.
+
+# DELTA-A.3 — Syx Boundary Metadata in RAG Chunk Indexing
+
+## Status
+
+Draft
+
+## Intent
+
+Update RAG indexing so Syx-bounded markdown memory entries are indexed as independent expansion-safe document regions with structured metadata attached to each chunk.
+
+A.1 changed generated memory artifacts from `.txt` to `.md`.
+
+A.2 added stable `memory_id` values, fenced YAML metadata, and Syx begin/end boundary markers.
+
+A.3 makes the RAG index aware of those boundaries without changing retrieval scoring, ordering, ranking, selection, or normal chat behavior.
+
+## Background
+
+Syx RAG expansion currently works by retrieving chunks, ordering candidates by similarity, deduplicating and grouping adjacent chunks, then expanding around each selected chunk using `source_document_id` and `chunk_index`.
+
+For LTM, expansion uses an item identity pattern similar to:
+
+```text
+source_document_id::chunk=<seq>
+```
+
+Neighbors are found by using the same `source_document_id` and nearby integer chunk indexes.
+
+This works well for ordinary files, but Syx markdown memory artifacts now contain multiple bounded entries inside a single file. If the whole file is indexed as one document, expansion can cross from one memory entry into another.
+
+A.3 changes indexing for Syx-bounded artifacts so each bounded memory entry becomes its own `source_document_id`.
+
+## Core Decision
+
+For Syx memory artifacts with valid Syx entry boundaries, each bounded entry SHALL be indexed as an independent document region.
+
+The `source_document_id` for chunks inside a bounded entry SHALL include both the artifact path and the entry `memory_id`.
+
+Example:
+
+```text
+sleep/sleep_2026-05-07T16-07-12.md::memory_id=mem_20260507_194952_1e34f15f
+```
+
+Chunks for that entry SHALL be numbered locally inside the entry:
+
+```text
+sleep/sleep_2026-05-07T16-07-12.md::memory_id=mem_20260507_194952_1e34f15f::chunk=0
+sleep/sleep_2026-05-07T16-07-12.md::memory_id=mem_20260507_194952_1e34f15f::chunk=1
+sleep/sleep_2026-05-07T16-07-12.md::memory_id=mem_20260507_194952_1e34f15f::chunk=2
+```
+
+This preserves the existing adjacency expansion mechanism while preventing expansion across Syx memory-entry boundaries.
+
+## Non-Goals
+
+This delta does not:
+
+- add external agent endpoints
+- add MCP integration
+- add Cursor write-back
+- implement full-entry expansion
+- change similarity scoring
+- change candidate ranking
+- change candidate ordering
+- change normal chat context assembly
+- change route policies
+- change chunk size or overlap
+- move memory into a database
+- add decay or utility scoring
+
+## A.3.1 Syx Boundary Detection During Indexing
+
+During RAG rebuild/indexing, the indexer SHALL detect Syx entry boundary markers in memory artifacts that can be read as text.
+
+Boundary format:
+
+```markdown
+<!-- begin syx:memory_id=mem_20260507_194952_1e34f15f -->
+...
+<!-- end syx:memory_id=mem_20260507_194952_1e34f15f -->
+```
+
+If a `.txt` or `.md` file contains one or more valid Syx boundary blocks and no malformed Syx boundary markers, the file SHALL be treated as a Syx-bounded memory artifact.
+
+If a file contains no valid Syx boundary blocks, the file SHALL be indexed using the existing whole-file indexing behavior.
+
+A.3 does not add or restore PDF extraction support. PDF handling remains outside this delta.
+
+## A.3.2 Bounded Entry Indexing
+
+For Syx-bounded memory artifacts, the indexer SHALL:
+
+1. Parse the file into bounded Syx memory entries.
+2. Ignore unbounded envelope text outside entries for indexing.
+3. Chunk each bounded entry independently.
+4. Reset `chunk_index` to `0` at the start of each bounded entry.
+5. Attach entry metadata to every chunk created from that entry.
+6. Preserve the existing text splitter behavior inside each entry.
+
+Chunks SHALL NOT span across Syx entry boundaries.
+
+## A.3.3 Source Document ID Construction
+
+For chunks created from a bounded Syx entry, `source_document_id` SHALL be constructed as:
+
+```text
+<artifact_relative_path>::memory_id=<memory_id>
+```
+
+Example:
+
+```text
+dream/dream_2026-05-07T16-07-12.md::memory_id=mem_20260507_160709_1aebd6c4
+```
+
+The docstore item ID SHALL continue to use the existing chunk identity pattern:
+
+```text
+<source_document_id>::chunk=<chunk_index>
+```
+
+Example:
+
+```text
+dream/dream_2026-05-07T16-07-12.md::memory_id=mem_20260507_160709_1aebd6c4::chunk=0
+```
+
+This ensures existing expansion code can retrieve neighboring chunks by `source_document_id` and `chunk_index` without crossing into another memory entry.
+
+## A.3.4 Metadata Attached to Chunks
+
+For each chunk produced from a bounded Syx entry, the indexer SHALL attach available entry metadata.
+
+Required when available:
+
+```yaml
+memory_id: mem_20260507_160709_1aebd6c4
+entry_type: dream_output
+source: dream
+source_agent: syx
+source_scope: daily
+current_scope: dream
+timestamp: 05-07-2026_16:07:09
+semantic_handle: reliability of answer-source overlap for evidence support
+```
+
+Recommended when available:
+
+```yaml
+artifact_type: dream_memory
+artifact_path: dream/dream_2026-05-07T16-07-12.md
+entry_start_line: 10
+entry_end_line: 83
+route: other
+keep: false
+topics:
+  - token overlap
+  - semantic similarity
+  - entailment
+accepted_item_id: dream_20260507_support_overlap_not_causation
+dream_output_type: open_question
+```
+
+For chat pairs, metadata SHOULD include:
+
+```yaml
+entry_type: chat_pair
+source: chat
+source_agent: syx
+source_scope: daily
+current_scope: ltm
+route: synthesis
+intent: ask for research plan
+type: research
+day_sequence: 1
+```
+
+For uploads, if later represented as bounded entries, metadata SHOULD include:
+
+```yaml
+entry_type: upload
+source: upload
+source_scope: ltm
+current_scope: ltm
+filename: example.md
+file_type: md
+```
+
+## A.3.5 Fenced YAML Metadata Parsing
+
+The indexer SHALL parse the fenced YAML block immediately following `### Syx Metadata` inside each bounded entry.
+
+Example:
+
+````markdown
+### Syx Metadata
+
+```yaml
+memory_id: mem_20260507_160709_1aebd6c4
+entry_type: dream_output
+source: dream
+source_agent: syx
+source_scope: daily
+current_scope: dream
+timestamp: 05-07-2026_16:07:09
+topics:
+  - token overlap
+  - semantic similarity
+semantic_handle: reliability of answer-source overlap for evidence support
+```
+````
+
+The parser SHALL treat this fenced YAML block as the structured metadata source for chunk metadata.
+
+The parser SHALL NOT rely on markdown headings to determine entry identity or lifecycle metadata.
+
+If a bounded entry has valid Syx begin/end boundaries but the fenced metadata block is missing, invalid, or unreadable, the indexer SHALL still index that bounded entry using boundary-derived metadata such as `memory_id`, `artifact_path`, `entry_start_line`, and `entry_end_line`.
+
+Invalid or unreadable fenced YAML metadata SHOULD be logged as a warning, but it SHALL NOT by itself cause a whole-file fallback when Syx begin/end boundaries are structurally valid.
+
+### Topic Metadata Retrieval Requirement
+
+Topics are a primary retrieval signal in Syx memory.
+
+For bounded Syx memory entries, the `topics` field SHALL remain inside the fenced YAML metadata block and SHALL be included in the text that is chunked and embedded.
+
+The indexer SHALL also parse `topics` into structured chunk metadata.
+
+This means topics are intentionally stored in two forms:
+
+- embedded text, to preserve semantic retrieval behavior
+- structured metadata, to support filtering, provenance, diagnostics, and future agent search
+
+A.3 SHALL NOT remove, strip, normalize away, or omit topics from embedded memory text.
+
+## A.3.6 Boundary-Contained Expansion Compatibility
+
+This delta does not change runtime expansion logic.
+
+However, by setting `source_document_id` to include `memory_id`, the existing expansion behavior becomes naturally boundary-contained.
+
+Current expansion can still expand by:
+
+```text
+same source_document_id
+nearby chunk_index values
+```
+
+but the source document now represents one Syx memory entry rather than the whole artifact file.
+
+Therefore, expansion can retrieve neighboring chunks within the matched memory entry but cannot cross into the previous or next memory entry.
+
+## A.3.7 Mixed Bounded and Unbounded Files
+
+If a file contains one or more valid Syx boundary blocks, the indexer SHALL index bounded entries only.
+
+Unbounded text outside Syx boundaries SHALL NOT be indexed as standalone memory content for Syx memory artifacts.
+
+This usually includes:
+
+- YAML frontmatter
+- document title
+- blank lines
+- file-level envelope text
+
+If a file contains no Syx boundary blocks, the indexer SHALL use existing whole-file indexing behavior.
+
+## A.3.8 Legacy Files
+
+Existing legacy `.txt` files without Syx boundary markers SHALL continue to index using the existing whole-file behavior.
+
+If a legacy `.txt` file has been processed by the legacy boundary-tagging utility and contains valid Syx boundary markers, the indexer SHALL treat it as a Syx-bounded memory artifact.
+
+This delta does not require old `.txt` files to be migrated or boundary-tagged.
+
+## A.3.9 Malformed Boundary Handling
+
+If a file contains malformed Syx boundary markers, the indexer SHALL log a warning.
+
+Malformed cases include:
+
+- begin marker without matching end marker
+- end marker without matching begin marker
+- duplicate `memory_id` values in the same artifact
+
+For files with malformed Syx boundary markers, the indexer SHALL:
+
+1. Log a warning.
+2. Treat the whole file as structurally corrupt for bounded indexing.
+3. Fall back to existing whole-file indexing for that file.
+4. Continue the rebuild for other files.
+
+Malformed fenced YAML metadata is not a malformed Syx boundary marker. See A.3.5 for metadata fallback behavior.
+
+Tests for newly generated Syx artifacts SHOULD fail if malformed boundaries are produced.
+
+## A.3.10 No Retrieval Behavior Change
+
+A.3 SHALL NOT change retrieval behavior.
+
+The following behavior remains unchanged:
+
+- query embedding
+- semantic search
+- similarity score computation
+- candidate ordering
+- candidate ranking
+- max_keep behavior
+- adjacent bonus behavior
+- existing dedupe/grouping behavior
+- normal chat expansion
+- context assembly
+- route policy parameters
+
+The only intended runtime effect is that bounded Syx memory artifacts now produce chunks whose `source_document_id` prevents expansion from crossing entry boundaries.
+
+## A.3.10.1 Retrieval Candidate Metadata Exposure
+
+When LTM retrieval returns a chunk whose docstore metadata contains parsed Syx metadata, the retrieval candidate SHALL expose that metadata directly through the candidate metadata field.
+
+Required when available:
+
+- `memory_id`
+- `entry_type`
+- `source`
+- `source_agent`
+- `source_scope`
+- `current_scope`
+- `semantic_handle`
+- `topics`
+- `artifact_path`
+- `entry_start_line`
+- `entry_end_line`
+
+This metadata exposure SHALL NOT affect similarity scoring, ranking, ordering, or selection in A.3.
+
+The purpose is to carry Syx memory identity and provenance forward for diagnostics, audit logs, future route-specific expansion, and external agent search.
+
+## A.3.11 Future Agent Expansion Preparation
+
+A later delta will introduce an agent-memory route that expands selected results to full Syx entries.
+
+A.3 prepares for that by making each bounded entry identifiable in chunk metadata and by making all chunks for an entry share the same `source_document_id`.
+
+Future full-entry expansion can gather all chunks for:
+
+```text
+<artifact_path>::memory_id=<memory_id>
+```
+
+instead of scanning the artifact from an arbitrary chunk position.
+
+A.3 does not implement that full-entry expansion.
+
+## Invariants
+
+- Syx bounded entries are the indexing unit for Syx memory artifacts.
+- Chunks must not span across Syx entry boundaries.
+- `source_document_id` for bounded entries includes `memory_id`.
+- `chunk_index` is local to the bounded entry.
+- Files without Syx boundaries index as before.
+- Retrieval scoring and ranking remain unchanged.
+- Normal chat behavior remains unchanged.
+- A.3 enriches chunk metadata but does not introduce agent endpoints.
+
+## Implementation Notes
+
+Likely implementation work:
+
+1. Reuse or extend the A.2 Syx boundary parser.
+2. Detect valid bounded entries before normal whole-file chunking.
+3. Parse the fenced YAML metadata block for each entry.
+4. Chunk each entry independently using the existing text splitter.
+5. Build `source_document_id` as `<artifact_path>::memory_id=<memory_id>`.
+6. Store chunks using existing `::chunk=<chunk_index>` item IDs.
+7. Attach parsed metadata to chunk metadata.
+8. Fall back to existing whole-file indexing for files without boundaries.
+9. Preserve existing tests for ordinary uploads.
+10. Add tests for bounded Syx artifacts.
+
+## Test Targets
+
+Tests SHOULD cover:
+
+- bounded dream artifact indexing
+- bounded sleep/daily artifact indexing
+- chunk indexes reset per memory entry
+- chunks do not span across entries
+- `source_document_id` includes `memory_id`
+- docstore item IDs use `source_document_id::chunk=<n>`
+- metadata includes `memory_id`
+- metadata includes `entry_type`
+- metadata includes `source_scope` and `current_scope`
+- metadata includes topics as a list
+- metadata includes `semantic_handle`
+- ordinary `.md` uploads without Syx boundaries index as before
+- ordinary `.txt` uploads without Syx boundaries index as before
+- malformed boundary markers are logged
+- duplicate `memory_id` values are detected
+- current retrieval ranking tests continue to pass
+
+## Acceptance Criteria
+
+1. RAG indexing detects valid Syx begin/end boundary markers.
+2. Each bounded Syx entry is chunked independently.
+3. Chunks do not span across Syx entry boundaries.
+4. `source_document_id` for bounded-entry chunks includes `memory_id`.
+5. `chunk_index` resets within each bounded memory entry.
+6. Chunk metadata includes parsed Syx metadata when available.
+7. Files without Syx boundaries index exactly as before.
+8. Existing `.txt` legacy files remain ingestible.
+9. Existing retrieval scoring, ranking, ordering, and selection behavior remain unchanged.
+10. Existing normal chat expansion continues to work.
+11. Expansion for bounded Syx entries cannot cross into adjacent memory entries.
+12. Future agent-memory full-entry expansion can use the indexed `memory_id` and shared `source_document_id`.

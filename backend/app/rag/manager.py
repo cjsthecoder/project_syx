@@ -284,6 +284,46 @@ def ltm_fetch_chunk_by_docstore_id(project_id: str, docstore_id: str) -> Optiona
     except Exception:
         return None
 
+
+def _ltm_candidate_metadata(md: Dict[str, Any]) -> Dict[str, Any]:
+    source_document_id = md.get("source_document_id") or md.get("doc_id")
+    chunk_index = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_seq")
+    return {
+        # Allow missing/absent metadata fields.
+        "timestamp": md.get("timestamp"),
+        "route": md.get("route"),
+        "tags": md.get("tags"),
+        "topics": md.get("topics"),
+        "intent": md.get("intent"),
+        "type": md.get("type"),
+        "id": md.get("id"),
+        "tags_meta": md.get("tags_meta"),
+        "keep": md.get("keep"),
+        "day_sequence": md.get("day_sequence"),
+        "pair_ids": md.get("pair_ids"),
+        # Existing main index metadata retained for downstream use/telemetry.
+        "filename": md.get("filename"),
+        "page_number": md.get("page_number"),
+        "chunk_id": md.get("chunk_id"),
+        # Syx bounded-entry metadata, when available.
+        "memory_id": md.get("memory_id"),
+        "entry_type": md.get("entry_type"),
+        "source": md.get("source"),
+        "source_agent": md.get("source_agent"),
+        "source_scope": md.get("source_scope"),
+        "current_scope": md.get("current_scope"),
+        "semantic_handle": md.get("semantic_handle"),
+        "artifact_path": md.get("artifact_path"),
+        "entry_start_line": md.get("entry_start_line"),
+        "entry_end_line": md.get("entry_end_line"),
+        # Adjacency identity fields.
+        "doc_id": md.get("doc_id"),
+        "chunk_seq": md.get("chunk_seq"),
+        "source_document_id": source_document_id,
+        "chunk_index": chunk_index,
+    }
+
+
 def canonical_retrieve_candidates(
     project_id: str,
     query: str,
@@ -452,29 +492,7 @@ def canonical_retrieve_candidates(
                         "source": "ltm",
                         "text": hit.entry.text or "",
                         "score": float(score01),
-                        "metadata": {
-                            # Allow missing/absent metadata fields.
-                            "timestamp": md.get("timestamp"),
-                            "route": None,
-                            "tags": None,
-                            "topics": None,
-                            "intent": None,
-                            "type": None,
-                            "id": None,
-                            "tags_meta": None,
-                            "keep": None,
-                            "day_sequence": None,
-                            "pair_ids": None,
-                            # Existing main index metadata retained for downstream use/telemetry
-                            "filename": md.get("filename"),
-                            "page_number": md.get("page_number"),
-                            "chunk_id": md.get("chunk_id"),
-                            # Adjacency identity fields.
-                            "doc_id": md.get("doc_id"),
-                            "chunk_seq": md.get("chunk_seq"),
-                            "source_document_id": md.get("doc_id"),
-                            "chunk_index": md.get("chunk_seq"),
-                        },
+                        "metadata": _ltm_candidate_metadata(md),
                     }
                 )
         ltm_count = len(results)

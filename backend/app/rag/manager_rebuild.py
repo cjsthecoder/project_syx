@@ -27,7 +27,7 @@ from ..embedding.factory import get_embedding_client
 from ..utils.tokens import count_tokens as _count_tokens, trim_to_tokens as _trim_to_tokens
 from ..utils.debug_utils import write_debug_file
 from .chunk_utils import split_text_simple
-from .syx_memory_artifact import parse_syx_entries, unbounded_regions
+from .syx_memory_artifact import parse_syx_entries
 from .manager_index_io import (
     LTM_DOCSTORE_NAME,
     LTM_INDEX_FILE_NAME,
@@ -54,37 +54,32 @@ def read_file_text(path: str, *, artifact_path: str | None = None) -> List[Tuple
     if ext in {".txt", ".md"}:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
-        if ext == ".md":
-            parsed = parse_syx_entries(content, artifact_path=artifact_path)
-            for warning in parsed.warnings:
-                logger.warning("RAG: Syx boundary parse warning path=%s detail=%s", path, warning)
-            if parsed.entries:
-                out: List[Tuple[str, dict]] = []
-                for entry in parsed.entries:
-                    md = dict(entry.metadata)
-                    md.update(
-                        {
-                            "filename": name,
-                            "memory_id": entry.memory_id,
-                            "entry_start_line": entry.start_line,
-                            "entry_end_line": entry.end_line,
-                            "doc_id": f"{artifact_path or name}::memory_id={entry.memory_id}",
-                            "source_document_id": f"{artifact_path or name}::memory_id={entry.memory_id}",
-                        }
-                    )
-                    out.append((entry.text, md))
-                for idx, region in enumerate(unbounded_regions(content, parsed.occupied_ranges), start=1):
-                    out.append(
-                        (
-                            region,
-                            {
-                                "filename": name,
-                                "doc_id": f"{artifact_path or name}::unbounded={idx}",
-                                "source_document_id": f"{artifact_path or name}::unbounded={idx}",
-                            },
-                        )
-                    )
-                return out
+        parsed = parse_syx_entries(content, artifact_path=artifact_path)
+        for warning in parsed.warnings:
+            logger.warning("RAG: Syx boundary parse warning path=%s detail=%s", path, warning)
+        if parsed.structural_warnings:
+            logger.warning(
+                "RAG: malformed Syx boundary markers; falling back to whole-file indexing path=%s warnings=%s",
+                path,
+                parsed.structural_warnings,
+            )
+            return [(content, {"filename": name})]
+        if parsed.entries:
+            out: List[Tuple[str, dict]] = []
+            for entry in parsed.entries:
+                md = dict(entry.metadata)
+                md.update(
+                    {
+                        "filename": name,
+                        "memory_id": entry.memory_id,
+                        "entry_start_line": entry.start_line,
+                        "entry_end_line": entry.end_line,
+                        "doc_id": f"{artifact_path or name}::memory_id={entry.memory_id}",
+                        "source_document_id": f"{artifact_path or name}::memory_id={entry.memory_id}",
+                    }
+                )
+                out.append((entry.text, md))
+            return out
         return [(content, {"filename": name})]
     return []
 
@@ -95,6 +90,12 @@ def count_tokens(text: str) -> int:
 
 def trim_to_tokens(text: str, max_tokens: int) -> str:
     return _trim_to_tokens(text, max_tokens)
+
+
+def ltm_docstore_item_id(metadata: dict) -> str:
+    did = str((metadata or {}).get("doc_id") or "")
+    seq = int((metadata or {}).get("chunk_seq") or 0)
+    return f"{did}::chunk={seq}"
 
 
 def rebuild_faiss_index(project_id: str) -> str:
@@ -273,9 +274,7 @@ def rebuild_faiss_index(project_id: str) -> str:
             raise RuntimeError(f"Embedding dim changed mid-build: {mat.shape[1]} vs {index_dim}")
 
         for txt, md in zip(list(batch_texts), list(batch_metas)):
-            did = str(md.get("doc_id") or "")
-            seq = int(md.get("chunk_seq") or 0)
-            item_id = f"{did}::chunk={seq}"
+            item_id = ltm_docstore_item_id(md)
             index_to_id.append(item_id)
             docstore[item_id] = {"text": str(txt or ""), "metadata": dict(md or {})}
         index.add(mat)

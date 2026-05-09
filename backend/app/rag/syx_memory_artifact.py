@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 MEMORY_ID_RE = re.compile(r"^mem_\d{8}_\d{6}_[0-9a-f]{4,8}$")
 BEGIN_RE = re.compile(r"^<!-- begin syx:memory_id=(mem_\d{8}_\d{6}_[0-9a-f]{4,8}) -->\s*$")
 END_RE = re.compile(r"^<!-- end syx:memory_id=(mem_\d{8}_\d{6}_[0-9a-f]{4,8}) -->\s*$")
+LOOSE_BEGIN_RE = re.compile(r"^<!-- begin syx:memory_id=(?P<memory_id>[^ ]+) -->\s*$")
+LOOSE_END_RE = re.compile(r"^<!-- end syx:memory_id=(?P<memory_id>[^ ]+) -->\s*$")
 LEGACY_MEMORY_WRAPPER_RE = re.compile(
     r"^=== (?:BEGIN|END) (?P<kind>DAILY|DREAM) MEMORY:\s*(?P<date>\d{2}/\d{2}/\d{4}) ===\s*\n?",
     re.MULTILINE,
@@ -45,6 +47,8 @@ class SyxParseResult:
     entries: List[SyxMemoryEntry]
     warnings: List[str]
     occupied_ranges: List[Tuple[int, int]]
+    structural_warnings: List[str]
+    metadata_warnings: List[str]
 
 
 def normalize_lf(text: str) -> str:
@@ -316,37 +320,48 @@ def _parse_scalar(value: str) -> Any:
     return raw
 
 
-def parse_yaml_metadata(entry_text: str) -> Dict[str, Any]:
+def parse_yaml_metadata_with_warnings(entry_text: str) -> Tuple[Dict[str, Any], List[str]]:
     lines = normalize_lf(entry_text).splitlines()
     for idx, line in enumerate(lines):
         if line.strip() != "### Syx Metadata":
             continue
-        if idx + 2 >= len(lines) or lines[idx + 2].strip() != "```yaml":
-            continue
+        if idx + 2 >= len(lines) or lines[idx + 1].strip() or lines[idx + 2].strip() != "```yaml":
+            return {}, [f"invalid Syx metadata fence after line {idx + 1}"]
         out: Dict[str, Any] = {}
+        warnings: List[str] = []
         current_list_key: Optional[str] = None
-        for raw in lines[idx + 3 :]:
+        for rel_idx, raw in enumerate(lines[idx + 3 :], start=idx + 4):
             stripped = raw.strip()
             if stripped == "```":
-                return out
+                return out, warnings
             if not stripped:
                 continue
             if stripped.startswith("- ") and current_list_key:
                 out.setdefault(current_list_key, []).append(stripped[2:].strip())
                 continue
             if ":" not in stripped:
+                warnings.append(f"invalid Syx metadata line {rel_idx}: missing ':'")
                 current_list_key = None
                 continue
             key, value = stripped.split(":", 1)
             key = key.strip()
+            if not key:
+                warnings.append(f"invalid Syx metadata line {rel_idx}: empty key")
+                current_list_key = None
+                continue
             if value.strip():
                 out[key] = _parse_scalar(value)
                 current_list_key = None
             else:
                 out[key] = []
                 current_list_key = key
-        return out
-    return {}
+        return out, [*warnings, f"invalid Syx metadata fence after line {idx + 1}: missing closing fence"]
+    return {}, []
+
+
+def parse_yaml_metadata(entry_text: str) -> Dict[str, Any]:
+    metadata, _warnings = parse_yaml_metadata_with_warnings(entry_text)
+    return metadata
 
 
 def legacy_semantic_handle(entry_text: str) -> Optional[str]:
@@ -388,7 +403,8 @@ def parse_syx_entries(text: str, *, artifact_path: Optional[str] = None) -> SyxP
     normalized = normalize_lf(text)
     lines = normalized.splitlines(keepends=True)
     entries: List[SyxMemoryEntry] = []
-    warnings: List[str] = []
+    structural_warnings: List[str] = []
+    metadata_warnings: List[str] = []
     occupied: List[Tuple[int, int]] = []
     seen: set[str] = set()
     offset = 0
@@ -397,8 +413,12 @@ def parse_syx_entries(text: str, *, artifact_path: Optional[str] = None) -> SyxP
         line = lines[idx]
         begin = BEGIN_RE.match(line.rstrip("\n"))
         if not begin:
+            if LOOSE_BEGIN_RE.match(line.rstrip("\n")):
+                structural_warnings.append(f"invalid begin marker at line {idx + 1}")
             if END_RE.match(line.rstrip("\n")):
-                warnings.append(f"end without begin at line {idx + 1}")
+                structural_warnings.append(f"end without begin at line {idx + 1}")
+            elif LOOSE_END_RE.match(line.rstrip("\n")):
+                structural_warnings.append(f"invalid end marker at line {idx + 1}")
             offset += len(line)
             idx += 1
             continue
@@ -414,17 +434,20 @@ def parse_syx_entries(text: str, *, artifact_path: Optional[str] = None) -> SyxP
             if end:
                 end_offset = offset + len(lines[idx])
                 if end.group(1) != memory_id:
-                    warnings.append(f"mismatched end marker for memory_id={memory_id} at line {idx + 1}")
+                    structural_warnings.append(f"mismatched end marker for memory_id={memory_id} at line {idx + 1}")
                     found = True
                     break
                 body_text = normalized[body_start_offset:offset]
                 if memory_id in seen:
-                    warnings.append(f"duplicate memory_id={memory_id} at line {start_idx + 1}")
+                    structural_warnings.append(f"duplicate memory_id={memory_id} at line {start_idx + 1}")
                     occupied.append((start_offset, end_offset))
                     found = True
                     break
                 seen.add(memory_id)
-                metadata = parse_yaml_metadata(body_text)
+                metadata, entry_metadata_warnings = parse_yaml_metadata_with_warnings(body_text)
+                metadata_warnings.extend(
+                    f"memory_id={memory_id}: {warning}" for warning in entry_metadata_warnings
+                )
                 metadata.setdefault("memory_id", memory_id)
                 if artifact_path:
                     metadata.setdefault("artifact_path", artifact_path)
@@ -445,12 +468,19 @@ def parse_syx_entries(text: str, *, artifact_path: Optional[str] = None) -> SyxP
             offset += len(lines[idx])
             idx += 1
         if not found:
-            warnings.append(f"begin without end for memory_id={memory_id} at line {start_idx + 1}")
+            structural_warnings.append(f"begin without end for memory_id={memory_id} at line {start_idx + 1}")
             continue
         if idx < len(lines):
             offset += len(lines[idx])
             idx += 1
-    return SyxParseResult(entries=entries, warnings=warnings, occupied_ranges=occupied)
+    warnings = [*structural_warnings, *metadata_warnings]
+    return SyxParseResult(
+        entries=entries,
+        warnings=warnings,
+        occupied_ranges=occupied,
+        structural_warnings=structural_warnings,
+        metadata_warnings=metadata_warnings,
+    )
 
 
 def validate_syx_boundaries(text: str) -> Tuple[bool, List[str]]:

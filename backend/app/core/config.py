@@ -155,6 +155,12 @@ class Settings(BaseSettings):
 		echo "TAGGER_MODEL=gpt-5-mini"; \
 		echo "# LLM used for tagging"; \
 		echo ""; \
+		echo "LLM_REQUEST_TIMEOUT_S=120"; \
+		echo "# Timeout in seconds for primary LLM HTTP requests"; \
+		echo ""; \
+		echo "LLM_MINI_REQUEST_TIMEOUT_S=30"; \
+		echo "# Timeout in seconds for mini/helper LLM HTTP requests (builder/tagger)"; \
+		echo ""; \
 		echo "BUILDER_MAX_TOKENS=1024"; \
 		echo "# Max tokens for builder output"; \
 		echo ""; \
@@ -258,6 +264,16 @@ class Settings(BaseSettings):
     llm_mini_model: str = Field(default="gpt-5-mini", description="Default model for mini client")
     model_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Model temperature")
     model_max_tokens: int = Field(default=128000, gt=0, description="Maximum tokens per response")
+    llm_request_timeout_s: float = Field(
+        default=120.0,
+        gt=0.0,
+        description="Timeout in seconds for primary LLM HTTP requests",
+    )
+    llm_mini_request_timeout_s: float = Field(
+        default=30.0,
+        gt=0.0,
+        description="Timeout in seconds for mini/helper LLM HTTP requests (builder/tagger)",
+    )
     
     # Server Configuration
     host: str = Field(default="0.0.0.0", description="Server host")

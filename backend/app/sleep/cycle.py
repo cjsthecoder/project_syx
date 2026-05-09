@@ -50,6 +50,7 @@ from ..rag.manager import rebuild_faiss_index, load_faiss_index
 from filelock import FileLock
 from ..core.config import get_settings
 from ..rag.daily_store import _project_daily_paths, clear_daily_cache
+from ..rag.syx_memory_artifact import normalize_legacy_artifact_wrappers, replace_current_scope_for_ltm
 from ..utils.debug_utils import write_debug_file
 from .questions_consolidation import consolidate_open_questions_artifact
 from .worker import start_sleep_cycle_runner
@@ -306,9 +307,13 @@ def _sleep_cycle_worker():
             try:
                 with open(daily_path, "r", encoding="utf-8") as f:
                     daily_text = f.read()
-                # Append END tag in-memory only (do not persist)
-                end_tag_date = time.strftime("%m/%d/%Y", time.localtime())
-                source_text = daily_text.rstrip() + f"\n\n=== END DAILY MEMORY: {end_tag_date} ===\n\n"
+                memory_date = time.strftime("%m-%d-%Y", time.localtime())
+                source_text = normalize_legacy_artifact_wrappers(
+                    daily_text,
+                    artifact_type="sleep_memory",
+                    project_id=pid,
+                    memory_date=memory_date,
+                )
             except Exception as e:
                 logger.warning("[SLEEP][ERROR] Failed reading daily.md project=%s: %s", pid, e)
                 continue
@@ -370,8 +375,7 @@ def _sleep_cycle_worker():
                         sum_text = fsum.read()
                     content_only = "\n".join(
                         ln for ln in (sum_text or "").splitlines()
-                        if not ln.strip().startswith("=== BEGIN DAILY MEMORY:")
-                        and not ln.strip().startswith("=== END DAILY MEMORY:")
+                        if not ln.strip().startswith("===")
                     ).strip()
                     if len(content_only) == 0:
                         logger.warning("[SLEEP][MERGE] Skipped (empty) project=%s", pid)
@@ -380,7 +384,7 @@ def _sleep_cycle_worker():
                     # New behavior: do not append to uploads/sleep_summary_all.txt.
                     # Instead, write per-cycle artifacts into uploads/sleep/ and uploads/dream/
                     # and rebuild the index once after both writes.
-                    sleep_upload_text = sum_text
+                    sleep_upload_text = replace_current_scope_for_ltm(sum_text)
                 except Exception as me:
                     logger.error("[SLEEP][MERGE][ERROR] project=%s: %s", pid, me, exc_info=True)
 

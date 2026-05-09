@@ -366,6 +366,10 @@ def canonical_retrieve_candidates(
                                 "score": float(score01),
                                 "metadata": {
                                     "id": str(eid) if eid is not None else None,
+                                    "memory_id": entry.get("memory_id"),
+                                    "entry_type": entry.get("entry_type"),
+                                    "source_scope": entry.get("source_scope"),
+                                    "current_scope": entry.get("current_scope"),
                                     "timestamp": created_at,
                                     "route": (str(route).lower() if isinstance(route, str) else route),
                                     "tags": entry.get("tags"),

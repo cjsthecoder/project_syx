@@ -35,6 +35,13 @@ import os
 from ..core.memory import get_memory_manager, get_last_context_tokens, _prune_assistant_for_tagger
 from ..tagging.tagger import tag_pair
 from ..rag.daily_store import append_pair, daily_stats, rebuild_daily_cache, start_daily_cache_rebuild
+from ..rag.syx_memory_artifact import (
+    generate_memory_id,
+    render_artifact_header,
+    render_memory_entry,
+    snake_case_value,
+    topics_to_list,
+)
 from ..core.config import get_settings
 from filelock import FileLock
 from ..core.personality import (
@@ -60,6 +67,69 @@ request_logger = RequestLogger("projects")
 
 # Current project state (simple in-memory pointer)
 _current_project = None
+
+
+def _origin_memory_ids(item: Dict[str, Any]) -> List[str]:
+    values: List[str] = []
+    for key in ("origin_memory_id", "memory_id"):
+        val = item.get(key)
+        if isinstance(val, str) and val.strip():
+            values.append(val.strip())
+    metadata = item.get("metadata")
+    if isinstance(metadata, dict):
+        val = metadata.get("origin_memory_id") or metadata.get("memory_id")
+        if isinstance(val, str) and val.strip():
+            values.append(val.strip())
+        vals = metadata.get("origin_memory_ids")
+        if isinstance(vals, list):
+            values.extend(str(v).strip() for v in vals if str(v or "").strip())
+    return list(dict.fromkeys(values))
+
+
+def _dream_markdown_block(
+    *,
+    memory_id: str,
+    timestamp: str,
+    route: str,
+    keep: bool,
+    tags_meta: Optional[Dict[str, Any]],
+    item: Dict[str, Any],
+    user_text: str,
+    assistant_text: str,
+) -> str:
+    tags = tags_meta if isinstance(tags_meta, dict) else {}
+    metadata: Dict[str, Any] = {
+        "memory_id": memory_id,
+        "entry_type": "dream_output",
+        "source": "dream",
+        "source_agent": "syx",
+        "source_scope": "dream",
+        "current_scope": "dream",
+        "timestamp": timestamp,
+        "route": route,
+        "keep": bool(keep),
+    }
+    accepted_item_id = str(item.get("id") or "").strip()
+    if accepted_item_id:
+        metadata["accepted_item_id"] = accepted_item_id
+    dream_output_type = snake_case_value(item.get("origin_type") or item.get("source_resolution"))
+    if dream_output_type:
+        metadata["dream_output_type"] = dream_output_type
+    origin_ids = _origin_memory_ids(item)
+    if origin_ids:
+        metadata["origin_memory_ids"] = origin_ids
+    topics = topics_to_list(tags.get("topics"))
+    if topics:
+        metadata["topics"] = topics
+    semantic_handle = tags.get("semantic_handle")
+    if semantic_handle is not None and str(semantic_handle).strip():
+        metadata["semantic_handle"] = str(semantic_handle).strip()
+    return render_memory_entry(
+        memory_id=memory_id,
+        metadata=metadata,
+        user_text=user_text,
+        assistant_text=assistant_text,
+    )
 
 
 def _validate_dream_payload(data: Any) -> Optional[dict]:
@@ -435,9 +505,7 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                 })
                 previous_pair_text = pair_text
 
-        # Pass 2: append each to daily.json only (no cache update), write dream_summary blocks
-        _BEGIN_DREAM_PAIR = "=== BEGIN DREAM PAIR ==="
-        _END_DREAM_PAIR = "=== END DREAM PAIR ==="
+        # Pass 2: append each to daily.json only (no cache update), write bounded dream_summary blocks.
         for rec in tagged:
             it = rec["it"]
             user_text = rec["user_text"]
@@ -448,6 +516,25 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
             tags_block = rec["tags_block"]
             embed_text = rec["embed_text"]
             try:
+                ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())
+                accepted_item_id = str(it.get("id") or "").strip() or None
+                dream_output_type = snake_case_value(it.get("origin_type") or it.get("source_resolution")) or None
+                origin_memory_ids = _origin_memory_ids(it)
+                semantic_handle = None
+                if isinstance(tags_meta, dict) and tags_meta.get("semantic_handle") is not None:
+                    semantic_handle = str(tags_meta.get("semantic_handle") or "").strip() or None
+                memory_id = generate_memory_id(
+                    project_id=project_id,
+                    timestamp=ts_local,
+                    source="dream",
+                    entry_type="dream_output",
+                    route="other",
+                    semantic_handle=semantic_handle,
+                    dream_output_type=dream_output_type,
+                    accepted_item_id=accepted_item_id,
+                    origin_memory_ids=origin_memory_ids,
+                    dream_content=assistant_resp_full,
+                )
                 append_pair(
                     project_id,
                     pair_text,
@@ -460,31 +547,38 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                     tags_meta=tags_meta,
                     write_daily_md=False,
                     update_cache=False,
+                    created_at_iso_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    memory_id=memory_id,
+                    entry_type="dream_output",
+                    source="dream",
+                    source_agent="syx",
+                    source_scope="dream",
+                    current_scope="dream",
+                    accepted_item_id=accepted_item_id,
+                    dream_output_type=dream_output_type,
+                    origin_memory_ids=origin_memory_ids,
                 )
-                ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())
                 keep_flag = bool(it.get("keep"))
-                block = (
-                    f"{_BEGIN_DREAM_PAIR}\n"
-                    f"#timestamp: {ts_local}\n"
-                    f"#route: other\n"
-                    f"#keep: {str(keep_flag).lower()}\n"
-                    f"{tags_block}"
-                    f"\n"
-                    f"--- USER (data-message-author-role: user) ---\n"
-                    f"{user_text}\n"
-                    f"\n"
-                    f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
-                    f"{assistant_resp_full}\n"
-                    f"\n"
-                    f"{_END_DREAM_PAIR}\n"
-                    f"\n"
+                block = _dream_markdown_block(
+                    memory_id=memory_id,
+                    timestamp=ts_local,
+                    route="other",
+                    keep=keep_flag,
+                    tags_meta=tags_meta,
+                    item=it,
+                    user_text=user_text,
+                    assistant_text=assistant_resp_full,
                 )
                 with FileLock(summary_lock_path):
                     with open(summary_path, "a", encoding="utf-8", newline="\n") as sf:
                         need_begin = (not os.path.isfile(summary_path)) or os.path.getsize(summary_path) == 0
                         if need_begin:
-                            begin_date = time.strftime("%m/%d/%Y", time.localtime())
-                            sf.write(f"=== BEGIN DREAM MEMORY: {begin_date} ===\n\n")
+                            memory_date = time.strftime("%m-%d-%Y", time.localtime())
+                            sf.write(render_artifact_header(
+                                artifact_type="dream_memory",
+                                project_id=project_id,
+                                memory_date=memory_date,
+                            ))
                         sf.write(block)
                 successes += 1
             except Exception as e:
@@ -503,15 +597,6 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
         pending_project_summary = _read_pending_dream_project_summary(project_id, dream_path)
         if successes == len(tagged) and not failures:
             try:
-                # Append END footer on successful completion before deleting dream.json
-                with FileLock(summary_lock_path):
-                    try:
-                        if os.path.isfile(summary_path):
-                            end_date = time.strftime("%m/%d/%Y", time.localtime())
-                            with open(summary_path, "a", encoding="utf-8", newline="\n") as sf:
-                                sf.write(f"=== END DREAM MEMORY: {end_date} ===\n")
-                    except Exception as fe:
-                        failures.append(f"write_end_footer: {fe}")
                 if not failures:
                     write_latest_sleep_summary(
                         project_id=project_id,

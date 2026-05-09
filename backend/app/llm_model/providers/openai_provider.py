@@ -173,8 +173,9 @@ def _responses_output_text(resp: Any) -> str:
 
 
 class OpenAILLMProvider:
-    def __init__(self, *, api_key: str, default_model: str) -> None:
-        self._client = OpenAI(api_key=api_key)
+    def __init__(self, *, api_key: str, default_model: str, timeout_s: float) -> None:
+        self._timeout_s = float(timeout_s)
+        self._client = OpenAI(api_key=api_key, timeout=self._timeout_s)
         self._default_model = str(default_model)
 
     def generate_chat(
@@ -188,6 +189,7 @@ class OpenAILLMProvider:
         kwargs: Dict[str, Any] = {
             "model": str(model or self._default_model),
             "messages": messages,
+            "timeout": self._timeout_s,
         }
         if max_completion_tokens is not None:
             kwargs["max_completion_tokens"] = int(max_completion_tokens)
@@ -234,6 +236,7 @@ class OpenAILLMProvider:
             "messages": messages,
             "stream": True,
             "stream_options": {"include_usage": True},
+            "timeout": self._timeout_s,
         }
         if max_completion_tokens is not None:
             kwargs["max_completion_tokens"] = int(max_completion_tokens)
@@ -286,6 +289,7 @@ class OpenAILLMProvider:
         kwargs: Dict[str, Any] = {
             "model": str(model or self._default_model),
             "input": msg_input,
+            "timeout": self._timeout_s,
         }
         if max_output_tokens is not None:
             kwargs["max_output_tokens"] = int(max_output_tokens)

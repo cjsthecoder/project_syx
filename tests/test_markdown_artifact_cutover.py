@@ -60,6 +60,14 @@ def _load_daily_store(monkeypatch):
     debug_utils_module.write_debug_file = lambda *_args, **_kwargs: None  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.utils.debug_utils", debug_utils_module)
 
+    syx_module_path = Path(__file__).resolve().parents[1] / "backend" / "app" / "rag" / "syx_memory_artifact.py"
+    syx_spec = importlib.util.spec_from_file_location("app.rag.syx_memory_artifact", syx_module_path)
+    assert syx_spec is not None
+    syx_module = importlib.util.module_from_spec(syx_spec)
+    monkeypatch.setitem(sys.modules, "app.rag.syx_memory_artifact", syx_module)
+    assert syx_spec.loader is not None
+    syx_spec.loader.exec_module(syx_module)
+
     module_path = Path(__file__).resolve().parents[1] / "backend" / "app" / "rag" / "daily_store.py"
     spec = importlib.util.spec_from_file_location("app.rag.daily_store", module_path)
     assert spec is not None
@@ -93,7 +101,12 @@ def test_append_pair_writes_daily_md_not_daily_txt(tmp_path, monkeypatch):
 
     assert ok is True
     assert (project_dir / "daily.md").is_file()
-    assert "hello" in (project_dir / "daily.md").read_text(encoding="utf-8")
+    daily_md = (project_dir / "daily.md").read_text(encoding="utf-8")
+    assert "hello" in daily_md
+    assert "<!-- begin syx:memory_id=mem_" in daily_md
+    assert "### Syx Metadata" in daily_md
+    assert "### User Message" in daily_md
+    assert "=== BEGIN DAILY PAIR ===" not in daily_md
     assert legacy_txt.read_text(encoding="utf-8") == "historical txt remains\n"
 
 
@@ -120,8 +133,10 @@ def test_append_pair_preserves_created_at_for_daily_md_and_metadata(tmp_path, mo
     assert ok is True
     entries = json.loads((project_dir / "daily.json").read_text(encoding="utf-8"))
     assert entries[0]["created_at"] == "2026-05-07T13:45:04Z"
+    assert entries[0]["memory_id"].startswith("mem_20260507_134504_")
     daily_md = (project_dir / "daily.md").read_text(encoding="utf-8")
-    assert "#timestamp: 05-07-2026_13:45:04" in daily_md
+    assert "timestamp: 05-07-2026_13:45:04" in daily_md
+    assert "#timestamp:" not in daily_md
 
 
 def test_backfill_daily_md_from_meta_ignores_legacy_txt(tmp_path, monkeypatch):
@@ -146,5 +161,9 @@ def test_backfill_daily_md_from_meta_ignores_legacy_txt(tmp_path, monkeypatch):
     )
 
     assert daily_store.backfill_daily_md_from_meta(project_id) is True
-    assert "daily answer" in (project_dir / "daily.md").read_text(encoding="utf-8")
+    daily_md = (project_dir / "daily.md").read_text(encoding="utf-8")
+    assert "daily answer" in daily_md
+    assert "<!-- begin syx:memory_id=mem_" in daily_md
     assert (project_dir / "daily.txt").read_text(encoding="utf-8") == "old txt artifact\n"
+    entries = json.loads((project_dir / "daily.json").read_text(encoding="utf-8"))
+    assert entries[0]["memory_id"].startswith("mem_20260507_100000_")

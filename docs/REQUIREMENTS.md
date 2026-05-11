@@ -662,7 +662,8 @@ A single retrieval function is responsible for all RAG memory queries. It accept
 - `ltm` includes all content embedded in the project's main FAISS index regardless of origin (uploads, sleep summaries, dream artifacts, etc.).
 
 Behavior and boundaries (this stage):
-- No namespace boosts, thresholding, route-based `rag_k`, score filtering, source branching, deduplication, or prompt injection are performed.
+- No namespace boosts, route-based `rag_k`, source branching, deduplication, or prompt injection are performed.
+- Per-route score gating (`min_score`) is not applied here; it is enforced in FR-2.3-3.3 after global ordering (FR-2.3-3.2).
 - An empty result from one source MUST NOT block other sources.
 - If querying a source fails, that source degrades to an empty candidate list for the current request (no in-request retry). Rebuild/repair is owned by the source subsystem and runs best-effort asynchronously.
 - If query embedding fails, retrieval is unavailable for the request and the function returns an empty candidate list.
@@ -686,7 +687,7 @@ Invariants:
 Architectural constraints:
 - Candidate retrieval, ordering, selection, and prompt assembly MUST be implemented as separate, single-responsibility stages.
 - Ordering logic MUST be isolated in its own function or module.
-- Retrieval-stage code MUST NOT perform prompt formatting, enforce token budgets, or apply selection/thresholding rules.
+- FR-2.3-3.1 canonical retrieval code MUST NOT perform prompt formatting, enforce token budgets, or apply route-policy selection rules (including `min_score`); those belong to FR-2.3-3.3 and later stages.
 - Prompt assembly code MUST NOT modify retrieval ordering or selection decisions.
 
 Invariants:
@@ -1071,13 +1072,14 @@ If `rag=false` or the selected `route_policy.json` row has `retrieval_multiplier
 Route-specific retrieval configuration is held in `backend/app/config/route_policy.json`. Canonical schema, routes, and defaults are defined in FR-2.3-3.3. `route_policy.json` is the authoritative per-route configuration source for:
 - `retrieval_multiplier` (per-source K via `ceil(BASE_TOP_K * retrieval_multiplier)`; consumed by FR-2.3-3.1)
 - `max_keep` (initial retained-candidate cap; consumed by FR-2.3-3.3)
+- `min_score` (strict gate: retain only candidates with `score > min_score`; consumed by FR-2.3-3.3)
 - `expansion.max_before` / `expansion.max_after` (adjacency depth; consumed by FR-2.3-3.4.2)
 
 #### FR-2.5.5 — Logging Integration
 Add a `[ROUTE]` log event before retrieval and a `[RETRIEVAL]` log event after retrieval, e.g.:
 
 ```
-[ROUTE] route=PROCEDURAL retrieval_multiplier=1.5 max_keep=16 expansion={"max_before":1,"max_after":3}
+[ROUTE] route=PROCEDURAL retrieval_multiplier=1.5 max_keep=16 min_score=0.80 expansion={"max_before":1,"max_after":3}
 [RETRIEVAL] route=PROCEDURAL hits=24 kept=16 avg_similarity=0.78
 ```
 
@@ -1087,7 +1089,7 @@ Logged fields MUST reflect values resolved from `route_policy.json` and the FR-2
 If the builder returns an unknown route, routing MUST fall back to the `OTHER` row of `route_policy.json`. A missing or invalid `route_policy.json` at startup is a fail-fast condition (no per-request fallbacks; see FR-2.3-3.3).
 
 ### Acceptance Criteria
-- Builder-identified routes map deterministically to `route_policy.json` rows; runtime retrieval K, retained counts, and adjacency depth match the selected row.
+- Builder-identified routes map deterministically to `route_policy.json` rows; runtime retrieval K, `min_score`, retained counts, and adjacency depth match the selected row.
 - CHITCHAT and `rag=false` turns bypass retrieval entirely.
 - Logging clearly displays the resolved route and applied policy values.
 - Unknown routes fall back to `OTHER`; missing/invalid `route_policy.json` fails fast at startup.
@@ -3709,7 +3711,7 @@ Snapshot immutability and runtime changes:
 
 - retrieval configuration split by scope:
   - `retrieval_static` for global/static settings (for example base K, chunk sizing, embedding model, similarity policy).
-  - `route_policy` snapshot for route-derived behavior that affects retrieval/assembly (for example per-route multipliers, max_keep, expansion params).
+  - `route_policy` snapshot for route-derived behavior that affects retrieval/assembly (for example per-route multipliers, max_keep, min_score, expansion params).
 
 - thresholds and deprecated settings policy:
   - Retrieval/selection thresholds MUST be recorded under active config sections only when enforced in the run's code path.

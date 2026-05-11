@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Copyright (c) 2025 Syx Project Contributors. All rights reserved.
+Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 Use of this software requires explicit written permission from the copyright holder.
-
+"""
+"""
 Concatenate top-level .txt files from an input directory into one output file.
 """
-
 
 import argparse
 from pathlib import Path

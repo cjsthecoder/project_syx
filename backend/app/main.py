@@ -123,6 +123,7 @@ async def lifespan(app: FastAPI):
             route_policy_snapshot[str(route_name)] = {
                 "retrieval_multiplier": float(route_pol.retrieval_multiplier),
                 "max_keep": int(route_pol.max_keep),
+                "min_score": float(route_pol.min_score),
                 "expansion": {
                     "max_before": int(route_pol.expansion_max_before),
                     "max_after": int(route_pol.expansion_max_after),

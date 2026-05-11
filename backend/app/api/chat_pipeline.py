@@ -274,6 +274,7 @@ class ChatPipeline:
         pol = get_route_policy(route or "OTHER")
         mult_val = float(pol.retrieval_multiplier)
         max_keep = int(pol.max_keep)
+        min_score = float(pol.min_score)
         per_source_k = compute_per_source_k(int(self.settings.base_top_k), float(mult_val))
         if per_source_k <= 0:
             logger.info("Chat: skipping RAG due to route=%s per_source_k=%s", route, per_source_k)
@@ -295,6 +296,7 @@ class ChatPipeline:
                 f"# retrieval_multiplier: {mult_val}\n"
                 f"# per_source_k: {int(per_source_k)}\n"
                 f"# max_keep: {max_keep}\n"
+                f"# min_score: {min_score}\n"
                 f"# queries_count: {len([q for q in queries if q])}\n\n"
                 "====== USER PROMPT ======\n"
                 f"{message or ''}\n\n"

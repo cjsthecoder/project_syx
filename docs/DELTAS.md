@@ -1703,6 +1703,8 @@ In A.4, the endpoint MAY parse the prompt-shaped retrieval context returned by t
 
 The endpoint SHALL use the provided `category` to select the existing route policy.
 
+The route policy SHALL include a per-route `min_score` field. During retrieval selection, candidates whose normalized retrieval `score` is not greater than the selected route's `min_score` SHALL be skipped before `max_keep` and adjacency expansion are applied.
+
 The endpoint SHALL run existing retrieval, ordering, dedupe/grouping, and existing expansion behavior.
 
 The endpoint SHALL preserve snippet order exactly as returned by the prompt context.

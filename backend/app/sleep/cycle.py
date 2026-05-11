@@ -402,7 +402,7 @@ def _sleep_cycle_worker():
                                     "[SLEEP][DREAM_SUMMARY] Failed writing debug file; operation=write_debug_file project_id=%s",
                                     pid,
                                 )
-                        dream_upload_text = formatted_dream
+                        dream_upload_text = replace_current_scope_for_ltm(formatted_dream)
                 except Exception as de:
                     logger.warning("[SLEEP][DREAM_SUMMARY][WARN] project=%s: %s", pid, de)
 

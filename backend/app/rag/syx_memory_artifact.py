@@ -498,7 +498,7 @@ def validate_syx_boundaries(text: str) -> Tuple[bool, List[str]]:
 
 
 def replace_current_scope_for_ltm(text: str) -> str:
-    """Rewrite bounded entries to current_scope: ltm for sleep upload artifacts."""
+    """Rewrite bounded entries to current_scope: ltm for per-cycle LTM artifacts."""
     normalized = normalize_lf(text)
     result = parse_syx_entries(normalized)
     if not result.entries:

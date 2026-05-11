@@ -1340,3 +1340,757 @@ Tests SHOULD cover:
 10. Existing normal chat expansion continues to work.
 11. Expansion for bounded Syx entries cannot cross into adjacent memory entries.
 12. Future agent-memory full-entry expansion can use the indexed `memory_id` and shared `source_document_id`.
+
+
+# DELTA-A.4 — Agent Memory Search Endpoint and CLI Bridge
+
+## Status
+
+Draft
+
+## Intent
+
+Expose a local agent-facing memory search endpoint that returns Syx retrieval results as JSON without running the normal chat response pipeline.
+
+A.4 creates the first practical external-agent bridge. It allows tools such as Cursor to query Syx project memory through a local endpoint or CLI command before MCP support exists.
+
+## Background
+
+A.1 changed newly generated Syx memory artifacts from `.txt` to `.md`.
+
+A.2 added stable `memory_id` values, fenced YAML metadata, and Syx begin/end entry boundaries.
+
+A.3 made RAG indexing boundary-aware by indexing each bounded Syx memory entry as its own expansion-safe document region and attaching parsed Syx metadata to chunks.
+
+A.4 exposes retrieval through an agent-facing interface.
+
+The endpoint is retrieval-only. It does not generate a chat answer and does not write memory.
+
+## Core Rule
+
+The request category selects the existing retrieval policy.
+
+The agent endpoint selects the response shape.
+
+```text
+category = retrieval policy knobs
+agent endpoint = structured JSON snippets response
+```
+
+## Request Shape
+
+The agent memory search endpoint SHALL accept a JSON request using `project_name`, not `project_id`.
+
+```json
+{
+  "project_name": "Project_Syx",
+  "query": "Project mission, scope, architecture, current requirements, major design decisions, and non-goals.",
+  "model": "...",
+  "category": "SYNTHESIS",
+  "agent_token": "..."
+}
+```
+
+## Response Shape
+
+The endpoint SHALL return JSON.
+
+A.4 returns structured `snippets` as the canonical retrieval payload.
+
+A.4 SHALL NOT return both a prompt-shaped `content` field and a `snippets` array containing the same retrieval text.
+
+The prompt-shaped retrieval text MAY be reconstructed by clients, CLI tools, or future MCP wrappers from the `snippets` array.
+
+```json
+{
+  "project_name": "Project_Syx",
+  "project_id": "ce667335-ae8e-41d7-b810-59627cd8d67a",
+  "category": "SYNTHESIS",
+  "query": "Project mission, scope, architecture, current requirements, major design decisions, and non-goals.",
+  "model": "optional-model-name",
+  "snippet_count": 3,
+  "bounded_result_count": 2,
+  "unbounded_result_count": 1,
+  "snippets": [
+    {
+      "snippet_number": 1,
+      "source": "ltm",
+      "cos": 0.6662,
+      "score": 0.8331,
+      "file": "dream_2026-05-07T16-07-12.md",
+      "page": null,
+      "source_document_id": "dream/dream_2026-05-07T16-07-12.md::memory_id=mem_20260507_160709_1aebd6c4",
+      "chunk_index_start": 0,
+      "chunk_index_end": 2,
+      "chunk_index_range": "0..2",
+      "memory_id": "mem_20260507_160709_1aebd6c4",
+      "entry_type": "dream_output",
+      "source_agent": "syx",
+      "source_scope": "daily",
+      "current_scope": "dream",
+      "semantic_handle": "reliability of answer-source overlap for evidence support",
+      "topics": [
+        "token overlap",
+        "semantic similarity",
+        "entailment"
+      ],
+      "artifact_path": "dream/dream_2026-05-07T16-07-12.md",
+      "result_mode": "bounded_entry",
+      "text": "<retrieved expanded snippet text without the leading Snippet N (...) line>"
+    }
+  ]
+}
+```
+
+For unbounded, ordinary upload, PDF-derived, or legacy results, `result_mode` SHALL be:
+
+```text
+unbounded_chunk_group
+```
+
+The endpoint SHALL NOT use a `fallback` response field in A.4. `result_mode` is the response field for bounded versus unbounded result shape.
+
+If retrieval succeeds but returns no context/snippets, the endpoint SHALL return `200 OK` with:
+
+```json
+{
+  "snippet_count": 0,
+  "bounded_result_count": 0,
+  "unbounded_result_count": 0,
+  "snippets": []
+}
+```
+
+When `model` is provided, the endpoint MAY echo it in the response. A.4 SHALL NOT validate `model` against the chat model whitelist and SHALL NOT use `model` for retrieval behavior.
+
+## Non-Goals
+
+A.4 does not:
+
+- implement full-entry expansion
+- write memory
+- add Cursor write-back
+- add MCP integration
+- add agent-owned memory inventory
+- add memory delete
+- add memory summarize
+- change route classification for normal chat
+- change semantic scoring
+- change candidate ordering
+- change existing normal chat expansion
+- change Daily memory storage
+- change LTM indexing
+- introduce database-backed memory
+
+Full-entry expansion is deferred to A.5.
+
+## A.4.1 Endpoint
+
+Add a local endpoint:
+
+```text
+POST /agent/memory/search
+```
+
+The endpoint SHALL be retrieval-only.
+
+It SHALL return retrieved memory results as JSON.
+
+It SHALL NOT generate an assistant answer.
+
+It SHALL NOT write memory.
+
+## A.4.2 Query Field
+
+The endpoint SHALL use `query`, not `message`.
+
+The endpoint is a retrieval interface, not a chat interface.
+
+`query` SHALL be used as the retrieval query text.
+
+## A.4.3 Project Name Resolution
+
+The endpoint SHALL accept a human-readable `project_name`.
+
+The endpoint SHALL resolve `project_name` to the internal `project_id` before retrieval.
+
+Project name matching SHALL be trimmed and case-insensitive, matching current project creation uniqueness semantics.
+
+The response SHALL return the exact request `project_name` string supplied by the caller.
+
+If multiple legacy project rows match the trimmed case-insensitive `project_name`, the endpoint SHALL pick the first match and log a warning.
+
+Processing order:
+
+1. Validate request shape.
+2. Resolve `project_name` to internal `project_id`.
+3. Validate that `agent_token` is authorized for the resolved `project_id`.
+4. Use `project_id` for retrieval, logging, and internal processing.
+5. Return both `project_name` and `project_id` in the response.
+
+If `project_name` is unknown, return:
+
+```text
+404 Not Found
+```
+
+Example response:
+
+```json
+{
+  "error": "project_not_found",
+  "message": "No project exists with the requested project_name.",
+  "project_name": "Project_Syx"
+}
+```
+
+## A.4.4 Agent Token
+
+The endpoint SHALL include an agent security token in the request contract from the beginning.
+
+Initial request shape includes:
+
+```json
+{
+  "agent_token": "..."
+}
+```
+
+A.4 SHALL call an agent-token authorization function after `project_name` has been resolved to `project_id`.
+
+The authorization function boundary SHALL exist in A.4.
+
+Initial authorization code SHOULD live behind a boundary such as:
+
+```text
+backend/app/security/agent_tokens.py
+```
+
+In A.4, the authorization implementation MAY be stubbed to pass for local development. The call site SHALL still exist so future requirements can replace the stub with real token validation and project access checks without changing the endpoint contract.
+
+If the JSON request does not include the `agent_token` field, the endpoint SHALL log a warning and return:
+
+```text
+401 Unauthorized
+```
+
+Response body:
+
+```json
+{
+  "error": "unauthorized",
+  "message": "Missing agent token."
+}
+```
+
+If `agent_token` is present but is an empty string, the A.4 local-development stub MAY authorize it.
+
+Future deltas may move token handling to:
+
+```text
+Authorization: Bearer <agent_token>
+```
+
+If token validation is enabled and the token is missing or invalid, return:
+
+```text
+401 Unauthorized
+```
+
+Example response:
+
+```json
+{
+  "error": "unauthorized",
+  "message": "Missing or invalid agent token."
+}
+```
+
+If the token is valid but does not have access to the resolved project, return:
+
+```text
+403 Forbidden
+```
+
+Example response:
+
+```json
+{
+  "error": "forbidden",
+  "message": "Agent token does not have access to the requested project.",
+  "project_name": "Project_Syx"
+}
+```
+
+## A.4.5 Category
+
+The endpoint SHALL accept a `category` field.
+
+The category SHOULD be one of the existing route categories:
+
+- `DIRECT`
+- `PROCEDURAL`
+- `EXPLORATORY`
+- `SYNTHESIS`
+- `OTHER`
+
+The endpoint SHALL NOT run the normal route-classification prompt.
+
+The provided `category` SHALL be normalized to uppercase before use.
+
+When the normalized category is known, it SHALL select the existing route policy values for retrieval breadth and candidate selection.
+
+If category is missing, the endpoint SHOULD default to:
+
+```text
+OTHER
+```
+
+If category is invalid, the endpoint SHALL fall back to `OTHER`.
+
+Invalid category SHALL NOT return `400` in A.4.
+
+## A.4.5.1 Model Field
+
+The agent memory search endpoint MAY accept a `model` field for request-contract stability and future compatibility.
+
+A.4 SHALL NOT use `model` to generate an answer.
+
+A.4 SHALL NOT validate `model` against the chat model whitelist.
+
+A.4 SHALL NOT use `model` to select retrieval behavior.
+
+If provided, `model` MAY be echoed in the response and written to debug output.
+
+If omitted, the endpoint SHALL still process the request normally.
+
+Retrieval knobs SHALL come from:
+
+```text
+category + route policy
+```
+
+## A.4.6 Pipeline Boundary
+
+The endpoint SHALL reuse only the retrieval-side pipeline.
+
+It MAY reuse:
+
+- query embedding
+- route policy lookup using the provided category
+- Daily/LTM retrieval
+- candidate scoring
+- candidate ordering
+- dedupe/grouping
+- existing expansion behavior
+- backend debug logging
+
+It SHALL NOT reuse:
+
+- normal route classification
+- assistant prompt assembly
+- model answer generation
+- chat response streaming
+- memory write-back
+
+Normal chat behavior SHALL remain unchanged.
+
+A.4 SHOULD leave the existing retrieval/chat pipeline behavior intact and build the agent JSON response as an endpoint-specific final response-shaping step.
+
+In A.4, the endpoint MAY parse the prompt-shaped retrieval context returned by the existing retrieval path to build structured snippets.
+
+## A.4.7 Retrieval Behavior
+
+The endpoint SHALL use the provided `category` to select the existing route policy.
+
+The endpoint SHALL run existing retrieval, ordering, dedupe/grouping, and existing expansion behavior.
+
+The endpoint SHALL preserve snippet order exactly as returned by the prompt context.
+
+Until A.5, each snippet `text` MAY be the same expanded chunk/group content that the retrieval pipeline already produces.
+
+When converting prompt-shaped retrieval context into snippets, the endpoint SHALL strip the leading snippet label line such as:
+
+```text
+Snippet 5 (source=ltm, cos=0.6411, score=0.8206, file=sleep_2026-05-06T16-50-51.txt, page=None, chunk_index=0..1)
+```
+
+The endpoint SHALL keep any Syx fenced YAML metadata block that appears inside the retrieved snippet text.
+
+A.4 SHALL NOT require full Syx entry expansion.
+
+## A.4.8 Result Metadata
+
+When available, each snippet SHOULD expose parsed Syx metadata.
+
+In A.4, Syx metadata MAY be extracted best-effort from fenced YAML inside the retrieved snippet text.
+
+If YAML is absent or a field is missing, the endpoint SHALL skip that field rather than fail the request.
+
+Recommended fields:
+
+- `snippet_number`
+- `source`
+- `cos`
+- `score`
+- `file`
+- `page`
+- `source_document_id`
+- `chunk_index_start`
+- `chunk_index_end`
+- `chunk_index_range`
+- `memory_id`
+- `entry_type`
+- `source_agent`
+- `source_scope`
+- `current_scope`
+- `semantic_handle`
+- `topics`
+- `artifact_path`
+- `result_mode`
+- `text`
+
+Each A.4 snippet SHALL include stable retrieval identity fields when available:
+
+- `source_document_id`
+- chunk index fields
+
+For collapsed snippet groups, A.4 snippets SHALL expose chunk indexes as numeric range fields when available:
+
+- `chunk_index_start`
+- `chunk_index_end`
+
+If the snippet contains a single chunk, `chunk_index_start` and `chunk_index_end` SHALL be the same value.
+
+A.4 snippets MAY also include a display-only `chunk_index_range` string such as `0..11`.
+
+Tooling SHOULD rely on numeric `chunk_index_start` and `chunk_index_end`, not on parsing `chunk_index_range`.
+
+If a future retrieval path produces non-contiguous collapsed chunks, that path SHOULD expose `chunk_indexes` as a list of integers instead of using a contiguous range.
+
+`result_mode` SHOULD use:
+
+- `bounded_entry` when Syx boundary metadata is available
+- `unbounded_chunk_group` when the result is ordinary upload, legacy text, PDF-derived text, or otherwise unbounded
+
+Structured metadata SHOULD be exposed separately from `text`.
+
+The `text` field is the retrieved text payload.
+
+## A.4.8.1 Snippet Parse Failure
+
+If retrieval succeeds but A.4 cannot convert the retrieved context into the required structured `snippets` response, the endpoint SHALL log a warning and return:
+
+```text
+500 Internal Server Error
+```
+
+Response body:
+
+```json
+{
+  "error": "snippet_parse_failed",
+  "message": "Agent memory search retrieved context but could not convert it to structured snippets.",
+  "retryable": false
+}
+```
+
+The backend debug file SHOULD include the raw retrieved context and parser failure details when available.
+
+## A.4.9 Sleep and Index Lock Behavior
+
+A.4 SHALL use the existing global sleep lock as the read-safety guard for the agent memory search endpoint.
+
+The global sleep middleware SHOULD allow `POST /agent/memory/search` through so the endpoint can resolve `project_name`, return `project_id`, and produce the A.4-specific locked response shape.
+
+For A.4 search:
+
+```text
+if global_sleep_lock == true:
+    return 423 Locked
+else:
+    run retrieval
+```
+
+Recommended response:
+
+```json
+{
+  "error": "memory_locked",
+  "message": "Project memory is currently unavailable because sleep is running. Retry after sleep completes.",
+  "project_id": "<project_id>",
+  "project_name": "<project_name>",
+  "retryable": true
+}
+```
+
+The endpoint SHALL NOT block waiting for sleep completion.
+
+A.4 SHALL NOT introduce a separate `memory_write_lock`.
+
+Write-lock restructuring belongs in a later delta when agent write/add endpoints are introduced.
+
+## A.4.10 CLI Bridge
+
+A.4 SHALL include a local CLI utility for testing the agent memory search endpoint.
+
+The CLI also serves as the first practical Cursor bridge because Cursor can run local shell commands before MCP support exists.
+
+Example:
+
+```bash
+python tools/agent_memory_search.py \
+  --project-name Project_Syx \
+  --category SYNTHESIS \
+  --query "Project mission, scope, architecture, current requirements, major design decisions, and non-goals." \
+  --agent-token "$SYX_AGENT_TOKEN"
+```
+
+## A.4.11 CLI Inputs
+
+Required inputs:
+
+- `project-name`
+- `query`
+- `agent-token`
+
+Optional inputs:
+
+- `category`
+- `model`
+- `base-url`
+- `debug-dir`
+- `pretty`
+
+The CLI MAY also read token from:
+
+```text
+SYX_AGENT_TOKEN
+```
+
+If `category` is not provided, the CLI SHOULD send:
+
+```text
+OTHER
+```
+
+## A.4.12 CLI Behavior
+
+The CLI SHALL:
+
+1. Build the same JSON request expected by `POST /agent/memory/search`.
+2. Send the request to the local Syx backend.
+3. Print the raw structured endpoint JSON returned by the backend to stdout.
+4. Write a debug-style file containing:
+   - request timestamp
+   - endpoint URL
+   - request JSON
+   - response status
+   - full response JSON
+   - prompt-shaped text rendered from the structured snippets when practical
+   - snippet count
+   - memory IDs returned
+   - bounded result count
+   - unbounded result count
+5. Return nonzero exit code on request failure or invalid response.
+
+The debug file SHALL include both the query sent to the endpoint and the response returned by the endpoint.
+
+The CLI debug file SHALL always be written by the CLI, independent of `GENERATE_DEBUG_FILES`.
+
+The CLI debug file SHOULD be written under the provided `debug-dir` when supplied.
+
+If no `debug-dir` is supplied, the CLI SHOULD write temporary debug output under:
+
+```text
+tools/agent_interface/
+```
+
+Generated debug output under `tools/agent_interface/` SHOULD be gitignored.
+
+Suggested debug filename:
+
+```text
+agent_memory_search_YYYYMMDD_HHMMSS.json
+```
+
+## A.4.13 Cursor CLI Bridge
+
+A Cursor rule or skill file MAY instruct Cursor to call the CLI when it needs Syx project memory.
+
+Example Cursor-oriented command:
+
+```bash
+python tools/agent_memory_search.py \
+  --project-name Project_Syx \
+  --category PROCEDURAL \
+  --query "Implementation guidance, requirements, constraints, and known pitfalls for the agent memory search endpoint A.4." \
+  --agent-token "$SYX_AGENT_TOKEN"
+```
+
+This allows Cursor to retrieve Syx memory before MCP support is implemented.
+
+## A.4.14 Agent Query Guidance
+
+Agents SHOULD write retrieval-oriented queries.
+
+Examples:
+
+Broad project orientation:
+
+```text
+Project mission, scope, architecture, current requirements, major design decisions, and non-goals.
+```
+
+Implementation task:
+
+```text
+Implementation guidance, requirements, design decisions, constraints, and known pitfalls for <task>.
+```
+
+Specific lookup:
+
+```text
+<specific fact, requirement, decision, or file location to find>.
+```
+
+Design analysis:
+
+```text
+Design tradeoffs, prior decisions, open questions, and constraints related to <topic>.
+```
+
+Agents SHOULD include relevant project terms, feature names, requirement IDs, delta names, topics, and semantic handles when known.
+
+## A.4.15 Endpoint Debug Files
+
+When backend debug file generation is enabled, the endpoint SHOULD write timestamped debug files using the existing debug-file utility.
+
+Suggested filenames:
+
+```text
+agent_interface/YYYYMMDD_HHMMSS_agent_query.txt
+agent_interface/YYYYMMDD_HHMMSS_agent_response.txt
+```
+
+The endpoint SHALL NOT include debug file paths in the JSON response.
+
+Endpoint debug files SHOULD include, when available:
+
+- request timestamp
+- resolved `project_id`
+- request JSON
+- raw prompt-shaped retrieval context before parsing
+- parsed structured JSON response
+- parser warnings or snippet parse failure details
+
+## A.4.16 Implementation Organization
+
+A.4 SHOULD keep endpoint-facing agent bridge code separate from normal chat routes.
+
+Recommended backend package:
+
+```text
+backend/app/agent_interface/
+```
+
+This package MAY contain:
+
+- endpoint router
+- request and response schemas
+- retrieval response adapter
+- prompt-shaped context parser
+- snippet rendering helpers for tests or CLI parity
+
+Agent token authorization SHOULD live behind a security boundary:
+
+```text
+backend/app/security/agent_tokens.py
+```
+
+The CLI utility SHALL live under the existing root tools area:
+
+```text
+tools/agent_memory_search.py
+```
+
+Temporary CLI debug output SHOULD be written under:
+
+```text
+tools/agent_interface/
+```
+
+Generated CLI debug output under `tools/agent_interface/` SHOULD be gitignored.
+
+## Invariants
+
+- A.4 is retrieval-only.
+- A.4 does not call the model to generate an answer.
+- A.4 does not run the normal route classifier.
+- A.4 uses caller-provided category to select existing retrieval policy.
+- A.4 defaults missing category to `OTHER`.
+- A.4 falls back invalid category to `OTHER`.
+- A.4 accepts `project_name` and resolves it to `project_id`.
+- A.4 includes `agent_token` in the request contract.
+- A.4 calls an authorization function, even if authorization is stubbed in A.4.
+- A.4 returns structured JSON snippets.
+- A.4 does not return duplicate `content` and `snippets` payloads.
+- A.4 does not write memory.
+- A.4 does not implement full-entry expansion.
+- Existing chat routes remain unchanged.
+- The CLI prints the raw structured endpoint JSON to stdout.
+- The CLI always writes a debug-style file containing the query and response.
+- Endpoint debug files are written silently when backend debug files are enabled.
+
+## Test Targets
+
+Tests SHOULD cover:
+
+- endpoint accepts valid request
+- endpoint resolves `project_name` to `project_id`
+- missing project returns `404`
+- missing `agent_token` field returns `401`
+- invalid token returns `401` when validation is enabled
+- forbidden project access returns `403` when authorization is enabled
+- authorization function is called after project resolution
+- valid category selects existing route policy
+- missing category defaults to `OTHER`
+- invalid category falls back to `OTHER`
+- model is accepted and echoed without whitelist validation
+- endpoint skips route classifier
+- endpoint does not call answer-generation model
+- endpoint returns structured JSON snippets
+- endpoint strips snippet header lines from snippet text
+- endpoint keeps Syx YAML metadata in snippet text
+- endpoint returns parsed Syx metadata when available
+- missing Syx metadata fields are omitted best-effort
+- retrieval success with no snippets returns `200` with empty snippets
+- snippet parse failure returns `500`
+- endpoint respects global sleep lock and returns `423`
+- existing global sleep middleware allows `POST /agent/memory/search` through to the endpoint
+- CLI can call endpoint
+- CLI prints raw endpoint JSON to stdout
+- CLI writes a debug-style file containing request and response
+- CLI exits nonzero on endpoint failure
+- existing chat endpoint behavior remains unchanged
+
+## Acceptance Criteria
+
+1. `POST /agent/memory/search` exists.
+2. Request uses `project_name`, `query`, `category`, `model`, and `agent_token`.
+3. `project_name` resolves to internal `project_id`.
+4. Token authorization boundary exists.
+5. The endpoint calls the authorization function, even if the implementation is stubbed.
+6. The endpoint skips normal route classification.
+7. The endpoint uses provided category for retrieval policy.
+8. Missing category defaults to `OTHER`.
+9. The endpoint runs retrieval-side pipeline only.
+10. The endpoint returns structured JSON snippets.
+11. The endpoint does not generate an assistant answer.
+12. The endpoint does not write memory.
+13. The endpoint returns parsed metadata when available, best-effort.
+14. The endpoint handles the global sleep lock with retryable `423`.
+15. A CLI tool can call the endpoint.
+16. CLI output goes to stdout as raw structured JSON.
+17. CLI always writes a debug-style file containing the query and response.
+18. Existing chat behavior is unchanged.

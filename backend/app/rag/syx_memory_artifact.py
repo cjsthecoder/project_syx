@@ -1,11 +1,20 @@
 """
+Copyright (c) 2025-2026 Christopher Shuler. All rights reserved.
+
+This source code is part of the Syx project and is proprietary.
+
+Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
+
+Use of this software requires explicit written permission from the copyright holder.
+"""
+from __future__ import annotations
+
+"""
 Syx markdown memory artifact helpers.
 
 This module owns source-neutral memory IDs, Syx boundary parsing, and the
 minimal markdown rendering needed by Daily/Sleep/Dream artifacts.
 """
-
-from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib

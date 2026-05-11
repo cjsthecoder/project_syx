@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Copyright (c) 2025 Christopher Shuler. All rights reserved.
+Copyright (c) 2025-2026 Christopher Shuler. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 Use of this software requires explicit written permission from the copyright holder.
-
+"""
+"""
 Build per-turn average benchmark score CSV for blind batch A and/or B.
-
 Behavior:
 - read score files for selected batch(es), e.g. b_benchmark_scores_*.jsonl
 - map each sample_id -> turn_id via judge_map.json
@@ -19,7 +19,6 @@ Behavior:
 - average the chosen score per turn across scorer models
 - write one-column CSV (no header) with one row per turn
 """
-
 
 import argparse
 import csv

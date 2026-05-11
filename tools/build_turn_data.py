@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Copyright (c) 2025 Christopher Shuler. All rights reserved.
+Copyright (c) 2025-2026 Christopher Shuler. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 Use of this software requires explicit written permission from the copyright holder.
-
+"""
+"""
 Build benchmark_turns.csv from turns.jsonl and web_turns.jsonl.
-
 Output format:
 - Label
 - Syx Part 1
@@ -17,7 +17,6 @@ Output format:
 - Web Part 1
 - Web Part 2
 """
-
 
 import argparse
 import csv

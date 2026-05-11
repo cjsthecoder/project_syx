@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Christopher Shuler. All rights reserved.
+Copyright (c) 2025-2026 Christopher Shuler. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 

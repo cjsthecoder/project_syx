@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
 """
-Copyright (c) 2025 Christopher Shuler. All rights reserved.
+Copyright (c) 2025-2026 Christopher Shuler. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 Use of this software requires explicit written permission from the copyright holder.
-
+"""
+"""
 Build blind judging artifacts from a test run directory.
-
 Inputs read from the test run directory:
   - benchmark_results.jsonl
   - web_benchmark_results.jsonl
   - prompts JSON path passed on CLI
-
 Output written to <test_run_dir>/judging:
   - judge_runbook_blind_a.md
   - judge_runbook_blind_b.md
   - judge_map.json
   - judging_prompts.txt
 """
-
 
 import argparse
 import json

@@ -4,13 +4,15 @@
     "Routes are produced by the interaction-mode classifier (see backend/app/core/query_builder.py _SYS_PROMPT).",
     "retrieval_multiplier scales BASE_TOP_K to determine per-source K: PER_SOURCE_K = ceil(BASE_TOP_K * retrieval_multiplier).",
     "If retrieval_multiplier is 0, retrieval should be skipped for that turn (e.g., CHITCHAT).",
-    "max_keep is enforced by A.4.3 selection to bound retained candidates."
+    "max_keep is enforced by A.4.3 selection to bound retained candidates.",
+    "min_score is a strict score gate: candidates must have score > min_score to be retained."
   ],
 
   "CHITCHAT": {
     "_comment": "Purely social, conversational, or meta commentary. No real-world task, question, or information need.",
     "retrieval_multiplier": 0,
     "max_keep": 0,
+    "min_score": 0,
     "expansion": { "max_before": 0, "max_after": 0 }
   },
 
@@ -18,6 +20,7 @@
     "_comment": "A clear, specific question with a narrow target. The user likely expects a precise response.",
     "retrieval_multiplier": 1,
     "max_keep": 12,
+    "min_score": 0.82,
     "expansion": { "max_before": 0, "max_after": 2 }
   },
 
@@ -25,6 +28,7 @@
     "_comment": "How-to questions, step-by-step guidance, implementation, configuration, or execution details.",
     "retrieval_multiplier": 1.5,
     "max_keep": 16,
+    "min_score": 0.80,
     "expansion": { "max_before": 1, "max_after": 3 }
   },
 
@@ -32,6 +36,7 @@
     "_comment": "Open-ended questions focused on understanding, comparison, or investigation.",
     "retrieval_multiplier": 2,
     "max_keep": 20,
+    "min_score": 0.78,
     "expansion": { "max_before": 1, "max_after": 4 }
   },
 
@@ -39,6 +44,7 @@
     "_comment": "Design, planning, tradeoff analysis, or 'help me think' requests.",
     "retrieval_multiplier": 2.5,
     "max_keep": 24,
+    "min_score": 0.78,
     "expansion": { "max_before": 2, "max_after": 4 }
   },
 
@@ -46,6 +52,7 @@
     "_comment": "Fallback route for unknown/unexpected classifications. Stable compat default.",
     "retrieval_multiplier": 1.75,
     "max_keep": 10,
+    "min_score": 0.80,
     "expansion": { "max_before": 1, "max_after": 2 }
   }
 }

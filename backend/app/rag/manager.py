@@ -644,10 +644,11 @@ def merge_daily_and_main(
     Candidate ordering is by raw similarity score across all sources
     before selection/truncation/prompt assembly.
 
-    Selection is positional/deterministic:
+    Selection is score-gated and deterministic:
     - consume the globally ordered list
-    - retain the first MAX_KEEP candidates
-    - no reordering, skipping, thresholding, boosting, or dedupe occurs here
+    - skip candidates whose score is not greater than route min_score
+    - retain the first MAX_KEEP passing candidates
+    - no reordering, boosting, or dedupe occurs here
     """
     settings = get_settings()
     per_source_k = (
@@ -671,12 +672,27 @@ def merge_daily_and_main(
             "kept_candidates": 0,
             "expanded_unique_chunks_after_merge": 0,
         }
+    min_score = 0.0
+    try:
+        from ..core.route_policy import get_route_policy
+
+        policy = get_route_policy(route or "OTHER")
+        min_score = float(getattr(policy, "min_score", 0.0) or 0.0)
+    except Exception as exc:
+        logger.warning(
+            "RAG: failed resolving route min_score project=%s route=%s detail=%s",
+            project_id,
+            route or "OTHER",
+            exc,
+        )
+        min_score = 0.0
     logger.debug(
-        "DailyRAG: starting merged retrieval project=%s per_source_k=%s daily_enabled=%s max_keep=%s",
+        "DailyRAG: starting merged retrieval project=%s per_source_k=%s daily_enabled=%s max_keep=%s min_score=%.4f",
         project_id,
         int(per_source_k),
         str(bool(daily_enabled)).lower(),
         int(max_keep),
+        float(min_score),
     )
     # Retrieval via canonical entry point (raw candidates; no thresholding/boosting here).
     sources = ["ltm"] + (["daily"] if bool(daily_enabled) else [])
@@ -691,6 +707,12 @@ def merge_daily_and_main(
     for c in list(ordered or []):
         if len(kept_candidates) >= effective_limit:
             break
+        try:
+            score = float(c.get("score") or 0.0)
+        except (AttributeError, TypeError, ValueError):
+            score = 0.0
+        if score <= float(min_score):
+            continue
         kept_candidates.append(c)
         if len(kept_candidates) >= 2:
             prev = kept_candidates[-2]
@@ -1042,6 +1064,7 @@ def merge_daily_and_main(
                     f"# query_preview: {qprev}",
                     f"# per_source_k: {int(per_source_k)}",
                     f"# max_keep: {int(max_keep)}",
+                    f"# min_score: {float(min_score):.4f}",
                     f"# daily_enabled: {str(bool(daily_enabled)).lower()}",
                     "",
                     f"====== {title} ======",
@@ -1073,6 +1096,7 @@ def merge_daily_and_main(
                     f"# query_preview: {qprev}",
                     f"# per_source_k: {int(per_source_k)}",
                     f"# max_keep: {int(max_keep)}",
+                    f"# min_score: {float(min_score):.4f}",
                     f"# kept: {k_actual}  adjacent_bonus: {int(adjacent_bonus)}",
                     f"# daily_enabled: {str(bool(daily_enabled)).lower()}",
                     f"# expansion.max_before: {int(max_before)}",
@@ -1263,6 +1287,7 @@ def merge_daily_and_main(
                 "daily_enabled": bool(daily_enabled),
                 "per_source_k": int(per_source_k),
                 "max_keep": int(max_keep),
+                "min_score": float(min_score),
                 "ordered_candidates": int(len(ordered)),
                 "selected_candidates": int(len(selected_candidates)),
                 "kept_candidates": int(len(pieces)),
@@ -1295,6 +1320,7 @@ def merge_daily_and_main(
         "selected_candidates": int(len(selected_candidates)),
         "kept_candidates": int(len(pieces)),
         "expanded_unique_chunks_after_merge": int(dedupe_unique_keyed_count),
+        "min_score": float(min_score),
     }
 
 

@@ -26,6 +26,7 @@ from typing import Any, Dict
 class RoutePolicy:
     retrieval_multiplier: float
     max_keep: int
+    min_score: float
     expansion_max_before: int
     expansion_max_after: int
 
@@ -80,12 +81,13 @@ def load_and_validate_route_policy() -> Dict[str, RoutePolicy]:
         node = data.get(r)
         if not isinstance(node, dict):
             raise ValueError(f"route_policy missing/invalid route block: {r}")
-        if "retrieval_multiplier" not in node or "max_keep" not in node:
-            raise ValueError(f"route_policy route {r} missing retrieval_multiplier/max_keep")
+        if "retrieval_multiplier" not in node or "max_keep" not in node or "min_score" not in node:
+            raise ValueError(f"route_policy route {r} missing retrieval_multiplier/max_keep/min_score")
         if "expansion" not in node or not isinstance(node.get("expansion"), dict):
             raise ValueError(f"route_policy route {r} missing/invalid expansion block")
         rm = _coerce_float(node.get("retrieval_multiplier"), field="retrieval_multiplier", route=r)
         mk = _coerce_int(node.get("max_keep"), field="max_keep", route=r)
+        min_score = _coerce_float(node.get("min_score"), field="min_score", route=r)
         exp = node.get("expansion") if isinstance(node.get("expansion"), dict) else {}
         mb = _coerce_int(exp.get("max_before"), field="expansion.max_before", route=r)
         ma = _coerce_int(exp.get("max_after"), field="expansion.max_after", route=r)
@@ -93,6 +95,8 @@ def load_and_validate_route_policy() -> Dict[str, RoutePolicy]:
             raise ValueError(f"route_policy invalid {r}.retrieval_multiplier: must be >= 0")
         if mk < 0:
             raise ValueError(f"route_policy invalid {r}.max_keep: must be >= 0")
+        if min_score < 0.0 or min_score > 1.0:
+            raise ValueError(f"route_policy invalid {r}.min_score: must be between 0 and 1")
         if mb < 0:
             raise ValueError(f"route_policy invalid {r}.expansion.max_before: must be >= 0")
         if ma < 0:
@@ -100,6 +104,7 @@ def load_and_validate_route_policy() -> Dict[str, RoutePolicy]:
         out[r] = RoutePolicy(
             retrieval_multiplier=rm,
             max_keep=mk,
+            min_score=min_score,
             expansion_max_before=mb,
             expansion_max_after=ma,
         )

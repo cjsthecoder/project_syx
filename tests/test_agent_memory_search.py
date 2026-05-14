@@ -117,6 +117,30 @@ def test_parse_prompt_context_ignores_internal_markdown_separators():
     assert snippets[1].chunk_index_end == 3
 
 
+def test_parse_prompt_context_uses_header_syx_metadata_for_mid_entry_chunks():
+    memory_id = "mem_20260507_183158_8c23347a"
+    source_document_id = f"sleep/sleep.md::memory_id={memory_id}"
+    context = (
+        "Context:\n---\n"
+        "Snippet 1 (source=ltm, cos=0.7691, score=0.8846, file=sleep.md, page=None, "
+        f"chunk_index=4..10, memory_id={memory_id}, source_document_id={source_document_id}, "
+        "artifact_path=sleep/sleep.md, entry_type=chat_pair, source_scope=daily, current_scope=ltm)\n"
+        "mid-entry chunk text without a YAML metadata block\n"
+    )
+
+    snippets = parse_prompt_context_to_snippets(context)
+
+    assert len(snippets) == 1
+    snippet = snippets[0]
+    assert snippet.result_mode == "bounded_entry"
+    assert snippet.memory_id == memory_id
+    assert snippet.source_document_id == source_document_id
+    assert snippet.artifact_path == "sleep/sleep.md"
+    assert snippet.entry_type == "chat_pair"
+    assert snippet.source_scope == "daily"
+    assert snippet.current_scope == "ltm"
+
+
 def test_agent_memory_search_endpoint_returns_structured_snippets(monkeypatch):
     calls = {}
 
@@ -246,4 +270,5 @@ def test_cli_prints_raw_json_and_writes_debug(tmp_path, monkeypatch, capsys):
     assert len(debug_files) == 1
     debug_payload = json.loads(debug_files[0].read_text(encoding="utf-8"))
     assert debug_payload["response_json"]["project_id"] == "proj-1"
-    assert "prompt_shaped_text" in debug_payload
+    assert "prompt_shaped_text" not in debug_payload
+    assert "entry_expansion_summary" in debug_payload

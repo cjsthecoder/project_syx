@@ -35,6 +35,15 @@ class AgentMemorySnippet(BaseModel):
     topics: Optional[List[str]] = None
     artifact_path: Optional[str] = None
     result_mode: str = "unbounded_chunk_group"
+    entry_expansion_status: Optional[str] = None
+    entry_expansion_method: Optional[str] = None
+    entry_expansion_error: Optional[str] = None
+    entry_expansion_warning: Optional[str] = None
+    entry_expansion_truncated: Optional[bool] = None
+    entry_expansion_original_chars: Optional[int] = None
+    entry_expansion_returned_chars: Optional[int] = None
+    entry_expansion_max_chars: Optional[int] = None
+    entry_expansion_truncation_reason: Optional[str] = None
     text: str = ""
 
 

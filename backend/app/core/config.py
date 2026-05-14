@@ -355,6 +355,11 @@ class Settings(BaseSettings):
     base_top_k: int = Field(default=6, gt=0, description="Base retrieval top-K (used to derive per-source K)")
     retrieval_multiplier: float = Field(default=2.0, gt=0.0, description="Per-source K multiplier (PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER))")
     rag_score_threshold: float = Field(default=0.50, ge=0.0, le=1.0, description="Cosine similarity threshold (0..1) — currently not enforced by retrieval selection")
+    agent_memory_max_entry_chars: int = Field(
+        default=25_000,
+        gt=0,
+        description="Max serialized agent-memory snippet size for A.5 full-entry expansion",
+    )
 
     # Chat history working memory
     chat_history_limit: int = Field(default=20, gt=0, description="Number of recent messages kept per project")

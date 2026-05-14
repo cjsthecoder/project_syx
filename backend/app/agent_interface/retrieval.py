@@ -22,6 +22,7 @@ from ..core.db_models import Project
 from ..core.route_policy import EXPECTED_ROUTES, get_route_policy
 from ..rag.manager import merge_daily_and_main
 from ..utils.debug_utils import write_debug_file
+from .entry_expansion import expand_agent_memory_snippets
 from .models import AgentMemorySearchResponse, AgentMemorySnippet
 from .parser import SnippetParseError, parse_prompt_context_to_snippets
 
@@ -85,6 +86,7 @@ def retrieve_agent_memory(
             raise
         except Exception as exc:
             raise SnippetParseError(str(exc), raw_context=raw_context) from exc
+        snippets = expand_agent_memory_snippets(project_id=project_id, snippets=snippets)
 
     response = _build_response(
         project_name=project_name,
@@ -120,6 +122,7 @@ def write_agent_debug_files(
         "response": response_payload,
         "error": error_payload,
         "parser_warnings": parser_warnings or [],
+        "entry_expansion_summary": _entry_expansion_summary(response_payload),
     }
     write_debug_file(
         project_id,
@@ -170,3 +173,37 @@ def _daily_enabled(project_id: str) -> bool:
             exc,
         )
     return True
+
+
+def _entry_expansion_summary(response_payload: Dict[str, Any]) -> Dict[str, Any]:
+    snippets = response_payload.get("snippets")
+    if not isinstance(snippets, list):
+        snippets = []
+    bounded = [snip for snip in snippets if isinstance(snip, dict) and snip.get("result_mode") == "bounded_entry"]
+    statuses: Dict[str, int] = {}
+    methods: Dict[str, int] = {}
+    memory_ids: List[str] = []
+    truncated = 0
+    for snip in snippets:
+        if not isinstance(snip, dict):
+            continue
+        status = str(snip.get("entry_expansion_status") or "missing")
+        method = str(snip.get("entry_expansion_method") or "missing")
+        statuses[status] = statuses.get(status, 0) + 1
+        methods[method] = methods.get(method, 0) + 1
+        if snip.get("entry_expansion_truncated") is True:
+            truncated += 1
+        mid = snip.get("memory_id")
+        if isinstance(mid, str) and mid.strip():
+            memory_ids.append(mid)
+    return {
+        "bounded_snippets": int(len(bounded)),
+        "expanded": int(statuses.get("expanded", 0)),
+        "expanded_truncated": int(statuses.get("expanded_truncated", 0)),
+        "fallback": int(statuses.get("fallback", 0)),
+        "failed": int(statuses.get("failed", 0)),
+        "truncated": int(truncated),
+        "memory_ids": memory_ids,
+        "statuses": statuses,
+        "methods": methods,
+    }

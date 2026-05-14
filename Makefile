@@ -355,6 +355,9 @@ setup-env:
 		echo "RAG_SCORE_THRESHOLD=0.50"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
+		echo "AGENT_MEMORY_MAX_ENTRY_CHARS=25000"; \
+		echo "# Max serialized agent memory snippet size for full-entry expansion"; \
+		echo ""; \
 		echo "# === Daily Memory + Daily RAG ==="; \
 		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
 		echo "# Number of prompt/response pairs kept in working memory"; \
@@ -399,7 +402,7 @@ setup-env:
 		echo "VERIFY_RAG=true"; \
 		echo "# Enable post-rebuild verification"; \
 		echo ""; \
-		echo "FORCE_RAG_REBUILD_ON_STARTUP=true"; \
+		echo "FORCE_RAG_REBUILD_ON_STARTUP=false"; \
 		echo "# Optional startup sweep: rebuild all project RAG indexes from uploads"; \
 		echo ""; \
 		echo "# === Instrumentation (V5.0) ==="; \

@@ -1255,15 +1255,17 @@ def merge_daily_and_main(
             main_scores.append(score01)
         tokens_used_total += t
 
+        extra_header_fields = _snippet_header_metadata_fields(md)
+        extra_header = "".join(f", {key}={value}" for key, value in extra_header_fields)
         # Candidate header (keeps ordering explicit; show cos + score for troubleshooting).
         if src == "ltm":
             chunk_index = md.get("chunk_index") if isinstance(md, dict) else None
             header = (
-                f"Snippet {idx+1} (source=ltm, cos={cos:.4f}, score={score01:.4f}, file={md.get('filename')}, page={md.get('page_number')}, chunk_index={chunk_index})\n"
+                f"Snippet {idx+1} (source=ltm, cos={cos:.4f}, score={score01:.4f}, file={md.get('filename')}, page={md.get('page_number')}, chunk_index={chunk_index}{extra_header})\n"
             )
         else:
             chunk_index = md.get("chunk_index") if isinstance(md, dict) else None
-            header = f"Snippet {idx+1} (source=daily, cos={cos:.4f}, score={score01:.4f}, route={md.get('route')}, chunk_index={chunk_index})\n"
+            header = f"Snippet {idx+1} (source=daily, cos={cos:.4f}, score={score01:.4f}, route={md.get('route')}, chunk_index={chunk_index}{extra_header})\n"
         pieces.append(header + txt)
 
     context_text = ("Context:\n---\n" + "\n\n---\n".join(pieces)) if pieces else ""
@@ -1322,6 +1324,28 @@ def merge_daily_and_main(
         "expanded_unique_chunks_after_merge": int(dedupe_unique_keyed_count),
         "min_score": float(min_score),
     }
+
+
+def _snippet_header_metadata_fields(metadata: Dict[str, Any]) -> List[Tuple[str, str]]:
+    keys = (
+        "memory_id",
+        "source_document_id",
+        "artifact_path",
+        "entry_type",
+        "source_agent",
+        "source_scope",
+        "current_scope",
+        "semantic_handle",
+    )
+    fields: List[Tuple[str, str]] = []
+    for key in keys:
+        value = metadata.get(key) if isinstance(metadata, dict) else None
+        if value is None:
+            continue
+        rendered = str(value).replace("\n", " ").replace(",", ";").strip()
+        if rendered:
+            fields.append((key, rendered))
+    return fields
 
 
 # Legacy FAISS sidecar namespace map support removed; namespaces are embedded during indexing.

@@ -122,7 +122,6 @@ def _write_debug_file(
         "request_json": request_payload,
         "response_status": response_status,
         "response_json": response_json,
-        "prompt_shaped_text": _render_prompt_text(response_json),
         "snippet_count": int(response_json.get("snippet_count", 0) or 0),
         "memory_ids_returned": [
             snip.get("memory_id")
@@ -131,49 +130,37 @@ def _write_debug_file(
         ],
         "bounded_result_count": int(response_json.get("bounded_result_count", 0) or 0),
         "unbounded_result_count": int(response_json.get("unbounded_result_count", 0) or 0),
+        "entry_expansion_summary": _entry_expansion_summary(response_json),
         "error_text": error_text,
     }
     path.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _render_prompt_text(response_json: Dict[str, Any]) -> str:
+def _entry_expansion_summary(response_json: Dict[str, Any]) -> Dict[str, Any]:
     snippets = response_json.get("snippets")
     if not isinstance(snippets, list):
-        return ""
-    pieces: List[str] = []
+        snippets = []
+    statuses: Dict[str, int] = {}
+    methods: Dict[str, int] = {}
+    truncated = 0
     for snip in snippets:
         if not isinstance(snip, dict):
             continue
-        pieces.append(_render_snippet(snip))
-    return ("Context:\n---\n" + "\n\n---\n".join(pieces)) if pieces else ""
-
-
-def _render_snippet(snip: Dict[str, Any]) -> str:
-    chunk = snip.get("chunk_index_range")
-    if not chunk and snip.get("chunk_index_start") is not None and snip.get("chunk_index_end") is not None:
-        if snip.get("chunk_index_start") == snip.get("chunk_index_end"):
-            chunk = str(snip.get("chunk_index_start"))
-        else:
-            chunk = f"{snip.get('chunk_index_start')}..{snip.get('chunk_index_end')}"
-    bits = [
-        f"source={snip.get('source')}",
-        _format_float("cos", snip.get("cos")),
-        _format_float("score", snip.get("score")),
-    ]
-    if snip.get("source") == "daily":
-        bits.append("route=None")
-    else:
-        bits.append(f"file={snip.get('file')}")
-        bits.append(f"page={snip.get('page')}")
-    bits.append(f"chunk_index={chunk}")
-    return f"Snippet {snip.get('snippet_number')} ({', '.join(bits)})\n{snip.get('text') or ''}"
-
-
-def _format_float(name: str, value: Any) -> str:
-    try:
-        return f"{name}={float(value):.4f}"
-    except (TypeError, ValueError):
-        return f"{name}=None"
+        status = str(snip.get("entry_expansion_status") or "missing")
+        method = str(snip.get("entry_expansion_method") or "missing")
+        statuses[status] = statuses.get(status, 0) + 1
+        methods[method] = methods.get(method, 0) + 1
+        if snip.get("entry_expansion_truncated") is True:
+            truncated += 1
+    return {
+        "expanded": int(statuses.get("expanded", 0)),
+        "expanded_truncated": int(statuses.get("expanded_truncated", 0)),
+        "fallback": int(statuses.get("fallback", 0)),
+        "failed": int(statuses.get("failed", 0)),
+        "truncated": int(truncated),
+        "statuses": statuses,
+        "methods": methods,
+    }
 
 
 def _default_debug_dir() -> Path:

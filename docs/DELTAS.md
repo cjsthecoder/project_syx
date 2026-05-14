@@ -2096,3 +2096,536 @@ Tests SHOULD cover:
 16. CLI output goes to stdout as raw structured JSON.
 17. CLI always writes a debug-style file containing the query and response.
 18. Existing chat behavior is unchanged.
+
+
+# DELTA-A.5 — Agent Full-Entry Expansion
+
+## Status
+
+Draft
+
+## Intent
+
+Update the agent memory search endpoint so bounded Syx results return the complete Syx memory entry instead of the partial expanded chunk/group text returned by A.4.
+
+A.4 created the agent-facing retrieval endpoint and structured snippet response.
+
+A.5 changes bounded snippet text from partial retrieval context to full bounded memory-entry content.
+
+## Background
+
+A.4 returns structured snippets from the retrieval-side pipeline. Each snippet includes metadata such as `memory_id`, `result_mode`, `source_document_id`, chunk index range, topics, and text.
+
+A.4 explicitly deferred full-entry expansion to A.5.
+
+The A.4 response uses:
+
+```text
+result_mode: bounded_entry
+```
+
+when Syx boundary metadata is available, and:
+
+```text
+result_mode: unbounded_chunk_group
+```
+
+for ordinary uploads, legacy text, PDF-derived text, or otherwise unbounded results.
+
+A.4 snippet text may still be partial because it reflects the current expanded chunk/group payload.
+
+A.5 makes bounded entries more useful to agents by returning the complete memory unit.
+
+## Core Rule
+
+For snippets with:
+
+```text
+result_mode = bounded_entry
+memory_id present
+```
+
+A.5 SHALL replace `snippet.text` with the full bounded Syx memory entry body.
+
+The full bounded entry is everything from:
+
+```markdown
+<!-- begin syx:memory_id=<memory_id> -->
+```
+
+through:
+
+```markdown
+<!-- end syx:memory_id=<memory_id> -->
+```
+
+excluding the begin and end markers.
+
+The boundary markers SHALL be used for lookup and extraction but SHALL NOT be included in the returned agent-facing text.
+
+The `memory_id` remains available as a structured field on the snippet.
+
+For snippets with:
+
+```text
+result_mode = unbounded_chunk_group
+```
+
+A.5 SHALL leave `snippet.text` unchanged.
+
+## Non-Goals
+
+A.5 does not:
+
+- add a new endpoint
+- change request shape
+- change CLI request behavior
+- change route classification
+- change scoring
+- change ordering
+- change dedupe/grouping
+- change min-score filtering
+- write memory
+- add MCP integration
+- add Cursor write-back
+- add summarize/delete operations
+- change normal chat behavior
+
+## A.5.1 Full Entry Rehydration
+
+For each A.4 snippet where `result_mode` is `bounded_entry`, the endpoint SHALL rehydrate the full Syx memory entry.
+
+Preferred lookup inputs:
+
+- `memory_id`
+- `artifact_path`, when available
+- `source_document_id`, when available
+
+The rehydration logic SHALL locate the matching Syx boundary block and return the complete entry text.
+
+Artifact lookup is intentionally scoped to long-term memory upload artifacts. A.5 SHALL resolve artifact reads strictly under:
+
+```text
+memory/{project}/uploads/
+```
+
+A.5 SHALL NOT search `daily.md`, `sleep_summary.md`, `dream_summary.md`, or other non-upload staging artifacts as part of full-entry expansion.
+
+## A.5.2 Boundary-Based Read
+
+The preferred implementation SHALL read the source artifact and extract the bounded entry by `memory_id`.
+
+Given:
+
+```text
+memory_id = mem_20260509_160626_f2734468
+```
+
+the system SHALL return all text from:
+
+```markdown
+<!-- begin syx:memory_id=mem_20260509_160626_f2734468 -->
+```
+
+through:
+
+```markdown
+<!-- end syx:memory_id=mem_20260509_160626_f2734468 -->
+```
+
+The returned `text` SHALL exclude both boundary markers.
+
+When `artifact_path` is available, it SHALL be treated as an upload-relative artifact path.
+
+When `source_document_id` is used, the substring before `::memory_id=` SHALL be treated as upload-relative by default.
+
+For example:
+
+```text
+source_document_id = sleep/sleep_2026-05-09T12-19-36.md::memory_id=mem_20260509_160626_f2734468
+```
+
+resolves to:
+
+```text
+memory/{project}/uploads/sleep/sleep_2026-05-09T12-19-36.md
+```
+
+A.5 SHALL reject unsafe artifact paths. If `artifact_path` or the path parsed from `source_document_id` is absolute, contains `..`, or otherwise resolves outside `memory/{project}/uploads/`, the endpoint SHALL:
+
+1. log a warning
+2. skip that path
+3. continue to the next fallback step
+
+If boundary extraction finds duplicate matching `memory_id` blocks in the same artifact, A.5 SHALL use the first valid block and log a warning.
+
+## A.5.3 Fallback Behavior
+
+If full-entry rehydration fails for a bounded snippet, the endpoint SHALL not fail the entire request.
+
+Recommended fallback order:
+
+1. Try artifact boundary extraction using `artifact_path` and `memory_id`.
+2. Try artifact boundary extraction using `source_document_id` and `memory_id`.
+3. Try docstore reconstruction using all chunks with the same `source_document_id`.
+4. Fall back to the original A.4 snippet text.
+
+Docstore reconstruction SHALL gather every available chunk with the same `source_document_id`, ordered by `chunk_index`, even if the original A.4 snippet covered a smaller chunk range.
+
+Docstore reconstruction SHALL be considered a fallback path, even when all chunks for the same `source_document_id` are found. Only boundary extraction from the source artifact SHALL count as `expanded`.
+
+If fallback occurs, the snippet SHOULD include:
+
+```json
+{
+  "entry_expansion_status": "fallback"
+}
+```
+
+and optionally:
+
+```json
+{
+  "entry_expansion_error": "<short diagnostic>"
+}
+```
+
+When docstore reconstruction is used, the snippet SHOULD include:
+
+```json
+{
+  "entry_expansion_status": "fallback",
+  "entry_expansion_method": "docstore_reconstruction"
+}
+```
+
+If both `artifact_path` and a path parsed from `source_document_id` are available and resolve to different upload-relative artifact paths, A.5 SHALL log a warning before attempting expansion.
+
+The warning SHOULD include:
+
+- `project_id`
+- `snippet_number`
+- `memory_id`
+- `artifact_path`
+- parsed `source_document_id` path
+
+A.5 SHALL treat the mismatch as suspicious but non-fatal. Expansion SHALL continue using the normal fallback order.
+
+If expansion succeeds through the source-document-id path after an artifact path mismatch, the snippet SHOULD include:
+
+```json
+{
+  "entry_expansion_status": "expanded",
+  "entry_expansion_method": "source_document_id_boundary",
+  "entry_expansion_warning": "artifact_path_source_document_id_mismatch"
+}
+```
+
+## A.5.4 Response Shape
+
+A.5 SHALL preserve the A.4 structured snippets response shape.
+
+A.5 SHALL NOT add a duplicate top-level `content` field.
+
+For bounded entries, `snippet.text` SHALL become the full bounded entry body without Syx boundary marker comments.
+
+Example:
+
+```json
+{
+  "snippet_number": 1,
+  "source": "ltm",
+  "source_document_id": "sleep/sleep_2026-05-09T12-19-36.md::memory_id=mem_20260509_160626_f2734468",
+  "chunk_index_start": 0,
+  "chunk_index_end": 4,
+  "memory_id": "mem_20260509_160626_f2734468",
+  "entry_type": "chat_pair",
+  "semantic_handle": "summary of memory decay process",
+  "topics": [
+    "memory decay",
+    "passive decay",
+    "interference",
+    "active forgetting",
+    "memory consolidation"
+  ],
+  "result_mode": "bounded_entry",
+  "entry_expansion_status": "expanded",
+  "entry_expansion_method": "artifact_path_boundary",
+  "text": "<full bounded entry body without begin/end markers>"
+}
+```
+
+For unbounded snippets:
+
+```json
+{
+  "snippet_number": 2,
+  "memory_id": null,
+  "result_mode": "unbounded_chunk_group",
+  "entry_expansion_status": "not_applicable",
+  "entry_expansion_method": "not_applicable",
+  "text": "<existing expanded chunk/group text>"
+}
+```
+
+## A.5.5 Expansion Status
+
+Each A.5 snippet SHALL include `entry_expansion_status`.
+
+For bounded snippets, the field is required.
+
+For unbounded snippets, the field SHOULD be set to `not_applicable`.
+
+The field SHALL NOT be omitted merely for old-client compatibility. A.5 changes the response schema intentionally, and clients can safely ignore unknown fields.
+
+Allowed values:
+
+```text
+expanded
+expanded_truncated
+not_applicable
+fallback
+failed
+```
+
+Meaning:
+
+```text
+expanded:
+  bounded entry was successfully extracted from the source artifact using memory_id begin/end markers
+
+expanded_truncated:
+  bounded entry was successfully extracted from the source artifact using memory_id begin/end markers, but the returned payload was truncated because it exceeded the configured maximum size
+
+not_applicable:
+  result is unbounded and no full-entry expansion applies
+
+fallback:
+  source artifact boundary extraction failed, but docstore reconstruction or original A.4 text was returned
+
+failed:
+  bounded entry expansion failed and no usable text could be returned
+```
+
+A.5 SHOULD avoid `failed` unless the snippet cannot safely return any text.
+
+## A.5.5.1 Expansion Method
+
+Each A.5 snippet SHALL include `entry_expansion_method`.
+
+Allowed values:
+
+```text
+artifact_path_boundary
+source_document_id_boundary
+docstore_reconstruction
+original_snippet
+not_applicable
+```
+
+Meaning:
+
+```text
+artifact_path_boundary:
+  full entry was extracted from the source artifact using artifact_path and memory_id boundary markers
+
+source_document_id_boundary:
+  full entry was extracted by resolving the artifact from source_document_id and using memory_id boundary markers
+
+docstore_reconstruction:
+  source artifact boundary extraction failed, and text was reconstructed from docstore chunks with the same source_document_id
+
+original_snippet:
+  expansion failed or was unavailable, and the endpoint returned the original A.4 snippet text
+
+not_applicable:
+  snippet is unbounded and full-entry expansion does not apply
+```
+
+Recommended pairings:
+
+```text
+expanded:
+  entry_expansion_method = artifact_path_boundary
+  or source_document_id_boundary
+
+expanded_truncated:
+  entry_expansion_method = artifact_path_boundary
+  or source_document_id_boundary
+
+fallback:
+  entry_expansion_method = docstore_reconstruction
+  or original_snippet
+
+not_applicable:
+  entry_expansion_method = not_applicable
+
+failed:
+  entry_expansion_method = original_snippet
+  or omitted only if no method was attempted
+```
+
+## A.5.6 Ordering and Counts
+
+A.5 SHALL preserve snippet order from A.4.
+
+A.5 SHALL preserve:
+
+- `snippet_count`
+- `bounded_result_count`
+- `unbounded_result_count`
+
+Full-entry expansion SHALL NOT change ranking, filtering, or ordering.
+
+## A.5.7 Size Guard
+
+A.5 SHALL include a configurable maximum expanded entry size.
+
+Setting:
+
+```text
+AGENT_MEMORY_MAX_ENTRY_CHARS
+```
+
+Default:
+
+```text
+25000
+```
+
+The setting SHALL be added to backend configuration and local developer configuration helpers such as the Makefile.
+
+`AGENT_MEMORY_MAX_ENTRY_CHARS` applies to the full serialized snippet object, not only to `snippet.text`.
+
+If a source-artifact boundary expansion would cause the serialized snippet object to exceed the configured maximum, the endpoint SHALL truncate safely and mark:
+
+```json
+{
+  "entry_expansion_status": "expanded_truncated"
+}
+```
+
+If a docstore reconstruction or original-snippet fallback would cause the serialized snippet object to exceed the configured maximum, the endpoint SHALL truncate safely while preserving:
+
+```json
+{
+  "entry_expansion_status": "fallback"
+}
+```
+
+Fallback truncation SHALL still include the truncation-specific metadata below.
+
+When `expanded_truncated` is used, `snippet.text` SHALL NOT synthesize begin or end markers. It SHALL include:
+
+1. a prefix of the entry body
+2. a clear truncation notice
+
+The truncation notice SHALL make clear that the returned text is not the complete original entry body.
+
+For docstore reconstruction fallback, A.5 SHALL also respect `AGENT_MEMORY_MAX_ENTRY_CHARS` and use the same truncation metadata when reconstructed text exceeds the configured limit. The status SHALL remain `fallback`.
+
+`entry_expansion_returned_chars` SHALL count the final returned `snippet.text`, including the truncation notice.
+
+`entry_expansion_error` SHALL be used for expansion failures or fallback diagnostics.
+
+It SHOULD be present when:
+
+```text
+entry_expansion_status = fallback
+entry_expansion_status = failed
+```
+
+`entry_expansion_error` SHALL NOT be used for normal truncation. Truncation is a controlled size-guard behavior, not an expansion error.
+
+If text is truncated, the snippet SHOULD include truncation-specific metadata:
+
+```json
+{
+  "entry_expansion_status": "expanded_truncated",
+  "entry_expansion_truncated": true,
+  "entry_expansion_original_chars": 42850,
+  "entry_expansion_returned_chars": 12000,
+  "entry_expansion_max_chars": 12000,
+  "entry_expansion_truncation_reason": "max_chars_exceeded"
+}
+```
+
+For fallback truncation, the same truncation metadata applies, but `entry_expansion_status` SHALL remain `fallback`.
+
+## A.5.8 Debug Output
+
+The endpoint or CLI debug output SHOULD record:
+
+- number of bounded snippets
+- number successfully expanded
+- number expanded with truncation
+- number using fallback
+- number failed
+- memory IDs expanded
+- boundary lookup failures
+- path containment rejections
+- artifact/source-document path mismatches
+- whether any entry was truncated
+
+## A.5.9 Existing A.4 Behavior Preserved
+
+A.5 SHALL preserve all A.4 endpoint behavior except bounded snippet text expansion.
+
+A.5 SHALL continue to:
+
+- accept `project_name`
+- resolve `project_id`
+- require `agent_token` field
+- use provided category
+- skip route classification
+- skip answer generation
+- return structured JSON snippets
+- enforce min-score behavior
+- return empty snippets when no results pass threshold
+- respect global sleep lock
+
+## Test Targets
+
+Tests SHOULD cover:
+
+- bounded snippet expands to full begin/end entry
+- expanded text includes begin marker
+- expanded text includes end marker
+- expanded text includes content beyond original chunk range
+- unbounded snippet text remains unchanged
+- ordering is preserved
+- counts are preserved
+- expansion fallback returns original snippet text
+- missing artifact path falls back safely
+- missing boundary returns fallback status
+- no top-level duplicate `content` field is added
+- CLI debug file records expansion status
+- CLI debug file records expansion method
+- size guard truncates oversized bounded entries
+- truncated text excludes begin and end Syx markers
+- truncation metadata is returned for `expanded_truncated`
+- `entry_expansion_error` is not used for normal truncation
+- unsafe artifact paths are rejected and fall back safely
+- duplicate matching `memory_id` blocks use the first block and log a warning
+- docstore reconstruction gathers chunks with the same `source_document_id` ordered by `chunk_index`
+- docstore reconstruction is reported as fallback
+- normal chat behavior remains unchanged
+
+## Acceptance Criteria
+
+1. Bounded snippets return full Syx memory entries in `text`.
+2. Full bounded entry text excludes begin and end Syx markers.
+3. Unbounded snippets remain unchanged.
+4. A.4 response shape is preserved.
+5. Snippet ordering is preserved.
+6. Counts are preserved.
+7. Expansion failures do not fail the whole request.
+8. Expansion status is exposed per snippet.
+9. Expansion method is exposed per snippet.
+10. Bounded artifact paths are resolved only under `memory/{project}/uploads/`.
+11. Unsafe paths are rejected and fall back safely.
+12. Oversized expanded payloads respect `AGENT_MEMORY_MAX_ENTRY_CHARS`.
+13. Truncated bounded text excludes begin and end Syx markers and includes truncation metadata.
+14. Docstore reconstruction is treated as fallback.
+15. No memory is written.
+16. Normal chat behavior is unchanged.

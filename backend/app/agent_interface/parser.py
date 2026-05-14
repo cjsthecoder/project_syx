@@ -93,10 +93,11 @@ def _parse_part(part: str) -> Optional[AgentMemorySnippet]:
     cos = _as_float(header_meta.get("cos"))
     chunk_start, chunk_end, chunk_range = _parse_chunk_index(_as_str(header_meta.get("chunk_index")))
 
-    memory_id = _as_str(yaml_meta.get("memory_id"))
+    memory_id = _as_str(yaml_meta.get("memory_id")) or _as_str(header_meta.get("memory_id"))
+    artifact_path = _as_str(yaml_meta.get("artifact_path")) or _as_str(header_meta.get("artifact_path"))
     source_document_id = _source_document_id(
-        explicit=_as_str(yaml_meta.get("source_document_id")),
-        artifact_path=_as_str(yaml_meta.get("artifact_path")),
+        explicit=_as_str(yaml_meta.get("source_document_id")) or _as_str(header_meta.get("source_document_id")),
+        artifact_path=artifact_path,
         memory_id=memory_id,
     )
     result_mode = "bounded_entry" if memory_id else "unbounded_chunk_group"
@@ -113,13 +114,13 @@ def _parse_part(part: str) -> Optional[AgentMemorySnippet]:
         chunk_index_end=chunk_end,
         chunk_index_range=chunk_range,
         memory_id=memory_id,
-        entry_type=_as_str(yaml_meta.get("entry_type")),
-        source_agent=_as_str(yaml_meta.get("source_agent")),
-        source_scope=_as_str(yaml_meta.get("source_scope")),
-        current_scope=_as_str(yaml_meta.get("current_scope")),
-        semantic_handle=_as_str(yaml_meta.get("semantic_handle")),
+        entry_type=_as_str(yaml_meta.get("entry_type")) or _as_str(header_meta.get("entry_type")),
+        source_agent=_as_str(yaml_meta.get("source_agent")) or _as_str(header_meta.get("source_agent")),
+        source_scope=_as_str(yaml_meta.get("source_scope")) or _as_str(header_meta.get("source_scope")),
+        current_scope=_as_str(yaml_meta.get("current_scope")) or _as_str(header_meta.get("current_scope")),
+        semantic_handle=_as_str(yaml_meta.get("semantic_handle")) or _as_str(header_meta.get("semantic_handle")),
         topics=_topics(yaml_meta.get("topics")),
-        artifact_path=_as_str(yaml_meta.get("artifact_path")),
+        artifact_path=artifact_path,
         result_mode=result_mode,
         text=body,
     )

@@ -6,6 +6,12 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Thin JSON fetch wrapper for backend API calls.
+ *
+ * Exports `api`, which sends JSON requests, throws a `RequestError` on non-OK
+ * responses, and safely parses and returns the typed JSON body.
+ */
 import { RequestError, readJsonSafe, throwRequestError } from '@/pages/app/request'
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {

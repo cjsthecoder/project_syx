@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Tests for dream RAG context expansion.
+
+Covers the ``dream.rag`` adapter applying route policy and daily/main merge,
+and verifies the questions, research, and context agents retrieve and inject
+the expanded dream RAG context with the expected route per call.
+"""
 import importlib.util
 import sys
 import types

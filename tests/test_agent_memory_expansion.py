@@ -6,6 +6,14 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Tests for agent memory snippet entry expansion.
+
+Covers ``expand_agent_memory_snippets``: expanding bounded snippets from the
+artifact file, marking unbounded snippets not-applicable, deduplicating
+repeated memory ids, falling back to docstore reconstruction, and truncating
+oversized entries to the configured character limit.
+"""
 import json
 import sys
 import types

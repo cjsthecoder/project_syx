@@ -6,6 +6,12 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Toast notification component.
+ *
+ * Renders a fixed bottom-center message banner with optional Retry and Dismiss
+ * actions, auto-dismissing after a 5-second timeout.
+ */
 import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 

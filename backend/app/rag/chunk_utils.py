@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Text chunking and chunk post-processing helpers for RAG.
+
+This module provides deterministic character-based text splitting plus adjacent
+chunk overlap trimming and snippet-group collapsing of retrieved chunks.
+"""
 from typing import Any, Dict, List
 
 

@@ -8,6 +8,13 @@ root for full license information.
 """
 from __future__ import annotations
 
+"""
+Tests for the light response pruner.
+
+Exercises ``light_response_pruner`` behaviors: front/end prefix trimming,
+markdown stripping, whitespace compaction, similar-sentence deduplication,
+fenced-code-block safety, per-stage enable toggles, and config validation.
+"""
 from typing import cast
 
 import pytest

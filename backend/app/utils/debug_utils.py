@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Debug file writing utilities for memory pipelines.
+
+This module writes optional debug files under a project's memory directory when
+the GENERATE_DEBUG_FILES setting is enabled.
+"""
 import logging
 import os
 

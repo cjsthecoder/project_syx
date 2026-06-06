@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Memory tagging model for chat exchanges.
+
+This module calls the tagger LLM to extract topics, intent, type, a semantic
+handle, and open questions for a chat pair, returning normalized metadata.
+"""
 import logging
 import json
 import time

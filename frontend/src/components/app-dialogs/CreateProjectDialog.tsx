@@ -6,6 +6,12 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Create-project dialog.
+ *
+ * Renders a modal with a controlled project-name input and Cancel/Create
+ * actions, delegating name changes and creation to parent callbacks.
+ */
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogFooter, DialogHeader } from '@/components/ui/dialog'
 

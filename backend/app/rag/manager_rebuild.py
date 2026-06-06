@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Long-term memory FAISS index rebuild pipeline.
+
+This module rebuilds a project's FAISS index from uploaded files, parsing Syx
+entries, chunking, embedding in parallel batches, and persisting the index and metadata.
+"""
 import logging
 import os
 import time

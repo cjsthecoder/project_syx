@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Sleep-stage consolidation of open questions.
+
+This module deterministically deduplicates open_questions.jsonl into canonical
+unresolved questions and writes the consolidated JSON artifact per project.
+"""
 import json
 import logging
 import os

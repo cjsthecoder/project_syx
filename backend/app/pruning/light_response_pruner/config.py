@@ -8,6 +8,13 @@ root for full license information.
 """
 from __future__ import annotations
 
+"""
+Configuration loading and merging for the light response pruner.
+
+This module validates, loads from JSON files, and merges pruning rule sets into a
+single PruneRules model, with optional comment-key stripping and JSON schema export.
+"""
+
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path

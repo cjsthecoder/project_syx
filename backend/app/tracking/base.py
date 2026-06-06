@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Base instrumentation interfaces and timestamp helpers for tracking.
+
+Defines the Instrumentation protocol, a no-op implementation used when tracking
+is disabled, and shared timestamp utilities plus the active-turn context var.
+"""
 import contextvars
 from datetime import datetime, timezone
 from typing import Optional, Protocol

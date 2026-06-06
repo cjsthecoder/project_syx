@@ -6,6 +6,13 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * React hook centralizing all project-scoped data and actions.
+ *
+ * Loads and manages projects, files, stats, project info, dream summaries, and
+ * personality settings, and exposes CRUD operations for projects, file uploads,
+ * personality saves, dream-item persistence, and sleep-status checks.
+ */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/pages/app/api'
 import { toDreamViewState } from '@/pages/app/dream'

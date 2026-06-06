@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+SQLModel database models for the Syx persistence layer.
+
+This module defines the Project, File, and ChatMessage tables and a shared UTC
+timestamp helper used as the default for created/updated fields.
+"""
 from datetime import datetime, timezone
 from typing import Optional
 

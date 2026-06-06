@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Idea Agent for the Syx Dream cycle.
+
+Builds the idea prompt from the dream context, invokes the Dream LLM, and
+validates the returned DreamEntry JSON, emitting only high-value Open Question
+items with normalized metadata.
+"""
 import json
 import logging
 from datetime import datetime, timezone

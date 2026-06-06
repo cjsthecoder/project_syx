@@ -6,6 +6,14 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Tests for the legacy Syx boundary tagger tool.
+
+Covers ``tag_legacy_syx_boundaries.tag_text``: idempotently wrapping legacy
+daily/dream pairs in Syx memory markers, handling malformed pairs, stripping
+old delimiters, normalizing dream-output types, and adding entry headings,
+plus ``_infer_project_id`` path inference.
+"""
 from pathlib import Path
 
 from tools.tag_legacy_syx_boundaries import _infer_project_id, tag_text

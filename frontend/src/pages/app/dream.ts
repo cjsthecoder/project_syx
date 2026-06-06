@@ -6,6 +6,13 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Helpers for transforming raw dream API payloads into view state.
+ *
+ * Exports `toDreamViewState`, which validates and normalizes the project
+ * summary and dream items from an untyped payload into a typed structure for
+ * rendering.
+ */
 import { DreamItem } from '@/pages/app/types'
 
 type DreamViewState = {

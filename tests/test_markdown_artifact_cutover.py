@@ -6,6 +6,14 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Tests for the daily memory store markdown cutover.
+
+Verifies that ``daily_store.append_pair`` writes Syx-bounded ``daily.md``
+entries (rather than legacy ``daily.txt``), preserves ``created_at``
+timestamps and memory ids in metadata, and that backfill from metadata
+ignores legacy text artifacts.
+"""
 import json
 import importlib.util
 import sys

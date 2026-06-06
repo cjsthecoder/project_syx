@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Tests for the agent memory search interface.
+
+Covers parsing of prompt context into structured snippets, the
+``/agent/memory/search`` endpoint behavior (auth, sleep lock, structured
+responses), and the ``agent_memory_search`` CLI output and debug files.
+"""
 import json
 import sys
 import types

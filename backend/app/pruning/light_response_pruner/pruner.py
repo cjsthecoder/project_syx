@@ -8,6 +8,14 @@ root for full license information.
 """
 from __future__ import annotations
 
+"""
+Core pruning engine for the light response pruner.
+
+Provides the Pruner class and PrunerConfig that orchestrate markdown stripping,
+front/end prefix trimming, whitespace compaction, and similarity pruning to
+produce a structured PruneResult.
+"""
+
 import logging
 from collections.abc import Mapping, Sequence
 from pathlib import Path

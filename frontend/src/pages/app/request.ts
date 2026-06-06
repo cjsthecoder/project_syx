@@ -6,6 +6,13 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * HTTP response and error handling utilities.
+ *
+ * Defines the `RequestError` class and helpers for safely reading response
+ * text/JSON, extracting error messages from varied payload shapes, and throwing
+ * a normalized error for failed responses.
+ */
 export class RequestError extends Error {
   status: number
   body: unknown

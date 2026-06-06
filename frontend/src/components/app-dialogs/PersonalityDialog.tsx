@@ -6,6 +6,12 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Modal dialog for editing a project's personality settings.
+ *
+ * Provides controls for the system prompt, tone, verbosity, format preference,
+ * creativity slider, and domain focus, surfacing changes via callback props.
+ */
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogFooter, DialogHeader } from '@/components/ui/dialog'
 import { Select } from '@/components/ui/select'

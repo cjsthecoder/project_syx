@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Remote research helpers for the Dream cycle.
+
+Provides token counting/trimming utilities and a best-effort web-search-backed
+research fetch used to enrich Dream reasoning.
+"""
 import logging
 
 from ..core.config import get_settings

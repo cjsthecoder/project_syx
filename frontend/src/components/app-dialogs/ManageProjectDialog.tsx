@@ -6,6 +6,13 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Project management dialog.
+ *
+ * Renders a modal for managing a project: viewing metadata, opening personality
+ * settings, toggling daily history, renaming, uploading/deleting files via
+ * drag-and-drop or file picker, and deleting the project.
+ */
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogFooter, DialogHeader } from '@/components/ui/dialog'
 import { ProjectInfo } from '@/pages/app/types'

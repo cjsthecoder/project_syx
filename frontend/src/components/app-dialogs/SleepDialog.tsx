@@ -6,6 +6,12 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Sleep status dialog.
+ *
+ * Displays a modal informing the user that the system is running its sleep
+ * cycle, optionally showing the timestamp since sleeping began.
+ */
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogFooter, DialogHeader } from '@/components/ui/dialog'
 

@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Dream-specific RAG retrieval adapter for the Sleep/Dream pipeline.
+
+Wraps the route-policy-driven daily/main memory merge so dream agents can
+retrieve context with a deterministic synthetic route, returning a normalized
+result dict (with empty-result fallbacks on failure).
+"""
 import logging
 from typing import Any, Dict
 

@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Tests for dream/sleep summary formatting.
+
+Verifies ``collect_research_topics`` dedupes the first-seen valid research
+topics and ``format_latest_sleep_summary`` appends (or omits) the research
+block when building the latest sleep summary text.
+"""
 from app.utils.dream_summary import collect_research_topics, format_latest_sleep_summary
 
 

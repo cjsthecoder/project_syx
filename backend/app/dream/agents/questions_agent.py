@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Open Questions agent for the Syx Dream cycle.
+
+Loads the consolidated open-question artifact, answers each question using local
+RAG context and optional remote research via the Dream LLM, and returns the
+question/answer set as an in-memory structure.
+"""
 import logging
 import time
 from typing import List, Dict, Any

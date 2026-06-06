@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Alembic migration environment for the Syx backend.
+
+Configures offline and online migration runs against the application's SQLModel
+metadata and database engine.
+"""
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context

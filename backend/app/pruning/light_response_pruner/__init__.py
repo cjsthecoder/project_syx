@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Package initializer for the light_response_pruner subpackage.
+
+Re-exports the public pruning API (Pruner, configuration loaders, models,
+exceptions, and text helpers) for response post-processing.
+"""
 import logging
 
 from .config import (

@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Deterministic similarity-score ordering for retrieval candidates.
+
+This module sorts candidate dicts in descending order by their raw cosine
+similarity score using a stable sort that preserves input order on ties.
+"""
 from typing import Any, Dict, List
 
 

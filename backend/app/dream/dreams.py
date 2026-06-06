@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Dream cycle orchestration for the Syx AGI Chatbot Framework.
+
+Runs the post-sleep Dream pipeline (questions, idea, and research agents),
+bridges remote-research questions into idea items, and serializes the final
+dream.json output along with debug artifacts.
+"""
 import json
 import logging
 import os

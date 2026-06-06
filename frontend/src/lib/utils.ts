@@ -6,6 +6,12 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Shared frontend utility helpers.
+ *
+ * Exports `cn`, which merges conditional class names via clsx and resolves
+ * conflicting Tailwind classes with tailwind-merge.
+ */
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 

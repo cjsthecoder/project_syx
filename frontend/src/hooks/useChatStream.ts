@@ -6,6 +6,13 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * React hook managing chat message state and streaming responses.
+ *
+ * Tracks the message list and input, loads persisted chats, and posts to
+ * `/chat/stream` while incrementally appending streamed assistant text and
+ * handling sleep-state and error conditions.
+ */
 import { useCallback, useMemo, useState } from 'react'
 import { api } from '@/pages/app/api'
 import { RequestError, throwRequestError } from '@/pages/app/request'

@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Long-term memory FAISS index I/O and adjacency helpers.
+
+This module provides atomic JSON read/write utilities, vector normalization,
+doc_id/item_id rules, and writes the LTM manifest and adjacency sidecar artifacts.
+"""
 import json
 import logging
 import os

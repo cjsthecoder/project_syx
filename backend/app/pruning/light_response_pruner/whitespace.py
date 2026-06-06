@@ -8,6 +8,13 @@ root for full license information.
 """
 from __future__ import annotations
 
+"""
+Whitespace compaction for the light response pruner.
+
+Collapses redundant internal spaces and blank prose lines while leaving fenced
+code blocks untouched.
+"""
+
 import re
 
 _INTERNAL_SPACES_RE = re.compile(r"[ \t]+")

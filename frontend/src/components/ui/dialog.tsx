@@ -6,6 +6,12 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Dialog UI primitives.
+ *
+ * Provides a modal Dialog component with a click-to-dismiss backdrop, plus
+ * DialogHeader and DialogFooter layout helpers styled with Tailwind.
+ */
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 

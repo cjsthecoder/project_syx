@@ -6,6 +6,14 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Tests for Syx-bounded artifact indexing in the RAG manager.
+
+Covers ``read_file_text`` parsing of bounded markdown entries (and legacy
+bounded text), fallback behavior for malformed markers or invalid YAML
+metadata, and the ``ltm_docstore_item_id`` / ``_ltm_candidate_metadata``
+helpers that surface Syx metadata fields to retrieval.
+"""
 import logging
 import sys
 import types

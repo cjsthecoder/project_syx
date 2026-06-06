@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Sleep-cycle lock and in-process state management.
+
+This module tracks whether a sleep cycle is active and manages the on-disk sleep
+lock file, including engaging, releasing, restoring from disk, and clearing stale locks.
+"""
 import os
 import time
 from typing import Optional

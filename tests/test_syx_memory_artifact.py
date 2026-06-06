@@ -6,6 +6,14 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Tests for Syx memory artifact rendering and parsing.
+
+Covers ``syx_memory_artifact`` helpers for rendering bounded memory entries,
+parsing them back (including nested markdown), validating boundary markers,
+normalizing scopes/headings/snake-case values, and detecting malformed or
+duplicate entries.
+"""
 from backend.app.rag.syx_memory_artifact import (
     ensure_blank_line_before_begin_markers,
     ensure_entry_headings,

@@ -7,6 +7,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+CLI tool to convert legacy Syx .txt memory artifacts into Markdown memory.
+
+Parses legacy daily/dream pair blocks and metadata, regenerates memory IDs and
+artifact headers, writes converted .md files, and records conversion statistics.
+"""
 import argparse
 import json
 import logging

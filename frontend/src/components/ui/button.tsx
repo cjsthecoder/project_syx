@@ -6,6 +6,12 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Button UI primitive.
+ *
+ * Provides a forwardRef Button component that renders a styled <button> with
+ * Tailwind classes and merges custom classNames via cn().
+ */
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 

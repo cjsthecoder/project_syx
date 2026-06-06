@@ -6,6 +6,14 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Tests for ChatGPT HTML export message extraction.
+
+These tests cover the extraction helpers in
+``tools.import_chat_html_to_markdown_memory``, verifying USER/ASSISTANT
+parsing from legacy role-tagged divs and the conversation-turn fallback,
+plus detection of incomplete or virtualized HTML dumps.
+"""
 from pathlib import Path
 import sys
 

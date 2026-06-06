@@ -8,6 +8,13 @@ root for full license information.
 """
 from __future__ import annotations
 
+"""
+Exception hierarchy for the light response pruner.
+
+Defines the base PrunerError and specific errors raised for invalid rule
+configuration, runtime configuration, and prune input.
+"""
+
 
 class PrunerError(Exception):
     """Base exception for all library-defined errors."""

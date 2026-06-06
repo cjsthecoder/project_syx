@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Unit tests for the RAG chunk utilities.
+
+Verifies that collapse_snippet_groups concatenates adjacent same-document chunks
+without inserting newlines and splits non-contiguous chunks.
+"""
 from backend.app.rag.chunk_utils import collapse_snippet_groups
 
 

@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Build the Dream Context Block consumed by the Sleep/Dream agents.
+
+Assembles user profile, project system prompt, context summary, question
+answers, daily memory, and project RAG context in a fixed order, applying
+per-section fallbacks and logging token counts.
+"""
 import logging
 import os
 import re

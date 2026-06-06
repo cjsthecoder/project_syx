@@ -6,6 +6,13 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Shared TypeScript type definitions for the chat app.
+ *
+ * Declares the data shapes used across the app pages and hooks, including
+ * `Message`, `Project`, `ModelItem`, `DreamItem`/`DreamResearch`,
+ * `ProjectStats`, and `ProjectInfo`.
+ */
 export type Message = {
   id?: number
   clientId?: string

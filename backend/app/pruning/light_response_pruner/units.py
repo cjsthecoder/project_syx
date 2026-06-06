@@ -8,6 +8,13 @@ root for full license information.
 """
 from __future__ import annotations
 
+"""
+Text span detection units for the light response pruner.
+
+This module locates leading sentences and paragraph spans and detects structured
+or fenced-code content used when trimming response text.
+"""
+
 from dataclasses import dataclass
 
 

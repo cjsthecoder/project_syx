@@ -6,6 +6,14 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Tests for the dream auto-accept pipeline.
+
+Exercises ``auto_accept.auto_accept_dreams``: filtering remote items without
+research, pruning assistant text before tagging, persisting accepted items as
+keep=false dream-output memories, writing the latest sleep summary, and
+renaming ``dream.json`` to a bad-dream file on persistence failure.
+"""
 import importlib.util
 import json
 import sys

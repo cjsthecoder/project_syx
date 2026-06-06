@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Research Agent for the Syx Dream cycle.
+
+Iterates Idea Agent entries' recommended research topics, queries the Dream LLM
+per topic with project and local-memory context, and attaches parsed research
+summaries back onto each entry.
+"""
 import json
 import logging
 from datetime import datetime, timezone

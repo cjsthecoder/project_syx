@@ -6,6 +6,13 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Top-level chat application page for the Syx frontend.
+ *
+ * Composes the project selector, model picker, message list, and prompt input,
+ * wiring together the project-data and chat-stream hooks plus the sleep, create,
+ * manage, personality, and dream-analysis dialogs.
+ */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'

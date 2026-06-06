@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Auto-accept pending dream items as Dream memory during the Sleep cycle.
+
+Reads each project's dream.json, tags and persists every processable item as a
+kept=False Dream memory, renders the dream summary markdown, and rebuilds the
+daily cache, mirroring the manual Dream Remember path independently of the UI.
+"""
 import json
 import logging
 import os

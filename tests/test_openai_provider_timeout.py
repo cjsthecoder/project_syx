@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Tests for OpenAI provider timeout wiring.
+
+Verifies that ``OpenAILLMProvider`` propagates its configured ``timeout_s``
+to both the client constructor and individual request calls for the
+responses and chat-completions paths.
+"""
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 

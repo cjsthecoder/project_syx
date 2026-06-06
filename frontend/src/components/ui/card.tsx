@@ -6,6 +6,12 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Card UI primitives.
+ *
+ * Provides Card, CardHeader, and CardContent presentational components that
+ * wrap div elements with Tailwind styling and merge custom classNames via cn().
+ */
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 

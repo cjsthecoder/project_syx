@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Dream status API endpoint for the Syx AGI Chatbot Framework.
+
+Exposes a stub /dream/status route that currently reports no available dreams
+regardless of the dream feature flag.
+"""
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from ..core.config import get_settings

@@ -8,6 +8,12 @@ root for full license information.
 """
 from __future__ import annotations
 
+"""
+Tests for the pruning package public API surface.
+
+Verifies that the expected classes, errors, and helper functions are
+importable from ``app.pruning.light_response_pruner``.
+"""
 from app.pruning.light_response_pruner import (
     EndRuleSection,
     FrontRuleSection,

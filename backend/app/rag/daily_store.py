@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Daily memory vector store and metadata management.
+
+This module maintains the per-project in-memory FAISS Daily index and the
+daily.json/daily.md artifacts, handling pair appends, cache rebuilds, and adjacency lookups.
+"""
 from dataclasses import dataclass
 import os
 import json

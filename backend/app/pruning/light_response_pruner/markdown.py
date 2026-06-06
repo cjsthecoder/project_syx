@@ -8,6 +8,14 @@ root for full license information.
 """
 from __future__ import annotations
 
+"""
+Markdown markup stripping for the light response pruner.
+
+Removes headings, lists, blockquotes, emphasis, links, and other markdown
+formatting from prose while preserving fenced code blocks and numbered
+requirement/question lines.
+"""
+
 import re
 
 _ATX_HEADING_RE = re.compile(r"^(?P<indent>\s*)#{1,6}\s+", re.MULTILINE)

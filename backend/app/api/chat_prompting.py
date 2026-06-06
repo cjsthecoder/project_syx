@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Prompt construction and debugging helpers for the Syx chat API.
+
+Defines the RAG system prompt, token estimation helpers, and a debug snapshot
+writer that dumps the full assembled prompt to a project's debug directory.
+"""
 import logging
 from datetime import datetime
 from typing import Optional

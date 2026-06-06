@@ -8,6 +8,13 @@ root for full license information.
 """
 from __future__ import annotations
 
+"""
+Loading, validation, and merging of pruning rule configurations.
+
+Reads rules from mappings, JSON files, or PruneRules instances, validates them
+against the Pydantic models, and merges multiple rule sources into one.
+"""
+
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path

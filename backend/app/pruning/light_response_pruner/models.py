@@ -8,6 +8,13 @@ root for full license information.
 """
 from __future__ import annotations
 
+"""
+Pydantic models for the light response pruner.
+
+Defines the rule configuration models (front/end cut sections and prune rules)
+and the structured result type returned when pruning a response.
+"""
+
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator

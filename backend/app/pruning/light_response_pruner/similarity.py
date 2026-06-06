@@ -8,6 +8,13 @@ root for full license information.
 """
 from __future__ import annotations
 
+"""
+Near-duplicate sentence pruning for the light response pruner.
+
+Detects and removes sentences that are fuzzily similar to ones already kept,
+while protecting code blocks and sentences containing identifiers or numbers.
+"""
+
 import re
 from dataclasses import dataclass
 

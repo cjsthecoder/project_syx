@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Tests for dream output persistence.
+
+Verifies that ``dreams.write_dream_output`` appends new pending items to an
+existing ``dream.json`` (preserving prior items and updating date/summary)
+and creates the file when none exists yet.
+"""
 import json
 import importlib.util
 import sys

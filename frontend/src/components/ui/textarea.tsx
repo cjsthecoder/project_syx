@@ -6,6 +6,12 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Textarea UI primitive.
+ *
+ * Provides a forwardRef Textarea component that renders a styled native
+ * <textarea> element and merges custom classNames via cn().
+ */
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 

@@ -6,6 +6,12 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Select UI primitive.
+ *
+ * Provides a forwardRef Select component that renders a styled native <select>
+ * element and merges custom classNames via cn().
+ */
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 

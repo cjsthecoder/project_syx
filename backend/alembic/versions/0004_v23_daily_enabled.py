@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Alembic migration 0004 for the Syx backend.
+
+Adds the boolean daily_rag_enabled column (server default true) to the project
+table on upgrade and drops it on downgrade.
+"""
 from alembic import op
 import sqlalchemy as sa
 

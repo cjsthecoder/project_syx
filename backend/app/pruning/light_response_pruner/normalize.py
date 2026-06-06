@@ -8,6 +8,13 @@ root for full license information.
 """
 from __future__ import annotations
 
+"""
+Text normalization helpers for prefix matching.
+
+Provides a single helper that lowercases, collapses whitespace, and strips
+trailing punctuation so text can be compared against pruning rule prefixes.
+"""
+
 import re
 
 _TRAILING_SENTENCE_PUNCTUATION_RE = re.compile(r"[.!?]+$")

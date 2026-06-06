@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Tests for route policy minimum-score defaults.
+
+Verifies that ``load_and_validate_route_policy`` exposes the expected
+per-route ``min_score`` thresholds for each retrieval category.
+"""
 from backend.app.core.route_policy import load_and_validate_route_policy
 
 

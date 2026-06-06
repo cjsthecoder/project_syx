@@ -6,6 +6,12 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Sleep-cycle worker thread launcher.
+
+This module starts a background daemon thread to run a sleep-cycle worker,
+skipping the start when a cycle is already in progress.
+"""
 import logging
 import threading
 from typing import Callable, Optional

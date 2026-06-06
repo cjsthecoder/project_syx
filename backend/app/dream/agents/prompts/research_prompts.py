@@ -6,6 +6,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+"""
+Prompt builder for the Dream cycle Research Agent.
+
+Provides build_research_prompt, which constructs a single-topic research
+instruction prompt grounded in project context, local retrieval context, and
+the originating idea entry.
+"""
 def build_research_prompt(
     project_summary_text: str,
     local_context_text: str,

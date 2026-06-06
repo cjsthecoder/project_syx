@@ -6,6 +6,12 @@
  * This file is part of the Syx project. See the LICENSE file in the project
  * root for full license information.
  */
+/**
+ * Modal dialog for reviewing and curating dream-analysis items before saving.
+ *
+ * Renders each dream item's origin text, assistant response, and any research
+ * summaries, with per-item "Remember" and "Keep" toggles and a submit action.
+ */
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogFooter, DialogHeader } from '@/components/ui/dialog'
 import { DreamItem } from '@/pages/app/types'

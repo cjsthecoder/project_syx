@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Copyright (c) 2025 Syx Project Contributors. All rights reserved.
+Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 Use of this software requires explicit written permission from the copyright holder.
-
+"""
+"""
 Import pre-tagged chat TXT files into an output directory.
-
 Behavior:
 - Input is a directory containing top-level .txt files (no recursion).
 - Copy each .txt to output directory.
@@ -17,7 +17,6 @@ Behavior:
 - Append one per-file statistics row to output statistics.jsonl.
 - Write one concatenated output file for this run: concatenated_daily.txt.
 """
-
 
 import argparse
 import json

@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Syx Project Contributors. All rights reserved.
+Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
@@ -68,6 +68,14 @@ What to use from dream_context:
 - Use summaries, notes, daily memory, and other sections to judge recurrence, importance, duplication, project relevance, and whether a topic is already sufficiently covered.
 - Prefer repeated themes, unresolved architecture tensions, durable technical gaps, and research outputs that can be converted into reusable project memory.
 
+How to use === PROJECT RAG CONTEXT ===:
+- Treat PROJECT RAG CONTEXT as supporting evidence only, not as a source of new candidate Dream entries.
+- RAG context is automatically retrieved and may contain partial chunks, duplicates, stale prior Dream outputs, adjacent material, or unrelated-but-similar snippets.
+- Use RAG context to judge whether a candidate is already covered, recurring, project-relevant, or supported by prior memory.
+- Do not emit an item merely because a topic appears in RAG context.
+- Ignore RAG snippets that are off-topic, merely adjacent, or too truncated to support a concrete memory-value judgment.
+- Prefer candidates grounded in QUESTION ANSWERS, DAILY MEMORY, or explicit summaries; let RAG context support or disqualify those candidates.
+
 Selection policy:
 - Prefer answer_remote items when they add durable, concrete, net-new knowledge.
 - Be conservative with answer_local items.
@@ -103,9 +111,10 @@ assistant_response style rules:
 - No references to "remote-research output" or similar provenance process text.
 
 context_link requirements:
-- context_link must point to a real local trigger from dream_context.
+- context_link must point to a real local trigger from dream_context, preferably QUESTION ANSWERS or DAILY MEMORY.
 - Use a short quoted snippet or compact excerpt showing where the item came from.
 - Do not use procedural provenance such as "Generated from Questions Agent remote-research output."
+- Do not use PROJECT RAG CONTEXT as the context_link unless it is the only concrete local evidence for a high-value item.
 - The context_link must help a future reader trace the local origin of the memory candidate.
 
 Output constraints:

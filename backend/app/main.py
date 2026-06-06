@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Syx Project Contributors. All rights reserved.
+Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
@@ -35,6 +35,7 @@ from .api import chat, projects, sleep
 from .api import dream as dream_api
 from .api import files as files_api
 from .api import llm_models
+from .agent_interface import router as agent_interface_router
 from .utils.logging import setup_logging, get_logger
 from .core.database import init_db
 from .core.state import init_from_disk, is_sleeping
@@ -122,6 +123,7 @@ async def lifespan(app: FastAPI):
             route_policy_snapshot[str(route_name)] = {
                 "retrieval_multiplier": float(route_pol.retrieval_multiplier),
                 "max_keep": int(route_pol.max_keep),
+                "min_score": float(route_pol.min_score),
                 "expansion": {
                     "max_before": int(route_pol.expansion_max_before),
                     "max_after": int(route_pol.expansion_max_after),
@@ -303,6 +305,7 @@ app.include_router(sleep.router, tags=["sleep"])
 app.include_router(files_api.router, tags=["files"])
 app.include_router(llm_models.router, tags=["models"])
 app.include_router(dream_api.router, tags=["dream"])
+app.include_router(agent_interface_router.router, tags=["agent-interface"])
 
 # Write-blocking middleware during sleep
 from fastapi.responses import JSONResponse
@@ -315,6 +318,7 @@ async def sleep_guard(request: Request, call_next):
         path = request.url.path.rstrip("/") or "/"
         sleep_recovery_allowlist = {
             ("POST", "/sleep/unlock"),
+            ("POST", "/agent/memory/search"),
         }
         if is_sleeping() and method != "GET" and (method, path) not in sleep_recovery_allowlist:
             return JSONResponse(status_code=423, content={"error": "System is sleeping. Try again later."})

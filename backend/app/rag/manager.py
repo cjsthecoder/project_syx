@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Syx Project Contributors. All rights reserved.
+Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
@@ -284,6 +284,46 @@ def ltm_fetch_chunk_by_docstore_id(project_id: str, docstore_id: str) -> Optiona
     except Exception:
         return None
 
+
+def _ltm_candidate_metadata(md: Dict[str, Any]) -> Dict[str, Any]:
+    source_document_id = md.get("source_document_id") or md.get("doc_id")
+    chunk_index = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_seq")
+    return {
+        # Allow missing/absent metadata fields.
+        "timestamp": md.get("timestamp"),
+        "route": md.get("route"),
+        "tags": md.get("tags"),
+        "topics": md.get("topics"),
+        "intent": md.get("intent"),
+        "type": md.get("type"),
+        "id": md.get("id"),
+        "tags_meta": md.get("tags_meta"),
+        "keep": md.get("keep"),
+        "day_sequence": md.get("day_sequence"),
+        "pair_ids": md.get("pair_ids"),
+        # Existing main index metadata retained for downstream use/telemetry.
+        "filename": md.get("filename"),
+        "page_number": md.get("page_number"),
+        "chunk_id": md.get("chunk_id"),
+        # Syx bounded-entry metadata, when available.
+        "memory_id": md.get("memory_id"),
+        "entry_type": md.get("entry_type"),
+        "source": md.get("source"),
+        "source_agent": md.get("source_agent"),
+        "source_scope": md.get("source_scope"),
+        "current_scope": md.get("current_scope"),
+        "semantic_handle": md.get("semantic_handle"),
+        "artifact_path": md.get("artifact_path"),
+        "entry_start_line": md.get("entry_start_line"),
+        "entry_end_line": md.get("entry_end_line"),
+        # Adjacency identity fields.
+        "doc_id": md.get("doc_id"),
+        "chunk_seq": md.get("chunk_seq"),
+        "source_document_id": source_document_id,
+        "chunk_index": chunk_index,
+    }
+
+
 def canonical_retrieve_candidates(
     project_id: str,
     query: str,
@@ -366,6 +406,10 @@ def canonical_retrieve_candidates(
                                 "score": float(score01),
                                 "metadata": {
                                     "id": str(eid) if eid is not None else None,
+                                    "memory_id": entry.get("memory_id"),
+                                    "entry_type": entry.get("entry_type"),
+                                    "source_scope": entry.get("source_scope"),
+                                    "current_scope": entry.get("current_scope"),
                                     "timestamp": created_at,
                                     "route": (str(route).lower() if isinstance(route, str) else route),
                                     "tags": entry.get("tags"),
@@ -448,29 +492,7 @@ def canonical_retrieve_candidates(
                         "source": "ltm",
                         "text": hit.entry.text or "",
                         "score": float(score01),
-                        "metadata": {
-                            # Allow missing/absent metadata fields.
-                            "timestamp": md.get("timestamp"),
-                            "route": None,
-                            "tags": None,
-                            "topics": None,
-                            "intent": None,
-                            "type": None,
-                            "id": None,
-                            "tags_meta": None,
-                            "keep": None,
-                            "day_sequence": None,
-                            "pair_ids": None,
-                            # Existing main index metadata retained for downstream use/telemetry
-                            "filename": md.get("filename"),
-                            "page_number": md.get("page_number"),
-                            "chunk_id": md.get("chunk_id"),
-                            # Adjacency identity fields.
-                            "doc_id": md.get("doc_id"),
-                            "chunk_seq": md.get("chunk_seq"),
-                            "source_document_id": md.get("doc_id"),
-                            "chunk_index": md.get("chunk_seq"),
-                        },
+                        "metadata": _ltm_candidate_metadata(md),
                     }
                 )
         ltm_count = len(results)
@@ -622,10 +644,11 @@ def merge_daily_and_main(
     Candidate ordering is by raw similarity score across all sources
     before selection/truncation/prompt assembly.
 
-    Selection is positional/deterministic:
+    Selection is score-gated and deterministic:
     - consume the globally ordered list
-    - retain the first MAX_KEEP candidates
-    - no reordering, skipping, thresholding, boosting, or dedupe occurs here
+    - skip candidates whose score is not greater than route min_score
+    - retain the first MAX_KEEP passing candidates
+    - no reordering, boosting, or dedupe occurs here
     """
     settings = get_settings()
     per_source_k = (
@@ -649,12 +672,27 @@ def merge_daily_and_main(
             "kept_candidates": 0,
             "expanded_unique_chunks_after_merge": 0,
         }
+    min_score = 0.0
+    try:
+        from ..core.route_policy import get_route_policy
+
+        policy = get_route_policy(route or "OTHER")
+        min_score = float(getattr(policy, "min_score", 0.0) or 0.0)
+    except Exception as exc:
+        logger.warning(
+            "RAG: failed resolving route min_score project=%s route=%s detail=%s",
+            project_id,
+            route or "OTHER",
+            exc,
+        )
+        min_score = 0.0
     logger.debug(
-        "DailyRAG: starting merged retrieval project=%s per_source_k=%s daily_enabled=%s max_keep=%s",
+        "DailyRAG: starting merged retrieval project=%s per_source_k=%s daily_enabled=%s max_keep=%s min_score=%.4f",
         project_id,
         int(per_source_k),
         str(bool(daily_enabled)).lower(),
         int(max_keep),
+        float(min_score),
     )
     # Retrieval via canonical entry point (raw candidates; no thresholding/boosting here).
     sources = ["ltm"] + (["daily"] if bool(daily_enabled) else [])
@@ -669,6 +707,12 @@ def merge_daily_and_main(
     for c in list(ordered or []):
         if len(kept_candidates) >= effective_limit:
             break
+        try:
+            score = float(c.get("score") or 0.0)
+        except (AttributeError, TypeError, ValueError):
+            score = 0.0
+        if score <= float(min_score):
+            continue
         kept_candidates.append(c)
         if len(kept_candidates) >= 2:
             prev = kept_candidates[-2]
@@ -1020,6 +1064,7 @@ def merge_daily_and_main(
                     f"# query_preview: {qprev}",
                     f"# per_source_k: {int(per_source_k)}",
                     f"# max_keep: {int(max_keep)}",
+                    f"# min_score: {float(min_score):.4f}",
                     f"# daily_enabled: {str(bool(daily_enabled)).lower()}",
                     "",
                     f"====== {title} ======",
@@ -1051,6 +1096,7 @@ def merge_daily_and_main(
                     f"# query_preview: {qprev}",
                     f"# per_source_k: {int(per_source_k)}",
                     f"# max_keep: {int(max_keep)}",
+                    f"# min_score: {float(min_score):.4f}",
                     f"# kept: {k_actual}  adjacent_bonus: {int(adjacent_bonus)}",
                     f"# daily_enabled: {str(bool(daily_enabled)).lower()}",
                     f"# expansion.max_before: {int(max_before)}",
@@ -1209,15 +1255,17 @@ def merge_daily_and_main(
             main_scores.append(score01)
         tokens_used_total += t
 
+        extra_header_fields = _snippet_header_metadata_fields(md)
+        extra_header = "".join(f", {key}={value}" for key, value in extra_header_fields)
         # Candidate header (keeps ordering explicit; show cos + score for troubleshooting).
         if src == "ltm":
             chunk_index = md.get("chunk_index") if isinstance(md, dict) else None
             header = (
-                f"Snippet {idx+1} (source=ltm, cos={cos:.4f}, score={score01:.4f}, file={md.get('filename')}, page={md.get('page_number')}, chunk_index={chunk_index})\n"
+                f"Snippet {idx+1} (source=ltm, cos={cos:.4f}, score={score01:.4f}, file={md.get('filename')}, page={md.get('page_number')}, chunk_index={chunk_index}{extra_header})\n"
             )
         else:
             chunk_index = md.get("chunk_index") if isinstance(md, dict) else None
-            header = f"Snippet {idx+1} (source=daily, cos={cos:.4f}, score={score01:.4f}, route={md.get('route')}, chunk_index={chunk_index})\n"
+            header = f"Snippet {idx+1} (source=daily, cos={cos:.4f}, score={score01:.4f}, route={md.get('route')}, chunk_index={chunk_index}{extra_header})\n"
         pieces.append(header + txt)
 
     context_text = ("Context:\n---\n" + "\n\n---\n".join(pieces)) if pieces else ""
@@ -1241,6 +1289,7 @@ def merge_daily_and_main(
                 "daily_enabled": bool(daily_enabled),
                 "per_source_k": int(per_source_k),
                 "max_keep": int(max_keep),
+                "min_score": float(min_score),
                 "ordered_candidates": int(len(ordered)),
                 "selected_candidates": int(len(selected_candidates)),
                 "kept_candidates": int(len(pieces)),
@@ -1273,7 +1322,30 @@ def merge_daily_and_main(
         "selected_candidates": int(len(selected_candidates)),
         "kept_candidates": int(len(pieces)),
         "expanded_unique_chunks_after_merge": int(dedupe_unique_keyed_count),
+        "min_score": float(min_score),
     }
+
+
+def _snippet_header_metadata_fields(metadata: Dict[str, Any]) -> List[Tuple[str, str]]:
+    keys = (
+        "memory_id",
+        "source_document_id",
+        "artifact_path",
+        "entry_type",
+        "source_agent",
+        "source_scope",
+        "current_scope",
+        "semantic_handle",
+    )
+    fields: List[Tuple[str, str]] = []
+    for key in keys:
+        value = metadata.get(key) if isinstance(metadata, dict) else None
+        if value is None:
+            continue
+        rendered = str(value).replace("\n", " ").replace(",", ";").strip()
+        if rendered:
+            fields.append((key, rendered))
+    return fields
 
 
 # Legacy FAISS sidecar namespace map support removed; namespaces are embedded during indexing.

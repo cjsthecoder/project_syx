@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Syx Project Contributors. All rights reserved.
+Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
@@ -7,7 +7,6 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
-
 from typing import Any, Dict, List
 
 
@@ -75,10 +74,10 @@ def collapse_snippet_groups(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]
     """
     Snippet-group collapse.
 
-    Groups consecutive chunks that share the same (source_document_id, source)
+    Groups adjacent chunks that share the same (source_document_id, source)
     into one entry per group. Each group entry has: source, score from first chunk;
-    text = concatenation of chunk texts with "\\n" between; metadata from first chunk,
-    with chunk_index as "first..last" when the group has more than one chunk.
+    text = direct concatenation of chunk texts; metadata from first chunk, with
+    chunk_index as "first..last" when the group has more than one chunk.
     Sparse/legacy chunks (invalid or missing source_document_id) do not merge.
     """
     if not chunks:
@@ -86,27 +85,29 @@ def collapse_snippet_groups(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]
     out: List[Dict[str, Any]] = []
     group: List[Dict[str, Any]] = []
 
+    def _chunk_index(c: Dict[str, Any]) -> int | None:
+        m = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
+        ci = m.get("chunk_index") if m.get("chunk_index") is not None else m.get("chunk_seq")
+        return ci if isinstance(ci, int) else None
+
     def _flush() -> None:
         if not group:
             return
         first = group[0]
         md = dict(first.get("metadata") or {}) if isinstance(first.get("metadata"), dict) else {}
         if len(group) > 1:
-            indices = []
-            for c in group:
-                m = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
-                ci = m.get("chunk_index") if m.get("chunk_index") is not None else m.get("chunk_seq")
-                if isinstance(ci, int):
-                    indices.append(ci)
+            indices = [ci for c in group if (ci := _chunk_index(c)) is not None]
             if indices:
                 md["chunk_index"] = f"{min(indices)}..{max(indices)}"
         texts = [str(c.get("text") or "") for c in group]
-        out.append({
-            "source": first.get("source"),
-            "score": first.get("score"),
-            "text": "\n".join(texts),
-            "metadata": md,
-        })
+        out.append(
+            {
+                "source": first.get("source"),
+                "score": first.get("score"),
+                "text": "".join(texts),
+                "metadata": md,
+            }
+        )
         group.clear()
 
     for c in chunks:
@@ -125,7 +126,9 @@ def collapse_snippet_groups(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]
             first_md = group[0].get("metadata") if isinstance(group[0].get("metadata"), dict) else {}
             first_sid = first_md.get("source_document_id")
             first_src = group[0].get("source")
-            if first_sid != sid or first_src != src:
+            prev_idx = _chunk_index(group[-1])
+            cur_idx = _chunk_index(c)
+            if first_sid != sid or first_src != src or prev_idx is None or cur_idx != prev_idx + 1:
                 _flush()
         group.append(c)
     _flush()

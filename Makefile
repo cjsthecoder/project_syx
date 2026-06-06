@@ -355,6 +355,9 @@ setup-env:
 		echo "RAG_SCORE_THRESHOLD=0.50"; \
 		echo "# Cosine similarity threshold (0..1) to include snippet"; \
 		echo ""; \
+		echo "AGENT_MEMORY_MAX_ENTRY_CHARS=25000"; \
+		echo "# Max serialized agent memory snippet size for full-entry expansion"; \
+		echo ""; \
 		echo "# === Daily Memory + Daily RAG ==="; \
 		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
 		echo "# Number of prompt/response pairs kept in working memory"; \
@@ -456,7 +459,7 @@ setup-env:
 		echo "RESPONSE_PRUNING_END_ENABLED=true"; \
 		echo "# Enable response-pruning trailing paragraph trimming"; \
 		echo ""; \
-		echo "RESPONSE_PRUNING_MARKDOWN_ENABLED=true"; \
+		echo "RESPONSE_PRUNING_MARKDOWN_ENABLED=false"; \
 		echo "# Enable response-pruning markdown cleanup"; \
 		echo ""; \
 		echo "RESPONSE_PRUNING_WHITESPACE_ENABLED=true"; \

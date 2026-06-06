@@ -399,7 +399,7 @@ The backend must validate that a project is selected for all file actions.
 #### RAG on Chat
 - Enabled only when the active project's index exists with ≥1 vector; otherwise disabled
 - Fallback: if no project selected, use Continuum for RAG
-- Retrieval runs through the unified RAG pipeline (FR-2.3-3); per-source K, retained count, and adjacency expansion come from `route_policy.json` (FR-2.3-3.3). No similarity threshold is applied in V2.5+; ranking is purely score-based (FR-2.3-3.2) and bounded by `max_keep` (FR-2.3-3.3).
+- Retrieval runs through the unified RAG pipeline (FR-2.3-3); per-source K, score gate, retained count, and adjacency expansion come from `route_policy.json` (FR-2.3-3.3). Ranking is score-based (FR-2.3-3.2), gated by `min_score`, and bounded by `max_keep` (FR-2.3-3.3).
 - Injection: prepend a single system message with a "Context:" block containing concatenated snippet groups (FR-2.3-3.4.3 pass 5), separated clearly; cap the context block at `RAG_CONTEXT_MAX_TOKENS`.
 - If retrieval returns zero candidates, proceed without RAG
 - Do not index chat transcripts in V2.1
@@ -662,7 +662,8 @@ A single retrieval function is responsible for all RAG memory queries. It accept
 - `ltm` includes all content embedded in the project's main FAISS index regardless of origin (uploads, sleep summaries, dream artifacts, etc.).
 
 Behavior and boundaries (this stage):
-- No namespace boosts, thresholding, route-based `rag_k`, score filtering, source branching, deduplication, or prompt injection are performed.
+- No namespace boosts, route-based `rag_k`, source branching, deduplication, or prompt injection are performed.
+- Per-route score gating (`min_score`) is not applied here; it is enforced in FR-2.3-3.3 after global ordering (FR-2.3-3.2).
 - An empty result from one source MUST NOT block other sources.
 - If querying a source fails, that source degrades to an empty candidate list for the current request (no in-request retry). Rebuild/repair is owned by the source subsystem and runs best-effort asynchronously.
 - If query embedding fails, retrieval is unavailable for the request and the function returns an empty candidate list.
@@ -686,7 +687,7 @@ Invariants:
 Architectural constraints:
 - Candidate retrieval, ordering, selection, and prompt assembly MUST be implemented as separate, single-responsibility stages.
 - Ordering logic MUST be isolated in its own function or module.
-- Retrieval-stage code MUST NOT perform prompt formatting, enforce token budgets, or apply selection/thresholding rules.
+- FR-2.3-3.1 canonical retrieval code MUST NOT perform prompt formatting, enforce token budgets, or apply route-policy selection rules (including `min_score`); those belong to FR-2.3-3.3 and later stages.
 - Prompt assembly code MUST NOT modify retrieval ordering or selection decisions.
 
 Invariants:
@@ -703,6 +704,7 @@ Inputs:
 Per-route policy parameters:
 - `retrieval_multiplier`: scalar applied to `BASE_TOP_K` for per-source K (also consumed by FR-2.3-3.1).
 - `max_keep`: absolute initial cap on retained candidates. The effective keep limit MAY grow via the adjacent-chunk rule below.
+- `min_score`: strict normalized-score gate. A candidate is retained only when `score > min_score`.
 - `expansion.max_before` / `expansion.max_after`: adjacency depth (consumed by FR-2.3-3.4.2).
 
 Derived:
@@ -714,9 +716,10 @@ Selection process:
 3. For each candidate:
    - If retained count ≥ effective keep limit, stop.
    - If the ordered list is exhausted, stop.
+   - If `candidate.score <= min_score`, skip the candidate.
    - Otherwise append the candidate to the retained list.
    - **Adjacent-chunk rule**: if the candidate just retained is directly adjacent to the previously retained candidate (same `source_document_id` AND `chunk_index` differs by exactly 1), increment the effective keep limit by 1. This compensates for downstream identity dedup in FR-2.3-3.4.3 (pass 2) and increases breadth across distinct sources without unbounded growth.
-4. No reordering, skipping, thresholding, boosting, or deduplication occurs in this stage.
+4. No reordering, boosting, or deduplication occurs in this stage.
 
 Source handling:
 - Candidates from different sources (Daily, LTM) are treated uniformly during selection.
@@ -732,6 +735,7 @@ Output:
   "<ROUTE>": {
     "retrieval_multiplier": <number>,
     "max_keep": <int>,
+    "min_score": <number>,
     "expansion": { "max_before": <int>, "max_after": <int> }
   }
 }
@@ -739,18 +743,18 @@ Output:
 
 Routes and defaults (current baseline; tunable via configuration):
 
-| Route       | retrieval_multiplier | max_keep | expansion.max_before | expansion.max_after |
-|-------------|----------------------|----------|----------------------|---------------------|
-| CHITCHAT    | 0                    | 0        | 0                    | 0                   |
-| DIRECT      | 1                    | 12       | 0                    | 2                   |
-| PROCEDURAL  | 1.5                  | 16       | 1                    | 3                   |
-| EXPLORATORY | 2                    | 20       | 1                    | 4                   |
-| SYNTHESIS   | 2.5                  | 24       | 2                    | 4                   |
-| OTHER       | 1.75                 | 10       | 1                    | 2                   |
+| Route       | retrieval_multiplier | max_keep | min_score | expansion.max_before | expansion.max_after |
+|-------------|----------------------|----------|-----------|----------------------|---------------------|
+| CHITCHAT    | 0                    | 0        | 0         | 0                    | 0                   |
+| DIRECT      | 1                    | 12       | 0.82      | 0                    | 2                   |
+| PROCEDURAL  | 1.5                  | 16       | 0.80      | 1                    | 3                   |
+| EXPLORATORY | 2                    | 20       | 0.78      | 1                    | 4                   |
+| SYNTHESIS   | 2.5                  | 24       | 0.78      | 2                    | 4                   |
+| OTHER       | 1.75                 | 10       | 0.80      | 1                    | 2                   |
 
 Validation and fallback:
 - `route_policy.json` MUST be loaded and validated at startup. Missing or invalid policy MUST fail fast on startup (no per-request fallbacks).
-- Every route entry MUST include `retrieval_multiplier`, `max_keep`, `expansion.max_before`, and `expansion.max_after`.
+- Every route entry MUST include `retrieval_multiplier`, `max_keep`, `min_score`, `expansion.max_before`, and `expansion.max_after`.
 - `CHITCHAT` has `retrieval_multiplier = 0`, which disables retrieval for that turn (equivalent to `rag=false`).
 - Unknown or new routes fall back to `OTHER` at runtime (stable compatibility behavior).
 
@@ -928,7 +932,7 @@ Sleep cycle logic will:
 - Rolled-off pair embedded and appended to the in-memory Daily FAISS cache; metadata appended to `daily.json` under `daily.lock`.
 - Debug log clearly shows prompt + response text.
 - Retrieval MUST execute the unified pipeline defined in FR-2.3-3; Daily and LTM candidates are produced by a single canonical entry point (FR-2.3-3.1), globally sorted by raw similarity (FR-2.3-3.2), pruned per `route_policy.json` (FR-2.3-3.3), and rehydrated/deduplicated/collapsed into snippet groups (FR-2.3-3.4).
-- Identity-level deduplication at FR-2.3-3.4.3 (pass 2) is the only deduplication stage; no similarity-threshold or source-preference dedup is performed.
+- Identity-level deduplication at FR-2.3-3.4.3 (pass 2) is the only deduplication stage; no source-preference dedup is performed. Score gating is handled by `min_score` in FR-2.3-3.3.
 - Corruption / `EMBEDDING_MODEL`-change rebuilds of the in-memory Daily FAISS cache are handled cleanly with logging; `daily.json` is never deleted on model change (it is re-embedded in place).
 - System operates with incremental in-memory adds; persistence writes are limited to `daily.json` (and `daily.txt` per FR-2.7.1), serialized via `daily.lock`.
 
@@ -1051,7 +1055,7 @@ This makes it easy to trace specific projects, conversations, and decisions.
 ## Version 2.5 — Route-Aware Retrieval
 
 ### Purpose
-Adjust retrieval behavior based on the semantic route (`CHITCHAT | DIRECT | PROCEDURAL | EXPLORATORY | SYNTHESIS | OTHER`) identified by the query builder (FR-2.3.1.1). The route selects a row of `route_policy.json`, which configures per-source retrieval K, retained-candidate cap, and adjacency expansion for the unified pipeline in FR-2.3-3. Namespace-based routing, namespace boosting, and per-route score thresholds are removed; route behavior is expressed exclusively via `route_policy.json` and selection/expansion logic.
+Adjust retrieval behavior based on the semantic route (`CHITCHAT | DIRECT | PROCEDURAL | EXPLORATORY | SYNTHESIS | OTHER`) identified by the query builder (FR-2.3.1.1). The route selects a row of `route_policy.json`, which configures per-source retrieval K, retained-candidate cap, score gate, and adjacency expansion for the unified pipeline in FR-2.3-3. Namespace-based routing and namespace boosting are removed; route behavior is expressed exclusively via `route_policy.json` and selection/expansion logic.
 
 ### Functional Requirements
 
@@ -1068,13 +1072,14 @@ If `rag=false` or the selected `route_policy.json` row has `retrieval_multiplier
 Route-specific retrieval configuration is held in `backend/app/config/route_policy.json`. Canonical schema, routes, and defaults are defined in FR-2.3-3.3. `route_policy.json` is the authoritative per-route configuration source for:
 - `retrieval_multiplier` (per-source K via `ceil(BASE_TOP_K * retrieval_multiplier)`; consumed by FR-2.3-3.1)
 - `max_keep` (initial retained-candidate cap; consumed by FR-2.3-3.3)
+- `min_score` (strict gate: retain only candidates with `score > min_score`; consumed by FR-2.3-3.3)
 - `expansion.max_before` / `expansion.max_after` (adjacency depth; consumed by FR-2.3-3.4.2)
 
 #### FR-2.5.5 — Logging Integration
 Add a `[ROUTE]` log event before retrieval and a `[RETRIEVAL]` log event after retrieval, e.g.:
 
 ```
-[ROUTE] route=PROCEDURAL retrieval_multiplier=1.5 max_keep=16 expansion={"max_before":1,"max_after":3}
+[ROUTE] route=PROCEDURAL retrieval_multiplier=1.5 max_keep=16 min_score=0.80 expansion={"max_before":1,"max_after":3}
 [RETRIEVAL] route=PROCEDURAL hits=24 kept=16 avg_similarity=0.78
 ```
 
@@ -1084,7 +1089,7 @@ Logged fields MUST reflect values resolved from `route_policy.json` and the FR-2
 If the builder returns an unknown route, routing MUST fall back to the `OTHER` row of `route_policy.json`. A missing or invalid `route_policy.json` at startup is a fail-fast condition (no per-request fallbacks; see FR-2.3-3.3).
 
 ### Acceptance Criteria
-- Builder-identified routes map deterministically to `route_policy.json` rows; runtime retrieval K, retained counts, and adjacency depth match the selected row.
+- Builder-identified routes map deterministically to `route_policy.json` rows; runtime retrieval K, `min_score`, retained counts, and adjacency depth match the selected row.
 - CHITCHAT and `rag=false` turns bypass retrieval entirely.
 - Logging clearly displays the resolved route and applied policy values.
 - Unknown routes fall back to `OTHER`; missing/invalid `route_policy.json` fails fast at startup.
@@ -2070,7 +2075,7 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
   * `project_id` set to the active project.
   * `query` set to the question text.
   * Pipeline parameters resolved from the route policy configured for Dream (typically the `OTHER` route of `route_policy.json`) and the environment (`BASE_TOP_K`, `RAG_SNIPPET_MAX_TOKENS`, `RAG_CONTEXT_MAX_TOKENS`).
-  * No namespace-based biasing, no per-call `route_namespaces`, no namespace boosts, and no similarity-threshold filter (all removed by FR-2.3-3; ranking is purely cosine-similarity-based per FR-2.3-3.2, bounded by `max_keep` per FR-2.3-3.3).
+  * No namespace-based biasing, no per-call `route_namespaces`, and no namespace boosts. Ranking is cosine-similarity-based per FR-2.3-3.2, gated by `min_score`, and bounded by `max_keep` per FR-2.3-3.3.
 * RAG is read only during Dream.
 * Dream must not rebuild or write any RAG data.
 
@@ -2410,7 +2415,7 @@ The builder SHALL perform a RAG retrieval pass for each extracted topic.
   * Daily RAG (in-memory Daily FAISS cache) SHALL NOT participate in this enrichment step—current-day content is already present in the just-written `sleep_summary.txt` for this cycle.
 * Per-topic retrieval MUST use the route policy configured for Dream (typically the `OTHER` route of `route_policy.json`) and existing environment settings (`BASE_TOP_K`, `RAG_SNIPPET_MAX_TOKENS`, `RAG_CONTEXT_MAX_TOKENS`). No new caps are introduced.
 * No namespace/route biasing: do NOT pass `route_namespaces` or namespace boosts.
-* No similarity-threshold filter is applied (removed by FR-2.3-3.2); ranking is purely cosine-similarity-based and bounded by `max_keep` per FR-2.3-3.3.
+* Ranking is cosine-similarity-based, gated by route-policy `min_score`, and bounded by `max_keep` per FR-2.3-3.3.
 
 #### Returned Document Format
 
@@ -3706,7 +3711,7 @@ Snapshot immutability and runtime changes:
 
 - retrieval configuration split by scope:
   - `retrieval_static` for global/static settings (for example base K, chunk sizing, embedding model, similarity policy).
-  - `route_policy` snapshot for route-derived behavior that affects retrieval/assembly (for example per-route multipliers, max_keep, expansion params).
+  - `route_policy` snapshot for route-derived behavior that affects retrieval/assembly (for example per-route multipliers, max_keep, min_score, expansion params).
 
 - thresholds and deprecated settings policy:
   - Retrieval/selection thresholds MUST be recorded under active config sections only when enforced in the run's code path.

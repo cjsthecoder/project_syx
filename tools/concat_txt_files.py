@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Copyright (c) 2025 Syx Project Contributors. All rights reserved.
+Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
 Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
 
 Use of this software requires explicit written permission from the copyright holder.
-
-Concatenate top-level .txt files from an input directory into one output file.
 """
-
+"""
+Concatenate top-level .txt and .md files from an input directory into one output file.
+"""
 
 import argparse
 from pathlib import Path
@@ -30,9 +30,9 @@ def _ensure_output_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def _iter_txt_files(path: Path) -> list[Path]:
+def _iter_text_files(path: Path) -> list[Path]:
     return sorted(
-        [p for p in path.iterdir() if p.is_file() and p.suffix.lower() == ".txt"],
+        [p for p in path.iterdir() if p.is_file() and p.suffix.lower() in {".txt", ".md"}],
         key=lambda p: p.name.lower(),
     )
 
@@ -44,12 +44,12 @@ def run(input_dir_raw: str, output_dir_raw: str) -> Path:
     _validate_input_dir(input_dir)
     _ensure_output_dir(output_dir)
 
-    txt_files = _iter_txt_files(input_dir)
-    if not txt_files:
-        raise RuntimeError(f"No .txt files found in input directory: {input_dir}")
+    text_files = _iter_text_files(input_dir)
+    if not text_files:
+        raise RuntimeError(f"No .txt or .md files found in input directory: {input_dir}")
 
     parts: list[str] = []
-    for path in txt_files:
+    for path in text_files:
         try:
             parts.append(path.read_text(encoding="utf-8"))
         except Exception as exc:
@@ -67,9 +67,9 @@ def run(input_dir_raw: str, output_dir_raw: str) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Concatenate top-level .txt files from input folder into concatenated_Syx.txt.",
+        description="Concatenate top-level .txt and .md files from input folder into concatenated_Syx.txt.",
     )
-    parser.add_argument("input_dir", help="Directory containing .txt files to concatenate")
+    parser.add_argument("input_dir", help="Directory containing .txt and/or .md files to concatenate")
     parser.add_argument("output_dir", help="Directory where concatenated_Syx.txt will be written")
     args = parser.parse_args()
 

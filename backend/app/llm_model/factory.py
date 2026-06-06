@@ -1,4 +1,13 @@
 """
+Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
+
+This source code is part of the Syx project and is proprietary.
+
+Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
+
+Use of this software requires explicit written permission from the copyright holder.
+"""
+"""
 Factory functions for provider-selected LLM clients.
 """
 
@@ -15,17 +24,18 @@ _MAIN_CLIENT: Optional[OpenAILLMProvider] = None
 _MINI_CLIENT: Optional[OpenAILLMProvider] = None
 
 
-def _new_provider(*, default_model: str) -> OpenAILLMProvider:
+def _new_provider(*, default_model: str, timeout_s: float) -> OpenAILLMProvider:
     settings = get_settings()
     provider = str(getattr(settings, "llm_provider", "openai") or "openai").strip().lower()
     if provider != "openai":
         logger.warning("Unsupported LLM provider '%s'; falling back to openai", provider)
     logger.info(
-        "Creating LLM provider instance provider=%s default_model=%s",
+        "Creating LLM provider instance provider=%s default_model=%s timeout_s=%.2f",
         "openai",
         str(default_model),
+        float(timeout_s),
     )
-    return OpenAILLMProvider(api_key=settings.openai_api_key, default_model=default_model)
+    return OpenAILLMProvider(api_key=settings.openai_api_key, default_model=default_model, timeout_s=float(timeout_s))
 
 
 def get_llm_client() -> OpenAILLMProvider:
@@ -33,11 +43,13 @@ def get_llm_client() -> OpenAILLMProvider:
     if _MAIN_CLIENT is None:
         settings = get_settings()
         default_model = str(settings.model_name)
-        _MAIN_CLIENT = _new_provider(default_model=default_model)
+        timeout_s = float(getattr(settings, "llm_request_timeout_s", 120.0) or 120.0)
+        _MAIN_CLIENT = _new_provider(default_model=default_model, timeout_s=timeout_s)
         logger.info(
-            "Initialized main LLM client provider=%s model=%s",
+            "Initialized main LLM client provider=%s model=%s timeout_s=%.2f",
             str(getattr(settings, "llm_provider", "openai") or "openai"),
             default_model,
+            timeout_s,
         )
     return _MAIN_CLIENT
 
@@ -47,11 +59,13 @@ def get_llm_client_mini() -> OpenAILLMProvider:
     if _MINI_CLIENT is None:
         settings = get_settings()
         default_model = str(getattr(settings, "llm_mini_model", settings.builder_model))
-        _MINI_CLIENT = _new_provider(default_model=default_model)
+        timeout_s = float(getattr(settings, "llm_mini_request_timeout_s", 30.0) or 30.0)
+        _MINI_CLIENT = _new_provider(default_model=default_model, timeout_s=timeout_s)
         logger.info(
-            "Initialized mini LLM client provider=%s model=%s",
+            "Initialized mini LLM client provider=%s model=%s timeout_s=%.2f",
             str(getattr(settings, "llm_provider", "openai") or "openai"),
             default_model,
+            timeout_s,
         )
     return _MINI_CLIENT
 

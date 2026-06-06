@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Syx Project Contributors. All rights reserved.
+Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
@@ -60,6 +60,14 @@ def _load_auto_accept_module(monkeypatch, *, append_ok=True, tagger_raises=False
     daily_module.rebuild_daily_cache = rebuild_daily_cache  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.rag.daily_store", daily_module)
 
+    syx_module_path = Path(__file__).resolve().parents[1] / "backend" / "app" / "rag" / "syx_memory_artifact.py"
+    syx_spec = importlib.util.spec_from_file_location("app.rag.syx_memory_artifact", syx_module_path)
+    assert syx_spec is not None
+    syx_module = importlib.util.module_from_spec(syx_spec)
+    monkeypatch.setitem(sys.modules, "app.rag.syx_memory_artifact", syx_module)
+    assert syx_spec.loader is not None
+    syx_spec.loader.exec_module(syx_module)
+
     tagger_module = types.ModuleType("app.tagging.tagger")
 
     def tag_pair(*args, **kwargs):
@@ -74,6 +82,25 @@ def _load_auto_accept_module(monkeypatch, *, append_ok=True, tagger_raises=False
     tokens_module = types.ModuleType("app.utils.tokens")
     tokens_module.count_tokens = lambda text: len(str(text).split())  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.utils.tokens", tokens_module)
+
+    dream_summary_module = types.ModuleType("app.utils.dream_summary")
+
+    def write_latest_sleep_summary(*, project_id, base_dir, project_summary, accepted_items):
+        if not project_summary:
+            return
+        topics = []
+        for item in accepted_items:
+            for research in item.get("research", []) if isinstance(item, dict) else []:
+                topic = str(research.get("research_topic") or "").strip()
+                if topic:
+                    topics.append(f"Topic: {topic}")
+        body = str(project_summary).strip()
+        if topics:
+            body += "\n\n[RESEARCH]\n" + "\n\n".join(topics)
+        Path(base_dir, "latest_sleep_summary.txt").write_text(body + "\n", encoding="utf-8")
+
+    dream_summary_module.write_latest_sleep_summary = write_latest_sleep_summary  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "app.utils.dream_summary", dream_summary_module)
 
     module_path = Path(__file__).resolve().parents[1] / "backend" / "app" / "dream" / "auto_accept.py"
     spec = importlib.util.spec_from_file_location("app.dream.auto_accept", module_path)
@@ -108,7 +135,10 @@ def test_auto_accept_processes_dream_json_with_keep_false(tmp_path, monkeypatch)
                         "origin_text": "remote question",
                         "assistant_response": "remote answer",
                         "source_resolution": "answer_remote",
-                        "research": [{"research_topic": "topic", "research_summary": "summary"}],
+                        "research": [
+                            {"research_topic": "topic", "research_summary": "summary"},
+                            {"research_topic": "second topic", "research_summary": "second summary"},
+                        ],
                     },
                     {
                         "id": "remote-bad",
@@ -123,25 +153,36 @@ def test_auto_accept_processes_dream_json_with_keep_false(tmp_path, monkeypatch)
 
     result = auto_accept.auto_accept_dreams(project_id)
 
-    assert result.processed == 2
-    assert result.accepted == 2
+    assert result.processed == 3
+    assert result.accepted == 3
     assert result.filtered_remote_without_research == 1
     assert result.deleted_dream is True
     assert not dream_path.exists()
     assert (project_dir / "latest_sleep_summary.txt").read_text(encoding="utf-8").strip() == (
-        "Latest project summary\n\n[RESEARCH]\nTopic: topic"
+        "Latest project summary\n\n[RESEARCH]\nTopic: topic\n\nTopic: second topic"
     )
-    assert len(calls["append"]) == 2
+    assert len(calls["append"]) == 3
     assert all(call["kwargs"]["keep"] is False for call in calls["append"])
+    assert calls["append"][0]["kwargs"]["source_scope"] == "dream"
+    assert calls["append"][0]["kwargs"]["current_scope"] == "dream"
+    assert calls["append"][1]["args"][1] == "User: topic\nAssistant: [RESEARCH]\nsummary"
+    assert calls["append"][2]["args"][1] == "User: second topic\nAssistant: [RESEARCH]\nsecond summary"
     assert calls["rebuild"] == 1
-    summary = (project_dir / "dream_summary.txt").read_text(encoding="utf-8")
-    assert "#keep: false" in summary
+    assert not (project_dir / "dream_summary.txt").exists()
+    summary = (project_dir / "dream_summary.md").read_text(encoding="utf-8")
+    assert "keep: false" in summary
+    assert "entry_type: dream_output" in summary
+    assert "source_scope: dream" in summary
+    assert "current_scope: dream" in summary
+    assert "<!-- begin syx:memory_id=mem_" in summary
     assert "local question" in summary
-    assert "remote question" in summary
-    assert "[RESEARCH]\nTopic: topic\nsummary" in summary
+    assert "remote question" not in summary
+    assert "Topic: topic" not in summary
+    assert "[RESEARCH]\nsummary" in summary
+    assert "[RESEARCH]\nsecond summary" in summary
     assert "To explore this idea" not in summary
-    assert len(calls["pruner"]) == 2
-    assert len(calls["tagger"]) == 2
+    assert len(calls["pruner"]) == 3
+    assert len(calls["tagger"]) == 3
 
 
 def test_auto_accept_prunes_before_tagger(tmp_path, monkeypatch):
@@ -161,7 +202,8 @@ def test_auto_accept_prunes_before_tagger(tmp_path, monkeypatch):
     assert calls["pruner"][0]["assistant_text"] == "full assistant text"
     assert calls["tagger"][0]["args"][1] == "pruned assistant text"
     assert calls["append"][0]["args"][1] == "User: q\nAssistant: pruned assistant text"
-    summary = (project_dir / "dream_summary.txt").read_text(encoding="utf-8")
+    assert not (project_dir / "dream_summary.txt").exists()
+    summary = (project_dir / "dream_summary.md").read_text(encoding="utf-8")
     assert "pruned assistant text" in summary
     assert "full assistant text" not in summary
 

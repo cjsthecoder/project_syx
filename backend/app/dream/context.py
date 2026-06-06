@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Syx Project Contributors. All rights reserved.
+Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
@@ -14,10 +14,10 @@ from typing import Any, Dict, List
 
 from ..core.config import get_settings
 from ..core.llm import generate_text_response
-from ..rag.manager import retrieve_context
 from ..utils.tokens import count_tokens
 from .debug import safe_dream_purpose, write_dream_prompt_to_execute, write_dream_response_usage_debug
 from .prompts import build_project_summary_prompt
+from .rag import retrieve_dream_context
 from app.utils.debug_utils import write_debug_file
 
 logger = logging.getLogger(__name__)
@@ -42,11 +42,11 @@ def _read_file_safe(path: str) -> str:
 
 def _strip_open_questions_section(text: str) -> str:
     """
-    Remove the [Open Questions] section and its JSON block from sleep_summary.txt.
+    Remove the [Open Questions] section and its JSON block from sleep_summary.md.
     This prevents duplicate questions since they're already in questions_data.
     
     Args:
-        text: The full content of sleep_summary.txt
+        text: The full content of sleep_summary.md
         
     Returns:
         Text with [Open Questions] section removed
@@ -87,11 +87,10 @@ def _get_user_profile(project_id: str) -> str:
         return summary_text
 
     # 2) Fall back to RAG lookup (e.g., DEFAULT_RAG.txt via User Profile Codex)
-    settings = get_settings()
-    up = retrieve_context(
+    up = retrieve_dream_context(
         project_id=project_id,
         query="User Profile Codex",
-        score_threshold=settings.rag_score_threshold,
+        route="DIRECT",
     )
     user_profile_text = up.get("context_text") or ""
     if not user_profile_text.strip():
@@ -111,11 +110,10 @@ def _get_project_system_prompt(project_id: str) -> str:
     Retrieve project system prompt from RAG or fallback file.
     Returns text or '(empty)' if not found.
     """
-    settings = get_settings()
-    sp = retrieve_context(
+    sp = retrieve_dream_context(
         project_id=project_id,
         query="Project system rules",
-        score_threshold=settings.rag_score_threshold,
+        route="DIRECT",
     )
     system_prompt_text = sp.get("context_text") or ""
     if not system_prompt_text.strip():
@@ -135,7 +133,7 @@ def _get_project_context_summary(project_id: str) -> str:
     """
     settings = get_settings()
     # Always use the latest sleep summary as source; skip RAG retrieval
-    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.txt")
+    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.md")
     summ_src = _read_file_safe(summary_path)
     summary_prompt = build_project_summary_prompt(summ_src)
     write_debug_file(project_id, "debug_context_summary.txt", summary_prompt)
@@ -220,13 +218,13 @@ def _format_question_answers(questions_data: Dict[str, Any]) -> str:
 
 def _get_daily_memory(project_id: str) -> str:
     """
-    Load daily memory from sleep_summary.txt with [Open Questions] section stripped.
+    Load daily memory from sleep_summary.md with [Open Questions] section stripped.
     Returns text or '(empty)' if missing or empty.
     """
-    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.txt")
+    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.md")
     daily_text = _read_file_safe(summary_path)
     if not daily_text.strip():
-        logger.warning("sleep_summary.txt missing or empty.")
+        logger.warning("sleep_summary.md missing or empty.")
         daily_text = "(empty)"
     else:
         # Strip [Open Questions] section to avoid duplicates (questions are already represented in questions_data)
@@ -240,15 +238,15 @@ def _get_daily_memory(project_id: str) -> str:
 
 def _extract_rag_topics(project_id: str) -> List[str]:
     """
-    Extract topic queries from sleep_summary.txt per 4.1.3.2.
+    Extract topic queries from sleep_summary.md per 4.1.3.2.
 
     Returns:
         Ordered, deduplicated list of topic queries (section titles + individual topics).
     """
-    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.txt")
+    summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.md")
     text = _read_file_safe(summary_path)
     if not text.strip():
-        logger.debug("[DREAM][CONTEXT] RAG enrichment: sleep_summary.txt missing or empty for project=%s", project_id)
+        logger.debug("[DREAM][CONTEXT] RAG enrichment: sleep_summary.md missing or empty for project=%s", project_id)
         return []
 
     lines = text.splitlines()
@@ -302,7 +300,6 @@ def _build_project_rag_context(project_id: str) -> str:
     Returns:
         Section string starting with '=== PROJECT RAG CONTEXT ===' (may be minimal/empty).
     """
-    settings = get_settings()
     topic_list = _extract_rag_topics(project_id)
 
     # Debug: write topics file if enabled
@@ -322,10 +319,10 @@ def _build_project_rag_context(project_id: str) -> str:
 
     for topic in topic_list:
         try:
-            res = retrieve_context(
+            res = retrieve_dream_context(
                 project_id=project_id,
                 query=topic,
-                score_threshold=settings.rag_score_threshold,
+                route="EXPLORATORY",
             )
         except Exception as re_err:
             logger.debug(
@@ -336,25 +333,23 @@ def _build_project_rag_context(project_id: str) -> str:
             )
             continue
 
-        hits: List[Dict[str, Any]] = res.get("hits") or []
-        if not hits:
+        context_text = str(res.get("context_text") or "").strip()
+        if not context_text:
             continue
 
         lines.append(f"Topic Query: {topic}")
-        for h in hits:
-            snippet = (h.get("snippet") or "").strip()
-            filename = h.get("filename")
-            score = h.get("score")
-            lines.append(f"- Snippet: \"{snippet}\"")
-            lines.append(f"- Metadata: {{source: \"LTM\", file: \"{filename}\", score: {score}}}")
-            lines.append("")  # blank line between hits
-            total_docs += 1
-            debug_hits.append(
-                f"Topic: {topic}\n"
-                f"File: {filename}\n"
-                f"Score: {score}\n"
-                f"Snippet:\n{snippet}\n\n"
-            )
+        lines.append(context_text)
+        lines.append("")
+        total_docs += int(res.get("total_hits", 0) or res.get("kept_candidates", 0) or 1)
+        debug_hits.append(
+            f"Topic: {topic}\n"
+            f"Route: {res.get('route')}\n"
+            f"Per-source K: {res.get('per_source_k')}\n"
+            f"Max keep: {res.get('max_keep')}\n"
+            f"Daily enabled: {res.get('daily_enabled')}\n"
+            f"Expanded unique chunks: {res.get('expanded_unique_chunks_after_merge')}\n"
+            f"Context:\n{context_text}\n\n"
+        )
 
     if total_docs == 0:
         lines.append("(No relevant long-term memory found for today’s topics.)")

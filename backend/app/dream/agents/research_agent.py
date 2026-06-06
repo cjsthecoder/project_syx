@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Syx Project Contributors. All rights reserved.
+Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
@@ -16,6 +16,8 @@ from ...core.config import get_settings
 from ...core.llm import generate_text_response
 from app.utils.debug_utils import write_debug_file
 from ..debug import safe_dream_purpose, write_dream_prompt_to_execute, write_dream_response_usage_debug
+from ..research import count_tokens
+from ..rag import retrieve_dream_context
 from .prompts.research_prompts import build_research_prompt
 
 logger = logging.getLogger(__name__)
@@ -109,9 +111,25 @@ def run_research_agent(
                 continue
 
             total_topics += 1
+            try:
+                local_context_result = retrieve_dream_context(
+                    project_id=project_id,
+                    query=topic,
+                    route="SYNTHESIS",
+                )
+                local_context_text = str(local_context_result.get("context_text") or "").strip()
+            except Exception as exc:
+                logger.warning(
+                    "[DREAM][RESEARCH] Expanded local retrieval failed project=%s topic=%s detail=%s",
+                    project_id,
+                    topic,
+                    exc,
+                )
+                local_context_text = ""
 
             prompt = build_research_prompt(
                 project_summary_text=project_summary_text or "",
+                local_context_text=local_context_text or "(empty)",
                 origin_text=origin_text,
                 origin_type=origin_type,
                 assistant_response=assistant_response,
@@ -123,6 +141,7 @@ def run_research_agent(
                     "entry_id": str(entry_id or ""),
                     "origin_text": str(origin_text or ""),
                     "research_topic": topic,
+                    "local_context_tokens": int(count_tokens(local_context_text or "")),
                     "prompt": prompt,
                 }
             )

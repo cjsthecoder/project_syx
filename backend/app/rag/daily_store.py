@@ -1,5 +1,5 @@
 """
-Copyright (c) 2025 Syx Project Contributors. All rights reserved.
+Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
 
 This source code is part of the Syx project and is proprietary.
 
@@ -7,7 +7,6 @@ Unauthorized copying, modification, distribution, or use of this software is str
 
 Use of this software requires explicit written permission from the copyright holder.
 """
-
 from dataclasses import dataclass
 import os
 import json
@@ -25,6 +24,16 @@ from ..embedding.batching import iter_token_batches
 from ..embedding.vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
 from ..embedding.factory import get_embedding_client
 from ..utils.debug_utils import write_debug_file
+from .syx_memory_artifact import (
+    render_artifact_header,
+    generate_memory_id,
+    local_timestamp_from_iso,
+    memory_date_from_local_timestamp,
+    render_memory_entry,
+    snake_case_value,
+    split_pair_text,
+    topics_to_list,
+)
 logger = logging.getLogger(__name__)
 
 def _normalize_rows(v: np.ndarray) -> np.ndarray:
@@ -119,7 +128,7 @@ _END_DAILY_PAIR = "=== END DAILY PAIR ==="
 
 def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
     """
-    Format tag metadata lines for inclusion in daily.txt.
+    Format tag metadata lines for inclusion in daily.md.
 
     Uses the same 3-line convention as the roll-off tagger output.
     Returns a string that already ends with a newline (or "" if no tags).
@@ -136,8 +145,61 @@ def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
         if semantic_handle is not None:
             lines.append(f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}")
         return "\n".join(lines) + "\n"
-    except Exception:
+    except Exception as exc:
+        logger.warning("DailyRAG: failed formatting tag metadata detail=%s", exc)
         return ""
+
+
+def _entry_tags_meta(entry: Dict[str, Any]) -> Dict[str, Any]:
+    tags_meta = entry.get("tags_meta")
+    return tags_meta if isinstance(tags_meta, dict) else {}
+
+
+def _semantic_handle(tags_meta: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not isinstance(tags_meta, dict):
+        return None
+    value = tags_meta.get("semantic_handle")
+    return str(value).strip() if value is not None and str(value).strip() else None
+
+
+def _render_markdown_entry(entry: Dict[str, Any], *, user_text: str, assistant_text: str) -> str:
+    tags_meta = _entry_tags_meta(entry)
+    entry_type = str(entry.get("entry_type", "chat_pair") or "chat_pair")
+    metadata: Dict[str, Any] = {
+        "memory_id": entry.get("memory_id"),
+        "entry_type": entry_type,
+        "source": entry.get("source", "chat"),
+        "source_agent": entry.get("source_agent", "syx"),
+        "source_scope": entry.get("source_scope", "dream" if entry_type == "dream_output" else "daily"),
+        "current_scope": entry.get("current_scope", "daily"),
+        "timestamp": entry.get("timestamp"),
+        "route": entry.get("route"),
+        "keep": bool(entry.get("keep", False)),
+    }
+    topics = topics_to_list(tags_meta.get("topics"))
+    if topics:
+        metadata["topics"] = topics
+    if tags_meta.get("intent") is not None:
+        metadata["intent"] = str(tags_meta.get("intent"))
+    if tags_meta.get("type") is not None:
+        metadata["type"] = str(tags_meta.get("type"))
+    semantic_handle = _semantic_handle(tags_meta)
+    if semantic_handle:
+        metadata["semantic_handle"] = semantic_handle
+    if entry.get("day_sequence") is not None:
+        metadata["day_sequence"] = entry.get("day_sequence")
+    if entry.get("accepted_item_id"):
+        metadata["accepted_item_id"] = entry.get("accepted_item_id")
+    if entry.get("dream_output_type"):
+        metadata["dream_output_type"] = snake_case_value(entry.get("dream_output_type"))
+    if entry.get("origin_memory_ids"):
+        metadata["origin_memory_ids"] = entry.get("origin_memory_ids")
+    return render_memory_entry(
+        memory_id=str(entry.get("memory_id")),
+        metadata=metadata,
+        user_text=user_text,
+        assistant_text=assistant_text,
+    )
 
 def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
     base_dir = os.path.join(get_settings().memory_root, project_id)
@@ -152,8 +214,8 @@ def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
             os.replace(legacy_lock_path, lock_path)
         except OSError as exc:
             logger.warning("daily_store lock migration failed project_id=%s detail=%s", project_id, exc)
-    txt_path = os.path.join(base_dir, "daily.txt")
-    return meta_path, lock_path, txt_path
+    md_path = os.path.join(base_dir, "daily.md")
+    return meta_path, lock_path, md_path
 
 
 @dataclass
@@ -377,6 +439,7 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
                     {
                         "source": "daily",
                         "daily_entry_id": str(eid) if eid is not None else None,
+                        "memory_id": e.get("memory_id"),
                         "day_sequence": e.get("day_sequence"),
                         # Adjacency identity for Daily entries.
                         "doc_id": "daily",
@@ -492,9 +555,9 @@ def ensure_daily_cache(project_id: str, reason: str = "warm") -> bool:
                 models = _recorded_models(entries)
                 if not entries or (models == {runtime_model}):
                     return True
-            except Exception:
+            except Exception as exc:
                 # If we can't validate, rebuild and do not retry this request elsewhere.
-                pass
+                logger.warning("DailyRAG: cache validation failed project=%s detail=%s", project_id, exc)
         # Rebuild if missing or if daily.json indicates mismatch with runtime model.
         return rebuild_daily_cache(project_id, reason=reason)
 
@@ -509,89 +572,106 @@ def append_pair(
     keep: bool = False,
     embed_override: Optional[str] = None,
     tags_meta: Optional[Dict[str, Any]] = None,
-    write_daily_txt: bool = True,
+    write_daily_md: bool = True,
     update_cache: bool = True,
+    created_at_iso_utc: Optional[str] = None,
+    memory_id: Optional[str] = None,
+    entry_type: str = "chat_pair",
+    source: str = "chat",
+    source_agent: str = "syx",
+    source_scope: Optional[str] = None,
+    current_scope: Optional[str] = None,
+    accepted_item_id: Optional[str] = None,
+    dream_output_type: Optional[str] = None,
+    origin_memory_ids: Optional[List[str]] = None,
 ) -> bool:
     """Append a single embedded pair to the daily index and metadata.
     Note: We don't persist raw FAISS here; we only track metadata and rely on embeddings at retrieval-time for simplicity.
-    When update_cache is False, only daily.json (and optionally daily.txt) are updated; caller is responsible for rebuilding the in-memory RAG once (e.g. dream batch).
+    When update_cache is False, only daily.json (and optionally daily.md) are updated; caller is responsible for rebuilding the in-memory RAG once (e.g. dream batch).
     """
     settings = get_settings()
-    meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    meta_path, lock_path, md_path = _project_daily_paths(project_id)
     text_for_embed = embed_override if embed_override else pair_text
     with FileLock(lock_path):
         entries = _load_metadata(meta_path)
         day_sequence = (entries[-1]["day_sequence"] + 1) if entries else 1
         ns = (namespace or "other").lower()
+        created_at = created_at_iso_utc or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        ts_local = local_timestamp_from_iso(created_at)
+        user_text, assistant_text = split_pair_text(pair_text)
+        public_tags_meta = tags_meta if isinstance(tags_meta, dict) else {}
+        semantic_handle = _semantic_handle(public_tags_meta)
+        resolved_current_scope = current_scope or ("dream" if entry_type == "dream_output" else "daily")
+        resolved_source_scope = source_scope or ("dream" if entry_type == "dream_output" else "daily")
+        resolved_memory_id = memory_id or generate_memory_id(
+            project_id=project_id,
+            timestamp=ts_local,
+            source=source,
+            entry_type=entry_type,
+            user_text=user_text,
+            assistant_text=assistant_text,
+            route=ns,
+            semantic_handle=semantic_handle,
+            dream_output_type=dream_output_type,
+            accepted_item_id=accepted_item_id,
+            origin_memory_ids=origin_memory_ids,
+            dream_content=assistant_text if entry_type == "dream_output" else None,
+        )
         entry = {
             "id": f"{int(time.time()*1000)}-{len(entries)+1}",
+            "memory_id": resolved_memory_id,
+            "entry_type": entry_type,
             "project_id": project_id,
-            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "created_at": created_at,
+            "timestamp": ts_local,
             "pair_ids": [str(user_msg_id), str(assistant_msg_id)],
             "text": pair_text,
             # The in-memory FAISS cache is rebuilt from daily.json; preserve vector content explicitly.
             "embed_text": text_for_embed,
             "tokens": int(tokens),
             "embedding_model": get_active_embedding_model(),
-            "source": "chat",
+            "source": source,
+            "source_agent": source_agent,
+            "source_scope": resolved_source_scope,
+            "current_scope": resolved_current_scope,
             "scope": "daily",
+            "route": ns,
             "keep": bool(keep),
             "confidence": 1.0,
             "tags": ["rolled_off"],
             "day_sequence": day_sequence,
         }
+        if accepted_item_id:
+            entry["accepted_item_id"] = accepted_item_id
+        if dream_output_type:
+            entry["dream_output_type"] = snake_case_value(dream_output_type)
+        if origin_memory_ids:
+            entry["origin_memory_ids"] = list(origin_memory_ids)
         if tags_meta:
             entry["tags_meta"] = tags_meta
         entries.append(entry)
         _save_metadata(meta_path, entries)
-        # Append to daily.txt (human-readable) unless explicitly skipped
-        if write_daily_txt:
+        # Append to daily.md (human-readable) unless explicitly skipped
+        if write_daily_md:
             try:
                 # If first write, add BEGIN header with local date (MM/DD/YYYY)
                 try:
-                    if (not os.path.isfile(txt_path)) or os.path.getsize(txt_path) == 0:
-                        begin_date = time.strftime("%m/%d/%Y", time.localtime())
-                        with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
-                            tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
+                    if (not os.path.isfile(md_path)) or os.path.getsize(md_path) == 0:
+                        memory_date = time.strftime("%m-%d-%Y", time.localtime())
+                        with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
+                            tf.write(_nl(render_artifact_header(
+                                artifact_type="daily_memory",
+                                project_id=project_id,
+                                memory_date=memory_date,
+                            )))
                 except Exception as exc:
-                    logger.warning("DailyRAG: failed ensuring daily BEGIN header project=%s path=%s detail=%s", project_id, txt_path, exc)
-                ts = entry["created_at"]
-                # Split pair_text into user and assistant parts safely
-                if "\nAssistant:" in pair_text:
-                    _user_part, _assistant_part = pair_text.split("\nAssistant:", 1)
-                    user_text = _user_part.replace("User:", "", 1).strip()
-                    assistant_text = _assistant_part.strip()
-                else:
-                    user_text = ""
-                    assistant_text = pair_text.strip()
-                # Header + block format (local time MM-DD-YYYY_HH:MM:SS)
-                try:
-                    tstruct = time.strptime(ts.replace("Z", ""), "%Y-%m-%dT%H:%M:%S")
-                    ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime(time.mktime(tstruct)))
-                except Exception:
-                    ts_local = ts
-                tags_block = _format_tags_block(tags_meta)
-                block = (
-                    f"{_BEGIN_DAILY_PAIR}\n"
-                    f"#timestamp: {ts_local}\n"
-                    f"#route: {ns}\n"
-                    f"#keep: {str(bool(keep)).lower()}\n"
-                    f"{tags_block}"
-                    f"\n"
-                    f"--- USER (data-message-author-role: user) ---\n"
-                    f"{user_text}\n"
-                    f"\n"
-                    f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
-                    f"{assistant_text}\n"
-                    f"\n"
-                    f"{_END_DAILY_PAIR}\n"
-                    f"\n"
-                )
-                with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+                    logger.warning("DailyRAG: failed ensuring daily BEGIN header project=%s path=%s detail=%s", project_id, md_path, exc)
+                block = _render_markdown_entry(entry, user_text=user_text, assistant_text=assistant_text)
+                with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
                     tf.write(_nl(block))
-                logger.debug("[DAILYTXT] project=%s wrote %s bytes", project_id, len(block.encode('utf-8')))
+                logger.debug("[DAILYMD] project=%s wrote %s bytes", project_id, len(block.encode('utf-8')))
             except Exception as te:
-                logger.error("DailyRAG: failed writing daily.txt: %s", te)
+                logger.error("DailyRAG: failed writing daily.md: %s", te)
     if not update_cache:
         return True
     # Update in-memory cache
@@ -619,6 +699,7 @@ def append_pair(
                 md0 = {
                     "source": "daily",
                     "daily_entry_id": entry.get("id"),
+                    "memory_id": entry.get("memory_id"),
                     "day_sequence": entry.get("day_sequence"),
                     "doc_id": "daily",
                     "chunk_seq": entry.get("day_sequence"),
@@ -643,6 +724,7 @@ def append_pair(
             md2 = {
                 "source": "daily",
                 "daily_entry_id": entry.get("id"),
+                "memory_id": entry.get("memory_id"),
                 "day_sequence": entry.get("day_sequence"),
                 "doc_id": "daily",
                 "chunk_seq": entry.get("day_sequence"),
@@ -685,22 +767,26 @@ def append_pair_text_only(
     tags_meta: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """
-    Append a single pair to daily.txt only (no FAISS, no daily.json).
+    Append a single pair to daily.md only (no FAISS, no daily.json).
     Used by Sleep flush to move active DB pairs into daily text at start of cycle.
     When tags_meta is provided, writes #topics, #intent, #type, #semantic_handle (same format as roll-off).
     """
-    _meta_path, lock_path, txt_path = _project_daily_paths(project_id)
+    _meta_path, lock_path, md_path = _project_daily_paths(project_id)
     ns = (namespace or "other").lower()
     with FileLock(lock_path):
         try:
             # Ensure BEGIN header exists
             try:
-                if (not os.path.isfile(txt_path)) or os.path.getsize(txt_path) == 0:
-                    begin_date = time.strftime("%m/%d/%Y", time.localtime())
-                    with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
-                        tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
+                if (not os.path.isfile(md_path)) or os.path.getsize(md_path) == 0:
+                    memory_date = time.strftime("%m-%d-%Y", time.localtime())
+                    with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
+                        tf.write(_nl(render_artifact_header(
+                            artifact_type="daily_memory",
+                            project_id=project_id,
+                            memory_date=memory_date,
+                        )))
             except Exception as exc:
-                logger.warning("DailyRAG: failed ensuring text-only BEGIN header project=%s path=%s detail=%s", project_id, txt_path, exc)
+                logger.warning("DailyRAG: failed ensuring text-only BEGIN header project=%s path=%s detail=%s", project_id, md_path, exc)
             ts = created_at_iso_utc or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             # Localize timestamp to MM-DD-YYYY_HH:MM:SS
             try:
@@ -725,12 +811,12 @@ def append_pair_text_only(
                 f"{_END_DAILY_PAIR}\n"
                 f"\n"
             )
-            with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
+            with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
                 tf.write(_nl(block))
-            logger.info("[DAILYTXT] Text-only append project=%s bytes=%s", project_id, len(block.encode("utf-8")))
+            logger.info("[DAILYMD] Text-only append project=%s bytes=%s", project_id, len(block.encode("utf-8")))
             return True
         except Exception as e:
-            logger.error("[DAILYTXT][ERROR] Text-only append failed project=%s: %s", project_id, e)
+            logger.error("[DAILYMD][ERROR] Text-only append failed project=%s: %s", project_id, e)
             return False
 
 
@@ -762,61 +848,81 @@ def daily_stats(project_id: str) -> Dict[str, int]:
     return {"daily_index_size_bytes": size_bytes, "daily_tokens_indexed": tokens, "daily_vector_count": len(entries)}
 
 
-def backfill_daily_txt_from_meta(project_id: str) -> bool:
-    """If daily.json exists and daily.txt missing, write out text blocks for all entries (canonical format)."""
-    meta_path, lock_path, txt_path = _project_daily_paths(project_id)
-    if os.path.isfile(txt_path):
+def backfill_daily_md_from_meta(project_id: str) -> bool:
+    """If daily.json exists and daily.md is missing, write out text blocks for all entries (canonical format)."""
+    meta_path, lock_path, md_path = _project_daily_paths(project_id)
+    if os.path.isfile(md_path):
         return False
     with FileLock(lock_path):
         entries = _load_metadata(meta_path)
         if not entries:
             return False
         try:
-            with open(txt_path, "a", encoding="utf-8", newline="\n") as tf:
-                # Write BEGIN header once (local date MM/DD/YYYY)
-                begin_date = time.strftime("%m/%d/%Y", time.localtime())
-                tf.write(_nl(f"=== BEGIN DAILY MEMORY: {begin_date} ===\n\n"))
+            with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
+                first_ts = entries[0].get("timestamp") or entries[0].get("created_at") if entries else None
+                memory_date = memory_date_from_local_timestamp(str(first_ts or ""))
+                tf.write(_nl(render_artifact_header(
+                    artifact_type="daily_memory",
+                    project_id=project_id,
+                    memory_date=memory_date,
+                )))
+                changed = False
                 for e in entries:
                     ts = e.get("created_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                     ns = "other"
                     keep = bool(e.get("keep", False))
                     text = e.get("text") or ""
-                    # Localize timestamp to MM-DD-YYYY_HH:MM:SS
-                    try:
-                        tstruct = time.strptime(ts.replace("Z", ""), "%Y-%m-%dT%H:%M:%S")
-                        ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime(time.mktime(tstruct)))
-                    except Exception:
-                        ts_local = ts
+                    ts_local = str(e.get("timestamp") or local_timestamp_from_iso(str(ts)))
                     # Best-effort split back into prompt/response
-                    if "\nAssistant:" in text:
-                        u, a = text.split("\nAssistant:", 1)
-                        u = u.replace("User:", "", 1).strip()
-                        a = a.strip()
-                    else:
-                        u, a = "", text.strip()
+                    u, a = split_pair_text(str(text))
                     tags_meta = e.get("tags_meta") if isinstance(e, dict) else None
-                    tags_block = _format_tags_block(tags_meta if isinstance(tags_meta, dict) else None)
-                    block = (
-                        f"{_BEGIN_DAILY_PAIR}\n"
-                        f"#timestamp: {ts_local}\n"
-                        f"#route: {ns}\n"
-                        f"#keep: {str(keep).lower()}\n"
-                        f"{tags_block}"
-                        f"\n"
-                        f"--- USER (data-message-author-role: user) ---\n"
-                        f"{u}\n"
-                        f"\n"
-                        f"*** ASSISTANT (data-message-author-role: assistant) ***\n"
-                        f"{a}\n"
-                        f"\n"
-                        f"{_END_DAILY_PAIR}\n"
-                        f"\n"
+                    semantic_handle = _semantic_handle(tags_meta if isinstance(tags_meta, dict) else None)
+                    if not e.get("timestamp"):
+                        e["timestamp"] = ts_local
+                        changed = True
+                    if not e.get("entry_type"):
+                        e["entry_type"] = "chat_pair"
+                        changed = True
+                    if not e.get("source_agent"):
+                        e["source_agent"] = "syx"
+                        changed = True
+                    if not e.get("source_scope"):
+                        e["source_scope"] = "dream" if e.get("entry_type") == "dream_output" else "daily"
+                        changed = True
+                    if not e.get("current_scope"):
+                        e["current_scope"] = "dream" if e.get("entry_type") == "dream_output" else "daily"
+                        changed = True
+                    if not e.get("route"):
+                        e["route"] = ns
+                        changed = True
+                    if not e.get("memory_id"):
+                        e["memory_id"] = generate_memory_id(
+                            project_id=project_id,
+                            timestamp=ts_local,
+                            source=str(e.get("source") or "chat"),
+                            entry_type=str(e.get("entry_type") or "chat_pair"),
+                            user_text=u,
+                            assistant_text=a,
+                            route=str(e.get("route") or ns),
+                            semantic_handle=semantic_handle,
+                            dream_output_type=e.get("dream_output_type") if isinstance(e.get("dream_output_type"), str) else None,
+                            accepted_item_id=e.get("accepted_item_id") if isinstance(e.get("accepted_item_id"), str) else None,
+                            origin_memory_ids=e.get("origin_memory_ids") if isinstance(e.get("origin_memory_ids"), list) else None,
+                            dream_content=a if e.get("entry_type") == "dream_output" else None,
+                        )
+                        changed = True
+                    block = _render_markdown_entry(
+                        e,
+                        user_text=u,
+                        assistant_text=a,
                     )
                     tf.write(_nl(block))
-            logger.warning("[DAILYTXT] Backfilled daily.txt (canonical format) for project=%s", project_id)
+                if changed:
+                    _save_metadata(meta_path, entries)
+            logger.warning("[DAILYMD] Backfilled daily.md (canonical format) for project=%s", project_id)
             return True
         except Exception as e:
-            logger.error("[DAILYTXT] Failed backfill for project=%s: %s", project_id, e)
+            logger.error("[DAILYMD] Failed backfill for project=%s: %s", project_id, e)
             return False
 
 

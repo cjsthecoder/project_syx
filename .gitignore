@@ -29,11 +29,16 @@ ENV/
 
 # Environment files
 .env
+.env.*
 .env.local
 .env.development.local
 .env.test.local
+.env.production
 .env.production.local
 .env.old
+.env.build
+# Keep the sanitized template tracked
+!.env.example
 
 # IDE/editor
 .cursor/

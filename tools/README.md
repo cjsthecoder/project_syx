@@ -106,7 +106,7 @@ Imports one ChatGPT HTML export, or all top-level `.html`/`.htm` files in a dire
 
 ```bash
 python3 tools/import_chat_html_to_markdown_memory.py \
-  /Users/cshuler/Desktop/in \
+  exports/chat_html \
   data/memory/ce667335-ae8e-41d7-b810-59627cd8d67a/uploads/imported_chats \
   --project-id ce667335-ae8e-41d7-b810-59627cd8d67a \
   --tagger true

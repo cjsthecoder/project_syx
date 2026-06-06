@@ -12,15 +12,31 @@ Tests for LLM integration.
 
 import pytest
 from unittest.mock import patch, MagicMock
-from app.core.llm import LLMProvider, get_llm_provider, generate_chat_response, generate_text_response
+from app.core.llm import (
+    LLMProvider,
+    get_llm_provider,
+    generate_chat_response,
+    generate_text_response,
+    reset_llm_provider,
+)
 from app.llm_model.base import LLMResponse, LLMUsage
 
 
 @pytest.fixture
 def mock_openai_key():
-    """Mock OpenAI API key for testing."""
-    with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-123"}):
+    """Make the LLM provider construct without a real key.
+
+    `validate_openai_key()` reads from the cached Settings object, not the live
+    environment, so patching os.environ alone is not enough in a clean CI
+    environment. Patch the validator directly and reset the provider singleton
+    so the tests are hermetic regardless of whether a key is configured.
+    """
+    reset_llm_provider()
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-123"}), patch(
+        "app.core.llm.validate_openai_key", return_value=True
+    ):
         yield
+    reset_llm_provider()
 
 
 def test_llm_provider_initialization(mock_openai_key):

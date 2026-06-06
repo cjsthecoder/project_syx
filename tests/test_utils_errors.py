@@ -59,9 +59,9 @@ def test_create_error_response_from_generic_exception():
     http = create_error_response(
         ValueError("bad value"),
         error_code="VALIDATION_ERROR",
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
     )
-    assert http.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert http.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert http.detail["error"] == "bad value"
     assert http.detail["error_code"] == "VALIDATION_ERROR"
     assert http.detail["details"] == {}
@@ -93,7 +93,7 @@ def test_handle_llm_error_default_unavailable():
 
 def test_handle_validation_error():
     http = handle_validation_error(Exception("bad"))
-    assert http.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert http.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert http.detail["error_code"] == "VALIDATION_ERROR"
 
 

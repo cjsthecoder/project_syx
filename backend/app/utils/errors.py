@@ -148,7 +148,7 @@ def handle_validation_error(error: Exception) -> HTTPException:
     return create_error_response(
         error,
         error_code="VALIDATION_ERROR",
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT
     )
 
 

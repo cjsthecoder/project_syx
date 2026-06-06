@@ -26,6 +26,7 @@ import json
 import logging
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
@@ -123,17 +124,152 @@ def _read_html(path: Path) -> str:
         raise RuntimeError(f"Failed reading HTML file '{path}': {exc}") from exc
 
 
-def _extract_messages(html_text: str, bs4_type: Any) -> list[tuple[str, str]]:
-    soup = bs4_type(html_text, "html.parser")
+@dataclass(frozen=True)
+class ExtractionResult:
+    messages: list[tuple[str, str]]
+    diagnostics: dict[str, Any]
+
+
+_PLACEHOLDER_ASSISTANT_TEXTS = {
+    "stopped thinking",
+    "stopped thinking edit",
+}
+
+
+def _normalize_extracted_text(text: str) -> str:
+    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    return "\n".join(lines).strip()
+
+
+def _strip_chatgpt_turn_prefix(text: str, prefix: str) -> str:
+    normalized = _normalize_extracted_text(text)
+    if normalized.lower() == prefix.lower():
+        return ""
+    prefix_with_colon = f"{prefix}:"
+    if normalized.lower().startswith(prefix_with_colon.lower()):
+        return normalized[len(prefix_with_colon) :].strip()
+    return normalized
+
+
+def _is_placeholder_assistant_text(text: str) -> bool:
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip().lower()
+    return normalized in _PLACEHOLDER_ASSISTANT_TEXTS
+
+
+def _extract_role_tagged_messages(soup: Any) -> list[tuple[str, str]]:
     messages: list[tuple[str, str]] = []
     for div in soup.find_all("div", attrs={"data-message-author-role": True}):
         role = str(div.get("data-message-author-role") or "").upper().strip()
         if role not in {"USER", "ASSISTANT"}:
             continue
-        text = div.get_text(strip=True)
+        text = _normalize_extracted_text(div.get_text("\n", strip=True))
         if text:
             messages.append((role, text))
     return messages
+
+
+def _extract_conversation_turn_messages(soup: Any) -> tuple[list[tuple[str, str]], dict[str, int]]:
+    messages: list[tuple[str, str]] = []
+    stats = {
+        "conversation_turns_total": 0,
+        "conversation_turns_empty": 0,
+        "conversation_turns_nonempty": 0,
+        "conversation_turns_user": 0,
+        "conversation_turns_assistant": 0,
+        "conversation_turns_placeholder_assistant": 0,
+        "conversation_turns_unclassified": 0,
+    }
+
+    for turn in soup.select('[data-testid^="conversation-turn"]'):
+        stats["conversation_turns_total"] += 1
+        full_text = _normalize_extracted_text(turn.get_text("\n", strip=True))
+        if not full_text:
+            stats["conversation_turns_empty"] += 1
+            continue
+        stats["conversation_turns_nonempty"] += 1
+
+        role_nodes = turn.select("[data-message-author-role]")
+        role = ""
+        text = ""
+        if len(role_nodes) == 1:
+            role = str(role_nodes[0].get("data-message-author-role") or "").upper().strip()
+            text = _normalize_extracted_text(role_nodes[0].get_text("\n", strip=True))
+        elif full_text.lower().startswith("you said:"):
+            role = "USER"
+            text = _strip_chatgpt_turn_prefix(full_text, "You said")
+        elif full_text.lower().startswith("chatgpt said:"):
+            role = "ASSISTANT"
+            text = _strip_chatgpt_turn_prefix(full_text, "ChatGPT said")
+        elif turn.select('[aria-label="Your message actions"]'):
+            role = "USER"
+            text = _strip_chatgpt_turn_prefix(full_text, "You said")
+        elif turn.select('[aria-label="Response actions"]'):
+            role = "ASSISTANT"
+            text = _strip_chatgpt_turn_prefix(full_text, "ChatGPT said")
+
+        if role not in {"USER", "ASSISTANT"} or not text:
+            stats["conversation_turns_unclassified"] += 1
+            continue
+        if role == "ASSISTANT" and _is_placeholder_assistant_text(text):
+            stats["conversation_turns_placeholder_assistant"] += 1
+            continue
+
+        messages.append((role, text))
+        if role == "USER":
+            stats["conversation_turns_user"] += 1
+        else:
+            stats["conversation_turns_assistant"] += 1
+
+    return messages, stats
+
+
+def _role_counts(messages: list[tuple[str, str]]) -> dict[str, int]:
+    return {
+        "user": sum(1 for role, _text in messages if role == "USER"),
+        "assistant": sum(1 for role, _text in messages if role == "ASSISTANT"),
+    }
+
+
+def _extract_messages_with_diagnostics(html_text: str, bs4_type: Any) -> ExtractionResult:
+    soup = bs4_type(html_text, "html.parser")
+    role_messages = _extract_role_tagged_messages(soup)
+    turn_messages, turn_stats = _extract_conversation_turn_messages(soup)
+    role_counts = _role_counts(role_messages)
+    turn_counts = _role_counts(turn_messages)
+
+    if len(turn_messages) > len(role_messages):
+        extractor = "conversation_turn"
+        messages = turn_messages
+    else:
+        extractor = "role_tagged"
+        messages = role_messages
+
+    diagnostics: dict[str, Any] = {
+        "extractor": extractor,
+        "role_tagged_messages_total": len(role_messages),
+        "role_tagged_user_turns": role_counts["user"],
+        "role_tagged_assistant_turns": role_counts["assistant"],
+        "selected_messages_total": len(messages),
+        "selected_user_turns": _role_counts(messages)["user"],
+        "selected_assistant_turns": _role_counts(messages)["assistant"],
+        **turn_stats,
+    }
+    if turn_messages and role_messages and len(turn_messages) != len(role_messages):
+        diagnostics["alternate_extractor_messages_total"] = len(turn_messages)
+        diagnostics["alternate_extractor_user_turns"] = turn_counts["user"]
+        diagnostics["alternate_extractor_assistant_turns"] = turn_counts["assistant"]
+    return ExtractionResult(messages=messages, diagnostics=diagnostics)
+
+
+def _extract_messages(html_text: str, bs4_type: Any) -> list[tuple[str, str]]:
+    return _extract_messages_with_diagnostics(html_text, bs4_type).messages
+
+
+def _html_appears_incomplete_or_virtualized(diagnostics: dict[str, Any]) -> bool:
+    empty_turns = int(diagnostics.get("conversation_turns_empty", 0))
+    selected_users = int(diagnostics.get("selected_user_turns", 0))
+    selected_assistants = int(diagnostics.get("selected_assistant_turns", 0))
+    return empty_turns > 0 and selected_users > selected_assistants * 2
 
 
 def _pair_turns(messages: list[tuple[str, str]]) -> tuple[list[tuple[str, str]], dict[str, int]]:
@@ -315,15 +451,51 @@ def _process_one_file(
     prune_assistant_for_tagger: Any,
     settings: Any,
     encoding: Any,
+    allow_partial_html: bool,
     generate_memory_id: Any,
     render_artifact_header: Any,
     render_memory_entry: Any,
     topics_to_list: Any,
 ) -> Path:
     html_text = _read_html(input_path)
-    messages = _extract_messages(html_text, BeautifulSoup)
+    extraction = _extract_messages_with_diagnostics(html_text, BeautifulSoup)
+    messages = extraction.messages
     if not messages:
-        raise RuntimeError("No role-tagged USER/ASSISTANT messages found in input HTML.")
+        raise RuntimeError("No USER/ASSISTANT messages found in input HTML.")
+    logger.info(
+        "Extraction summary for %s: extractor=%s message_nodes=%s user_nodes=%s "
+        "assistant_nodes=%s max_complete_pairs=%s conversation_turn_containers=%s empty_turns=%s "
+        "placeholder_assistant_turns=%s",
+        input_path.name,
+        extraction.diagnostics.get("extractor"),
+        extraction.diagnostics.get("selected_messages_total"),
+        extraction.diagnostics.get("selected_user_turns"),
+        extraction.diagnostics.get("selected_assistant_turns"),
+        min(
+            int(extraction.diagnostics.get("selected_user_turns", 0)),
+            int(extraction.diagnostics.get("selected_assistant_turns", 0)),
+        ),
+        extraction.diagnostics.get("conversation_turns_total"),
+        extraction.diagnostics.get("conversation_turns_empty"),
+        extraction.diagnostics.get("conversation_turns_placeholder_assistant"),
+    )
+    if _html_appears_incomplete_or_virtualized(extraction.diagnostics):
+        message = (
+            "HTML appears incomplete or virtualized; "
+            f"user_turns={extraction.diagnostics.get('selected_user_turns')} "
+            f"assistant_turns={extraction.diagnostics.get('selected_assistant_turns')} "
+            f"empty_turns={extraction.diagnostics.get('conversation_turns_empty')} "
+            f"placeholder_assistant_turns="
+            f"{extraction.diagnostics.get('conversation_turns_placeholder_assistant')}. "
+            "A Syx chat_pair requires both a user turn and an assistant turn, so this file "
+            f"can produce at most {extraction.diagnostics.get('selected_assistant_turns')} "
+            "complete pairs. "
+            "Re-save the chat after fully loading/rendering it, or rerun with "
+            "--allow-partial-html to import only the turns present in this file."
+        )
+        if not allow_partial_html:
+            raise RuntimeError(message)
+        logger.warning("%s", message)
 
     pairs, pair_stats = _pair_turns(messages)
     if not pairs:
@@ -458,6 +630,7 @@ def _process_one_file(
         "tokens_user_pruned_assistant_total_est": int(total_tokens_user + total_tokens_pruned_assistant),
         "tokens_output_total_est": int(total_tokens_output),
         "timestamp_source": ts_source,
+        "extraction_stats": extraction.diagnostics,
         "pairing_stats": pair_stats,
         "memory_ids": memory_ids,
     }
@@ -468,6 +641,7 @@ def _process_one_file(
         raise RuntimeError(f"Failed appending statistics JSONL '{stats_path}': {exc}") from exc
 
     logger.info("Processed file: %s", input_path.name)
+    logger.info("Extractor: %s", extraction.diagnostics.get("extractor"))
     logger.info("Pairs written: %s", len(pairs))
     logger.info("Output markdown: %s", out_md_path)
     logger.info("Stats appended: %s", stats_path)
@@ -486,6 +660,7 @@ def run(
     source_agent: str = "syx",
     source_scope: str = "daily",
     current_scope: str = "ltm",
+    allow_partial_html: bool = False,
 ) -> int:
     _setup_logging()
     _ensure_import_paths()
@@ -535,6 +710,7 @@ def run(
                 prune_assistant_for_tagger=prune_assistant_for_tagger,
                 settings=settings,
                 encoding=encoding,
+                allow_partial_html=allow_partial_html,
                 generate_memory_id=generate_memory_id,
                 render_artifact_header=render_artifact_header,
                 render_memory_entry=render_memory_entry,
@@ -582,6 +758,14 @@ def main() -> int:
     parser.add_argument("--source-agent", default="syx", help="Source agent metadata value")
     parser.add_argument("--source-scope", default="daily", help="Source scope metadata value")
     parser.add_argument("--current-scope", default="ltm", help="Current scope metadata value")
+    parser.add_argument(
+        "--allow-partial-html",
+        action="store_true",
+        help=(
+            "Import even when the saved ChatGPT HTML appears incomplete or virtualized. "
+            "By default, incomplete HTML fails before tagging/writing partial memory."
+        ),
+    )
     args = parser.parse_args()
 
     try:
@@ -596,6 +780,7 @@ def main() -> int:
             source_agent=args.source_agent,
             source_scope=args.source_scope,
             current_scope=args.current_scope,
+            allow_partial_html=args.allow_partial_html,
         )
     except Exception as exc:
         logger.error("%s", exc)

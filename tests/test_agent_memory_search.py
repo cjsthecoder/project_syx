@@ -117,6 +117,29 @@ def test_parse_prompt_context_ignores_internal_markdown_separators():
     assert snippets[1].chunk_index_end == 3
 
 
+def test_parse_prompt_context_ignores_embedded_historical_snippet_headers():
+    context = (
+        "Context:\n---\n"
+        "Snippet 1 (source=ltm, cos=0.7000, score=0.8500, file=a.md, page=None, chunk_index=0..2)\n"
+        "current retrieved body\n\n"
+        "Historical output included inside the memory:\n"
+        "Snippet 1 (source=ltm, score=0.84, file=old.txt, page=None)\n"
+        "old nested body that should remain text\n\n"
+        "---\n"
+        "Snippet 2 (source=ltm, cos=0.6000, score=0.8000, file=b.md, page=None, chunk_index=3)\n"
+        "second current retrieved body\n"
+    )
+
+    snippets = parse_prompt_context_to_snippets(context)
+
+    assert len(snippets) == 2
+    assert snippets[0].snippet_number == 1
+    assert "Historical output included inside the memory" in snippets[0].text
+    assert "Snippet 1 (source=ltm, score=0.84, file=old.txt, page=None)" in snippets[0].text
+    assert "old nested body that should remain text" in snippets[0].text
+    assert snippets[1].snippet_number == 2
+
+
 def test_parse_prompt_context_uses_header_syx_metadata_for_mid_entry_chunks():
     memory_id = "mem_20260507_183158_8c23347a"
     source_document_id = f"sleep/sleep.md::memory_id={memory_id}"

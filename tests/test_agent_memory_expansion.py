@@ -84,6 +84,50 @@ def test_unbounded_snippet_gets_not_applicable_status(tmp_path, monkeypatch):
     assert expanded.text == "ordinary upload"
 
 
+def test_duplicate_bounded_memory_ids_expand_once(tmp_path, monkeypatch):
+    project_id = "project"
+    memory_id = "mem_20260509_160626_f2734468"
+    uploads = tmp_path / project_id / "uploads" / "sleep"
+    uploads.mkdir(parents=True)
+    (uploads / "sleep.md").write_text(
+        f"<!-- begin syx:memory_id={memory_id} -->\n"
+        "## Chat Pair: deduped entry\n\n"
+        "shared body\n"
+        f"<!-- end syx:memory_id={memory_id} -->\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        entry_expansion,
+        "get_settings",
+        lambda: SimpleNamespace(memory_root=str(tmp_path), agent_memory_max_entry_chars=25_000),
+    )
+    snippets = [
+        AgentMemorySnippet(
+            snippet_number=1,
+            memory_id=memory_id,
+            artifact_path="sleep/sleep.md",
+            source_document_id=f"sleep/sleep.md::memory_id={memory_id}",
+            result_mode="bounded_entry",
+            text="first partial chunk",
+        ),
+        AgentMemorySnippet(
+            snippet_number=2,
+            memory_id=memory_id,
+            artifact_path="sleep/sleep.md",
+            source_document_id=f"sleep/sleep.md::memory_id={memory_id}",
+            result_mode="bounded_entry",
+            text="second partial chunk",
+        ),
+    ]
+
+    expanded = expand_agent_memory_snippets(project_id=project_id, snippets=snippets)
+
+    assert len(expanded) == 1
+    assert expanded[0].snippet_number == 1
+    assert expanded[0].entry_expansion_status == "expanded"
+    assert "shared body" in expanded[0].text
+
+
 def test_docstore_reconstruction_is_fallback_and_ordered(tmp_path, monkeypatch):
     project_id = "project"
     source_document_id = "sleep/sleep.md::memory_id=mem_20260509_160626_f2734468"

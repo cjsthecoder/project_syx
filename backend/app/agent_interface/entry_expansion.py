@@ -58,12 +58,18 @@ def expand_agent_memory_snippets(
     max_chars = max(1, int(configured_limit))
 
     out: List[AgentMemorySnippet] = []
+    seen_memory_ids: set[str] = set()
     for snippet in snippets or []:
         if snippet.result_mode != "bounded_entry" or not snippet.memory_id:
             snippet.entry_expansion_status = "not_applicable"
             snippet.entry_expansion_method = "not_applicable"
             out.append(snippet)
             continue
+
+        memory_id = str(snippet.memory_id).strip()
+        if memory_id in seen_memory_ids:
+            continue
+        seen_memory_ids.add(memory_id)
 
         result = _expand_one(project_id=project_id, snippet=snippet)
         snippet.text = result.text

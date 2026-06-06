@@ -17,10 +17,15 @@ Calls the local `POST /agent/memory/search` endpoint and prints the JSON respons
 ```bash
 SYX_AGENT_TOKEN="local-token" python3 tools/agent_memory_search.py \
   --project-name "Continuum" \
-  --query "MCP, LLM, RAG, Vision, Collaborative" \
+  --query "<retrieval objective>. Context: <project/topic/semantic handle>. Include: <known terms, requirement IDs, deltas, files, decisions, constraints>." \
   --category "SYNTHESIS" \
   --pretty
 ```
+
+examples:
+Implementation guidance, requirements, design decisions, constraints, and known pitfalls for agent memory search endpoint. Context: DELTA-A.4 external agent memory search.
+Prior decisions and constraints about memory decay, pruning, sleep cycle, and reconsolidation. Context: research plan for memory reconsolidation neuroscience.
+Find file locations, requirements, and behavior for full Syx memory entry expansion. Context: DELTA-A.5 bounded entry expansion agent memory.
 
 ## `build_benchmark_scores.py`
 

@@ -48,7 +48,11 @@ def parse_prompt_context_to_snippets(context_text: str) -> List[AgentMemorySnipp
 
 def _split_snippet_parts(body: str) -> List[str]:
     lines = str(body or "").splitlines()
-    starts = [idx for idx, line in enumerate(lines) if _HEADER_RE.match(line.strip())]
+    starts = [
+        idx
+        for idx, line in enumerate(lines)
+        if _HEADER_RE.match(line.strip()) and _is_context_delimited_snippet_start(lines, idx)
+    ]
     if not starts:
         return []
     parts: List[str] = []
@@ -58,6 +62,17 @@ def _split_snippet_parts(body: str) -> List[str]:
         if part:
             parts.append(part)
     return parts
+
+
+def _is_context_delimited_snippet_start(lines: List[str], idx: int) -> bool:
+    if idx <= 0:
+        return True
+    prev_idx = idx - 1
+    while prev_idx >= 0 and not lines[prev_idx].strip():
+        prev_idx -= 1
+    if prev_idx < 0:
+        return True
+    return lines[prev_idx].strip() == "---"
 
 
 def render_prompt_text_from_snippets(snippets: List[AgentMemorySnippet]) -> str:

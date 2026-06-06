@@ -183,7 +183,7 @@ test-backend:
 
 test-frontend:
 	@echo "🧪 Running frontend tests..."
-	@if cd frontend && node -e "const s=require('./package.json').scripts||{}; process.exit(s.test?0:1)"; then \
+	@if node -e "const s=require('./frontend/package.json').scripts||{}; process.exit(s.test?0:1)"; then \
 		cd frontend && npm run test -- --run; \
 	else \
 		echo "ℹ️  Skipping frontend tests: no 'test' script in frontend/package.json"; \

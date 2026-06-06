@@ -24,6 +24,11 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.13"]
+    # Safe, non-secret placeholder values. The suite is hermetic (LLM/embedding
+    # providers are mocked), and this recognized placeholder is treated as an
+    # invalid key by validate_openai_key(), so no real credentials are ever used.
+    env:
+      OPENAI_API_KEY: your-openai-api-key-here
 
     steps:
       - name: Check out repository

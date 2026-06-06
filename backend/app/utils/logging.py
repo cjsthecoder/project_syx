@@ -1,11 +1,10 @@
 """
-Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
+Copyright (c) 2025-2026 Syx Project Contributors
 
-This source code is part of the Syx project and is proprietary.
+SPDX-License-Identifier: MIT
 
-Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
-
-Use of this software requires explicit written permission from the copyright holder.
+This file is part of the Syx project. See the LICENSE file in the project
+root for full license information.
 """
 """
 Enhanced logging configuration for Syx AGI Chatbot Framework.

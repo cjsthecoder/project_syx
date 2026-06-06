@@ -2,6 +2,9 @@
 name = "syx"
 version = "0.1.0"
 description = "Syx AGI Chatbot Framework"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Syx Project Contributors" }]
 requires-python = ">=3.13,<3.14"
 
 [tool.black]

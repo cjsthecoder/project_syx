@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.
+Copyright (c) 2025-2026 Syx Project Contributors
 
-This source code is part of the Syx project and is proprietary.
+SPDX-License-Identifier: MIT
 
-Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
-
-Use of this software requires explicit written permission from the copyright holder.
+This file is part of the Syx project. See the LICENSE file in the project
+root for full license information.
 """
 """
 Add standard copyright headers to project files.
@@ -19,30 +18,37 @@ import sys
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
+# Markers that identify a header block as ours. Detection keys off these so the
+# tool can normalize existing headers and remain idempotent across runs.
+HEADER_MARKERS = ("Syx Project Contributors", "SPDX-License-Identifier: MIT")
+
+
+def _has_header_marker(text: str) -> bool:
+    return any(marker in text for marker in HEADER_MARKERS)
+
+
 HEADER_TEXT_LINES = [
     '"""',
-    "Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.",
+    "Copyright (c) 2025-2026 Syx Project Contributors",
     "",
-    "This source code is part of the Syx project and is proprietary.",
+    "SPDX-License-Identifier: MIT",
     "",
-    "Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.",
-    "",
-    "Use of this software requires explicit written permission from the copyright holder.",
+    "This file is part of the Syx project. See the LICENSE file in the project",
+    "root for full license information.",
     '"""',
     "",
 ]
 HEADER_TEXT = "\n".join(HEADER_TEXT_LINES)
-HEADER_BODY_LINES = set(HEADER_TEXT_LINES[1:8])
+HEADER_BODY_LINES = set(HEADER_TEXT_LINES[1:7])
 
 HEADER_TSJS_LINES = [
     "/**",
-    " * Copyright (c) 2025-2026 Syx Project Contributors. All rights reserved.",
+    " * Copyright (c) 2025-2026 Syx Project Contributors",
     " *",
-    " * This source code is part of the Syx project and is proprietary.",
+    " * SPDX-License-Identifier: MIT",
     " *",
-    " * Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.",
-    " *",
-    " * Use of this software requires explicit written permission from the copyright holder.",
+    " * This file is part of the Syx project. See the LICENSE file in the project",
+    " * root for full license information.",
     " */",
     "",
 ]
@@ -81,12 +87,12 @@ def python_preamble_index(content: str) -> int:
 
 def file_has_header_py(content: str) -> bool:
     start = python_preamble_index(content)
-    return content[start:].lstrip().startswith('"""') and "Syx Project Contributors" in content[start:]
+    return content[start:].lstrip().startswith('"""') and _has_header_marker(content[start:])
 
 
 def file_has_header_tsjs(content: str) -> bool:
     stripped = content.lstrip()
-    return "Syx Project Contributors" in content and (stripped.startswith("/**") or stripped.startswith("/*"))
+    return _has_header_marker(content) and (stripped.startswith("/**") or stripped.startswith("/*"))
 
 
 def insert_header_python(content: str) -> str:
@@ -113,7 +119,7 @@ def normalize_existing_tsjs_header(content: str) -> str:
     if end == -1:
         return content
     block = stripped_leading[: end + 2]
-    if "Syx Project Contributors" not in block:
+    if not _has_header_marker(block):
         return content
     # Replace the entire leading block with normalized header
     remainder = stripped_leading[end + 2 :]
@@ -140,7 +146,7 @@ def normalize_existing_py_header(content: str) -> str:
     if end == -1:
         return content
     block = stripped_leading[: end + 3]
-    if "Syx Project Contributors" not in block:
+    if not _has_header_marker(block):
         return content
     remainder = stripped_leading[end + 3 :]
     remainder = remainder.lstrip("\n")
@@ -161,7 +167,7 @@ def remove_duplicate_py_header_docstring(content: str) -> str:
     if end == -1:
         return content
     block_text = remainder[3:end]
-    if "Syx Project Contributors" not in block_text:
+    if not _has_header_marker(block_text):
         return content
     filtered = [line for line in block_text.splitlines() if line not in HEADER_BODY_LINES]
     doc_text = "\n".join(filtered).strip("\n")

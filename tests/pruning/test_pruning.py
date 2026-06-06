@@ -6,8 +6,6 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
-from __future__ import annotations
-
 """
 Tests for the light response pruner.
 

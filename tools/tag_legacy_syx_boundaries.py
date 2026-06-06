@@ -7,8 +7,6 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
-from __future__ import annotations
-
 """Add Syx memory boundary comments to legacy Daily/Sleep pair artifacts."""
 
 import argparse

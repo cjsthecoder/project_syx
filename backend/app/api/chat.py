@@ -73,7 +73,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         }
         msg_id = str(uuid.uuid4())
         set_message_id(msg_id)
-        proj = request.project_id or "Continuum"
+        proj = request.project_id or "Main"
         instr.start_turn(
             turn_id=turn_id,
             user_meta={
@@ -251,7 +251,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         # Log error
         request_logger.log_error(endpoint="/chat", error=e, user_id=request.conversation_id)
         # [ERROR]
-        proj = request.project_id or "Continuum"
+        proj = request.project_id or "Main"
         mid = get_message_id() or "-"
         err_prev = (str(e) or "")[:get_settings().log_preview_max_chars]
         logger.debug(
@@ -363,7 +363,7 @@ async def chat_stream(request: ChatRequest):
         )
         turn_started = True
         request_logger.log_request(endpoint="/chat/stream", method="POST", user_id=request.conversation_id)
-        proj = request.project_id or "Continuum"
+        proj = request.project_id or "Main"
 
         pipeline = ChatPipeline(settings)
         conversation_history = pipeline.build_conversation_history(request.project_id)

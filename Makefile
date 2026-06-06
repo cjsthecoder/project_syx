@@ -150,7 +150,7 @@ HARD_RESET:
 	echo "Recreating DB schema ..."; \
 	mkdir -p data/db; \
 	cd backend && alembic upgrade head; \
-	echo "✅ HARD RESET complete. Start the server and Continuum will be reseeded."
+	echo "✅ HARD RESET complete. Start the server and Main will be reseeded."
 
 # Clean build artifacts and dependencies
 clean: clean-backend clean-frontend clean-static

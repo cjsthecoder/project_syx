@@ -16,7 +16,7 @@ Calls the local `POST /agent/memory/search` endpoint and prints the JSON respons
 
 ```bash
 SYX_AGENT_TOKEN="local-token" python3 tools/agent_memory_search.py \
-  --project-name "Continuum" \
+  --project-name "Main" \
   --query "<retrieval objective>. Context: <project/topic/semantic handle>. Include: <known terms, requirement IDs, deltas, files, decisions, constraints>." \
   --category "SYNTHESIS" \
   --pretty

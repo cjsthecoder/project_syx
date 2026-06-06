@@ -363,10 +363,10 @@ The backend must validate that a project is selected for all file actions.
 
 ### Version 2.1 — Detailed Specifications
 
-#### System Project (Continuum)
-- Default project name: "Continuum" (non-deletable, non-renamable; can accept files)
+#### System Project (Main)
+- Default project name: "Main" (non-deletable, non-renamable; can accept files)
 - Seeded via Alembic migration if missing
-- Identification: selected by `name == "Continuum"` on first load
+- Identification: selected by `name == "Main"` on first load
 - Schema flag: `system: true` to protect from delete/rename
 
 #### Project Schema and Rules
@@ -376,7 +376,7 @@ The backend must validate that a project is selected for all file actions.
 - `PATCH /projects/{id}`: allow changing `name`, `description` only (blocked if `system == true`)
 - Delete behavior: hard delete (DB rows + `memory/{project_id}`), blocked for `system == true`
 - New project auto-select after creation
-- If active project deleted, fallback to Continuum
+- If active project deleted, fallback to Main
 
 #### Files and Uploads
 - Allowed types: `.txt`, `.md`, `.pdf`
@@ -398,7 +398,7 @@ The backend must validate that a project is selected for all file actions.
 
 #### RAG on Chat
 - Enabled only when the active project's index exists with ≥1 vector; otherwise disabled
-- Fallback: if no project selected, use Continuum for RAG
+- Fallback: if no project selected, use Main for RAG
 - Retrieval runs through the unified RAG pipeline (FR-2.3-3); per-source K, score gate, retained count, and adjacency expansion come from `route_policy.json` (FR-2.3-3.3). Ranking is score-based (FR-2.3-3.2), gated by `min_score`, and bounded by `max_keep` (FR-2.3-3.3).
 - Injection: prepend a single system message with a "Context:" block containing concatenated snippet groups (FR-2.3-3.4.3 pass 5), separated clearly; cap the context block at `RAG_CONTEXT_MAX_TOKENS`.
 - If retrieval returns zero candidates, proceed without RAG
@@ -1012,7 +1012,7 @@ Continue using the existing global logger, but standardize all messages to a com
 
 Example:
 ```
-2025-10-29 09:42:13 INFO app.core.chat [PROMPT] project=Continuum msg_id=153 text="How does RAG merge daily?"
+2025-10-29 09:42:13 INFO app.core.chat [PROMPT] project=Main msg_id=153 text="How does RAG merge daily?"
 ```
 
 #### FR-2.4.2 — Mandatory Log Points
@@ -1146,7 +1146,7 @@ Add a companion JSON file to capture tone, verbosity, and stylistic preferences.
   - `creativity` is a float 0.0–1.0 and maps directly to model temperature (passthrough) when supported by the selected model.
   - `domain_focus` is preserved as provided and used as phrasing hints (no retrieval bias in 2.6).
 - Caching: prompt and personality are cached per project and invalidated on `PATCH`/`PUT` so the next `/chat` uses new values without restart.
-- System project (Continuum) is editable for both prompt and personality.
+- System project (Main) is editable for both prompt and personality.
 
 #### FR-2.6.3 — Prompt Injection Layer
 Integrate both the system prompt and personality profile into model calls.
@@ -1440,7 +1440,7 @@ After copying the default file:
   ```
 - Log confirmation:
   ```
-  [INIT] RAG rebuilt for project continuum (includes DEFAULT_RAG.txt)
+  [INIT] RAG rebuilt for project main (includes DEFAULT_RAG.txt)
   ```
 
 #### FR-2.8.4 — Maintenance and Visibility

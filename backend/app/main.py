@@ -207,11 +207,11 @@ async def lifespan(app: FastAPI):
         init_from_disk()
     except Exception as e:
         logger.warning("[SLEEP] Failed to init lock from disk: %s", e, exc_info=True)
-    # Seed DEFAULT_RAG for Continuum if present and missing
+    # Seed DEFAULT_RAG for Main if present and missing
     try:
         from sqlmodel import select
         with get_session() as session:
-            row = session.exec(select(Project).where(Project.name.ilike("Continuum"))).first()
+            row = session.exec(select(Project).where(Project.name.ilike("Main"))).first()
         if row:
             pid = row.id
             uploads_dir = os.path.join(settings.memory_root, pid, "uploads")
@@ -228,9 +228,9 @@ async def lifespan(app: FastAPI):
                     except Exception as re:
                         logger.warning("[INIT] RAG rebuild failed for project %s: %s", pid, re)
             else:
-                logger.warning("[WARN] DEFAULT_RAG.txt not found; Continuum created without baseline knowledge.")
+                logger.warning("[WARN] DEFAULT_RAG.txt not found; Main created without baseline knowledge.")
     except Exception as e:
-        logger.warning("[INIT] Continuum seed failed: %s", e, exc_info=True)
+        logger.warning("[INIT] Main seed failed: %s", e, exc_info=True)
     # Optional startup sweep to rebuild all project RAG indexes from uploads.
     try:
         if bool(get_settings().force_rag_rebuild_on_startup):

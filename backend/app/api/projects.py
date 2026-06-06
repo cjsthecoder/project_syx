@@ -313,11 +313,11 @@ async def get_projects() -> JSONResponse:
                     if tail == p.id:
                         name = tail
                 id_to_name[p.id] = name
-            # Init default selection to Continuum by name
+            # Init default selection to Main by name
             global _current_project
             if _current_project is None:
                 for p in rows:
-                    if p.name.lower() == "continuum":
+                    if p.name.lower() == "main":
                         _current_project = p.id
                         break
                 if _current_project is None and rows:
@@ -786,14 +786,14 @@ async def delete_project(project_id: str) -> JSONResponse:
                 )
         except Exception as exc:
             logger.info("[PROJECT] Memory manager cleanup failed project_id=%s: %s", project_id, exc)
-        # Reset current project to Continuum if needed
+        # Reset current project to Main if needed
         global _current_project
         if _current_project == project_id:
             with get_session() as session:
                 rows = session.exec(select(Project)).all()
                 fallback = None
                 for p in rows:
-                    if p.name.lower() == "continuum":
+                    if p.name.lower() == "main":
                         fallback = p.id
                         break
                 _current_project = fallback or (rows[0].id if rows else None)

@@ -1,5 +1,7 @@
 # Syx
 
+[![CI](https://github.com/cjsthecoder/project_syx/actions/workflows/ci.yml/badge.svg)](https://github.com/cjsthecoder/project_syx/actions/workflows/ci.yml)
+
 ## Project Overview
 Syx is a modular system that provides a web-based chat interface backed by a FastAPI server and provider-selectable LLM and embedding factories.  
 

@@ -111,6 +111,9 @@ surfaced once a `test` script existed; fixed in the Makefile.
 - [x] `tests/conftest.py` with shared fixtures (settings + memory-root isolation).
 - [x] GitHub Actions CI: backend (`pytest`) and frontend (`vitest --run`) jobs
       on push/PR (`.github/workflows/ci.yml`).
+- [x] Confirm README shows CI status badge. A small touch, but for an
+      employer-facing repo it quickly signals "this project has automated tests
+      and they pass."
 - [ ] `pytest-cov` coverage reporting (and a coverage badge once CI exists).
 - [ ] Consider `hypothesis` for property-based tests of tokenization/batching.
 

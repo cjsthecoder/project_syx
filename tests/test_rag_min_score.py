@@ -12,7 +12,7 @@ Tests for route policy minimum-score defaults.
 Verifies that ``load_and_validate_route_policy`` exposes the expected
 per-route ``min_score`` thresholds for each retrieval category.
 """
-from backend.app.core.route_policy import load_and_validate_route_policy
+from app.core.route_policy import load_and_validate_route_policy
 
 
 def test_route_policy_loads_min_score_defaults():

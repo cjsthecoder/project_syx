@@ -30,16 +30,16 @@ numpy_module.float32 = "float32"  # type: ignore[attr-defined]
 numpy_module.array = lambda value, dtype=None: value  # type: ignore[attr-defined]
 sys.modules["numpy"] = numpy_module
 
-embedding_factory_module = types.ModuleType("backend.app.embedding.factory")
+embedding_factory_module = types.ModuleType("app.embedding.factory")
 embedding_factory_module.get_embedding_client = lambda: None  # type: ignore[attr-defined]
-sys.modules["backend.app.embedding.factory"] = embedding_factory_module
+sys.modules["app.embedding.factory"] = embedding_factory_module
 
-embedding_batching_module = types.ModuleType("backend.app.embedding.batching")
+embedding_batching_module = types.ModuleType("app.embedding.batching")
 embedding_batching_module.iter_token_batches = lambda *_args, **_kwargs: []  # type: ignore[attr-defined]
-sys.modules["backend.app.embedding.batching"] = embedding_batching_module
+sys.modules["app.embedding.batching"] = embedding_batching_module
 
-from backend.app.rag.manager import _ltm_candidate_metadata
-from backend.app.rag.manager_rebuild import ltm_docstore_item_id, read_file_text
+from app.rag.manager import _ltm_candidate_metadata
+from app.rag.manager_rebuild import ltm_docstore_item_id, read_file_text
 
 
 def _bounded_entry(memory_id: str, metadata_block: str, body: str) -> str:

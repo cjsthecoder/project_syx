@@ -12,7 +12,7 @@ Unit tests for the RAG chunk utilities.
 Verifies that collapse_snippet_groups concatenates adjacent same-document chunks
 without inserting newlines and splits non-contiguous chunks.
 """
-from backend.app.rag.chunk_utils import collapse_snippet_groups
+from app.rag.chunk_utils import collapse_snippet_groups
 
 
 def _chunk(text: str, idx: int, *, source_document_id: str = "doc") -> dict:

@@ -14,7 +14,7 @@ pydantic-settings==2.13.1
 rapidfuzz==3.14.5
 
 # CORS middleware
-python-multipart==0.0.26
+python-multipart==0.0.27
 
 # Testing dependencies
 pytest==9.0.3

@@ -44,7 +44,7 @@ Notes:
 | pydantic-settings | `2.13.1` | `BaseSettings` in `backend/app/core/config.py` | Keep current compatible v2 line | Medium | Upgraded with pydantic |
 | httpx | `0.25.2` | No runtime imports found (only logger-name string in `backend/app/utils/logging.py`) | Remove | Low | Remove from `requirements.txt` unless planned near-term use |
 | python-dotenv | `1.0.0` | No imports found | Remove | Low | Remove if env loading is not reintroduced |
-| python-multipart | `0.0.9` | FastAPI `UploadFile/File` endpoints in `backend/app/api/files.py` imply runtime parser dependency | Upgrade (`0.0.26`) | Low | Keep and upgrade patch |
+| python-multipart | `0.0.27` | FastAPI `UploadFile/File` endpoints in `backend/app/api/files.py` imply runtime parser dependency | Keep current | Low | Pinned to `0.0.27` to fix GHSA multipart-header DoS (CVE in `< 0.0.27`) |
 | structlog | `23.2.0` | No imports found | Remove | Low | Remove from `requirements.txt` |
 | pytest | `9.0.3` | Tests under `tests/` | Keep current stable line | Medium | Upgraded; targeted + full backend suite passes |
 | pytest-asyncio | `0.21.1` | No async test markers/usages found | Remove (or upgrade only if async tests planned) | Low | Remove for now as unused |

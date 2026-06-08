@@ -15,7 +15,12 @@ from .models import AgentMemorySnippet
 
 
 class SnippetParseError(ValueError):
-    """Raised when non-empty retrieval context cannot be parsed into snippets."""
+    """Raised when non-empty retrieval context cannot be parsed into snippets.
+
+    Attributes:
+        raw_context: The original context string that failed to parse, retained
+            for logging and debugging.
+    """
 
     def __init__(self, message: str, *, raw_context: str = "") -> None:
         super().__init__(message)

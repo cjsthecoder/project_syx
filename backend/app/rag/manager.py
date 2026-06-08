@@ -757,7 +757,17 @@ class _ExpansionResources:
 
 @dataclass
 class _DedupeAudit:
-    """Counters and events produced by chunk-identity dedupe."""
+    """Counters and events produced by chunk-identity dedupe.
+
+    Attributes:
+        input_chunk_count: Chunks examined before dedupe.
+        unique_keyed_count: Distinct ``(source_document_id, chunk_index)`` keys
+            kept.
+        duplicate_skipped_count: Chunks dropped as duplicates of a kept key.
+        sparse_preserved_count: Chunks without a usable key, preserved as-is.
+        key_first_pos: First output position seen for each chunk key.
+        duplicate_events: Per-duplicate diagnostic records for debug dumps.
+    """
 
     input_chunk_count: int = 0
     unique_keyed_count: int = 0
@@ -769,7 +779,16 @@ class _DedupeAudit:
 
 @dataclass
 class _PromptAssembly:
-    """Result of assembling kept chunks into a prompt ``Context:`` block."""
+    """Result of assembling kept chunks into a prompt ``Context:`` block.
+
+    Attributes:
+        context_text: The rendered context block injected into the prompt.
+        daily_texts: Snippet texts sourced from Daily memory.
+        main_texts: Snippet texts sourced from the main (LTM) index.
+        main_scores: Mapped scores aligned with ``main_texts``.
+        daily_scores: Mapped scores aligned with ``daily_texts``.
+        tokens_used: Token count of ``context_text``.
+    """
 
     context_text: str
     daily_texts: List[str]

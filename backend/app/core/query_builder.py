@@ -87,6 +87,8 @@ Rules:
 
 
 class _BuilderPromptDumper:
+    """Writes builder/classifier prompt-response debug snapshots to disk."""
+
     def dump(
         self,
         *,

@@ -75,6 +75,15 @@ def _resolve_prompts_json(prompts_json_path: str) -> str:
 
 @dataclass
 class PromptTurn:
+    """A single evaluation prompt turn paired with its grading rubric.
+
+    Attributes:
+        turn_id: Sequential turn identifier within the prompt set.
+        prompt_text: The user prompt for the turn, or ``None`` when absent.
+        rubric_id: Identifier of the rubric used to grade the turn, if any.
+        rubric_text: The rubric body text used by the judge, if available.
+    """
+
     turn_id: int
     prompt_text: Optional[str]
     rubric_id: Optional[str]

@@ -125,6 +125,14 @@ def _read_html(path: Path) -> str:
 
 @dataclass(frozen=True)
 class ExtractionResult:
+    """Parsed chat messages extracted from an exported HTML transcript.
+
+    Attributes:
+        messages: Ordered ``(role, text)`` pairs recovered from the HTML.
+        diagnostics: Counters and notes describing what was kept, skipped, or
+            normalized during extraction.
+    """
+
     messages: list[tuple[str, str]]
     diagnostics: dict[str, Any]
 

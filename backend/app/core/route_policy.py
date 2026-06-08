@@ -23,7 +23,19 @@ from typing import Any, Dict
 
 @dataclass(frozen=True)
 class RoutePolicy:
-    """Per-route retrieval and context-expansion tuning parameters."""
+    """Per-route retrieval and context-expansion tuning parameters.
+
+    Attributes:
+        retrieval_multiplier: Multiplier applied to the base retrieval ``k`` for
+            this route (``>= 0``).
+        max_keep: Maximum number of candidates kept after scoring (``>= 0``).
+        min_score: Minimum mapped similarity score, in ``[0, 1]``, required to
+            keep a candidate.
+        expansion_max_before: Max adjacent neighbors expanded before a kept
+            chunk (``>= 0``).
+        expansion_max_after: Max adjacent neighbors expanded after a kept chunk
+            (``>= 0``).
+    """
 
     retrieval_multiplier: float
     max_keep: int

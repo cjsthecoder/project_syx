@@ -334,23 +334,36 @@ def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
 
 @dataclass
 class _DailyCache:
-    """Per-project in-memory Daily cache state (raw FAISS)."""
+    """Per-project in-memory Daily cache state (raw FAISS).
+
+    Attributes:
+        embedding_model: Embedding model the cached vectors were built with;
+            used to detect model mismatches and trigger rebuilds.
+        vs: The in-memory vector index, or ``None`` when no vectors exist yet.
+        meta_by_id: Canonical ``daily.json`` snapshot keyed by stable entry id;
+            used to join retrieval hits (via ``daily_entry_id``) back to
+            authoritative metadata.
+        id_by_seq: O(1) adjacency lookup mapping ``day_sequence`` to entry id.
+    """
     embedding_model: str
-    vs: Optional[VectorIndex]  # None means empty (no vectors yet)
-    # Canonical daily.json snapshot keyed by stable entry id.
-    # Used to join retrieval hits (via metadata daily_entry_id) back to authoritative metadata.
+    vs: Optional[VectorIndex]
     meta_by_id: Dict[str, Dict[str, Any]]
-    # O(1) adjacency lookup by day_sequence (chunk_seq).
     id_by_seq: Dict[int, str]
 
 
 @dataclass
 class DailySource:
-    """
-    Source adapter boundary for Daily.
+    """Source-adapter boundary exposing Daily to canonical retrieval.
 
-    Owns no retrieval mechanics. Provides a safe-to-use vectorstore handle plus
-    authoritative metadata join map.
+    Owns no retrieval mechanics; it only provides a safe-to-use vectorstore
+    handle plus the authoritative metadata join map. Lifecycle concerns
+    (warm/rebuild/model-mismatch) stay inside this module.
+
+    Attributes:
+        embedding_model: Embedding model backing ``vs``.
+        vs: Ready-to-query vector index for the project's Daily memory.
+        meta_by_id: Authoritative metadata keyed by stable entry id.
+        id_by_seq: Adjacency lookup mapping ``day_sequence`` to entry id.
     """
     embedding_model: str
     vs: VectorIndex

@@ -47,7 +47,19 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DreamAutoAcceptResult:
-    """Outcome counters and artifacts for a single auto-accept run."""
+    """Outcome counters and artifacts for a single auto-accept run.
+
+    Attributes:
+        processed: Dream items considered for acceptance.
+        accepted: Items successfully persisted as Dream memory.
+        failed: Items that errored during processing.
+        deleted_dream: Whether the source ``dream.json`` was removed afterward.
+        renamed_bad_path: Quarantine path when a malformed ``dream.json`` was
+            renamed aside, else ``None``.
+        filtered_remote_without_research: Remote items dropped for lacking the
+            required research evidence.
+        errors: Human-readable error tags collected during the run.
+    """
 
     processed: int = 0
     accepted: int = 0

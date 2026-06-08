@@ -29,7 +29,13 @@ _DOTTED_IDENTIFIER_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za
 
 @dataclass(frozen=True)
 class SentenceSpan:
-    """A sentence's start/end offsets within the source text and its raw text."""
+    """A sentence located within the source text.
+
+    Attributes:
+        start: Character offset where the sentence begins.
+        end: Character offset just past the sentence's last character.
+        text: Raw sentence text for the ``[start, end)`` span.
+    """
 
     start: int
     end: int

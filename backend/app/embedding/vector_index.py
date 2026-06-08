@@ -26,7 +26,13 @@ Metadata = Dict[str, Any]
 
 @dataclass(frozen=True)
 class VectorEntry:
-    """Stored document payload (plain-data)."""
+    """Immutable stored document payload returned by a vector source.
+
+    Attributes:
+        text: The stored chunk/document text.
+        metadata: Arbitrary metadata associated with the entry (ids, source
+            document, chunk indexes, scoring hints, etc.).
+    """
 
     text: str
     metadata: Metadata
@@ -34,28 +40,46 @@ class VectorEntry:
 
 @dataclass(frozen=True)
 class VectorHit:
-    """One similarity search result."""
+    """A single similarity search result with both raw and mapped scores.
+
+    Attributes:
+        entry: The stored entry that matched.
+        ip: Raw cosine inner product in ``[-1, 1]``; only meaningful when the
+            indexed and query vectors are unit-normalized.
+        score01: ``ip`` mapped into ``[0, 1]`` for downstream compatibility.
+    """
 
     entry: VectorEntry
-    # raw cosine inner product in [-1, 1] (requires unit-normalized vectors)
     ip: float
-    # mapped score in [0, 1] for downstream compatibility
     score01: float
 
 
 @dataclass(frozen=True)
 class VectorIndexInfo:
-    """Debug/telemetry snapshot describing a vector index."""
+    """Debug/telemetry snapshot describing a vector index.
 
-    index_kind: str  # "daily" | "ltm" | ...
+    Attributes:
+        index_kind: Source kind, e.g. ``"daily"`` or ``"ltm"``.
+        dim: Embedding dimensionality of the indexed vectors.
+        score_mode: Scoring strategy label, e.g. ``"cosine_ip_mapped_01"``.
+        built_at: Optional ISO timestamp recording when the index was built.
+        schema_version: Optional schema/version tag for the index artifacts.
+    """
+
+    index_kind: str
     dim: int
-    score_mode: str  # e.g., "cosine_ip_mapped_01"
+    score_mode: str
     built_at: Optional[str] = None
     schema_version: Optional[str] = None
 
 
 class VectorIndex(Protocol):
-    """Shared contract for all vector sources."""
+    """Shared contract for all vector sources used by canonical retrieval.
+
+    Implemented by both the Daily (in-memory) and LTM (on-disk) indexes so the
+    retrieval layer can search and join results without knowing the backing
+    store. Search assumes unit-normalized vectors and cosine-mapped scoring.
+    """
 
     def size(self) -> int:
         """Return the number of vectors currently indexed.

@@ -429,7 +429,15 @@ def prune_response(
 
 
 class _FrontPruneState:
-    """Internal result of a front-trimming pass."""
+    """Internal result of a front-trimming pass.
+
+    Attributes:
+        text: Response text after front trimming.
+        offset: Character offset of ``text`` within the pre-trim string.
+        matched_prefixes: Front prefixes that matched and drove removal.
+        units_removed: Number of leading sentences removed.
+        blocked_by_safety: True when trimming was suppressed by a safety guard.
+    """
 
     def __init__(
         self,
@@ -448,7 +456,15 @@ class _FrontPruneState:
 
 
 class _EndPruneState:
-    """Internal result of an end-trimming pass."""
+    """Internal result of an end-trimming pass.
+
+    Attributes:
+        text: Response text after end trimming.
+        matched_prefixes: End prefixes that matched and drove removal.
+        span_removed: ``(start, end)`` character span removed, or ``None`` when
+            nothing was trimmed.
+        blocked_by_safety: True when trimming was suppressed by a safety guard.
+    """
 
     def __init__(
         self,

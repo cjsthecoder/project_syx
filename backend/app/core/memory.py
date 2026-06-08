@@ -276,7 +276,21 @@ class _AssistantTagResult:
 
 
 class MemoryManager:
-    """Per-project working memory mirrored with DB for persistence."""
+    """Per-project working memory mirrored with the database.
+
+    Owns the in-process per-project message deques used to build conversation
+    history and to drive roll-off, keeping them consistent with the persisted
+    ``ChatMessage`` rows. Responsibilities include appending user/assistant
+    turns, tagging assistant turns, rolling the oldest pair into Daily memory
+    when a project's active window is full, and tracking the last context-token
+    estimate per project.
+
+    Invariants:
+        - The deque for a project is bounded by the configured active-window
+          size; exceeding it triggers roll-off of the oldest pair.
+        - Daily persistence is treated as a durability invariant: failures to
+          append to Daily are logged rather than silently dropped.
+    """
 
     def __init__(self):
         self.project_deques: Dict[str, Deque[Dict[str, Any]]] = {}

@@ -17,14 +17,24 @@ from typing import List, Optional, Protocol
 
 @dataclass
 class EmbedResult:
-    """Envelope holding embedding vectors and the model that produced them."""
+    """Envelope holding embedding vectors and the model that produced them.
+
+    Attributes:
+        vectors: One embedding vector per input text, in input order.
+        model: Identifier of the embedding model that produced the vectors.
+    """
 
     vectors: List[List[float]]
     model: str
 
 
 class EmbeddingClient(Protocol):
-    """Provider-agnostic contract for embedding backends."""
+    """Provider-agnostic contract for embedding backends.
+
+    Defines the boundary that lets the RAG/memory layers embed text without
+    depending on a specific provider (OpenAI, local sentence-transformers,
+    etc.). Implementations own retries/backoff and model selection.
+    """
 
     def embed(
         self,

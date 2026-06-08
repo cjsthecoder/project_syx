@@ -53,7 +53,12 @@ def _dedupe_prefixes(prefixes: list[str]) -> list[str]:
 
 
 class FrontRuleSection(BaseModel):
-    """Rules for trimming matching sentences from the front of a response."""
+    """Front-trimming rules: prefixes and the cut mode applied at the start.
+
+    A leading sentence is removed when it begins with one of the configured
+    prefixes; ``cut_mode`` fixes the unit of removal. Prefixes are stripped and
+    de-duplicated on validation, and ``extra`` keys are forbidden.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -75,7 +80,12 @@ class FrontRuleSection(BaseModel):
 
 
 class EndRuleSection(BaseModel):
-    """Rules for trimming a matching trailing paragraph from a response."""
+    """End-trimming rules: prefixes and the cut mode applied at the tail.
+
+    A trailing paragraph is removed when it begins with one of the configured
+    prefixes; ``cut_mode`` fixes the unit of removal. Prefixes are stripped and
+    de-duplicated on validation, and ``extra`` keys are forbidden.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -97,7 +107,12 @@ class EndRuleSection(BaseModel):
 
 
 class PruneRules(BaseModel):
-    """Top-level pruning rule set with optional front and end sections."""
+    """Top-level rule set driving the pruner's prefix-based trimming.
+
+    Holds optional front and end sections. Validation enforces the invariant
+    that at least one section is present, so an empty rule set cannot be
+    constructed; ``extra`` keys are forbidden.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -121,7 +136,13 @@ class PruneRules(BaseModel):
 
 
 class PruneResult(BaseModel):
-    """Structured outcome of a prune operation, including what changed."""
+    """Structured outcome of a single prune operation.
+
+    Reports both the original and pruned text and a full audit of what changed:
+    which sides were trimmed, which prefixes matched, how much was removed, and
+    whether a safety guard blocked trimming. The ``trimmed_side`` computed field
+    summarizes the trimmed sides for consumers.
+    """
 
     model_config = ConfigDict(extra="forbid")
 

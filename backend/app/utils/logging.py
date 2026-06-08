@@ -30,7 +30,12 @@ from ..core.config import get_settings
 
 
 class CustomFormatter(logging.Formatter):  # pylint: disable=R0903
-    """Custom formatter for colored console output with cross-platform support."""
+    """Level-aware console log formatter with optional ANSI coloring.
+
+    Selects a per-level format string and applies ANSI color codes when the
+    terminal is detected to support them, falling back to plain text otherwise
+    (e.g. when output is redirected or on unsupported terminals).
+    """
     # pylint: disable=C0301
 
     def __init__(self):
@@ -271,7 +276,13 @@ def get_logger(name: str = None) -> logging.Logger:
 
 
 class RequestLogger:
-    """Request logging utility for API endpoints."""
+    """Convenience wrapper for structured request/response logging in endpoints.
+
+    Thin adapter over the shared application logger that provides consistent
+    helpers for logging API requests, responses, and errors. It always writes
+    through the single shared ``syx`` logger regardless of the name passed at
+    construction.
+    """
     
     def __init__(self, logger_name: str = "api"):
         """Initialize the request logger.
@@ -364,7 +375,12 @@ class RequestLogger:
 
 
 class LLMLogger:
-    """LLM-specific logging utility."""
+    """Convenience wrapper for logging LLM request/response activity.
+
+    Thin adapter over the shared application logger offering helpers tailored to
+    LLM calls (model, prompt size, latency, token usage). Writes through the
+    single shared ``syx`` logger.
+    """
     
     def __init__(self):
         self.logger = get_logger()  # Use single shared logger

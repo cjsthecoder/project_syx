@@ -18,7 +18,13 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class TextSpan:
-    """A span of text with its start/end offsets and trimmed content."""
+    """A contiguous span of text located within a larger string.
+
+    Attributes:
+        start: Character offset where the span begins.
+        end: Character offset just past the span's last character.
+        text: Trimmed content for the ``[start, end)`` span.
+    """
 
     start: int
     end: int

@@ -13,7 +13,14 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class AgentAuthorizationResult:
-    """Outcome of an agent-token authorization check."""
+    """Outcome of an agent-token authorization check.
+
+    Attributes:
+        authorized: True when the agent is allowed to proceed.
+        forbidden: True when access was explicitly denied (as opposed to simply
+            unauthenticated); maps to an HTTP 403 at the call boundary.
+        message: Optional human-readable reason, surfaced on denial.
+    """
 
     authorized: bool
     forbidden: bool = False

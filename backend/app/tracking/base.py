@@ -34,7 +34,13 @@ def local_timestamp_compact() -> str:
 
 
 class Instrumentation(Protocol):
-    """Common interface used by application code."""
+    """Telemetry boundary for recording runs, turns, and model invocations.
+
+    Application code depends on this protocol rather than a concrete backend so
+    instrumentation can be swapped (file-backed) or disabled (no-op) without
+    changing call sites. Implementations track the active run/turn/invocation
+    and persist stage and usage data.
+    """
 
     def start_run(self, config: Optional[dict] = None) -> str:
         """Begin a run and return its run id.
@@ -111,7 +117,11 @@ class Instrumentation(Protocol):
 
 
 class NoopInstrumentation:
-    """No-op implementation used when instrumentation is disabled."""
+    """No-op ``Instrumentation`` used when telemetry is disabled.
+
+    Every method is a safe no-op except turn bookkeeping, which still tracks the
+    active turn id in a context variable so downstream logging stays correct.
+    """
 
     def start_run(self, config: Optional[dict] = None) -> str:
         _ = config

@@ -39,7 +39,17 @@ LEGACY_SEMANTIC_HANDLE_RE = re.compile(r"^#semantic_handle:\s*(?P<value>.+?)\s*$
 
 @dataclass
 class SyxMemoryEntry:
-    """A single bounded Syx memory entry with its parsed metadata and span."""
+    """A single bounded Syx memory entry with its parsed metadata and span.
+
+    Attributes:
+        memory_id: Stable identifier parsed from the entry boundary.
+        text: The entry body between its Syx boundaries.
+        metadata: Parsed key/value metadata for the entry.
+        start_line: 1-based line where the entry begins.
+        end_line: 1-based line where the entry ends.
+        start_offset: Character offset of the entry start in the source text.
+        end_offset: Character offset of the entry end in the source text.
+    """
 
     memory_id: str
     text: str
@@ -52,7 +62,16 @@ class SyxMemoryEntry:
 
 @dataclass
 class SyxParseResult:
-    """Outcome of parsing Syx boundaries: entries plus structural/metadata warnings."""
+    """Outcome of parsing Syx boundaries from a memory document.
+
+    Attributes:
+        entries: Successfully parsed bounded entries.
+        warnings: General (non-fatal) parse warnings.
+        occupied_ranges: Character ranges consumed by recognized entries, used
+            to detect overlap or stray content.
+        structural_warnings: Warnings about malformed/unbalanced boundaries.
+        metadata_warnings: Warnings about missing or malformed entry metadata.
+    """
 
     entries: List[SyxMemoryEntry]
     warnings: List[str]

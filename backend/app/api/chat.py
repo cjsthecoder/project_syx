@@ -77,7 +77,20 @@ def _default_rag_metrics() -> Dict[str, Any]:
 
 @dataclass
 class PreparedPrompts:
-    """Bundle of prompt/context artifacts produced for a single chat turn."""
+    """Bundle of prompt/context artifacts produced for a single chat turn.
+
+    Attributes:
+        conversation_history: Loaded working-memory messages, or ``None`` for an
+            anonymous turn with no history.
+        base_system_prompt: Resolved base system prompt for the turn.
+        assistant_hint: Optional assistant priming hint.
+        personality_creativity: Optional per-turn temperature override.
+        rag_system_prompt: Retrieval-augmented context block, or ``None`` when
+            RAG produced nothing.
+        primary_ns: Primary namespace selected for the turn, if any.
+        rag_metrics: Retrieval telemetry (route, candidate counts, scores)
+            recorded for instrumentation.
+    """
 
     conversation_history: Optional[list]
     base_system_prompt: Optional[str]

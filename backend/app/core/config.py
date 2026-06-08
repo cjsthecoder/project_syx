@@ -29,7 +29,15 @@ _ENV_FILE = os.path.join(_REPO_ROOT, ".env")
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
+    """Process-wide application configuration loaded from the environment.
+
+    Single source of truth for runtime configuration (models, API keys, prompt
+    budgeting, retrieval/RAG tuning, memory paths, and maintenance schedules).
+    Values are read from environment variables and an optional ``.env`` file;
+    unknown keys are ignored and lookups are case-insensitive. Intended to be
+    constructed once and shared via ``get_settings()``. Individual fields carry
+    their own descriptions and validation constraints below.
+    """
     
     model_config = {
         "protected_namespaces": ("settings_",),

@@ -33,14 +33,23 @@ def utc_now() -> datetime:
 
 # Base Response Model
 class BaseResponse(BaseModel):
-    """Base response model with common fields."""
+    """Base envelope for successful API responses.
+
+    Provides the success flag and server timestamp shared by all concrete
+    response models; subclasses add their endpoint-specific payload fields.
+    """
     success: bool = Field(default=True, description="Whether the request was successful")
     timestamp: datetime = Field(default_factory=utc_now, description="Response timestamp")
 
 
 # Chat Models
 class ChatRequest(BaseModel):
-    """Request model for chat endpoint."""
+    """Request body for the chat endpoint.
+
+    Carries the user message plus optional project/conversation context and a
+    per-request model override. Field-level constraints and the schema example
+    are defined below.
+    """
     message: str = Field(..., min_length=1, max_length=200000, description="User message")
     project_id: Optional[str] = Field(default=None, description="Project context (stub)")
     conversation_id: Optional[str] = Field(default=None, description="Conversation ID for context")
@@ -59,7 +68,11 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseResponse):
-    """Response model for chat endpoint."""
+    """Response body for the chat endpoint.
+
+    Extends :class:`BaseResponse` with the assistant reply and the model and
+    token-usage metadata for the turn.
+    """
     response: str = Field(..., description="AI response message")
     conversation_id: Optional[str] = Field(default=None, description="Conversation ID")
     llm_model: Optional[str] = Field(default=None, description="Model used for response")
@@ -81,7 +94,11 @@ class ChatResponse(BaseResponse):
 
 # RAG Models
 class RAGRequest(BaseModel):
-    """Request model for RAG query endpoint."""
+    """Request body for the standalone RAG query endpoint.
+
+    Holds the retrieval query, optional project scope, and a bounded result
+    count used to size retrieval.
+    """
     query: str = Field(..., min_length=1, max_length=2000, description="RAG query")
     project_id: Optional[str] = Field(default=None, description="Project context")
     max_results: int = Field(default=5, ge=1, le=20, description="Maximum number of results")
@@ -98,7 +115,11 @@ class RAGRequest(BaseModel):
 
 
 class RAGResponse(BaseResponse):
-    """Response model for RAG query endpoint."""
+    """Response body for the RAG query endpoint.
+
+    Extends :class:`BaseResponse` with the synthesized answer, the supporting
+    source documents, and an optional confidence score.
+    """
     response: str = Field(..., description="RAG response")
     sources: List[Dict[str, Any]] = Field(default=[], description="Source documents")
     confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Response confidence")
@@ -120,7 +141,11 @@ class RAGResponse(BaseResponse):
 
 # Project Models
 class ProjectRequest(BaseModel):
-    """Request model for project operations."""
+    """Request body for project operations (select, create, toggle Daily RAG).
+
+    All fields are optional; the populated combination determines which
+    operation the endpoint performs.
+    """
     project_id: Optional[str] = Field(default=None, description="Project ID to switch to")
     project_name: Optional[str] = Field(default=None, description="New project name")
     daily_rag_enabled: Optional[bool] = Field(default=None, description="Toggle per-project Daily RAG")
@@ -136,7 +161,11 @@ class ProjectRequest(BaseModel):
 
 
 class ProjectResponse(BaseResponse):
-    """Response model for project operations."""
+    """Response body for project operations.
+
+    Extends :class:`BaseResponse` with a human-readable result message, the
+    currently selected project, and the list of available projects.
+    """
     response: str = Field(..., description="Project operation response")
     current_project: Optional[str] = Field(default=None, description="Current project ID")
     available_projects: List[str] = Field(default=[], description="List of available projects")
@@ -156,7 +185,11 @@ class ProjectResponse(BaseResponse):
 
 # Sleep Cycle Models
 class SleepCycleRequest(BaseModel):
-    """Request model for sleep cycle endpoint."""
+    """Request body for triggering a memory sleep cycle.
+
+    Optionally scopes the cycle to one project and can force immediate cleanup
+    rather than deferring to the scheduler.
+    """
     project_id: Optional[str] = Field(default=None, description="Project to clean up")
     force_cleanup: bool = Field(default=False, description="Force immediate cleanup")
 
@@ -171,7 +204,11 @@ class SleepCycleRequest(BaseModel):
 
 
 class SleepCycleResponse(BaseResponse):
-    """Response model for sleep cycle endpoint."""
+    """Response body for the sleep cycle endpoint.
+
+    Extends :class:`BaseResponse` with a status message and optional cleanup
+    metrics (items cleaned, before/after memory usage).
+    """
     response: str = Field(..., description="Sleep cycle response")
     items_cleaned: Optional[int] = Field(default=None, description="Number of items cleaned")
     memory_usage_before: Optional[str] = Field(default=None, description="Memory usage before cleanup")
@@ -193,7 +230,12 @@ class SleepCycleResponse(BaseResponse):
 
 # Error Models
 class ErrorResponse(BaseModel):
-    """Error response model."""
+    """Standard error envelope returned for failed requests.
+
+    Unlike :class:`BaseResponse`, ``success`` defaults to ``False``; carries an
+    error message, an optional machine-readable error code, and structured
+    details for clients to act on.
+    """
     success: bool = Field(default=False, description="Request failed")
     error: str = Field(..., description="Error message")
     error_code: Optional[str] = Field(default=None, description="Error code")
@@ -215,7 +257,11 @@ class ErrorResponse(BaseModel):
 
 # Health Check Models
 class HealthResponse(BaseModel):
-    """Health check response model."""
+    """Response body for the health check endpoint.
+
+    Reports overall service status plus identifying metadata and a per-
+    dependency status map used by liveness/readiness probes.
+    """
     status: str = Field(..., description="Service status")
     service: str = Field(default="syx-api", description="Service name")
     version: str = Field(default="1.0.0", description="Service version")

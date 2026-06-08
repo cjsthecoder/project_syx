@@ -45,27 +45,46 @@ class SyxError(Exception):
 
 
 class LLMError(SyxError):
-    """Exception raised for LLM-related errors."""
+    """Raised when an LLM call fails (provider error, bad output, or timeout).
+
+    Inherits the message/error_code/details contract from :class:`SyxError`.
+    """
     pass
 
 
 class ConfigurationError(SyxError):
-    """Exception raised for configuration errors."""
+    """Raised when required configuration is missing or invalid.
+
+    Used for startup/runtime misconfiguration such as an absent API key or an
+    unparseable policy file. Inherits the :class:`SyxError` contract.
+    """
     pass
 
 
 class MemoryError(SyxError):
-    """Exception raised for memory-related errors."""
+    """Raised when a memory persistence or retrieval operation fails.
+
+    Covers daily/LTM read-write failures and cache inconsistencies. Inherits the
+    :class:`SyxError` contract.
+    """
     pass
 
 
 class RAGError(SyxError):
-    """Exception raised for RAG-related errors."""
+    """Raised when retrieval or index operations fail.
+
+    Covers embedding, FAISS index, and context-assembly failures. Inherits the
+    :class:`SyxError` contract.
+    """
     pass
 
 
 class ProjectError(SyxError):
-    """Exception raised for project-related errors."""
+    """Raised for invalid project operations (missing/duplicate/protected).
+
+    Covers selecting a nonexistent project or mutating a protected system
+    project. Inherits the :class:`SyxError` contract.
+    """
     pass
 
 

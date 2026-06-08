@@ -29,7 +29,15 @@ def utc_now() -> datetime:
 
 
 class Project(SQLModel, table=True):
-    """A workspace owning files, chat history, and per-project memory."""
+    """A workspace that owns files, chat history, and per-project memory.
+
+    Persisted ``project`` table and the top of the ownership hierarchy: ``File``
+    and ``ChatMessage`` rows reference a project by id. Beyond identity it
+    stores per-project flags (system/non-deletable, Daily RAG toggle) and a
+    ``last_semantic_handle`` seed that survives the sleep flush that wipes
+    ``ChatMessage`` rows, so the builder has a fallback when active history is
+    empty.
+    """
 
     id: str = Field(primary_key=True, index=True)
     name: str
@@ -46,7 +54,12 @@ class Project(SQLModel, table=True):
 
 
 class File(SQLModel, table=True):
-    """An uploaded source document tracked for embedding/indexing."""
+    """An uploaded source document tracked for embedding/indexing.
+
+    Persisted ``file`` table scoped to a project. Stores upload metadata
+    (filename, size, content type) plus indexing bookkeeping (embedding status,
+    page and token counts) updated by the RAG rebuild pipeline.
+    """
 
     id: Optional[int] = Field(default=None, primary_key=True)
     project_id: str = Field(index=True, foreign_key="project.id")
@@ -61,7 +74,15 @@ class File(SQLModel, table=True):
 
 
 class ChatMessage(SQLModel, table=True):
-    """Persistent chat messages per project."""
+    """A persisted chat message (user or assistant turn) within a project.
+
+    Persisted ``chatmessage`` table backing the active conversation window.
+    Assistant rows additionally carry post-response tagger output
+    (``tags_meta_json``, ``semantic_handle``, ``namespace``) and the
+    ``forget``/``keep`` flags that steer roll-off embedding and daily.md
+    headers. Rows are consumed and removed during the sleep flush once their
+    pair is persisted to Daily memory.
+    """
     id: Optional[int] = Field(default=None, primary_key=True)
     project_id: str = Field(index=True, foreign_key="project.id")
     role: str = Field(description="user|assistant")

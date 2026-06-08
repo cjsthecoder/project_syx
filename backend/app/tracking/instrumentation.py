@@ -31,7 +31,22 @@ logger = logging.getLogger(__name__)
 
 
 class RealInstrumentation:
-    """Minimal file-backed instrumentation implementation for lifecycle scaffolding."""
+    """File-backed implementation of the ``Instrumentation`` protocol.
+
+    Persists run/turn/invocation telemetry as JSON artifacts under a runs
+    directory, tracking the active run, turn, and invocation so application code
+    can record stages and usage without managing files directly.
+
+    Args:
+        runs_dir: Base directory for run artifacts; falls back to the configured
+            ``runs_dir`` setting (then ``"runs"``) when blank.
+        mode: Instrumentation mode (e.g. ``"metrics"``); normalized to lower
+            case and defaulting to ``"metrics"``.
+        run_id_override: Optional fixed run id, used instead of generating one.
+        prompt_tol_abs_tokens: Absolute token tolerance for prompt-budget
+            reconciliation checks.
+        prompt_tol_pct: Fractional token tolerance for the same checks.
+    """
 
     def __init__(
         self,

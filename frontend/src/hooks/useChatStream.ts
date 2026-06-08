@@ -30,8 +30,17 @@ type UseChatStreamArgs = {
 /**
  * Manage chat message state and streamed assistant responses for a project.
  *
- * Returns the message list and input state plus `send` (streams `/chat/stream`)
- * and `loadChats` (loads persisted history). Errors are surfaced via `onError`.
+ * Errors are surfaced via `onError`; sleep-state aborts route through
+ * `checkSleeping`.
+ *
+ * @param args - Hook configuration.
+ * @param args.projectId - Active project id used when posting messages.
+ * @param args.model - Model identifier sent with each request.
+ * @param args.onBeforeSend - Optional callback invoked before a send begins.
+ * @param args.onError - Callback invoked with a message when sending/streaming fails.
+ * @param args.checkSleeping - Resolves true when the system is sleeping (send is aborted).
+ * @param args.onAfterStream - Optional callback invoked with the project id after a stream completes.
+ * @returns Message list and setter, input state, `loading`/`canSend` flags, and the `send` and `loadChats` actions.
  */
 export function useChatStream({
   projectId,
@@ -52,7 +61,11 @@ export function useChatStream({
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading])
 
-  /** Load persisted chat history for a project, resetting to empty on failure. */
+  /**
+   * Load persisted chat history for a project, resetting to empty on failure.
+   *
+   * @param pid - Project id whose chat history to load.
+   */
   const loadChats = useCallback(async (pid: string) => {
     try {
       const data = await api<{

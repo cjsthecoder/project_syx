@@ -18,6 +18,9 @@ import { twMerge } from "tailwind-merge";
 /**
  * Merge conditional class names, resolving conflicting Tailwind utilities so the
  * last-specified class wins.
+ *
+ * @param inputs - Class values (strings, arrays, or conditional maps) to combine.
+ * @returns The merged, conflict-resolved class string.
  */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

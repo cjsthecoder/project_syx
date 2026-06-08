@@ -19,6 +19,9 @@ import { RequestError, readJsonSafe, throwRequestError } from '@/pages/app/reque
  *
  * Defaults the content-type to JSON and merges caller `options`.
  *
+ * @param path - Backend path or URL to fetch.
+ * @param options - Optional `fetch` init merged over the JSON defaults (method, body, headers).
+ * @returns The parsed JSON response body, typed as `T`.
  * @throws {RequestError} When the response is not OK, or the body is missing/not valid JSON.
  */
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {

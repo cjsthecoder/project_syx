@@ -45,6 +45,9 @@ type DreamPayload = {
  *
  * Drops entries lacking both origin and assistant text, type-guards every field,
  * and defaults the `keep`/`remember` review flags to false.
+ *
+ * @param items - Raw, untyped dream-item payloads from the API.
+ * @returns The validated, normalized dream items.
  */
 function _normalizeDreamItems(items: DreamItemPayload[]): DreamItem[] {
   return items
@@ -71,6 +74,9 @@ function _normalizeDreamItems(items: DreamItemPayload[]): DreamItem[] {
  *
  * Trims the project summary and only reports `hasDreamItems` when a non-empty
  * summary and at least one item are both present.
+ *
+ * @param dream - The raw dream payload (typically the API `dream` field), of unknown shape.
+ * @returns View state with the trimmed summary, an items-present flag, and normalized items.
  */
 export function toDreamViewState(dream: unknown): DreamViewState {
   const payload = (dream && typeof dream === 'object' ? dream : {}) as DreamPayload

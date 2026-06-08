@@ -30,8 +30,12 @@ type UseProjectDataArgs = {
  *
  * Loads projects, files, stats, info, dream summaries, personality, and the user
  * profile, and returns loaders plus CRUD/mutation actions. Mutations surface
- * failures via `onError`; loaders fail soft to empty state. Stats are only
- * fetched when `showDebugValues` is enabled.
+ * failures via `onError`; loaders fail soft to empty state.
+ *
+ * @param args - Hook configuration.
+ * @param args.showDebugValues - When false, stats are not fetched and remain null.
+ * @param args.onError - Callback invoked with a message when a mutation fails.
+ * @returns Project state plus loader and CRUD/mutation actions (see the returned object).
  */
 export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs) {
   const [projects, setProjects] = useState<Project[]>([])
@@ -61,6 +65,7 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
   const refreshInFlightRef = useRef<Set<string>>(new Set())
   const personalityInFlightRef = useRef<Set<string>>(new Set())
 
+  /** Load the project list and select the current project; clears the list on failure. */
   const loadProjects = useCallback(async () => {
     try {
       const data = await api<{ available_projects?: string[]; current_project?: string; project_names?: Record<string, string> }>('/projects')
@@ -75,6 +80,11 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     }
   }, [])
 
+  /**
+   * Load the file list for a project; clears it on failure.
+   *
+   * @param pid - Project id whose files to load.
+   */
   const loadFiles = useCallback(async (pid: string) => {
     try {
       const data = await api<{ project_id: string; files: any[] }>(`/projects/${pid}/files`)
@@ -84,6 +94,11 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     }
   }, [])
 
+  /**
+   * Load project stats when debug values are enabled; otherwise clears stats.
+   *
+   * @param pid - Project id whose stats to load.
+   */
   const loadStats = useCallback(
     async (pid: string) => {
       if (!showDebugValues) {
@@ -100,6 +115,11 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     [showDebugValues],
   )
 
+  /**
+   * Load project metadata; clears it on failure.
+   *
+   * @param pid - Project id whose info to load.
+   */
   const loadProjectInfo = useCallback(async (pid: string) => {
     try {
       const data = await api<{ project: ProjectInfo }>(`/projects/${pid}`)
@@ -109,6 +129,11 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     }
   }, [])
 
+  /**
+   * Load and normalize the project's dream summary and items; clears them on failure.
+   *
+   * @param pid - Project id whose dream data to load.
+   */
   const loadDreamSummary = useCallback(async (pid: string) => {
     try {
       const data = await api<{ dream?: unknown }>(`/projects/${pid}/dream`)
@@ -128,6 +153,9 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
    * Load chats, files, stats, info, and dream summary for a project in parallel.
    *
    * Deduplicates concurrent refreshes for the same project via an in-flight set.
+   *
+   * @param pid - Project id to refresh.
+   * @param loadChats - Chat-history loader (injected from the chat-stream hook).
    */
   const refreshProjectData = useCallback(
     async (pid: string, loadChats: (projectId: string) => Promise<void>) => {
@@ -150,7 +178,7 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
   /**
    * Query sleep status; if sleeping, record the start time and open the sleep dialog.
    *
-   * @returns True when the system is currently sleeping.
+   * @returns True when the system is currently sleeping, false otherwise (including on error).
    */
   const checkSleeping = useCallback(async (): Promise<boolean> => {
     try {
@@ -168,7 +196,11 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     return false
   }, [])
 
-  /** Create a project from a non-empty name, then reload the project list. */
+  /**
+   * Create a project from a non-empty name, then reload the project list.
+   *
+   * @param name - Desired project name; no-op when blank.
+   */
   const createProject = useCallback(
     async (name: string) => {
       if (!name.trim()) return
@@ -182,7 +214,11 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     [loadProjects, onError],
   )
 
-  /** Rename the current project, then refresh the project list and info. */
+  /**
+   * Rename the current project, then refresh the project list and info.
+   *
+   * @param name - New project name; no-op when blank or when no project is active.
+   */
   const renameProject = useCallback(
     async (name: string) => {
       if (!name.trim() || !projectId) return
@@ -211,6 +247,8 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
   /**
    * Upload selected files to the current project as multipart form data, then
    * refresh the file list and stats. The backend rebuilds the RAG index.
+   *
+   * @param selected - Files chosen via picker or drag-and-drop; no-op when empty or no active project.
    */
   const uploadFiles = useCallback(
     async (selected: FileList) => {
@@ -229,7 +267,11 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     [loadFiles, loadStats, onError, projectId],
   )
 
-  /** Delete a file from the current project, then refresh the file list and stats. */
+  /**
+   * Delete a file from the current project, then refresh the file list and stats.
+   *
+   * @param fileId - Database id of the file to delete.
+   */
   const deleteFile = useCallback(
     async (fileId: number) => {
       if (!projectId) return
@@ -244,6 +286,13 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     [loadFiles, loadStats, onError, projectId],
   )
 
+  /**
+   * Load a project's system prompt and personality settings into hook state.
+   *
+   * Deduplicates concurrent loads for the same project via an in-flight set.
+   *
+   * @param pid - Project id whose personality to load.
+   */
   const loadPersonality = useCallback(
     async (pid: string) => {
       if (!pid) return
@@ -292,6 +341,11 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     }
   }, [creativity, domainFocus, formatPref, loadProjectInfo, onError, projectId, systemPrompt, tone, verbosity])
 
+  /**
+   * Load the project's USER_PROFILE.txt content into hook state; clears it on failure.
+   *
+   * @param pid - Project id whose profile to load.
+   */
   const loadUserProfile = useCallback(
     async (pid: string) => {
       if (!pid) return

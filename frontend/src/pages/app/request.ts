@@ -18,6 +18,11 @@ export class RequestError extends Error {
   status: number
   body: unknown
 
+  /**
+   * @param message - Human-readable error message.
+   * @param status - HTTP status code of the failed response.
+   * @param body - Parsed response body (object, string, or null) for diagnostics.
+   */
   constructor(message: string, status: number, body: unknown) {
     super(message)
     this.name = 'RequestError'
@@ -26,7 +31,12 @@ export class RequestError extends Error {
   }
 }
 
-/** Read a response body as text, returning an empty string if reading throws. */
+/**
+ * Read a response body as text, returning an empty string if reading throws.
+ *
+ * @param res - The response whose body to read.
+ * @returns The body text, or an empty string on failure.
+ */
 export async function readTextSafe(res: Response): Promise<string> {
   try {
     return await res.text()
@@ -40,6 +50,10 @@ export async function readTextSafe(res: Response): Promise<string> {
  *
  * Accepts a plain string or an object, checking `detail`, then `error`, then
  * `message`, and returns `fallback` when none are usable.
+ *
+ * @param payload - The raw error payload (string, object, or nullish).
+ * @param fallback - Message to use when no usable field is found.
+ * @returns The extracted message, or `fallback`.
  */
 export function extractErrorMessage(payload: unknown, fallback = 'Request failed'): string {
   if (!payload) return fallback
@@ -54,7 +68,12 @@ export function extractErrorMessage(payload: unknown, fallback = 'Request failed
   return fallback
 }
 
-/** Read a response body and JSON-parse it, falling back to raw text, or null when empty. */
+/**
+ * Read a response body and JSON-parse it, falling back to raw text, or null when empty.
+ *
+ * @param res - The response whose body to read.
+ * @returns The parsed JSON value, the raw text if not JSON, or null when the body is empty.
+ */
 export async function parseResponseBody(res: Response): Promise<unknown> {
   const raw = await readTextSafe(res)
   if (!raw) return null
@@ -69,7 +88,9 @@ export async function parseResponseBody(res: Response): Promise<unknown> {
  * Throw a normalized {@link RequestError} for a failed response, deriving the
  * message from the parsed body.
  *
- * @throws {RequestError} Always.
+ * @param res - The failed response to convert into an error.
+ * @returns Never returns; always throws.
+ * @throws {RequestError} Always, carrying the status and parsed body.
  */
 export async function throwRequestError(res: Response): Promise<never> {
   const body = await parseResponseBody(res)
@@ -77,7 +98,12 @@ export async function throwRequestError(res: Response): Promise<never> {
   throw new RequestError(message, res.status, body)
 }
 
-/** Parse a response body as a JSON object, returning null when it is empty or not an object. */
+/**
+ * Parse a response body as a JSON object, returning null when it is empty or not an object.
+ *
+ * @param res - The response whose body to parse.
+ * @returns The parsed object typed as `T`, or null when the body is empty or not an object.
+ */
 export async function readJsonSafe<T>(res: Response): Promise<T | null> {
   const body = await parseResponseBody(res)
   if (body && typeof body === 'object') {

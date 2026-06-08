@@ -368,6 +368,244 @@ def _build_previous_turn_block(previous_pair_text: Optional[str], prev_cut_perce
     )
 
 
+def _build_tagger_prompt(
+    user_text: str,
+    assistant_text: str,
+    previous_pair_text: Optional[str],
+    settings: Any,
+) -> str:
+    """Assemble the tagger user prompt for the current turn.
+
+    Resolves the configured middle-cut percentages and chop threshold, applies
+    the middle-cut to the assistant response, renders the previous-turn context
+    block, and lays out the CURRENT TURN section.
+
+    Args:
+        user_text: The current turn's user message.
+        assistant_text: The current turn's assistant response.
+        previous_pair_text: Optional stored text of the prior turn for context.
+        settings: Settings object providing the tagger cut/chop config.
+
+    Returns:
+        The fully assembled user prompt string.
+    """
+    current_cut_pct = _safe_percent(
+        getattr(settings, "tagger_current_response_middle_cut_percent", 50),
+        default=50,
+        name="TAGGER_CURRENT_RESPONSE_MIDDLE_CUT_PERCENT",
+    )
+    previous_cut_pct = _safe_percent(
+        getattr(settings, "tagger_previous_response_middle_cut_percent", 75),
+        default=75,
+        name="TAGGER_PREVIOUS_RESPONSE_MIDDLE_CUT_PERCENT",
+    )
+    min_length_for_chop = _safe_min_len(
+        getattr(settings, "tagger_min_response_length_for_chop", 600),
+        default=600,
+        name="TAGGER_MIN_RESPONSE_LENGTH_FOR_CHOP",
+    )
+    assistant_for_prompt = _middle_cut_assistant_text(
+        assistant_text,
+        cut_percent=int(current_cut_pct),
+        min_length_for_chop=int(min_length_for_chop),
+    )
+    previous_block = _build_previous_turn_block(
+        previous_pair_text,
+        prev_cut_percent=int(previous_cut_pct),
+        min_length_for_chop=int(min_length_for_chop),
+    )
+    return (
+        f"{previous_block.rstrip()}\n\n"
+        "------CURRENT TURN------\n"
+        "------USER------\n"
+        f"{user_text}\n\n"
+        "------ASSISTANT------\n"
+        f"{assistant_for_prompt}\n"
+    )
+
+
+def _parse_tagger_response(raw: str) -> Optional[Dict[str, Any]]:
+    """Parse the tagger model's raw text into a JSON object.
+
+    Strips Markdown code fences, isolates the first balanced JSON object, and
+    decodes it. Returns ``None`` when decoding fails or the result is not a dict.
+
+    Args:
+        raw: Raw model output text.
+
+    Returns:
+        The decoded dict, or ``None`` when the output is not a JSON object.
+    """
+    clean = raw or ""
+    if clean.startswith("```"):
+        lines2 = [ln for ln in clean.splitlines() if not ln.strip().startswith("```")]
+        clean = "\n".join(lines2).strip()
+    clean = _slice_first_json(clean)
+    try:
+        data = json.loads(clean)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _extract_tagger_fields(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize the tagger JSON object into the canonical metadata dict.
+
+    Coerces ``topics``/``intent``/``type``/``semantic_handle`` to strings and
+    validates each question's ``resolution`` against the allowed set (defaulting
+    to ``ignore``), dropping empty questions and non-dict entries.
+
+    Args:
+        data: The decoded tagger JSON object.
+
+    Returns:
+        A dict with keys ``topics``, ``intent``, ``type``, ``semantic_handle``,
+        and ``questions``.
+    """
+    topics = str(data.get("topics", "") or "")
+    intent = str(data.get("intent", "") or "")
+    tag_type = str(data.get("type", "") or "")
+    # semantic_handle may be missing only if the model violated schema; treat missing as None.
+    semantic_handle = data.get("semantic_handle", None) if "semantic_handle" in data else None
+    if semantic_handle is None:
+        semantic_handle = ""
+    if not isinstance(semantic_handle, str):
+        semantic_handle = str(semantic_handle)
+    questions: List[Dict[str, str]] = []
+    allowed_resolutions = {"ignore", "answer_local", "answer_remote"}
+    raw_questions = data.get("questions")
+    if isinstance(raw_questions, list):
+        for item in raw_questions:
+            if not isinstance(item, dict):
+                continue
+            q_text = str(item.get("question", "") or "").strip()
+            q_topic = str(item.get("topic", "") or "").strip()
+            q_resolution = str(item.get("resolution", "") or "").strip().lower()
+            if not q_text:
+                continue
+            if q_resolution not in allowed_resolutions:
+                q_resolution = "ignore"
+            questions.append(
+                {
+                    "question": q_text,
+                    "topic": q_topic,
+                    "resolution": q_resolution,
+                }
+            )
+    return {
+        "topics": topics,
+        "intent": intent,
+        "type": tag_type,
+        "semantic_handle": semantic_handle,
+        "questions": questions,
+    }
+
+
+def _tagger_usage_from_response(response: Any) -> Dict[str, Any]:
+    """Build the usage telemetry dict from a tagger LLM response.
+
+    Args:
+        response: The LLM response exposing ``model`` and a ``usage`` record.
+
+    Returns:
+        A usage dict including reported token counts and (when present) the
+        provider ``extra_usage`` payload.
+    """
+    usage: Dict[str, Any] = {
+        "purpose": "tagger",
+        "model": response.model,
+        "prompt_tokens_reported": int(response.usage.prompt_tokens_reported),
+        "completion_tokens_reported": int(response.usage.completion_tokens_reported),
+        "total_tokens_reported": int(response.usage.total_tokens_reported),
+        "usage_is_estimate": bool(response.usage.usage_is_estimate),
+    }
+    if response.usage.extra_usage:
+        usage["extra_usage"] = response.usage.extra_usage
+    return usage
+
+
+def _write_tagger_success_debug(
+    project_id: str,
+    settings: Any,
+    user_prompt: str,
+    raw: str,
+) -> None:
+    """Write the best-effort success debug dump for a tagger invocation.
+
+    Args:
+        project_id: Project id used to namespace the debug file.
+        settings: Settings providing the builder/tagger model names.
+        user_prompt: The assembled user prompt sent to the model.
+        raw: The raw model response text.
+    """
+    try:
+        if project_id:
+            ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+            fname = f"{ts}_tagger.txt"
+            body = (
+                f"# timestamp: {ts}\n"
+                f"# project_id: {project_id}\n"
+                f"# model: {settings.builder_model}\n"
+                f"# tagger_model: {settings.tagger_model}\n"
+                f"# success: true\n"
+                "\n"
+                "====== TAGGER PROMPT (SYSTEM) ======\n"
+                + (_SYS_PROMPT or "")
+                + "\n\n====== TAGGER PROMPT (USER) ======\n"
+                + (user_prompt or "")
+                + "\n\n====== TAGGER RESPONSE ======\n"
+                + (raw or "")
+                + "\n"
+            )
+            write_debug_file(project_id, f"prompts/{fname}", body)
+    except Exception as exc:
+        logger.warning("[TAGGER] Failed writing debug tagger prompt dump project_id=%s: %s", project_id, exc)
+
+
+def _write_tagger_failure_debug(
+    project_id: Optional[str],
+    user_text: str,
+    assistant_text: str,
+    previous_pair_text: Optional[str],
+    error: Exception,
+) -> None:
+    """Write the best-effort failure debug dump for a tagger invocation.
+
+    Args:
+        project_id: Project id used to namespace the debug file.
+        user_text: The current turn's user message.
+        assistant_text: The current turn's assistant response.
+        previous_pair_text: Optional prior-turn text.
+        error: The exception that caused the failure.
+    """
+    try:
+        settings = get_settings()
+        if project_id:
+            ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+            fname = f"{ts}_tagger.txt"
+            body = (
+                f"# timestamp: {ts}\n"
+                f"# project_id: {project_id}\n"
+                f"# model: {settings.builder_model}\n"
+                f"# tagger_model: {settings.tagger_model}\n"
+                f"# success: false\n"
+                f"# error: {str(error)}\n"
+                "\n"
+                "====== USER_TEXT ======\n"
+                + (user_text or "")
+                + "\n\n====== ASSISTANT_TEXT ======\n"
+                + (assistant_text or "")
+                + "\n\n====== PREVIOUS_PAIR_TEXT ======\n"
+                + (previous_pair_text or "")
+                + "\n\n====== TAGGER PROMPT (SYSTEM) ======\n"
+                + (_SYS_PROMPT or "")
+                + "\n"
+            )
+            write_debug_file(project_id, f"prompts/{fname}", body)
+    except Exception as exc:
+        logger.warning("[TAGGER] Failed writing debug failure dump project_id=%s: %s", project_id, exc)
+
+
 def tag_pair(
     user_text: str,
     assistant_text: str,
@@ -412,42 +650,8 @@ def tag_pair(
             "total_tokens_reported": 0,
             "usage_is_estimate": True,
         }
-        current_cut_pct = _safe_percent(
-            getattr(settings, "tagger_current_response_middle_cut_percent", 50),
-            default=50,
-            name="TAGGER_CURRENT_RESPONSE_MIDDLE_CUT_PERCENT",
-        )
-        previous_cut_pct = _safe_percent(
-            getattr(settings, "tagger_previous_response_middle_cut_percent", 75),
-            default=75,
-            name="TAGGER_PREVIOUS_RESPONSE_MIDDLE_CUT_PERCENT",
-        )
-        min_length_for_chop = _safe_min_len(
-            getattr(settings, "tagger_min_response_length_for_chop", 600),
-            default=600,
-            name="TAGGER_MIN_RESPONSE_LENGTH_FOR_CHOP",
-        )
-        assistant_for_prompt = _middle_cut_assistant_text(
-            assistant_text,
-            cut_percent=int(current_cut_pct),
-            min_length_for_chop=int(min_length_for_chop),
-        )
-        previous_block = _build_previous_turn_block(
-            previous_pair_text,
-            prev_cut_percent=int(previous_cut_pct),
-            min_length_for_chop=int(min_length_for_chop),
-        )
-        user_prompt = (
-            f"{previous_block.rstrip()}\n\n"
-            "------CURRENT TURN------\n"
-            "------USER------\n"
-            f"{user_text}\n\n"
-            "------ASSISTANT------\n"
-            f"{assistant_for_prompt}\n"
-        )
+        user_prompt = _build_tagger_prompt(user_text, assistant_text, previous_pair_text, settings)
 
-        raw = ""
-        data: Optional[Dict[str, Any]] = None
         response = get_llm_client_mini().generate_response(
             model=settings.tagger_model,
             system_prompt=_SYS_PROMPT,
@@ -456,93 +660,27 @@ def tag_pair(
             reasoning_effort="low",
             require_json_object=True,
         )
-        usage = {
-            "purpose": "tagger",
-            "model": response.model,
-            "prompt_tokens_reported": int(response.usage.prompt_tokens_reported),
-            "completion_tokens_reported": int(response.usage.completion_tokens_reported),
-            "total_tokens_reported": int(response.usage.total_tokens_reported),
-            "usage_is_estimate": bool(response.usage.usage_is_estimate),
-        }
-        if response.usage.extra_usage:
-            usage["extra_usage"] = response.usage.extra_usage
+        usage = _tagger_usage_from_response(response)
         raw = response.text
-        clean = raw
-        if clean.startswith("```"):
-            lines2 = [ln for ln in clean.splitlines() if not ln.strip().startswith("```")]
-            clean = "\n".join(lines2).strip()
-        clean = _slice_first_json(clean)
-        try:
-            data = json.loads(clean)
-        except Exception:
-            data = None
-        if not isinstance(data, dict):
+        data = _parse_tagger_response(raw)
+        if data is None:
             raise ValueError("tagger returned non-json output")
 
-        topics = str(data.get("topics", "") or "")
-        intent = str(data.get("intent", "") or "")
-        tag_type = str(data.get("type", "") or "")
-        # semantic_handle may be missing only if the model violated schema; treat missing as None.
-        semantic_handle = data.get("semantic_handle", None) if "semantic_handle" in data else None
-        if semantic_handle is None:
-            semantic_handle = ""
-        if not isinstance(semantic_handle, str):
-            semantic_handle = str(semantic_handle)
-        questions: List[Dict[str, str]] = []
-        allowed_resolutions = {"ignore", "answer_local", "answer_remote"}
-        raw_questions = data.get("questions")
-        if isinstance(raw_questions, list):
-            for item in raw_questions:
-                if not isinstance(item, dict):
-                    continue
-                q_text = str(item.get("question", "") or "").strip()
-                q_topic = str(item.get("topic", "") or "").strip()
-                q_resolution = str(item.get("resolution", "") or "").strip().lower()
-                if not q_text:
-                    continue
-                if q_resolution not in allowed_resolutions:
-                    q_resolution = "ignore"
-                questions.append(
-                    {
-                        "question": q_text,
-                        "topic": q_topic,
-                        "resolution": q_resolution,
-                    }
-                )
+        result = _extract_tagger_fields(data)
 
         # Debug dump (best-effort; no-op unless GENERATE_DEBUG_FILES=true)
-        try:
-            if project_id:
-                ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-                fname = f"{ts}_tagger.txt"
-                body = (
-                    f"# timestamp: {ts}\n"
-                    f"# project_id: {project_id}\n"
-                    f"# model: {settings.builder_model}\n"
-                    f"# tagger_model: {settings.tagger_model}\n"
-                    f"# success: true\n"
-                    "\n"
-                    "====== TAGGER PROMPT (SYSTEM) ======\n"
-                    + (_SYS_PROMPT or "")
-                    + "\n\n====== TAGGER PROMPT (USER) ======\n"
-                    + (user_prompt or "")
-                    + "\n\n====== TAGGER RESPONSE ======\n"
-                    + (raw or "")
-                    + "\n"
-                )
-                write_debug_file(project_id, f"prompts/{fname}", body)
-        except Exception as exc:
-            logger.warning("[TAGGER] Failed writing debug tagger prompt dump project_id=%s: %s", project_id, exc)
+        _write_tagger_success_debug(project_id, settings, user_prompt, raw)
 
         # Log trimmed for brevity
         try:
+            semantic_handle = result["semantic_handle"]
             logger.info(
                 "[TAGGER] topics=%s intent=%s type=%s semantic_handle=%s questions_count=%s",
-                (topics or "")[:120],
-                (intent or "")[:120],
-                (tag_type or "")[:120],
+                (result["topics"] or "")[:120],
+                (result["intent"] or "")[:120],
+                (result["type"] or "")[:120],
                 (semantic_handle or "")[:120] if isinstance(semantic_handle, str) else "None",
-                int(len(questions)),
+                int(len(result["questions"])),
             )
         except Exception as exc:
             logger.warning("[TAGGER] Failed writing tagger summary log project_id=%s: %s", project_id, exc)
@@ -552,13 +690,7 @@ def tag_pair(
             timing={"ttlt_ms": int((time.perf_counter() - t0) * 1000.0)},
         )
 
-        return {
-            "topics": topics,
-            "intent": intent,
-            "type": tag_type,
-            "semantic_handle": semantic_handle,
-            "questions": questions,
-        }
+        return result
     except Exception as e:
         logger.warning("[TAGGER][WARN] %s", e)
         try:
@@ -578,32 +710,7 @@ def tag_pair(
         except Exception as exc:
             logger.warning("[TAGGER] Failed finalizing invocation after error project_id=%s: %s", project_id, exc)
         # Debug dump on failure (best-effort)
-        try:
-            settings = get_settings()
-            if project_id:
-                ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-                fname = f"{ts}_tagger.txt"
-                body = (
-                    f"# timestamp: {ts}\n"
-                    f"# project_id: {project_id}\n"
-                    f"# model: {settings.builder_model}\n"
-                    f"# tagger_model: {settings.tagger_model}\n"
-                    f"# success: false\n"
-                    f"# error: {str(e)}\n"
-                    "\n"
-                    "====== USER_TEXT ======\n"
-                    + (user_text or "")
-                    + "\n\n====== ASSISTANT_TEXT ======\n"
-                    + (assistant_text or "")
-                    + "\n\n====== PREVIOUS_PAIR_TEXT ======\n"
-                    + (previous_pair_text or "")
-                    + "\n\n====== TAGGER PROMPT (SYSTEM) ======\n"
-                    + (_SYS_PROMPT or "")
-                    + "\n"
-                )
-                write_debug_file(project_id, f"prompts/{fname}", body)
-        except Exception as exc:
-            logger.warning("[TAGGER] Failed writing debug failure dump project_id=%s: %s", project_id, exc)
+        _write_tagger_failure_debug(project_id, user_text, assistant_text, previous_pair_text, e)
         return None
 
 

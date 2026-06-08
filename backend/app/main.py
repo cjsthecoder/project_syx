@@ -66,6 +66,125 @@ except Exception as e:
     logger.error("[CONFIG] route_policy.json validation failed: %s", e)
     raise
 
+def _collect_git_metadata() -> tuple[str, bool]:
+    """Collect the current git commit and dirty-tree flag (best-effort).
+
+    Returns:
+        A tuple ``(git_commit, git_dirty)``. Defaults to ``("unknown", False)``
+        when git is unavailable or the commands fail.
+    """
+    git_commit = "unknown"
+    git_dirty = False
+    try:
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        rev = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if rev.returncode == 0:
+            parsed = str(rev.stdout or "").strip()
+            if parsed:
+                git_commit = parsed
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=repo_root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if dirty.returncode == 0:
+            git_dirty = bool(str(dirty.stdout or "").strip())
+    except Exception as exc:
+        logger.info("[TRACKING] Failed to collect git metadata: %s", exc)
+    return git_commit, git_dirty
+
+
+def _build_run_config(settings, route_policy, git_commit: str, git_dirty: bool) -> dict:
+    """Build the instrumentation run-config snapshot for ``start_run``.
+
+    Args:
+        settings: Application settings providing model/retrieval/maintenance config.
+        route_policy: Mapping of route name to its resolved policy object.
+        git_commit: Current git commit hash (or ``"unknown"``).
+        git_dirty: Whether the working tree has uncommitted changes.
+
+    Returns:
+        A dict with a single ``config_snapshot`` key capturing the effective
+        startup configuration.
+    """
+    s = settings
+    route_policy_snapshot = {}
+    for route_name, route_pol in route_policy.items():
+        route_policy_snapshot[str(route_name)] = {
+            "retrieval_multiplier": float(route_pol.retrieval_multiplier),
+            "max_keep": int(route_pol.max_keep),
+            "min_score": float(route_pol.min_score),
+            "expansion": {
+                "max_before": int(route_pol.expansion_max_before),
+                "max_after": int(route_pol.expansion_max_after),
+            },
+        }
+    return {
+        "config_snapshot": {
+            "models_configured": {
+                "main_model": str(s.model_name),
+                "builder_model": str(s.builder_model),
+                "tagger_model": str(s.tagger_model),
+            },
+            "prompt_budgeting": {
+                "model_context_window_tokens": None,
+                "max_output_tokens_requested": int(s.model_max_tokens),
+                "max_output_tokens_effective": int(s.model_max_tokens),
+                "target_max_prompt_tokens": None,
+                "history_max_tokens": None,
+                "rag_max_tokens": None,
+                "profile_max_tokens": None,
+                "system_max_tokens": None,
+                "prompt_budgeting_known": False,
+            },
+            "retrieval_static": {
+                "base_top_k": int(s.base_top_k),
+                "retrieval_multiplier_default": float(s.retrieval_multiplier),
+                "embedding_model": str(s.embedding_model),
+                "chunk_size": int(s.chunk_size),
+                "chunk_overlap": int(s.chunk_overlap),
+            },
+            "route_policy": route_policy_snapshot,
+            "deprecated_or_ignored": {
+                "rag_score_threshold": float(s.rag_score_threshold),
+                "daily_rag_score_threshold": float(s.daily_rag_score_threshold),
+                "note": "not enforced by current retrieval selection pipeline",
+            },
+            "maintenance": {
+                "sleep_enabled": True,
+                "enable_scheduler": bool(s.enable_scheduler),
+                "sleep_cycle_hour": int(s.sleep_cycle_hour),
+                "sleep_cycle_minute": int(s.sleep_cycle_minute),
+                "verify_rag": bool(s.verify_rag),
+                "force_rag_rebuild_on_startup": bool(s.force_rag_rebuild_on_startup),
+                "dream_enabled": bool(s.enable_dream),
+                "reporting_scope": "sleep_only",
+            },
+            "instrumentation": {
+                "enabled": bool(s.instrumentation_enabled),
+                "mode": str(s.instrumentation_mode),
+                "run_id_override": s.instrumentation_run_id,
+                "runs_dir": str(s.instrumentation_runs_dir),
+                "validation": {
+                    "prompt_tol_abs_tokens": int(s.instrumentation_prompt_tol_abs_tokens),
+                    "prompt_tol_pct": float(s.instrumentation_prompt_tol_pct),
+                },
+            },
+            "git_commit": str(git_commit),
+            "git_dirty": bool(git_dirty),
+            "python_version": str(sys.version.split()[0]),
+        },
+    }
+
+
 # Lifespan handler to manage startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -97,102 +216,14 @@ async def lifespan(app: FastAPI):
         logger.info("[INIT] Factory clients initialized at startup")
     # Initialize instrumentation facade and start process run if enabled.
     try:
-        git_commit = "unknown"
-        git_dirty = False
-        try:
-            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            rev = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=repo_root,
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            if rev.returncode == 0:
-                parsed = str(rev.stdout or "").strip()
-                if parsed:
-                    git_commit = parsed
-            dirty = subprocess.run(
-                ["git", "status", "--porcelain"],
-                cwd=repo_root,
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            if dirty.returncode == 0:
-                git_dirty = bool(str(dirty.stdout or "").strip())
-        except Exception as exc:
-            logger.info("[TRACKING] Failed to collect git metadata: %s", exc)
+        git_commit, git_dirty = _collect_git_metadata()
         instr = init_instrumentation(get_settings(), has_lifespan_hook=True)
-        s = get_settings()
-        pol = load_and_validate_route_policy()
-        route_policy_snapshot = {}
-        for route_name, route_pol in pol.items():
-            route_policy_snapshot[str(route_name)] = {
-                "retrieval_multiplier": float(route_pol.retrieval_multiplier),
-                "max_keep": int(route_pol.max_keep),
-                "min_score": float(route_pol.min_score),
-                "expansion": {
-                    "max_before": int(route_pol.expansion_max_before),
-                    "max_after": int(route_pol.expansion_max_after),
-                },
-            }
-        run_cfg = {
-            "config_snapshot": {
-                "models_configured": {
-                    "main_model": str(s.model_name),
-                    "builder_model": str(s.builder_model),
-                    "tagger_model": str(s.tagger_model),
-                },
-                "prompt_budgeting": {
-                    "model_context_window_tokens": None,
-                    "max_output_tokens_requested": int(s.model_max_tokens),
-                    "max_output_tokens_effective": int(s.model_max_tokens),
-                    "target_max_prompt_tokens": None,
-                    "history_max_tokens": None,
-                    "rag_max_tokens": None,
-                    "profile_max_tokens": None,
-                    "system_max_tokens": None,
-                    "prompt_budgeting_known": False,
-                },
-                "retrieval_static": {
-                    "base_top_k": int(s.base_top_k),
-                    "retrieval_multiplier_default": float(s.retrieval_multiplier),
-                    "embedding_model": str(s.embedding_model),
-                    "chunk_size": int(s.chunk_size),
-                    "chunk_overlap": int(s.chunk_overlap),
-                },
-                "route_policy": route_policy_snapshot,
-                "deprecated_or_ignored": {
-                    "rag_score_threshold": float(s.rag_score_threshold),
-                    "daily_rag_score_threshold": float(s.daily_rag_score_threshold),
-                    "note": "not enforced by current retrieval selection pipeline",
-                },
-                "maintenance": {
-                    "sleep_enabled": True,
-                    "enable_scheduler": bool(s.enable_scheduler),
-                    "sleep_cycle_hour": int(s.sleep_cycle_hour),
-                    "sleep_cycle_minute": int(s.sleep_cycle_minute),
-                    "verify_rag": bool(s.verify_rag),
-                    "force_rag_rebuild_on_startup": bool(s.force_rag_rebuild_on_startup),
-                    "dream_enabled": bool(s.enable_dream),
-                    "reporting_scope": "sleep_only",
-                },
-                "instrumentation": {
-                    "enabled": bool(s.instrumentation_enabled),
-                    "mode": str(s.instrumentation_mode),
-                    "run_id_override": s.instrumentation_run_id,
-                    "runs_dir": str(s.instrumentation_runs_dir),
-                    "validation": {
-                        "prompt_tol_abs_tokens": int(s.instrumentation_prompt_tol_abs_tokens),
-                        "prompt_tol_pct": float(s.instrumentation_prompt_tol_pct),
-                    },
-                },
-                "git_commit": str(git_commit),
-                "git_dirty": bool(git_dirty),
-                "python_version": str(sys.version.split()[0]),
-            },
-        }
+        run_cfg = _build_run_config(
+            get_settings(),
+            load_and_validate_route_policy(),
+            git_commit,
+            git_dirty,
+        )
         run_id = instr.start_run(config=run_cfg)
         if run_id:
             logger.info("[TRACKING] Initialized run_id=%s mode=%s", run_id, get_settings().instrumentation_mode)

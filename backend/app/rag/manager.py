@@ -16,10 +16,12 @@ Policy:
 - Recreate FAISS index per upload (fresh build from uploads dir)
 """
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any, Iterable, Set, cast
 import json
 import logging
+import math
 import threading
 
 import faiss  # type: ignore
@@ -734,75 +736,64 @@ def retrieve_context(
     }
 
 
-def merge_daily_and_main(
-    project_id: str,
-    query: str,
-    daily_enabled: bool,
-    max_keep: int,
-    route: Optional[str] = None,
-    per_source_k_override: Optional[int] = None,
-) -> Dict[str, Any]:
-    """Retrieve from daily and main, then apply positional truncation.
+@dataclass
+class _ExpansionResources:
+    """Resources needed to expand kept candidates into adjacency windows.
 
-    Candidate ordering is by raw similarity score across all sources
-    before selection/truncation/prompt assembly.
+    Attributes:
+        max_before: Route-derived maximum neighbors to expand before a chunk.
+        max_after: Route-derived maximum neighbors to expand after a chunk.
+        ltm_expand_ok: Whether the LTM index/sidecar support adjacency expansion.
+        ltm_index: Loaded LTM index used for neighbor lookups (or ``None``).
+        daily_src: Daily source providing sequence/vector lookups (or ``None``).
+    """
 
-    Selection is score-gated and deterministic:
-    - consume the globally ordered list
-    - skip candidates whose score is not greater than route min_score
-    - retain the first MAX_KEEP passing candidates
-    - no reordering, boosting, or dedupe occurs here
+    max_before: int
+    max_after: int
+    ltm_expand_ok: bool
+    ltm_index: Optional["LTMIndex"]
+    daily_src: Any
 
-    After selection the kept candidates undergo route-tiered adjacency expansion,
-    chunk-identity dedupe, source-document ordering, overlap trimming, and
-    snippet-group collapse before the prompt ``Context:`` block is assembled.
+
+@dataclass
+class _DedupeAudit:
+    """Counters and events produced by chunk-identity dedupe."""
+
+    input_chunk_count: int = 0
+    unique_keyed_count: int = 0
+    duplicate_skipped_count: int = 0
+    sparse_preserved_count: int = 0
+    key_first_pos: Dict[Tuple[str, int], int] = field(default_factory=dict)
+    duplicate_events: List[Dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class _PromptAssembly:
+    """Result of assembling kept chunks into a prompt ``Context:`` block."""
+
+    context_text: str
+    daily_texts: List[str]
+    main_texts: List[str]
+    main_scores: List[float]
+    daily_scores: List[float]
+    tokens_used: int
+
+
+def _resolve_route_min_score(project_id: str, route: Optional[str]) -> float:
+    """Resolve the route's ``min_score`` gate, defaulting to ``0.0`` on failure.
 
     Args:
-        project_id: Project to retrieve from.
-        query: Natural-language query.
-        daily_enabled: Whether to include the Daily source alongside LTM.
-        max_keep: Base cap on selected candidates (may grow via the adjacent
-            same-document bonus).
-        route: Route name used to resolve ``min_score`` and expansion limits;
-            defaults to ``OTHER``.
-        per_source_k_override: Per-source K to use instead of the computed
-            default; a value <= 0 (or ``max_keep`` <= 0) returns an empty result.
+        project_id: Project id used for log context.
+        route: Route name; ``None`` resolves to ``OTHER``.
 
     Returns:
-        A dict with the assembled ``context_text``, ``tokens_used``, per-source
-        text lists (``daily_texts``/``main_texts``), hit counts/averages, and
-        selection/expansion telemetry counters (e.g. ``ordered_candidates``,
-        ``selected_candidates``, ``kept_candidates``,
-        ``expanded_unique_chunks_after_merge``, ``min_score``).
+        The route's ``min_score`` as a float, or ``0.0`` when resolution fails.
     """
-    settings = get_settings()
-    per_source_k = (
-        int(per_source_k_override)
-        if per_source_k_override is not None
-        else compute_per_source_k(settings.base_top_k, settings.retrieval_multiplier)
-    )
-    if int(per_source_k) <= 0 or int(max_keep) <= 0:
-        return {
-            "context_text": "",
-            "tokens_used": 0,
-            "daily_texts": [],
-            "main_texts": [],
-            "main_hits": 0,
-            "main_avg": 0.0,
-            "daily_hits": 0,
-            "daily_avg": 0.0,
-            "total_hits": 0,
-            "ordered_candidates": 0,
-            "selected_candidates": 0,
-            "kept_candidates": 0,
-            "expanded_unique_chunks_after_merge": 0,
-        }
-    min_score = 0.0
     try:
         from ..core.route_policy import get_route_policy
 
         policy = get_route_policy(route or "OTHER")
-        min_score = float(getattr(policy, "min_score", 0.0) or 0.0)
+        return float(getattr(policy, "min_score", 0.0) or 0.0)
     except Exception as exc:
         logger.warning(
             "RAG: failed resolving route min_score project=%s route=%s detail=%s",
@@ -810,24 +801,35 @@ def merge_daily_and_main(
             route or "OTHER",
             exc,
         )
-        min_score = 0.0
-    logger.debug(
-        "DailyRAG: starting merged retrieval project=%s per_source_k=%s daily_enabled=%s max_keep=%s min_score=%.4f",
-        project_id,
-        int(per_source_k),
-        str(bool(daily_enabled)).lower(),
-        int(max_keep),
-        float(min_score),
-    )
-    # Retrieval via canonical entry point (raw candidates; no thresholding/boosting here).
-    sources = ["ltm"] + (["daily"] if bool(daily_enabled) else [])
-    cands = canonical_retrieve_candidates(project_id, query, sources=sources, per_source_k_override=per_source_k)
-    # Global ordering by raw similarity score (stable; ties preserve pre-sort order).
-    ordered = order_candidates_by_similarity_score(list(cands or []))
+        return 0.0
 
-    # Policy-driven selection with adjacent-chunk rule (effective limit can grow when we retain adjacent same-doc chunks).
+
+def _select_score_gated_candidates(
+    ordered: List[Dict[str, Any]],
+    *,
+    max_keep: int,
+    min_score: float,
+    project_id: str,
+) -> Tuple[List[Dict[str, Any]], int]:
+    """Select the top score-passing candidates with an adjacent same-doc bonus.
+
+    Consumes the globally ordered list, skipping any candidate whose score is
+    not greater than ``min_score`` and stopping at the effective limit. The
+    limit grows by one each time a retained candidate is an adjacent chunk
+    (``|chunk_index delta| == 1``) of the same source document as the prior
+    retained candidate.
+
+    Args:
+        ordered: Candidates pre-ordered by descending similarity score.
+        max_keep: Base cap on retained candidates.
+        min_score: Exclusive score threshold; candidates ``<= min_score`` skip.
+        project_id: Project id used for log context.
+
+    Returns:
+        A tuple ``(selected_candidates, adjacent_bonus)``.
+    """
     adjacent_bonus = 0
-    kept_candidates = []
+    kept_candidates: List[Dict[str, Any]] = []
     effective_limit = int(max_keep)
     for c in list(ordered or []):
         if len(kept_candidates) >= effective_limit:
@@ -859,10 +861,29 @@ def merge_daily_and_main(
                         project_id,
                         exc,
                     )
-    selected_candidates = list(kept_candidates)
+    return kept_candidates, adjacent_bonus
 
-    # Rank-weighted adjacency expansion (materialized per-candidate; no dedupe, no token pruning).
-    # This stage preserves kept candidate order and expands within the same source document only.
+
+def _resolve_expansion_resources(
+    project_id: str,
+    route: Optional[str],
+    daily_enabled: bool,
+) -> _ExpansionResources:
+    """Resolve route expansion limits and load adjacency sources (best-effort).
+
+    Determines the route's before/after expansion budget, validates the LTM
+    adjacency sidecar (scheduling a rebuild when it is missing/invalid), and
+    lazily loads the LTM index and Daily source only when expansion is enabled.
+
+    Args:
+        project_id: Project being retrieved from.
+        route: Route name used to look up expansion limits.
+        daily_enabled: Whether the Daily source participates in expansion.
+
+    Returns:
+        An ``_ExpansionResources`` describing the available expansion budget and
+        loaded sources.
+    """
     try:
         from ..core.route_policy import get_route_policy
         from .daily_store import get_daily_source
@@ -917,135 +938,168 @@ def merge_daily_and_main(
     except Exception:
         daily_src = None
 
-    def _tier_counts(i: int, k: int) -> tuple[int, int]:
-        """Compute the before/after expansion budget for a candidate by rank tier.
+    return _ExpansionResources(
+        max_before=int(max_before),
+        max_after=int(max_after),
+        ltm_expand_ok=bool(ltm_expand_ok),
+        ltm_index=ltm_index,
+        daily_src=daily_src,
+    )
 
-        Splits the kept candidates into thirds: the top tier gets the full
-        ``max_before``/``max_after`` budget, the middle tier half (rounded up),
-        and the bottom tier at most one neighbor on each side.
 
-        Args:
-            i: 0-based rank of the candidate within the kept list.
-            k: Total number of kept candidates.
+def _expansion_tier_counts(i: int, k: int, max_before: int, max_after: int) -> Tuple[int, int]:
+    """Compute the before/after expansion budget for a candidate by rank tier.
 
-        Returns:
-            A ``(before_n, after_n)`` neighbor budget; ``(0, 0)`` when ``k <= 0``.
-        """
-        if k <= 0:
-            return 0, 0
-        import math
+    Splits the kept candidates into thirds: the top tier gets the full
+    ``max_before``/``max_after`` budget, the middle tier half (rounded up), and
+    the bottom tier at most one neighbor on each side.
 
-        t1_end = int(math.ceil(k / 3.0))
-        t2_end = int(math.ceil((2.0 * k) / 3.0))
-        if i < t1_end:
-            return int(max_before), int(max_after)
-        if i < t2_end:
-            return int(math.ceil(int(max_before) / 2.0)), int(math.ceil(int(max_after) / 2.0))
-        return min(1, int(max_before)), min(1, int(max_after))
+    Args:
+        i: 0-based rank of the candidate within the kept list.
+        k: Total number of kept candidates.
+        max_before: Maximum neighbors to expand before a chunk.
+        max_after: Maximum neighbors to expand after a chunk.
 
-    def _materialize_candidate_chunks(i: int, k: int, c: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Materialize a candidate's expansion window as ordered chunk objects.
+    Returns:
+        A ``(before_n, after_n)`` neighbor budget; ``(0, 0)`` when ``k <= 0``.
+    """
+    if k <= 0:
+        return 0, 0
+    t1_end = int(math.ceil(k / 3.0))
+    t2_end = int(math.ceil((2.0 * k) / 3.0))
+    if i < t1_end:
+        return int(max_before), int(max_after)
+    if i < t2_end:
+        return int(math.ceil(int(max_before) / 2.0)), int(math.ceil(int(max_after) / 2.0))
+    return min(1, int(max_before)), min(1, int(max_after))
 
-        Expands within the same source document only, honoring the route-tiered
-        neighbor budget and source-specific adjacency (LTM sidecar or Daily
-        sequence map). Degrades to central-only when identity/adjacency is
-        unavailable. This stage does not dedupe or mutate chunk text.
 
-        Args:
-            i: 0-based rank of the candidate within the kept list (drives tiering).
-            k: Total number of kept candidates.
-            c: The candidate dict (``text``/``source``/``metadata``).
+def _materialize_candidate_chunks(
+    i: int,
+    k: int,
+    c: Dict[str, Any],
+    *,
+    resources: _ExpansionResources,
+) -> List[Dict[str, Any]]:
+    """Materialize a candidate's expansion window as ordered chunk objects.
 
-        Returns:
-            Ordered chunk dicts in before…central…after order, each with
-            ``source_document_id``, ``chunk_index``, and ``text``.
-        """
-        txt0 = (c.get("text") or "") if isinstance(c, dict) else ""
-        src0 = (c.get("source") or "") if isinstance(c, dict) else ""
-        md0 = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
-        doc_id_raw = md0.get("source_document_id") or md0.get("doc_id")
-        source_document_id = str(doc_id_raw) if isinstance(doc_id_raw, str) else None
-        chunk_idx_raw = md0.get("chunk_index") if md0.get("chunk_index") is not None else md0.get("chunk_seq")
-        try:
-            ci: Optional[int] = int(chunk_idx_raw)
-        except Exception:
-            ci = None
+    Expands within the same source document only, honoring the route-tiered
+    neighbor budget and source-specific adjacency (LTM sidecar or Daily sequence
+    map). Degrades to central-only when identity/adjacency is unavailable. This
+    stage does not dedupe or mutate chunk text.
 
-        central_chunk = {
-            "source_document_id": source_document_id,
-            "chunk_index": ci,
-            "text": str(txt0 or ""),
-        }
+    Args:
+        i: 0-based rank of the candidate within the kept list (drives tiering).
+        k: Total number of kept candidates.
+        c: The candidate dict (``text``/``source``/``metadata``).
+        resources: Expansion budget and loaded adjacency sources.
 
-        # If identity/adjacency is unavailable, degrade to central-only.
-        if ci is None:
-            return [central_chunk]
+    Returns:
+        Ordered chunk dicts in before…central…after order, each with
+        ``source_document_id``, ``chunk_index``, and ``text``.
+    """
+    txt0 = (c.get("text") or "") if isinstance(c, dict) else ""
+    src0 = (c.get("source") or "") if isinstance(c, dict) else ""
+    md0 = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
+    doc_id_raw = md0.get("source_document_id") or md0.get("doc_id")
+    source_document_id = str(doc_id_raw) if isinstance(doc_id_raw, str) else None
+    chunk_idx_raw = md0.get("chunk_index") if md0.get("chunk_index") is not None else md0.get("chunk_seq")
+    try:
+        ci: Optional[int] = int(chunk_idx_raw)
+    except Exception:
+        ci = None
 
-        before_n, after_n = _tier_counts(int(i), int(k))
-        if int(before_n) <= 0 and int(after_n) <= 0:
-            return [central_chunk]
+    central_chunk = {
+        "source_document_id": source_document_id,
+        "chunk_index": ci,
+        "text": str(txt0 or ""),
+    }
 
-        # LTM: expand only when adjacency is available and doc_id is valid.
-        if str(src0).lower() == "ltm":
-            if not ltm_expand_ok or ltm_index is None or source_document_id is None:
-                return [central_chunk]
-            chunks_local: List[Dict[str, Any]] = []
-            for seq in range(int(ci) - int(before_n), int(ci) + int(after_n) + 1):
-                if int(seq) == int(ci):
-                    chunks_local.append(central_chunk)
-                    continue
-                item_id = f"{source_document_id}::chunk={int(seq)}"
-                ve = None
-                try:
-                    ve = ltm_index.get_by_id(str(item_id))  # type: ignore[union-attr]
-                except Exception:
-                    ve = None
-                if ve is None:
-                    # Non-fatal skip-neighbor event.
-                    continue
-                chunks_local.append(
-                    {
-                        "source_document_id": source_document_id,
-                        "chunk_index": int(seq),
-                        "text": str(ve.text or ""),
-                    }
-                )
-            return chunks_local
-
-        # Daily: expand only when daily cache/source is available.
-        if str(src0).lower() == "daily":
-            if daily_src is None:
-                return [central_chunk]
-            chunks_local: List[Dict[str, Any]] = []
-            for seq in range(int(ci) - int(before_n), int(ci) + int(after_n) + 1):
-                if int(seq) == int(ci):
-                    chunks_local.append(central_chunk)
-                    continue
-                try:
-                    eid = daily_src.id_by_seq.get(int(seq))  # type: ignore[union-attr]
-                except Exception:
-                    eid = None
-                if not isinstance(eid, str) or not eid:
-                    # Non-fatal skip-neighbor event.
-                    continue
-                try:
-                    ve = daily_src.vs.get_by_id(str(eid))  # type: ignore[union-attr]
-                except Exception:
-                    ve = None
-                if ve is None:
-                    continue
-                chunks_local.append(
-                    {
-                        "source_document_id": source_document_id,
-                        "chunk_index": int(seq),
-                        "text": str(ve.text or ""),
-                    }
-                )
-            return chunks_local
-
-        # Unknown source: central-only degrade.
+    # If identity/adjacency is unavailable, degrade to central-only.
+    if ci is None:
         return [central_chunk]
 
+    before_n, after_n = _expansion_tier_counts(int(i), int(k), resources.max_before, resources.max_after)
+    if int(before_n) <= 0 and int(after_n) <= 0:
+        return [central_chunk]
+
+    # LTM: expand only when adjacency is available and doc_id is valid.
+    if str(src0).lower() == "ltm":
+        if not resources.ltm_expand_ok or resources.ltm_index is None or source_document_id is None:
+            return [central_chunk]
+        chunks_local: List[Dict[str, Any]] = []
+        for seq in range(int(ci) - int(before_n), int(ci) + int(after_n) + 1):
+            if int(seq) == int(ci):
+                chunks_local.append(central_chunk)
+                continue
+            item_id = f"{source_document_id}::chunk={int(seq)}"
+            ve = None
+            try:
+                ve = resources.ltm_index.get_by_id(str(item_id))  # type: ignore[union-attr]
+            except Exception:
+                ve = None
+            if ve is None:
+                # Non-fatal skip-neighbor event.
+                continue
+            chunks_local.append(
+                {
+                    "source_document_id": source_document_id,
+                    "chunk_index": int(seq),
+                    "text": str(ve.text or ""),
+                }
+            )
+        return chunks_local
+
+    # Daily: expand only when daily cache/source is available.
+    if str(src0).lower() == "daily":
+        if resources.daily_src is None:
+            return [central_chunk]
+        chunks_local: List[Dict[str, Any]] = []
+        for seq in range(int(ci) - int(before_n), int(ci) + int(after_n) + 1):
+            if int(seq) == int(ci):
+                chunks_local.append(central_chunk)
+                continue
+            try:
+                eid = resources.daily_src.id_by_seq.get(int(seq))  # type: ignore[union-attr]
+            except Exception:
+                eid = None
+            if not isinstance(eid, str) or not eid:
+                # Non-fatal skip-neighbor event.
+                continue
+            try:
+                ve = resources.daily_src.vs.get_by_id(str(eid))  # type: ignore[union-attr]
+            except Exception:
+                ve = None
+            if ve is None:
+                continue
+            chunks_local.append(
+                {
+                    "source_document_id": source_document_id,
+                    "chunk_index": int(seq),
+                    "text": str(ve.text or ""),
+                }
+            )
+        return chunks_local
+
+    # Unknown source: central-only degrade.
+    return [central_chunk]
+
+
+def _materialize_all_expansions(
+    kept_candidates: List[Dict[str, Any]],
+    resources: _ExpansionResources,
+    project_id: str,
+) -> None:
+    """Attach ``expanded_chunks`` and rebuild ``text`` for each kept candidate.
+
+    Best-effort: a failure here is logged and otherwise suppressed so retrieval
+    and prompt assembly are never blocked.
+
+    Args:
+        kept_candidates: Selected candidates, mutated in place.
+        resources: Expansion budget and loaded adjacency sources.
+        project_id: Project id used for log context.
+    """
     try:
         k_actual = int(len(kept_candidates or []))
         if k_actual > 0:
@@ -1053,7 +1107,7 @@ def merge_daily_and_main(
                 if not isinstance(c, dict):
                     continue
                 # Output artifact: per-candidate ordered chunk objects.
-                chunks = _materialize_candidate_chunks(int(i), int(k_actual), c)
+                chunks = _materialize_candidate_chunks(int(i), int(k_actual), c, resources=resources)
                 c["expanded_chunks"] = chunks
                 # Keep downstream prompt assembly compatible by materializing candidate text from chunks.
                 c["text"] = "\n".join(str(ch.get("text") or "") for ch in chunks if isinstance(ch, dict))
@@ -1061,14 +1115,26 @@ def merge_daily_and_main(
         # Best-effort: never block retrieval/prompt assembly.
         logger.warning("RAG: failed materializing expanded chunks project=%s detail=%s", project_id, exc, exc_info=True)
 
-    # Chunk identity dedupe (first-seen wins) over structured expansion output.
-    # Operates in kept_candidates order, then per-candidate chunk order.
-    dedupe_input_chunk_count = 0
-    dedupe_unique_keyed_count = 0
-    dedupe_duplicate_skipped_count = 0
-    dedupe_sparse_preserved_count = 0
-    dedupe_key_first_pos: Dict[Tuple[str, int], int] = {}
-    dedupe_duplicate_events: List[Dict[str, Any]] = []
+
+def _dedupe_expanded_chunks(
+    kept_candidates: List[Dict[str, Any]],
+    *,
+    project_id: str = "(unknown)",
+) -> Tuple[List[Dict[str, Any]], _DedupeAudit]:
+    """Flatten expansion output into deduped chunks (first-seen wins).
+
+    Operates in kept-candidate order, then per-candidate chunk order. Chunks
+    keyed by ``(source_document_id, chunk_index)`` are deduplicated; sparse or
+    legacy chunks lacking a full key are preserved in order. Returns the input
+    list unchanged when no candidate carries an ``expanded_chunks`` list.
+
+    Args:
+        kept_candidates: Candidates carrying ``expanded_chunks`` lists.
+
+    Returns:
+        A tuple ``(deduped_chunks, audit)``.
+    """
+    audit = _DedupeAudit()
     dedupe_stream_pos = 0
     try:
         deduped_chunks: List[Dict[str, Any]] = []
@@ -1087,14 +1153,14 @@ def merge_daily_and_main(
                 if not isinstance(ch, dict):
                     continue
                 dedupe_stream_pos += 1
-                dedupe_input_chunk_count += 1
+                audit.input_chunk_count += 1
                 source_document_id = ch.get("source_document_id")
                 chunk_index = ch.get("chunk_index")
                 text = str(ch.get("text") or "")
 
                 # Compatibility behavior: preserve sparse/legacy entries in-order.
                 if not isinstance(source_document_id, str) or not isinstance(chunk_index, int):
-                    dedupe_sparse_preserved_count += 1
+                    audit.sparse_preserved_count += 1
                     md = dict(base_md)
                     md["source_document_id"] = source_document_id
                     md["chunk_index"] = chunk_index
@@ -1110,19 +1176,19 @@ def merge_daily_and_main(
 
                 key = (str(source_document_id), int(chunk_index))
                 if key in seen_keys:
-                    dedupe_duplicate_skipped_count += 1
-                    dedupe_duplicate_events.append(
+                    audit.duplicate_skipped_count += 1
+                    audit.duplicate_events.append(
                         {
                             "source_document_id": key[0],
                             "chunk_index": key[1],
-                            "first_seen_pos": dedupe_key_first_pos.get(key),
+                            "first_seen_pos": audit.key_first_pos.get(key),
                             "duplicate_pos": dedupe_stream_pos,
                         }
                     )
                     continue
                 seen_keys.add(key)
-                dedupe_key_first_pos[key] = dedupe_stream_pos
-                dedupe_unique_keyed_count += 1
+                audit.key_first_pos[key] = dedupe_stream_pos
+                audit.unique_keyed_count += 1
                 md = dict(base_md)
                 md["source_document_id"] = str(source_document_id)
                 md["chunk_index"] = int(chunk_index)
@@ -1134,13 +1200,30 @@ def merge_daily_and_main(
                         "metadata": md,
                     }
                 )
-        kept_candidates = deduped_chunks
+        return deduped_chunks, audit
     except Exception as exc:
         # Best-effort: never block retrieval/prompt assembly.
         logger.warning("RAG: failed deduping expanded chunks project=%s detail=%s", project_id, exc, exc_info=True)
+        return list(kept_candidates or []), audit
 
-    # Source-document ordering and narrative coherence.
-    # Extract sources (first-seen order); per source sort by chunk_index ascending; sparse chunks in first-seen order at end.
+
+def _order_chunks_by_source_document(
+    kept_candidates: List[Dict[str, Any]],
+    *,
+    project_id: str = "(unknown)",
+) -> List[Dict[str, Any]]:
+    """Group deduped chunks by source document and sort within each by index.
+
+    Source documents are emitted in first-seen order; within each, chunks sort
+    by ascending ``chunk_index``. Sparse/legacy chunks lacking identity are
+    appended in first-seen order. Returns the input unchanged on failure.
+
+    Args:
+        kept_candidates: Deduped chunk dicts to order.
+
+    Returns:
+        The reordered chunk list.
+    """
     try:
         by_source: Dict[str, List[Dict[str, Any]]] = {}
         source_order: List[str] = []
@@ -1161,6 +1244,7 @@ def merge_daily_and_main(
         ordered_chunks_list: List[Dict[str, Any]] = []
         for doc_id in source_order:
             chunks = by_source.get(doc_id) or []
+
             def _chunk_index(c: Dict[str, Any]) -> int:
                 try:
                     ci = (c.get("metadata") or {}).get("chunk_index")
@@ -1171,30 +1255,54 @@ def merge_daily_and_main(
             chunks = sorted(chunks, key=_chunk_index)
             ordered_chunks_list.extend(chunks)
         ordered_chunks_list.extend(sparse_chunks)
-        kept_candidates = ordered_chunks_list
+        return ordered_chunks_list
     except Exception as exc:
         # Best-effort: never block retrieval/prompt assembly.
         logger.warning("RAG: failed ordering deduped chunks project=%s detail=%s", project_id, exc, exc_info=True)
+        return list(kept_candidates or [])
 
-    # Adjacent chunk overlap trimming (in-place; same-doc consecutive pairs only).
-    try:
-        settings = get_settings()
-        trim_adjacent_chunk_overlap(
-            kept_candidates or [],
-            int(settings.chunk_overlap),
-        )
-    except Exception as exc:
-        # Best-effort: never block retrieval/prompt assembly.
-        logger.warning("RAG: failed trimming adjacent overlap project=%s detail=%s", project_id, exc, exc_info=True)
 
-    # Snippet-group collapse (one entry per adjacent same-document run).
-    try:
-        kept_candidates = collapse_snippet_groups(kept_candidates or [])
-    except Exception as exc:
-        # Best-effort: never block retrieval/prompt assembly.
-        logger.warning("RAG: failed collapsing snippet groups project=%s detail=%s", project_id, exc, exc_info=True)
+def _write_retrieval_debug_artifacts(
+    *,
+    project_id: str,
+    query: str,
+    route: Optional[str],
+    per_source_k: int,
+    max_keep: int,
+    min_score: float,
+    daily_enabled: bool,
+    adjacent_bonus: int,
+    resources: _ExpansionResources,
+    ordered: List[Dict[str, Any]],
+    selected_candidates: List[Dict[str, Any]],
+    kept_candidates: List[Dict[str, Any]],
+    audit: _DedupeAudit,
+) -> None:
+    """Write human-readable retrieval debug dumps (best-effort).
 
-    # Debug dumps (human-readable .txt) for ordering and selection.
+    Emits ordered-candidate, kept-candidate, expansion-plan, and deduped-chunk
+    artifacts. Any failure is logged and otherwise suppressed.
+
+    Args:
+        project_id: Project the dumps belong to (a falsy id skips writing).
+        query: Query string (preview is truncated/sanitized in the dump).
+        route: Route name shown in the expansion plan.
+        per_source_k: Per-source K used for retrieval.
+        max_keep: Base selection cap.
+        min_score: Score gate applied during selection.
+        daily_enabled: Whether the Daily source participated.
+        adjacent_bonus: Number of adjacent same-doc bonus slots granted.
+        resources: Expansion resources (for plan header + neighbor probing).
+        ordered: Globally ordered candidates.
+        selected_candidates: Score-gated selected candidates.
+        kept_candidates: Final deduped/ordered chunks.
+        audit: Dedupe audit counters and events.
+    """
+    max_before = resources.max_before
+    max_after = resources.max_after
+    ltm_expand_ok = resources.ltm_expand_ok
+    ltm_index = resources.ltm_index
+    daily_src = resources.daily_src
     try:
         if project_id:
             ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
@@ -1279,7 +1387,7 @@ def merge_daily_and_main(
                     except Exception:
                         ci = None
 
-                    before_n, after_n = _tier_counts(int(rank - 1), int(k_actual))
+                    before_n, after_n = _expansion_tier_counts(int(rank - 1), int(k_actual), max_before, max_after)
                     if ci is None or not isinstance(doc_id, str) or (before_n <= 0 and after_n <= 0):
                         lines.append(
                             f"{rank:>3}. source={src} score={score} source_document_id={doc_id} chunk_index={chunk_idx} file={fname} tier_before={before_n} tier_after={after_n}"
@@ -1352,18 +1460,18 @@ def merge_daily_and_main(
                     "",
                     "====== DEDUPE_AUDIT ======",
                     "",
-                    f"input_chunks: {int(dedupe_input_chunk_count)}",
-                    f"unique_keyed_chunks_kept: {int(dedupe_unique_keyed_count)}",
-                    f"duplicate_keyed_chunks_skipped: {int(dedupe_duplicate_skipped_count)}",
-                    f"sparse_or_legacy_chunks_preserved: {int(dedupe_sparse_preserved_count)}",
+                    f"input_chunks: {int(audit.input_chunk_count)}",
+                    f"unique_keyed_chunks_kept: {int(audit.unique_keyed_count)}",
+                    f"duplicate_keyed_chunks_skipped: {int(audit.duplicate_skipped_count)}",
+                    f"sparse_or_legacy_chunks_preserved: {int(audit.sparse_preserved_count)}",
                     f"final_output_chunks: {int(len(items or []))}",
                     "",
                     "---- duplicate_events (first-seen wins) ----",
                 ]
-                if not dedupe_duplicate_events:
+                if not audit.duplicate_events:
                     audit_lines.append("(none)")
                 else:
-                    for i, ev in enumerate(dedupe_duplicate_events, start=1):
+                    for i, ev in enumerate(audit.duplicate_events, start=1):
                         audit_lines.append(
                             f"{i:>3}. source_document_id={ev.get('source_document_id')} chunk_index={ev.get('chunk_index')} "
                             f"first_seen_pos={ev.get('first_seen_pos')} duplicate_pos={ev.get('duplicate_pos')}"
@@ -1394,12 +1502,26 @@ def merge_daily_and_main(
     except Exception as exc:
         logger.warning("RAG: failed writing retrieval debug artifacts project=%s detail=%s", project_id, exc, exc_info=True)
 
-    # Prompt assembly stage (after ordering + selection).
+
+def _assemble_context_prompt(kept_candidates: List[Dict[str, Any]]) -> _PromptAssembly:
+    """Assemble kept chunks into a prompt ``Context:`` block with snippet headers.
+
+    Each chunk gets a per-source header showing cosine/score and identity
+    metadata; chunk texts are bucketed into daily/main lists and token counts
+    are summed for telemetry.
+
+    Args:
+        kept_candidates: Final ordered chunk dicts (``text``/``source``/
+            ``score``/``metadata``).
+
+    Returns:
+        A ``_PromptAssembly`` with the assembled context, per-source text lists,
+        per-source score lists, and total token count.
+    """
     tokens_used_total = 0
     pieces: List[str] = []
     daily_texts: List[str] = []
     main_texts: List[str] = []
-
     main_scores: List[float] = []
     daily_scores: List[float] = []
 
@@ -1437,15 +1559,156 @@ def merge_daily_and_main(
         pieces.append(header + txt)
 
     context_text = ("Context:\n---\n" + "\n\n---\n".join(pieces)) if pieces else ""
-    main_hits = int(len(main_scores))
-    daily_hits = int(len(daily_scores))
-    main_avg = float(sum(main_scores) / main_hits) if main_hits else 0.0
-    daily_avg = float(sum(daily_scores) / daily_hits) if daily_hits else 0.0
+    return _PromptAssembly(
+        context_text=context_text,
+        daily_texts=daily_texts,
+        main_texts=main_texts,
+        main_scores=main_scores,
+        daily_scores=daily_scores,
+        tokens_used=int(tokens_used_total),
+    )
+
+
+def merge_daily_and_main(
+    project_id: str,
+    query: str,
+    daily_enabled: bool,
+    max_keep: int,
+    route: Optional[str] = None,
+    per_source_k_override: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Retrieve from daily and main, then apply positional truncation.
+
+    Candidate ordering is by raw similarity score across all sources
+    before selection/truncation/prompt assembly.
+
+    Selection is score-gated and deterministic:
+    - consume the globally ordered list
+    - skip candidates whose score is not greater than route min_score
+    - retain the first MAX_KEEP passing candidates
+    - no reordering, boosting, or dedupe occurs here
+
+    After selection the kept candidates undergo route-tiered adjacency expansion,
+    chunk-identity dedupe, source-document ordering, overlap trimming, and
+    snippet-group collapse before the prompt ``Context:`` block is assembled.
+
+    Args:
+        project_id: Project to retrieve from.
+        query: Natural-language query.
+        daily_enabled: Whether to include the Daily source alongside LTM.
+        max_keep: Base cap on selected candidates (may grow via the adjacent
+            same-document bonus).
+        route: Route name used to resolve ``min_score`` and expansion limits;
+            defaults to ``OTHER``.
+        per_source_k_override: Per-source K to use instead of the computed
+            default; a value <= 0 (or ``max_keep`` <= 0) returns an empty result.
+
+    Returns:
+        A dict with the assembled ``context_text``, ``tokens_used``, per-source
+        text lists (``daily_texts``/``main_texts``), hit counts/averages, and
+        selection/expansion telemetry counters (e.g. ``ordered_candidates``,
+        ``selected_candidates``, ``kept_candidates``,
+        ``expanded_unique_chunks_after_merge``, ``min_score``).
+    """
+    settings = get_settings()
+    per_source_k = (
+        int(per_source_k_override)
+        if per_source_k_override is not None
+        else compute_per_source_k(settings.base_top_k, settings.retrieval_multiplier)
+    )
+    if int(per_source_k) <= 0 or int(max_keep) <= 0:
+        return {
+            "context_text": "",
+            "tokens_used": 0,
+            "daily_texts": [],
+            "main_texts": [],
+            "main_hits": 0,
+            "main_avg": 0.0,
+            "daily_hits": 0,
+            "daily_avg": 0.0,
+            "total_hits": 0,
+            "ordered_candidates": 0,
+            "selected_candidates": 0,
+            "kept_candidates": 0,
+            "expanded_unique_chunks_after_merge": 0,
+        }
+    min_score = _resolve_route_min_score(project_id, route)
+    logger.debug(
+        "DailyRAG: starting merged retrieval project=%s per_source_k=%s daily_enabled=%s max_keep=%s min_score=%.4f",
+        project_id,
+        int(per_source_k),
+        str(bool(daily_enabled)).lower(),
+        int(max_keep),
+        float(min_score),
+    )
+    # Retrieval via canonical entry point (raw candidates; no thresholding/boosting here).
+    sources = ["ltm"] + (["daily"] if bool(daily_enabled) else [])
+    cands = canonical_retrieve_candidates(project_id, query, sources=sources, per_source_k_override=per_source_k)
+    # Global ordering by raw similarity score (stable; ties preserve pre-sort order).
+    ordered = order_candidates_by_similarity_score(list(cands or []))
+
+    # Policy-driven selection with adjacent-chunk rule (effective limit can grow when we retain adjacent same-doc chunks).
+    selected_candidates, adjacent_bonus = _select_score_gated_candidates(
+        ordered, max_keep=int(max_keep), min_score=float(min_score), project_id=project_id
+    )
+
+    # Rank-weighted adjacency expansion (materialized per-candidate; no dedupe, no token pruning).
+    resources = _resolve_expansion_resources(project_id, route, bool(daily_enabled))
+    kept_candidates: List[Dict[str, Any]] = list(selected_candidates)
+    _materialize_all_expansions(kept_candidates, resources, project_id)
+
+    # Chunk identity dedupe (first-seen wins) over structured expansion output.
+    kept_candidates, audit = _dedupe_expanded_chunks(kept_candidates, project_id=project_id)
+
+    # Source-document ordering and narrative coherence.
+    kept_candidates = _order_chunks_by_source_document(kept_candidates, project_id=project_id)
+
+    # Adjacent chunk overlap trimming (in-place; same-doc consecutive pairs only).
+    try:
+        trim_adjacent_chunk_overlap(
+            kept_candidates or [],
+            int(get_settings().chunk_overlap),
+        )
+    except Exception as exc:
+        # Best-effort: never block retrieval/prompt assembly.
+        logger.warning("RAG: failed trimming adjacent overlap project=%s detail=%s", project_id, exc, exc_info=True)
+
+    # Snippet-group collapse (one entry per adjacent same-document run).
+    try:
+        kept_candidates = collapse_snippet_groups(kept_candidates or [])
+    except Exception as exc:
+        # Best-effort: never block retrieval/prompt assembly.
+        logger.warning("RAG: failed collapsing snippet groups project=%s detail=%s", project_id, exc, exc_info=True)
+
+    # Debug dumps (human-readable .txt) for ordering and selection.
+    _write_retrieval_debug_artifacts(
+        project_id=project_id,
+        query=query,
+        route=route,
+        per_source_k=int(per_source_k),
+        max_keep=int(max_keep),
+        min_score=float(min_score),
+        daily_enabled=bool(daily_enabled),
+        adjacent_bonus=int(adjacent_bonus),
+        resources=resources,
+        ordered=ordered,
+        selected_candidates=selected_candidates,
+        kept_candidates=kept_candidates,
+        audit=audit,
+    )
+
+    # Prompt assembly stage (after ordering + selection).
+    assembled = _assemble_context_prompt(kept_candidates)
+    main_hits = int(len(assembled.main_scores))
+    daily_hits = int(len(assembled.daily_scores))
+    main_avg = float(sum(assembled.main_scores) / main_hits) if main_hits else 0.0
+    daily_avg = float(sum(assembled.daily_scores) / daily_hits) if daily_hits else 0.0
+    kept_count = int(main_hits + daily_hits)
     logger.debug(
         "DailyRAG: merged context tokens=%s snippets=%s (kept=%s ordered=%s)",
-        tokens_used_total,
-        len(pieces),
-        int(len(pieces)),
+        assembled.tokens_used,
+        kept_count,
+        kept_count,
         int(len(ordered)),
     )
     try:
@@ -1460,13 +1723,13 @@ def merge_daily_and_main(
                 "min_score": float(min_score),
                 "ordered_candidates": int(len(ordered)),
                 "selected_candidates": int(len(selected_candidates)),
-                "kept_candidates": int(len(pieces)),
-                "expanded_unique_chunks_after_merge": int(dedupe_unique_keyed_count),
+                "kept_candidates": kept_count,
+                "expanded_unique_chunks_after_merge": int(audit.unique_keyed_count),
                 "adjacent_bonus": int(adjacent_bonus),
                 "main_hits": int(main_hits),
                 "daily_hits": int(daily_hits),
                 "total_hits": int(main_hits + daily_hits),
-                "tokens_used": int(tokens_used_total),
+                "tokens_used": int(assembled.tokens_used),
             },
         )
     except Exception as exc:
@@ -1477,10 +1740,10 @@ def merge_daily_and_main(
         )
 
     return {
-        "context_text": context_text,
-        "tokens_used": int(tokens_used_total),
-        "daily_texts": daily_texts,
-        "main_texts": main_texts,
+        "context_text": assembled.context_text,
+        "tokens_used": int(assembled.tokens_used),
+        "daily_texts": assembled.daily_texts,
+        "main_texts": assembled.main_texts,
         "main_hits": int(main_hits),
         "main_avg": float(main_avg),
         "daily_hits": int(daily_hits),
@@ -1488,8 +1751,8 @@ def merge_daily_and_main(
         "total_hits": int(main_hits + daily_hits),
         "ordered_candidates": int(len(ordered)),
         "selected_candidates": int(len(selected_candidates)),
-        "kept_candidates": int(len(pieces)),
-        "expanded_unique_chunks_after_merge": int(dedupe_unique_keyed_count),
+        "kept_candidates": kept_count,
+        "expanded_unique_chunks_after_merge": int(audit.unique_keyed_count),
         "min_score": float(min_score),
     }
 

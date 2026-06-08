@@ -94,14 +94,15 @@ def setup_logging() -> None:
     console_level = getattr(logging, settings.log_level_console.upper(), logging.INFO)
     file_level = getattr(logging, settings.log_level_file.upper(), logging.DEBUG)
     
-    # Create logs directory from runtime config.
+    # Create logs directory from runtime config (may be nested, e.g. tests/).
     logs_dir = str(settings.logs_dir)
-    if not os.path.exists(logs_dir):
-        os.makedirs(logs_dir)
+    os.makedirs(logs_dir, exist_ok=True)
 
-    # Create timestamped log filename
+    # Create timestamped log filename. The prefix is configurable so test runs
+    # can write 'test_<timestamp>.log' and keep them out of normal runtime logs.
+    prefix = str(getattr(settings, "log_file_prefix", "syx_") or "syx_")
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_filename = os.path.join(logs_dir, f'syx_{timestamp}.log')
+    log_filename = os.path.join(logs_dir, f'{prefix}{timestamp}.log')
     
     # Configure root logger
     root_logger = logging.getLogger()

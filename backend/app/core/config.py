@@ -228,6 +228,7 @@ class Settings(BaseSettings):
     memory_root: str = Field(default="../data/memory", description="Root directory for per-project memory artifacts")
     runs_dir: str = Field(default="../runtime/runs", description="Root directory for run artifacts")
     logs_dir: str = Field(default="../runtime/logs", description="Root directory for log files")
+    log_file_prefix: str = Field(default="syx_", description="Filename prefix for timestamped log files (tests override to 'test_')")
     lock_dir: str = Field(default="../runtime/state", description="Directory for lock/state files")
     # Size caps
     system_prompt_max_bytes: int = Field(default=64 * 1024, gt=0, description="Max size of system_prompt.txt in bytes")

@@ -26,7 +26,18 @@ logger = logging.getLogger(__name__)
 
 
 class OpenAIEmbeddingProvider:
+    """Embedding client backed by the OpenAI embeddings API.
+
+    Wraps the OpenAI SDK and adds retry/backoff handling for transient errors,
+    rate limiting (HTTP 429), and request timeouts.
+    """
+
     def __init__(self, *, api_key: str) -> None:
+        """Construct the provider and initialize the OpenAI SDK client.
+
+        Args:
+            api_key: OpenAI API key used to authenticate requests.
+        """
         settings = get_settings()
         self._timeout_s = float(getattr(settings, "embedding_request_timeout_s", 45.0) or 45.0)
         self._client = OpenAI(api_key=api_key, timeout=self._timeout_s)
@@ -79,6 +90,24 @@ class OpenAIEmbeddingProvider:
         retries: int = 2,
         rate_limit_retries: int = 10,
     ) -> EmbedResult:
+        """Embed texts via the OpenAI API with retry and backoff.
+
+        Issues a network request to OpenAI. Rate-limit errors honor the
+        provider's ``retry-after`` hint when available; other transient errors
+        use exponential backoff with jitter.
+
+        Args:
+            texts: Input strings to embed; non-string items are coerced to "".
+            model: Optional model override; defaults to the active embedding model.
+            retries: Maximum general (non-rate-limit) retry attempts.
+            rate_limit_retries: Maximum rate-limit retry attempts.
+
+        Returns:
+            An ``EmbedResult`` with one vector per input text.
+
+        Raises:
+            RuntimeError: If the request still fails after exhausting all retries.
+        """
         settings = get_settings()
         use_model = model or get_active_embedding_model()
         clean = [t if isinstance(t, str) else "" for t in (texts or [])]
@@ -179,5 +208,6 @@ class OpenAIEmbeddingProvider:
         )
 
     def embed_query(self, text: str, *, model: Optional[str] = None) -> List[float]:
+        """Embed a single query string and return its vector (empty if none)."""
         res = self.embed([text or ""], model=model)
         return res.vectors[0] if res.vectors else []

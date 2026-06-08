@@ -13,6 +13,16 @@ Provides local and remote single-question answering prompts that ground answers
 in retrieved memory and, for remote prompts, additional research context.
 """
 def build_answer_question_prompt_local(question: str, topic: str, local_context: str) -> str:
+    """Build the single-question answering prompt grounded in local retrieval context only.
+
+    Args:
+        question: The open question to answer.
+        topic: Topic label associated with the question.
+        local_context: Expanded local memory retrieved for the question.
+
+    Returns:
+        Complete prompt string ready for LLM consumption.
+    """
     return f"""You are an assistant that answers a single question using only the information provided below.
 Your task is to write a direct and helpful answer.
 Do not invent facts that are not present in the supplied material.
@@ -48,6 +58,17 @@ Return only the JSON object.
 
 
 def build_answer_question_prompt_remote(question: str, topic: str, local_context: str, remote_context: str) -> str:
+    """Build the single-question answering prompt grounded in local and remote research context.
+
+    Args:
+        question: The open question to answer.
+        topic: Topic label associated with the question.
+        local_context: Expanded local memory retrieved for the question.
+        remote_context: External research context used for factual grounding.
+
+    Returns:
+        Complete prompt string ready for LLM consumption.
+    """
     return f"""You are an assistant that answers a single question using only the information provided below.
 Your task is to write a direct and helpful answer.
 Do not invent facts that are not present in the supplied material.

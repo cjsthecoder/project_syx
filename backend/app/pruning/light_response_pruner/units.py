@@ -24,6 +24,19 @@ class TextSpan:
 
 
 def leading_sentence_span(text: str) -> TextSpan | None:
+    """Return the span of the first sentence in ``text``, or None.
+
+    A sentence ends at ``.``, ``!``, or ``?`` followed by whitespace or
+    end-of-text. Returns None when there is no content or the text begins inside
+    a fenced code block.
+
+    Args:
+        text: Text to scan from its first non-whitespace character.
+
+    Returns:
+        A TextSpan covering the leading sentence (including trailing
+        whitespace in ``end``), or None.
+    """
     start = _first_non_whitespace_index(text)
     if start is None or _is_inside_fenced_code_block(text, start):
         return None
@@ -43,6 +56,18 @@ def leading_sentence_span(text: str) -> TextSpan | None:
 
 
 def paragraph_spans(text: str) -> list[TextSpan]:
+    """Split ``text`` into paragraph spans separated by blank lines.
+
+    Each span's ``text`` is whitespace-trimmed, ``start`` points at the first
+    non-whitespace character, and ``end`` marks the paragraph boundary. Empty
+    paragraphs are skipped.
+
+    Args:
+        text: Text to split into paragraphs.
+
+    Returns:
+        Ordered list of paragraph TextSpans.
+    """
     spans: list[TextSpan] = []
     cursor = 0
 
@@ -69,6 +94,11 @@ def paragraph_spans(text: str) -> list[TextSpan]:
 
 
 def starts_with_structured_content(text: str) -> bool:
+    """Return True if ``text`` begins with markdown structure.
+
+    Detects fenced code, headings, blockquotes, bullet lists, and ordered list
+    markers so such content can be protected from end-trimming.
+    """
     stripped = text.lstrip()
     return (
         stripped.startswith("```")
@@ -79,6 +109,7 @@ def starts_with_structured_content(text: str) -> bool:
 
 
 def span_starts_inside_fenced_code_block(text: str, span: TextSpan) -> bool:
+    """Return True if ``span`` begins inside a fenced code block of ``text``."""
     return _is_inside_fenced_code_block(text, span.start)
 
 

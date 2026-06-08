@@ -45,6 +45,8 @@ class VectorHit:
 
 @dataclass(frozen=True)
 class VectorIndexInfo:
+    """Debug/telemetry snapshot describing a vector index."""
+
     index_kind: str  # "daily" | "ltm" | ...
     dim: int
     score_mode: str  # e.g., "cosine_ip_mapped_01"

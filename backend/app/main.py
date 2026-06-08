@@ -69,6 +69,15 @@ except Exception as e:
 # Lifespan handler to manage startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Manage application startup and shutdown side effects.
+
+    On startup this initializes the database, eagerly constructs the LLM and
+    embedding factory clients, starts the instrumentation run, clears any
+    leftover sleep lock, backfills project defaults, seeds ``USER_PROFILE.txt``
+    for the Main project (rebuilding its RAG index), optionally rebuilds every
+    project's RAG index, and starts the daily sleep scheduler. On shutdown it
+    finalizes the instrumentation run.
+    """
     logger.info("FastAPI startup")
     init_db()
     # Initialize factory clients at startup so configuration is visible in logs.
@@ -312,6 +321,11 @@ from .core.state import clear_stale_lock
 
 @app.middleware("http")
 async def sleep_guard(request: Request, call_next):
+    """Reject mutating requests with HTTP 423 while a sleep cycle is in progress.
+
+    GET requests and a small recovery allowlist (sleep unlock, agent memory
+    search) are always permitted so the system can be inspected and recovered.
+    """
     try:
         method = request.method.upper()
         path = request.url.path.rstrip("/") or "/"
@@ -326,6 +340,12 @@ async def sleep_guard(request: Request, call_next):
     return await call_next(request)
 
 def _schedule_entrypoint():
+    """Scheduler callback that launches the daily sleep cycle.
+
+    Clears a stale lock if present, then starts an async sleep cycle unless one
+    is already running. All failures are logged and swallowed so the scheduler
+    thread is never broken by a single misfire.
+    """
     try:
         # Clear stale lock if present (older than default window)
         try:
@@ -436,6 +456,8 @@ if __name__ == "__main__":
     from contextlib import redirect_stdout, redirect_stderr
 
     class LoggingRedirect:
+        """File-like adapter that forwards stdout/stderr writes to the logger."""
+
         def __init__(self, logger, level):
             self.logger = logger
             self.level = level

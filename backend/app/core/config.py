@@ -310,6 +310,12 @@ class Settings(BaseSettings):
     @field_validator("response_pruning_whitespace_mode")
     @classmethod
     def _validate_response_pruning_whitespace_mode(cls, value: str) -> str:
+        """Validate whitespace mode against the supported set.
+
+        Raises:
+            ValueError: If the value is not one of off, compact_prose, or
+                preserve_code.
+        """
         normalized = str(value or "").strip()
         if normalized not in {"off", "compact_prose", "preserve_code"}:
             raise ValueError(

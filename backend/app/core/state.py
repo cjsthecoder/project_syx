@@ -27,18 +27,25 @@ _LOCK_PATH = os.path.join(get_settings().lock_dir, "sleep.lock")
 
 
 def lock_path() -> str:
+    """Return the absolute path of the on-disk sleep lock file."""
     return _LOCK_PATH
 
 
 def is_sleeping() -> bool:
+    """Return whether a sleep cycle is currently active in this process."""
     return _sleeping
 
 
 def since() -> Optional[float]:
+    """Return the epoch start time of the active sleep cycle, or None."""
     return _since_ts
 
 
 def set_sleeping(on: bool) -> None:
+    """Toggle in-process sleep state, tracking the start timestamp.
+
+    Transitions are idempotent: redundant calls do not reset ``since()``.
+    """
     global _sleeping, _since_ts
     if on and not _sleeping:
         _sleeping = True
@@ -49,6 +56,7 @@ def set_sleeping(on: bool) -> None:
 
 
 def engage_lock() -> None:
+    """Write the sleep lock file and mark the process as sleeping."""
     os.makedirs(os.path.dirname(_LOCK_PATH), exist_ok=True)
     with open(_LOCK_PATH, "w", encoding="utf-8") as f:
         f.write(str(int(time.time())))
@@ -56,6 +64,7 @@ def engage_lock() -> None:
 
 
 def release_lock() -> None:
+    """Remove the sleep lock file and clear the sleeping state."""
     try:
         if os.path.exists(_LOCK_PATH):
             os.remove(_LOCK_PATH)
@@ -65,6 +74,7 @@ def release_lock() -> None:
 
 
 def init_from_disk() -> None:
+    """Restore sleeping state from a lock file left by a prior process."""
     if os.path.exists(_LOCK_PATH):
         set_sleeping(True)
 

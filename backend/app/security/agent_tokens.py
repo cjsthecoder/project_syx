@@ -13,17 +13,27 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class AgentAuthorizationResult:
+    """Outcome of an agent-token authorization check."""
+
     authorized: bool
     forbidden: bool = False
     message: str = ""
 
 
 def authorize_agent_token(project_id: str, agent_token: str) -> AgentAuthorizationResult:
-    """
-    A.4 local-development authorization stub.
+    """Authorize an agent token against a project (A.4 stub).
 
-    The call boundary is intentional: later deltas can replace this with real
-    token validation and project access checks without changing endpoint shape.
+    This is the security authorization boundary for local agent interfaces.
+    The stub currently authorizes every request; the call boundary is
+    intentional so later deltas can add real token validation and project
+    access checks without changing the endpoint shape.
+
+    Args:
+        project_id: Project the agent is requesting access to.
+        agent_token: Opaque agent token supplied by the caller.
+
+    Returns:
+        An ``AgentAuthorizationResult`` indicating authorization status.
     """
     _ = project_id
     _ = agent_token

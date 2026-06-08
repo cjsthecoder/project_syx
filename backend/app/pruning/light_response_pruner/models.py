@@ -24,6 +24,11 @@ WhitespaceMode = Literal["off", "compact_prose", "preserve_code"]
 
 
 def _dedupe_prefixes(prefixes: list[str]) -> list[str]:
+    """Strip and de-duplicate prefixes, preserving order.
+
+    Raises:
+        ValueError: If any prefix is blank after stripping.
+    """
     seen: set[str] = set()
     deduped: list[str] = []
 
@@ -50,6 +55,7 @@ class FrontRuleSection(BaseModel):
     @field_validator("prefix")
     @classmethod
     def validate_prefixes(cls, value: list[str]) -> list[str]:
+        """Strip and de-duplicate the configured front prefixes."""
         return _dedupe_prefixes(value)
 
 
@@ -62,6 +68,7 @@ class EndRuleSection(BaseModel):
     @field_validator("prefix")
     @classmethod
     def validate_prefixes(cls, value: list[str]) -> list[str]:
+        """Strip and de-duplicate the configured end prefixes."""
         return _dedupe_prefixes(value)
 
 
@@ -73,6 +80,11 @@ class PruneRules(BaseModel):
 
     @model_validator(mode="after")
     def require_one_section(self) -> "PruneRules":
+        """Enforce that at least one of ``front`` or ``end`` is configured.
+
+        Raises:
+            ValueError: If both sections are absent.
+        """
         if self.front is None and self.end is None:
             raise ValueError("at least one of 'front' or 'end' must be provided")
 
@@ -95,6 +107,7 @@ class PruneResult(BaseModel):
 
     @computed_field(return_type=str)
     def trimmed_side(self) -> TrimmedSide:
+        """Return which side(s) were trimmed: "both", "front", "end", or "none"."""
         if self.trimmed_front and self.trimmed_end:
             return "both"
 

@@ -13,6 +13,14 @@ Builds the project-summary prompt that orients Dream agents using the current
 sleep-cycle memory context.
 """
 def build_project_summary_prompt(rag_context: str) -> str:
+    """Build the project/dream-cycle orientation summary prompt from sleep-cycle memory.
+
+    Args:
+        rag_context: Current sleep-cycle memory used as the sole summarization source.
+
+    Returns:
+        Complete prompt string ready for LLM consumption.
+    """
     return f"""You are a concise summarizer for the Syx Dream Cycle.
 Using only the current sleep-cycle memory below, write a brief project/dream-cycle orientation summary.
 Keep it factual, avoid repetition, and focus on the persistent project details, active themes, unresolved questions, and useful framing that future Dream agents should know before reading expanded RAG context.

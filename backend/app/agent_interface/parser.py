@@ -28,6 +28,18 @@ _INT_RE = re.compile(r"^-?\d+$")
 
 
 def parse_prompt_context_to_snippets(context_text: str) -> List[AgentMemorySnippet]:
+    """Parse prompt-shaped retrieval context into structured snippets.
+
+    Args:
+        context_text: Raw prompt context produced by retrieval.
+
+    Returns:
+        Parsed snippets in document order; an empty list when the context is
+        empty or contains no snippet blocks.
+
+    Raises:
+        SnippetParseError: If a detected snippet block cannot be parsed.
+    """
     text = str(context_text or "").strip()
     if not text:
         return []
@@ -46,6 +58,12 @@ def parse_prompt_context_to_snippets(context_text: str) -> List[AgentMemorySnipp
 
 
 def _split_snippet_parts(body: str) -> List[str]:
+    """Split context body into per-snippet text blocks.
+
+    Only header lines that follow a ``---`` delimiter (or start the body) are
+    treated as snippet boundaries, so ``Snippet N`` text appearing inside a
+    snippet's own content is not mistaken for a new block.
+    """
     lines = str(body or "").splitlines()
     starts = [
         idx
@@ -64,6 +82,11 @@ def _split_snippet_parts(body: str) -> List[str]:
 
 
 def _is_context_delimited_snippet_start(lines: List[str], idx: int) -> bool:
+    """Report whether a header line marks a real snippet boundary.
+
+    A header qualifies when it is the first content line or the previous
+    non-blank line is the ``---`` block delimiter.
+    """
     if idx <= 0:
         return True
     prev_idx = idx - 1
@@ -75,6 +98,11 @@ def _is_context_delimited_snippet_start(lines: List[str], idx: int) -> bool:
 
 
 def render_prompt_text_from_snippets(snippets: List[AgentMemorySnippet]) -> str:
+    """Render snippets back into the prompt-shaped context format.
+
+    Inverse of :func:`parse_prompt_context_to_snippets`; returns an empty
+    string when there are no snippets.
+    """
     pieces: List[str] = []
     for snippet in snippets or []:
         header = _render_header(snippet)
@@ -91,6 +119,15 @@ def _strip_context_prefix(text: str) -> str:
 
 
 def _parse_part(part: str) -> Optional[AgentMemorySnippet]:
+    """Parse one snippet block into an ``AgentMemorySnippet``.
+
+    Merges metadata from the header line and the first embedded YAML block,
+    preferring YAML values. Presence of ``memory_id`` marks the snippet as a
+    ``bounded_entry``; otherwise it is an ``unbounded_chunk_group``.
+
+    Returns:
+        The parsed snippet, or ``None`` when the block has no valid header.
+    """
     lines = part.splitlines()
     if not lines:
         return None
@@ -158,6 +195,12 @@ def _parse_first_yaml_block(text: str) -> Dict[str, Any]:
 
 
 def _parse_simple_yaml(raw: str) -> Dict[str, Any]:
+    """Parse a minimal YAML subset (scalars and simple ``- `` lists).
+
+    Intentionally avoids a full YAML dependency: only flat ``key: value`` pairs
+    and indented block lists are supported, with scalar coercion via
+    :func:`_clean_scalar`.
+    """
     out: Dict[str, Any] = {}
     current_list_key: Optional[str] = None
     for line in str(raw or "").splitlines():
@@ -210,6 +253,11 @@ def _clean_scalar(value: str) -> Any:
 
 
 def _parse_chunk_index(value: Optional[str]) -> tuple[Optional[int], Optional[int], Optional[str]]:
+    """Parse a chunk-index token into (start, end, canonical range string).
+
+    Accepts a single index (``5``) or a ``start..end`` range; returns all-None
+    when the value is missing or unparseable.
+    """
     if not value:
         return None, None, None
     v = value.strip()
@@ -230,6 +278,11 @@ def _source_document_id(
     artifact_path: Optional[str],
     memory_id: Optional[str],
 ) -> Optional[str]:
+    """Resolve a source document id, synthesizing one when only parts exist.
+
+    Prefers an explicit id; otherwise composes ``{artifact_path}::memory_id=...``
+    when both parts are present, else returns ``None``.
+    """
     if explicit:
         return explicit
     if artifact_path and memory_id:

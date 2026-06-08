@@ -19,10 +19,13 @@ from sqlmodel import SQLModel, Field
 
 
 def utc_now() -> datetime:
+    """Return the current time as a timezone-aware UTC datetime."""
     return datetime.now(timezone.utc)
 
 
 class Project(SQLModel, table=True):
+    """A workspace owning files, chat history, and per-project memory."""
+
     id: str = Field(primary_key=True, index=True)
     name: str
     description: Optional[str] = None
@@ -38,6 +41,8 @@ class Project(SQLModel, table=True):
 
 
 class File(SQLModel, table=True):
+    """An uploaded source document tracked for embedding/indexing."""
+
     id: Optional[int] = Field(default=None, primary_key=True)
     project_id: str = Field(index=True, foreign_key="project.id")
     filename: str

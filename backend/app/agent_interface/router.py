@@ -30,6 +30,23 @@ router = APIRouter()
 
 @router.post("/agent/memory/search")
 async def agent_memory_search(payload: Dict[str, Any]) -> JSONResponse:
+    """Serve the read-only agent memory search endpoint.
+
+    This is the external agent-memory interface boundary. It validates the
+    request, authorizes the agent token, refuses retrieval while sleep holds
+    the memory lock, and returns structured snippets. Retrieval never mutates
+    project memory.
+
+    Args:
+        payload: Raw JSON request body containing ``agent_token``,
+            ``project_name``, ``query``, and optional ``category``/``model``.
+
+    Returns:
+        A ``JSONResponse``. ``200`` with the structured snippet payload on
+        success; ``400``/``401``/``403``/``404`` for validation or
+        authorization failures; ``423`` when sleep is running; ``500`` when
+        retrieval or snippet parsing fails.
+    """
     request_payload = dict(payload or {})
     project_name = str(request_payload.get("project_name") or "")
     query = str(request_payload.get("query") or "")

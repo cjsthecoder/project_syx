@@ -90,6 +90,12 @@ def _schedule_ltm_rebuild(project_id: str, reason: str) -> None:
 
 
 class LTMIndex:
+    """In-memory wrapper over a persisted long-term-memory FAISS index.
+
+    Holds the raw FAISS ``IndexFlatIP`` together with its row->item_id mapping and
+    docstore, and exposes cosine-mapped similarity search over stored chunks.
+    """
+
     def __init__(
         self,
         *,
@@ -106,9 +112,11 @@ class LTMIndex:
         self._schema_version = schema_version
 
     def size(self) -> int:
+        """Return the number of vectors held by the index."""
         return int(self.index.ntotal)
 
     def info(self) -> VectorIndexInfo:
+        """Return descriptive metadata about this index (kind, dim, score mode)."""
         return VectorIndexInfo(
             index_kind="ltm",
             dim=int(self.index.d),
@@ -118,6 +126,7 @@ class LTMIndex:
         )
 
     def get_by_id(self, item_id: str) -> Optional[VectorEntry]:
+        """Return the stored entry for an item_id, or None if absent/malformed."""
         try:
             entry = self.docstore.get(str(item_id))
             if not isinstance(entry, dict):
@@ -129,6 +138,16 @@ class LTMIndex:
             return None
 
     def search_by_vector(self, qvec_norm: np.ndarray, *, k: int) -> List[VectorHit]:
+        """Search for the top-k nearest entries to a unit-normalized query vector.
+
+        Args:
+            qvec_norm: Unit-normalized query embedding.
+            k: Maximum number of hits to return.
+
+        Returns:
+            Hits ordered by FAISS, each carrying the raw inner product and a
+            cosine-to-[0,1] mapped score. Returns an empty list for an empty index.
+        """
         if int(self.index.ntotal) <= 0:
             return []
         q = np.array([qvec_norm], dtype="float32")
@@ -285,6 +304,12 @@ def ltm_fetch_chunk_by_docstore_id(project_id: str, docstore_id: str) -> Optiona
 
 
 def _ltm_candidate_metadata(md: Dict[str, Any]) -> Dict[str, Any]:
+    """Project raw docstore metadata into the canonical candidate metadata shape.
+
+    Normalizes adjacency identity (``source_document_id``/``chunk_index``) from
+    legacy fallbacks and retains the downstream/telemetry fields used during
+    selection and prompt assembly. Missing fields are preserved as None.
+    """
     source_document_id = md.get("source_document_id") or md.get("doc_id")
     chunk_index = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_seq")
     return {
@@ -1326,6 +1351,12 @@ def merge_daily_and_main(
 
 
 def _snippet_header_metadata_fields(metadata: Dict[str, Any]) -> List[Tuple[str, str]]:
+    """Select and sanitize identity metadata for inclusion in snippet headers.
+
+    Returns ordered (key, value) pairs for present fields, with newlines and
+    commas stripped/escaped so the values are safe to render inside a single-line
+    header. Absent or empty fields are omitted.
+    """
     keys = (
         "memory_id",
         "source_document_id",

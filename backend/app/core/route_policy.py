@@ -23,6 +23,8 @@ from typing import Any, Dict
 
 @dataclass(frozen=True)
 class RoutePolicy:
+    """Per-route retrieval and context-expansion tuning parameters."""
+
     retrieval_multiplier: float
     max_keep: int
     min_score: float
@@ -46,6 +48,13 @@ def _coerce_float(v: Any, *, field: str, route: str) -> float:
 
 
 def _coerce_int(v: Any, *, field: str, route: str) -> int:
+    """Coerce a value to int, accepting integral floats/strings only.
+
+    Bools and fractional values are rejected.
+
+    Raises:
+        ValueError: If the value cannot be represented as an exact integer.
+    """
     # Accept ints and integral floats/strings, but reject fractional.
     try:
         if isinstance(v, bool):

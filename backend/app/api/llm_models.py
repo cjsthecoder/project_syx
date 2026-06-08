@@ -20,6 +20,12 @@ router = APIRouter()
 
 @router.get("/models")
 async def get_models() -> JSONResponse:
+    """Return the list of selectable chat models.
+
+    Returns:
+        JSON object ``{"models": [...]}`` containing the configured
+        whitelist of available model identifiers.
+    """
     settings = get_settings()
     return JSONResponse(status_code=200, content={"models": settings.available_models})
 

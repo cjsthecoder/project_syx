@@ -42,6 +42,18 @@ _REQUIREMENT_NUMBERED_LINE_RE = re.compile(
 
 
 def strip_markdown_markup(text: str) -> str:
+    """Strip markdown formatting from prose while preserving code blocks.
+
+    Processes line by line, leaving fenced code blocks untouched and running the
+    prose-stripping passes (headings, lists, blockquotes, emphasis, links, etc.)
+    on the surrounding text.
+
+    Args:
+        text: Markdown text to strip.
+
+    Returns:
+        Text with markdown markup removed from prose segments.
+    """
     segments: list[str] = []
     prose_lines: list[str] = []
     in_code_block = False

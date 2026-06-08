@@ -31,6 +31,7 @@ LTM_INDEX_FILE_NAME = "index.faiss"
 
 
 def atomic_write_json(path: str, obj: Any) -> None:
+    """Write JSON to ``path`` atomically via a temp file + ``os.replace``."""
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2, sort_keys=True)
@@ -38,6 +39,7 @@ def atomic_write_json(path: str, obj: Any) -> None:
 
 
 def safe_load_json(path: str) -> Optional[Any]:
+    """Load JSON from ``path``, returning None if missing or unreadable."""
     try:
         if not os.path.isfile(path):
             return None

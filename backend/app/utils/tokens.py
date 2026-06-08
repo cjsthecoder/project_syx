@@ -40,6 +40,16 @@ def get_encoding_cached(
     model_name: Optional[str] = None,
     encoding_name: str = "cl100k_base",
 ):
+    """Return a cached tiktoken encoding, preferring the model-specific one.
+
+    Args:
+        model_name: Optional model name to look up a tailored encoding.
+        encoding_name: Fallback encoding name used when no model match exists.
+
+    Returns:
+        A tiktoken encoding, or ``None`` when tiktoken is unavailable or
+        resolution fails.
+    """
     return _resolve_encoding(model_name, encoding_name)
 
 
@@ -49,6 +59,19 @@ def count_tokens(
     model_name: Optional[str] = None,
     encoding_name: str = "cl100k_base",
 ) -> int:
+    """Count tokens in text, falling back to whitespace word count.
+
+    Best-effort: returns a word count when no encoding is available or encoding
+    raises, so callers always get a usable estimate.
+
+    Args:
+        text: Text to count.
+        model_name: Optional model name for encoding selection.
+        encoding_name: Fallback encoding name.
+
+    Returns:
+        Estimated token count (0 for empty text).
+    """
     if not text:
         return 0
     enc = get_encoding_cached(model_name=model_name, encoding_name=encoding_name)
@@ -67,6 +90,21 @@ def trim_to_tokens(
     model_name: Optional[str] = None,
     encoding_name: str = "cl100k_base",
 ) -> str:
+    """Trim text to at most ``max_tokens`` tokens.
+
+    Best-effort: returns the original text unchanged when no encoding is
+    available or encoding raises; returns an empty string for non-positive
+    limits.
+
+    Args:
+        text: Text to trim.
+        max_tokens: Maximum number of tokens to retain.
+        model_name: Optional model name for encoding selection.
+        encoding_name: Fallback encoding name.
+
+    Returns:
+        The trimmed text.
+    """
     if not text:
         return ""
     if max_tokens <= 0:
@@ -89,6 +127,18 @@ def count_message_content_tokens(
     model_name: Optional[str] = None,
     encoding_name: str = "cl100k_base",
 ) -> int:
+    """Count tokens across the ``content`` fields of chat messages.
+
+    Non-dict messages and missing content are ignored; malformed input yields 0.
+
+    Args:
+        messages: Iterable of message mappings with optional "content".
+        model_name: Optional model name for encoding selection.
+        encoding_name: Fallback encoding name.
+
+    Returns:
+        Total estimated token count over all message contents.
+    """
     try:
         text = "\n".join(
             str((m.get("content") or ""))

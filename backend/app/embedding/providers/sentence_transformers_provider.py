@@ -23,12 +23,24 @@ logger = logging.getLogger(__name__)
 
 
 class SentenceTransformersEmbeddingProvider:
+    """Embedding client backed by local sentence-transformers models.
+
+    Loads models lazily and caches them by id. Embeddings are L2-normalized so
+    cosine similarity can be computed via inner product downstream.
+    """
+
     def __init__(self) -> None:
+        """Construct the provider and eagerly load the active model.
+
+        Loading the model up front surfaces configuration/model errors at
+        startup rather than on the first embedding request.
+        """
         self._model_cache: dict[str, SentenceTransformer] = {}
         # Fail fast when sentence_transformers is the active provider.
         self._get_model(get_active_embedding_model())
 
     def _get_model(self, model_id: Optional[str] = None) -> SentenceTransformer:
+        """Return a cached model for ``model_id``, loading it on first use."""
         use_model = str(model_id or get_active_embedding_model()).strip()
         cached = self._model_cache.get(use_model)
         if cached is not None:
@@ -47,6 +59,24 @@ class SentenceTransformersEmbeddingProvider:
         retries: int = 2,
         rate_limit_retries: int = 10,
     ) -> EmbedResult:
+        """Embed texts using a locally loaded sentence-transformers model.
+
+        Runs inference in-process (no network call). The ``retries`` and
+        ``rate_limit_retries`` arguments exist for protocol compatibility and
+        are ignored here.
+
+        Args:
+            texts: Input strings to embed; non-string items are coerced to "".
+            model: Optional model override; defaults to the active embedding model.
+            retries: Ignored; kept for ``EmbeddingClient`` compatibility.
+            rate_limit_retries: Ignored; kept for ``EmbeddingClient`` compatibility.
+
+        Returns:
+            An ``EmbedResult`` with one normalized vector per input text.
+
+        Raises:
+            RuntimeError: If model loading or encoding fails.
+        """
         del retries
         del rate_limit_retries
         settings = get_settings()
@@ -72,5 +102,6 @@ class SentenceTransformersEmbeddingProvider:
             ) from exc
 
     def embed_query(self, text: str, *, model: Optional[str] = None) -> List[float]:
+        """Embed a single query string and return its vector (empty if none)."""
         res = self.embed([text or ""], model=model)
         return res.vectors[0] if res.vectors else []

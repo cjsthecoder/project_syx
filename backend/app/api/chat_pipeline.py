@@ -45,6 +45,16 @@ class ChatPipeline:
         self.settings = settings
 
     def build_conversation_history(self, project_id: Optional[str]) -> Optional[list[dict]]:
+        """Load project working memory as a list of role/content message dicts.
+
+        Args:
+            project_id: Project whose history to load; ``None`` for an
+                anonymous turn with no history.
+
+        Returns:
+            A list of message dicts (role, content, and tagging metadata), or
+            ``None`` when there is no project or loading fails.
+        """
         if not project_id:
             return None
         try:
@@ -66,6 +76,19 @@ class ChatPipeline:
             return None
 
     def load_project_prompts(self, project_id: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[float]]:
+        """Load the project's system prompt, assistant hint, and creativity.
+
+        Builds an assistant-hint string from the project's personality
+        preferences (tone, verbosity, format, domain focus).
+
+        Args:
+            project_id: Project to load prompts for; ``None`` for no project.
+
+        Returns:
+            Tuple of ``(base_system_prompt, assistant_hint,
+            personality_creativity)``; all ``None`` when there is no project
+            or loading fails.
+        """
         if not project_id:
             return None, None, None
         try:
@@ -88,6 +111,12 @@ class ChatPipeline:
             return None, None, None
 
     def _build_builder_summary(self, project_id: Optional[str], conversation_history: Optional[list[dict]]) -> str:
+        """Return a short context summary for the query builder.
+
+        Prefers the most recent assistant tag metadata; falls back to the
+        project's stored semantic handle. Returns an empty string when no
+        summary is available.
+        """
         try:
             direct_summary = self._latest_assistant_tags_meta(conversation_history)
             if direct_summary:
@@ -98,6 +127,7 @@ class ChatPipeline:
             return ""
 
     def _latest_assistant_tags_meta(self, conversation_history: Optional[list[dict]]) -> str:
+        """Return the most recent assistant message's tag metadata JSON (capped at 2000 chars)."""
         if not conversation_history:
             return ""
         for msg in reversed(conversation_history):
@@ -109,6 +139,7 @@ class ChatPipeline:
         return ""
 
     def _project_semantic_handle_summary(self, project_id: Optional[str]) -> str:
+        """Return the project's stored semantic handle as a JSON summary string (capped at 2000 chars)."""
         if not project_id:
             return ""
         try:
@@ -126,6 +157,16 @@ class ChatPipeline:
         return ""
 
     def previous_pair_text(self, conversation_history: Optional[list[dict]]) -> Optional[str]:
+        """Return the most recent user/assistant pair formatted for tagging context.
+
+        Locates the latest assistant turn and its preceding user turn, then
+        renders them together with the assistant's routing/tag metadata
+        (route, keep, topics, intent, type, semantic handle).
+
+        Returns:
+            The formatted pair text, or ``None`` when a complete pair cannot
+            be found.
+        """
         if not conversation_history:
             return None
         try:
@@ -180,6 +221,7 @@ class ChatPipeline:
             return None
 
     def _daily_enabled(self, project_id: str) -> bool:
+        """Return whether daily RAG is enabled for the project (defaults to True on lookup failure)."""
         try:
             with get_session() as session:
                 p = session.get(Project, project_id)
@@ -198,6 +240,28 @@ class ChatPipeline:
         msg_id: str,
         conversation_history: Optional[list[dict]],
     ) -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
+        """Build the RAG context prompt for a turn and report retrieval metrics.
+
+        Runs the query builder to classify the route, applies the route
+        policy (retrieval multiplier, keep limits, score threshold), retrieves
+        and merges daily and main memory, and assembles the injected context
+        text. No-ops when RAG-on-chat is disabled, no project is given, or the
+        builder/route yields nothing to retrieve. Writes a best-effort RAG
+        query debug file and sets the active route/namespace for logging.
+
+        Args:
+            project_id: Project to retrieve context for.
+            message: Current user message.
+            preview: Truncated message preview used in debug logs.
+            msg_id: Per-message correlation id for logging.
+            conversation_history: Prior turns used to summarize builder input.
+
+        Returns:
+            Tuple of ``(rag_system_prompt, primary_namespace, rag_metrics)``
+            where ``rag_system_prompt`` is the injected context text (or
+            ``None``), and ``rag_metrics`` reports route, counts, and token
+            estimates for the turn.
+        """
         rag_system_prompt: Optional[str] = None
         primary_ns: Optional[str] = None
         rag_metrics: Dict[str, Any] = {
@@ -335,6 +399,10 @@ class ChatPipeline:
         return rag_system_prompt, primary_ns, rag_metrics
 
     def apply_rag_guidance(self, base_system_prompt: Optional[str], rag_system_prompt: Optional[str]) -> Optional[str]:
+        """Append RAG usage guidance to the base system prompt when RAG context is present.
+
+        Returns the base prompt unchanged when there is no RAG context.
+        """
         if not rag_system_prompt:
             return base_system_prompt
         try:
@@ -346,6 +414,16 @@ class ChatPipeline:
             return base_system_prompt
 
     def enforce_model_whitelist(self, requested_model: Optional[str]) -> None:
+        """Validate a requested model against the configured whitelist.
+
+        Args:
+            requested_model: Model id from the request; ``None`` uses the
+                default and is always allowed.
+
+        Raises:
+            HTTPException: 400 when the requested model is not in
+                ``settings.available_models``.
+        """
         if not requested_model:
             return
         if requested_model not in self.settings.available_models:
@@ -360,6 +438,15 @@ class ChatPipeline:
         conversation_history: Optional[list[dict]],
         user_message: str,
     ) -> list:
+        """Assemble the ordered chat message list sent to the LLM.
+
+        Orders system prompt, assistant hint, RAG context, prior conversation
+        turns, and the current user message, then records prompt-assembly
+        token estimates to instrumentation.
+
+        Returns:
+            The list of role/content message dicts for the provider call.
+        """
         msgs: list = []
         if base_system_prompt:
             msgs.append({"role": "system", "content": base_system_prompt})
@@ -397,6 +484,7 @@ class ChatPipeline:
         return msgs
 
     def persist_user(self, project_id: Optional[str], message: str) -> None:
+        """Append the user message to project working memory (no-op without a project)."""
         if not project_id:
             return
         try:
@@ -420,6 +508,19 @@ class ChatPipeline:
         forget: bool = False,
         skip_tagger: bool = False,
     ) -> None:
+        """Append the assistant message to project working memory with tagging metadata.
+
+        Args:
+            project_id: Project to persist into; ``None`` is a no-op.
+            message: Assistant response text.
+            namespace: Routing namespace for the message (defaults to
+                ``"other"``).
+            user_text_for_tagging: User text passed to the tagger for context.
+            previous_pair_text_for_tagging: Prior pair text passed to the
+                tagger for context.
+            forget: When true, mark the pair as forgotten (e.g. chit-chat).
+            skip_tagger: When true, skip tag generation for this message.
+        """
         if not project_id:
             return
         try:

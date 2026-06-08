@@ -82,6 +82,13 @@ def expand_agent_memory_snippets(
 
 
 def _expand_one(*, project_id: str, snippet: AgentMemorySnippet) -> _ExpansionResult:
+    """Expand a single bounded snippet to its full entry text.
+
+    Tries, in order: the artifact path boundary, the source_document_id path
+    boundary, docstore reconstruction, and finally the original snippet text.
+    Path mismatches and failures are surfaced via the result's warning/error
+    fields rather than raised.
+    """
     artifact_path = _clean_upload_relative_path(
         snippet.artifact_path,
         project_id=project_id,
@@ -171,6 +178,17 @@ def _extract_from_artifact(
     memory_id: str,
     snippet_number: int,
 ) -> Tuple[Optional[str], Optional[str]]:
+    """Extract a memory entry's text from an uploaded artifact file.
+
+    Reads the artifact (rejecting paths that escape the uploads directory),
+    parses Syx entries, and returns the entry matching ``memory_id``.
+
+    Returns:
+        A ``(text, error)`` tuple. On success ``text`` is the entry text and
+        ``error`` is ``None``; on failure ``text`` is ``None`` and ``error`` is
+        a short reason code (e.g. ``unsafe_artifact_path``,
+        ``artifact_read_failed``, ``memory_id_boundary_not_found``).
+    """
     base = _uploads_dir(project_id)
     path = os.path.abspath(os.path.join(base, upload_relative_path))
     if not _is_within(path, base):
@@ -225,6 +243,12 @@ def _extract_from_artifact(
 
 
 def _reconstruct_from_docstore(*, project_id: str, source_document_id: Optional[str]) -> str:
+    """Reassemble entry text from docstore chunks as an expansion fallback.
+
+    Collects all LTM docstore chunks tagged with ``source_document_id`` and
+    joins them in chunk-index order. Returns an empty string when the docstore
+    is unavailable or has no matching chunks.
+    """
     if not source_document_id:
         return ""
     docstore_path = os.path.join(get_settings().memory_root, project_id, "faiss", LTM_DOCSTORE_NAME)
@@ -250,6 +274,17 @@ def _reconstruct_from_docstore(*, project_id: str, source_document_id: Optional[
 
 
 def _apply_size_guard(snippet: AgentMemorySnippet, *, max_chars: int, artifact_expansion: bool) -> None:
+    """Truncate an oversized snippet in place and record truncation metadata.
+
+    No-op when the serialized snippet already fits within ``max_chars``. Sets
+    the ``entry_expansion_*`` truncation fields and rewrites ``text`` to fit.
+
+    Args:
+        snippet: Snippet mutated in place.
+        max_chars: Maximum serialized snippet size in characters.
+        artifact_expansion: Whether the text came from a successful artifact
+            expansion, which downgrades the status to ``expanded_truncated``.
+    """
     serialized_len = _serialized_snippet_chars(snippet)
     if serialized_len <= max_chars:
         return
@@ -272,6 +307,11 @@ def _truncate_text_to_fit(
     original_text: str,
     max_chars: int,
 ) -> str:
+    """Binary-search the longest text prefix whose serialized snippet fits.
+
+    Accounts for the full serialized snippet size (not just text length) since
+    other fields contribute to the JSON payload.
+    """
     low = 0
     high = len(original_text)
     best = _build_truncated_text(original_text, prefix_chars=0)
@@ -313,6 +353,12 @@ def _clean_upload_relative_path(
     snippet_number: int,
     field: str,
 ) -> Optional[str]:
+    """Validate and normalize an upload-relative path, rejecting traversal.
+
+    Returns the forward-slash-normalized path, or ``None`` (with a warning) for
+    empty, absolute, or ``..``-containing values that could escape the uploads
+    directory.
+    """
     raw = str(value or "").strip()
     if not raw:
         return None

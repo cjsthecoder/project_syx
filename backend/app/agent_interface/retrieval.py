@@ -29,6 +29,16 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_project_name(project_name: str) -> Optional[Project]:
+    """Resolve a case-insensitive project name to its ``Project`` row.
+
+    Args:
+        project_name: Human-supplied project name to look up.
+
+    Returns:
+        The matching ``Project``, or ``None`` when no project matches. If
+        multiple projects share the name, the first match is returned and a
+        warning is logged.
+    """
     wanted = str(project_name or "").strip().lower()
     if not wanted:
         return None
@@ -46,6 +56,17 @@ def resolve_project_name(project_name: str) -> Optional[Project]:
 
 
 def normalize_category(category: Any) -> str:
+    """Normalize a requested category to a supported retrieval route.
+
+    Unknown categories and ``CHITCHAT`` (which has no retrieval) fall back to
+    ``OTHER``.
+
+    Args:
+        category: Raw category value from the request.
+
+    Returns:
+        An uppercase route name guaranteed to be retrieval-eligible.
+    """
     route = str(category or "OTHER").strip().upper() or "OTHER"
     allowed = {r for r in EXPECTED_ROUTES if r != "CHITCHAT"}
     return route if route in allowed else "OTHER"
@@ -59,6 +80,27 @@ def retrieve_agent_memory(
     category: str,
     model: Optional[str],
 ) -> tuple[AgentMemorySearchResponse, str, List[str]]:
+    """Retrieve and structure agent memory for a search request.
+
+    Runs the read-only daily+main merge, parses the prompt-shaped context into
+    snippets, and expands bounded snippets to full entries. Retrieval does not
+    mutate project memory.
+
+    Args:
+        project_name: Resolved project name echoed back in the response.
+        project_id: Project identifier whose memory is searched.
+        query: Search query text.
+        category: Normalized retrieval route.
+        model: Optional model identifier echoed back in the response.
+
+    Returns:
+        A tuple of the structured response, the raw prompt context string, and
+        a list of parser warnings.
+
+    Raises:
+        SnippetParseError: If non-empty retrieval context cannot be parsed into
+            structured snippets.
+    """
     settings = get_settings()
     policy = get_route_policy(category or "OTHER")
     per_source_k = compute_per_source_k(int(settings.base_top_k), float(policy.retrieval_multiplier))
@@ -107,6 +149,19 @@ def write_agent_debug_files(
     parser_warnings: Optional[List[str]] = None,
     error_payload: Optional[Dict[str, Any]] = None,
 ) -> None:
+    """Write paired request/response debug artifacts for a search call.
+
+    Persists a timestamped query file and response file under the project's
+    ``agent_interface`` debug directory to aid troubleshooting.
+
+    Args:
+        project_id: Project the debug artifacts belong to.
+        request_payload: Raw request body received by the endpoint.
+        raw_context: Prompt-shaped context returned by retrieval.
+        response_payload: Serialized response body (empty on error).
+        parser_warnings: Optional parser warnings to record.
+        error_payload: Optional error detail recorded on failure paths.
+    """
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     query_body = {
         "timestamp": ts,

@@ -39,6 +39,8 @@ LEGACY_SEMANTIC_HANDLE_RE = re.compile(r"^#semantic_handle:\s*(?P<value>.+?)\s*$
 
 @dataclass
 class SyxMemoryEntry:
+    """A single bounded Syx memory entry with its parsed metadata and span."""
+
     memory_id: str
     text: str
     metadata: Dict[str, Any]
@@ -50,6 +52,8 @@ class SyxMemoryEntry:
 
 @dataclass
 class SyxParseResult:
+    """Outcome of parsing Syx boundaries: entries plus structural/metadata warnings."""
+
     entries: List[SyxMemoryEntry]
     warnings: List[str]
     occupied_ranges: List[Tuple[int, int]]
@@ -58,6 +62,7 @@ class SyxParseResult:
 
 
 def normalize_lf(text: str) -> str:
+    """Normalize CRLF/CR line endings to LF."""
     return str(text or "").replace("\r\n", "\n").replace("\r", "\n")
 
 
@@ -98,6 +103,7 @@ def compact_timestamp_for_memory_id(timestamp: str) -> str:
 
 
 def memory_date_from_local_timestamp(timestamp: Optional[str] = None) -> str:
+    """Derive an ``MM-DD-YYYY`` memory date from a Syx timestamp (today's date on failure)."""
     raw = str(timestamp or "").strip()
     for fmt in ("%m-%d-%Y_%H:%M:%S", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y"):
         try:
@@ -108,6 +114,7 @@ def memory_date_from_local_timestamp(timestamp: Optional[str] = None) -> str:
 
 
 def slash_date_to_memory_date(date_text: str) -> str:
+    """Convert an ``MM/DD/YYYY`` date into the ``MM-DD-YYYY`` memory-date format."""
     try:
         return datetime.strptime(str(date_text).strip(), "%m/%d/%Y").strftime("%m-%d-%Y")
     except ValueError:
@@ -115,6 +122,7 @@ def slash_date_to_memory_date(date_text: str) -> str:
 
 
 def render_artifact_header(*, artifact_type: str, project_id: str, memory_date: str) -> str:
+    """Render the YAML front-matter header block for a Syx memory artifact."""
     title = str(artifact_type).replace("_", " ").title()
     return (
         "---\n"
@@ -134,6 +142,11 @@ def ensure_artifact_header(
     project_id: str,
     memory_date: str,
 ) -> str:
+    """Ensure ``text`` begins with a current Syx artifact header.
+
+    Strips legacy memory wrappers and returns the text unchanged when it already
+    carries a versioned front-matter header; otherwise prepends a fresh header.
+    """
     normalized = normalize_lf(text).lstrip()
     normalized = LEGACY_MEMORY_WRAPPER_RE.sub("", normalized).lstrip()
     if normalized.startswith("---\n") and "format_version:" in normalized.split("---", 2)[1]:
@@ -152,6 +165,11 @@ def normalize_legacy_artifact_wrappers(
     project_id: str,
     memory_date: Optional[str] = None,
 ) -> str:
+    """Convert legacy ``=== BEGIN/END … MEMORY ===`` wrappers to a current header.
+
+    Resolves the memory date from the explicit argument, then the legacy wrapper,
+    then falls back to today's date.
+    """
     normalized = normalize_lf(text)
     match = LEGACY_MEMORY_WRAPPER_RE.search(normalized)
     resolved_date = memory_date or (slash_date_to_memory_date(match.group("date")) if match else memory_date_from_local_timestamp())
@@ -164,11 +182,17 @@ def normalize_legacy_artifact_wrappers(
 
 
 def ensure_blank_line_before_begin_markers(text: str) -> str:
+    """Insert a blank line before any begin marker that is not already preceded by one."""
     normalized = normalize_lf(text)
     return BEGIN_MARKER_RE.sub(r"\n\1", normalized)
 
 
 def _canonical_hash_payload(values: Dict[str, Any]) -> str:
+    """Serialize values into a stable, key-sorted string for deterministic hashing.
+
+    Skips None values and joins list values with newlines so that memory-id
+    digests are reproducible regardless of input dict ordering.
+    """
     parts: List[str] = []
     for key in sorted(values.keys()):
         value = values.get(key)
@@ -197,6 +221,12 @@ def generate_memory_id(
     origin_memory_ids: Optional[Iterable[str]] = None,
     dream_content: Optional[str] = None,
 ) -> str:
+    """Generate a deterministic ``mem_<timestamp>_<digest>`` memory id.
+
+    The digest is derived from a canonical payload that varies by entry type:
+    dream outputs hash dream-specific fields while other entries hash the
+    user/assistant text. Identical inputs always yield the same id.
+    """
     payload: Dict[str, Any] = {
         "project_id": project_id,
         "timestamp": timestamp,
@@ -225,6 +255,10 @@ def generate_memory_id(
 
 
 def split_pair_text(pair_text: str) -> Tuple[str, str]:
+    """Split combined ``User:/Assistant:`` pair text into (user, assistant) parts.
+
+    Returns an empty user part when no ``Assistant:`` delimiter is present.
+    """
     text = normalize_lf(pair_text)
     if "\nAssistant:" in text:
         user_part, assistant_part = text.split("\nAssistant:", 1)
@@ -233,6 +267,11 @@ def split_pair_text(pair_text: str) -> Tuple[str, str]:
 
 
 def topics_to_list(value: Any) -> List[str]:
+    """Coerce a topics value into a clean list of strings.
+
+    Accepts an existing list or a scalar, splitting scalars on common tagger
+    separators (``,`` and ``;``) and dropping empties.
+    """
     if value is None:
         return []
     if isinstance(value, list):
@@ -245,6 +284,7 @@ def topics_to_list(value: Any) -> List[str]:
 
 
 def snake_case_value(value: Any) -> str:
+    """Normalize an arbitrary value into a lowercase snake_case token."""
     raw = str(value or "").strip()
     if not raw:
         return ""
@@ -254,6 +294,7 @@ def snake_case_value(value: Any) -> str:
 
 
 def entry_type_label(entry_type: Any) -> str:
+    """Render an entry_type as a human-readable Title Case label."""
     raw = str(entry_type or "memory_entry").strip()
     if not raw:
         raw = "memory_entry"
@@ -261,6 +302,7 @@ def entry_type_label(entry_type: Any) -> str:
 
 
 def entry_heading(metadata: Dict[str, Any]) -> str:
+    """Build the ``## <label>[: <semantic_handle>]`` heading for an entry."""
     label = entry_type_label(metadata.get("entry_type"))
     semantic_handle = str(metadata.get("semantic_handle") or "").strip()
     if semantic_handle:
@@ -269,6 +311,10 @@ def entry_heading(metadata: Dict[str, Any]) -> str:
 
 
 def render_yaml_block(metadata: Dict[str, Any]) -> str:
+    """Render entry metadata as the fenced ``### Syx Metadata`` YAML block.
+
+    Skips None values and renders booleans lowercased and lists as YAML sequences.
+    """
     lines: List[str] = ["### Syx Metadata", "", "```yaml"]
     for key, value in metadata.items():
         if value is None:
@@ -294,6 +340,12 @@ def render_memory_entry(
     assistant_text: Optional[str] = None,
     body_text: Optional[str] = None,
 ) -> str:
+    """Render a complete bounded Syx memory entry block.
+
+    Wraps the heading, metadata YAML, and content in begin/end markers. When
+    ``body_text`` is given it is used as the body; otherwise the user and
+    assistant messages are rendered as separate sections.
+    """
     parts = [
         f"<!-- begin syx:memory_id={memory_id} -->",
         entry_heading(metadata),
@@ -327,6 +379,14 @@ def _parse_scalar(value: str) -> Any:
 
 
 def parse_yaml_metadata_with_warnings(entry_text: str) -> Tuple[Dict[str, Any], List[str]]:
+    """Parse the ``### Syx Metadata`` YAML block from an entry body.
+
+    Supports scalar values and simple ``- item`` lists under a bare key.
+
+    Returns:
+        A tuple of (parsed metadata, warnings). Warnings flag malformed fences
+        and unparseable lines; an empty dict is returned when no block is found.
+    """
     lines = normalize_lf(entry_text).splitlines()
     for idx, line in enumerate(lines):
         if line.strip() != "### Syx Metadata":
@@ -366,11 +426,13 @@ def parse_yaml_metadata_with_warnings(entry_text: str) -> Tuple[Dict[str, Any], 
 
 
 def parse_yaml_metadata(entry_text: str) -> Dict[str, Any]:
+    """Parse the entry's Syx metadata block, discarding any warnings."""
     metadata, _warnings = parse_yaml_metadata_with_warnings(entry_text)
     return metadata
 
 
 def legacy_semantic_handle(entry_text: str) -> Optional[str]:
+    """Extract a legacy ``#semantic_handle:`` value from entry text, if present."""
     match = LEGACY_SEMANTIC_HANDLE_RE.search(normalize_lf(entry_text))
     if not match:
         return None
@@ -379,6 +441,12 @@ def legacy_semantic_handle(entry_text: str) -> Optional[str]:
 
 
 def ensure_entry_headings(text: str) -> str:
+    """Insert a ``##`` heading into any bounded entry that lacks one.
+
+    Reparses the text and, for each entry whose first lines have no heading,
+    synthesizes one from its metadata (recovering a legacy semantic handle when
+    available). Text outside bounded entries is preserved verbatim.
+    """
     normalized = normalize_lf(text)
     parsed = parse_syx_entries(normalized)
     if not parsed.entries:
@@ -406,6 +474,16 @@ def ensure_entry_headings(text: str) -> str:
 
 
 def parse_syx_entries(text: str, *, artifact_path: Optional[str] = None) -> SyxParseResult:
+    """Parse bounded Syx memory entries from artifact text.
+
+    Walks begin/end markers, parsing each well-formed entry's metadata and span
+    and collecting structural warnings (invalid, mismatched, duplicate, or
+    unterminated markers). When provided, ``artifact_path`` is recorded on each
+    entry's metadata as a default ``artifact_path``.
+
+    Returns:
+        A SyxParseResult with parsed entries, occupied ranges, and warnings.
+    """
     normalized = normalize_lf(text)
     lines = normalized.splitlines(keepends=True)
     entries: List[SyxMemoryEntry] = []
@@ -490,6 +568,12 @@ def parse_syx_entries(text: str, *, artifact_path: Optional[str] = None) -> SyxP
 
 
 def validate_syx_boundaries(text: str) -> Tuple[bool, List[str]]:
+    """Validate Syx boundary markers in ``text``.
+
+    Returns:
+        A tuple of (is_valid, warnings) where ``is_valid`` is True only when
+        parsing produced no warnings.
+    """
     result = parse_syx_entries(text)
     return len(result.warnings) == 0, result.warnings
 
@@ -513,6 +597,11 @@ def replace_current_scope_for_ltm(text: str) -> str:
 
 
 def unbounded_regions(text: str, occupied_ranges: List[Tuple[int, int]]) -> List[str]:
+    """Return the non-empty text regions that fall outside the occupied ranges.
+
+    Used to recover content that is not enclosed by Syx boundary markers. Ranges
+    are sorted and merged; only regions with non-whitespace content are returned.
+    """
     normalized = normalize_lf(text)
     if not occupied_ranges:
         return [normalized] if normalized.strip() else []

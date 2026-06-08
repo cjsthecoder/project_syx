@@ -41,6 +41,11 @@ _PRUNER_CACHE: Optional[Pruner] = None
 
 
 def _resolve_response_pruning_rules_path(raw_path: str) -> Path:
+    """Resolve the pruning rules path, trying CWD then the repo root.
+
+    Absolute paths are returned as-is; relative paths prefer a match under the
+    current working directory and fall back to the repository root.
+    """
     path = Path(str(raw_path or "backend/app/config/rules.json"))
     if path.is_absolute():
         return path
@@ -53,6 +58,11 @@ def _resolve_response_pruning_rules_path(raw_path: str) -> Path:
 
 
 def _get_response_pruner(settings: Any) -> Pruner:
+    """Return a cached ``Pruner`` keyed by the effective pruning configuration.
+
+    The pruner is rebuilt only when any rules-path or pruning setting changes,
+    avoiding repeated rule-file parsing on the hot path.
+    """
     global _PRUNER_CACHE
     global _PRUNER_CACHE_KEY
 
@@ -92,6 +102,7 @@ def _write_light_pruner_debug(
     result: Optional[PruneResult],
     error: Optional[Exception] = None,
 ) -> None:
+    """Write a best-effort light-pruner debug dump for one assistant response."""
     try:
         start_tokens = count_tokens(original_response)
         finished_tokens = count_tokens(pruned_response)
@@ -139,6 +150,11 @@ def _prune_assistant_for_tagger(
     assistant_text: str,
     settings: Any,
 ) -> str:
+    """Prune an assistant response for tagging input, returning safe text.
+
+    Honors the response-pruning enable flag and always returns the original
+    text on failure so tagging can proceed without data loss.
+    """
     original = str(assistant_text or "")
     try:
         if not bool(getattr(settings, "response_pruning_enabled", True)):
@@ -214,6 +230,11 @@ class MemoryManager:
 
     @staticmethod
     def _normalize_question_candidates(value: Any) -> List[Dict[str, str]]:
+        """Normalize tagger question output into validated candidate dicts.
+
+        Drops malformed entries and entries without question text, and coerces
+        any unrecognized resolution to ``ignore``.
+        """
         allowed = {"ignore", "answer_local", "answer_remote"}
         out: List[Dict[str, str]] = []
         if not isinstance(value, list):
@@ -241,6 +262,11 @@ class MemoryManager:
         semantic_handle: Optional[str],
         questions: List[Dict[str, str]],
     ) -> None:
+        """Append tagger-derived open questions to ``open_questions.jsonl``.
+
+        Writes one JSON line per question under a per-project file lock. This is
+        best-effort: failures are logged and never interrupt the chat flow.
+        """
         if not questions:
             return
         try:
@@ -285,6 +311,11 @@ class MemoryManager:
             logger.warning("[QUESTIONS][ARTIFACT] Failed writing open_questions.jsonl project=%s: %s", project_id, e)
     
     def _ensure_loaded(self, project_id: str) -> None:
+        """Lazily hydrate the project's working-memory deque from the DB.
+
+        Loads the most recent messages (newest-first, then reversed to
+        chronological order) and trims unpaired edge messages.
+        """
         if project_id in self.project_deques:
             return
         # Use a deque sized to avoid dropping messages before pair-based pruning runs.
@@ -318,11 +349,21 @@ class MemoryManager:
         self.project_deques[project_id] = dq
 
     def get_project_history(self, project_id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Return the project's working-memory messages, optionally tail-limited.
+
+        Args:
+            project_id: Project whose history to return.
+            limit: If set, return only the most recent ``limit`` messages.
+        """
         self._ensure_loaded(project_id)
         data = list(self.project_deques.get(project_id, deque()))
         return data if limit is None else data[-limit:]
 
     def append_user_message(self, project_id: str, content: str) -> None:
+        """Persist a user message and append it to working memory.
+
+        Pruning to the pair limit runs after the append.
+        """
         if not project_id:
             return
         self._ensure_loaded(project_id)
@@ -351,6 +392,25 @@ class MemoryManager:
         forget: bool = False,
         skip_tagger: bool = False,
     ) -> None:
+        """Persist an assistant message, run tagging, and update working memory.
+
+        Unless ``skip_tagger`` is set (or no user text is supplied), the
+        assistant text is pruned and tagged; the resulting metadata is stored on
+        the message row and the project's ``last_semantic_handle``. Open
+        questions are appended as an artifact and the deque is pruned to limit.
+
+        Args:
+            project_id: Project receiving the message.
+            content: Assistant response text.
+            namespace: Namespace override; defaults to the current request
+                namespace or ``other``.
+            user_text_for_tagging: User turn used as tagging anchor; tagging is
+                skipped when None.
+            previous_pair_text_for_tagging: Prior pair text used as tagging
+                context.
+            forget: If True, this pair is excluded from daily/LTM roll-off.
+            skip_tagger: If True, bypass tagging entirely.
+        """
         if not project_id:
             return
         self._ensure_loaded(project_id)
@@ -475,6 +535,7 @@ class MemoryManager:
         self.prune_to_limit(project_id)
 
     def prune_to_limit(self, project_id: str) -> None:
+        """Roll off oldest complete pairs until within the pair limit."""
         self._ensure_loaded(project_id)
         dq = self.project_deques[project_id]
         # If we have at least one complete pair at the head, and pair_limit exceeded, roll off the oldest pair
@@ -482,6 +543,7 @@ class MemoryManager:
             self._rolloff_oldest_pair(project_id, dq)
 
     def _pair_count(self, dq: Deque[Dict[str, Any]]) -> int:
+        """Count adjacent user→assistant message pairs in deque order."""
         count = 0
         i = 0
         n = len(dq)
@@ -494,6 +556,14 @@ class MemoryManager:
         return count
 
     def _rolloff_oldest_pair(self, project_id: str, dq: Deque[Dict[str, Any]]) -> None:
+        """Evict the oldest pair, appending it to daily RAG before DB deletion.
+
+        Stray non-pair messages at the head are deleted first. The evicted pair
+        is appended to the daily store (unless forgotten or daily is disabled),
+        reusing stored tagger metadata and pruned text, then both rows are
+        removed from the database. Append failures are logged; eviction still
+        proceeds per spec.
+        """
         # Ensure the first two form a pair; if not, clean or skip until a pair is found
         while len(dq) >= 2:
             first, second = dq[0], dq[1]
@@ -624,6 +694,7 @@ class MemoryManager:
             dq.pop()
 
     def _is_daily_enabled(self, project_id: str) -> bool:
+        """Return the project's Daily RAG flag, defaulting to True on error."""
         try:
             with get_session() as session:
                 p = session.get(Project, project_id)
@@ -635,14 +706,17 @@ class MemoryManager:
             return True
 
     def get_active_pair_count(self, project_id: str) -> int:
+        """Return the number of complete pairs in the project's working memory."""
         self._ensure_loaded(project_id)
         dq = self.project_deques.get(project_id) or deque()
         return self._pair_count(dq)
 
     def set_last_context_tokens(self, project_id: str, tokens: int) -> None:
+        """Record the most recent prompt-context token count for the project."""
         self.last_context_tokens_per_project[project_id] = max(0, int(tokens))
 
     def get_last_context_tokens(self, project_id: str) -> int:
+        """Return the last recorded prompt-context token count (0 if unset)."""
         return int(self.last_context_tokens_per_project.get(project_id, 0))
     
     def get_conversation_history(
@@ -650,6 +724,7 @@ class MemoryManager:
         conversation_id: str,
         limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
+        """Return an empty list. Deprecated: project-scoped history is used."""
         # Deprecated (project-scoped history is used instead).
         return []
     
@@ -748,11 +823,13 @@ def store_conversation(
 
 
 def set_last_context_tokens(project_id: str, tokens: int) -> None:
+    """Record the project's last prompt-context token count via the manager."""
     manager = get_memory_manager()
     manager.set_last_context_tokens(project_id, tokens)
 
 
 def get_last_context_tokens(project_id: str) -> int:
+    """Return the project's last prompt-context token count via the manager."""
     manager = get_memory_manager()
     return manager.get_last_context_tokens(project_id)
 

@@ -22,10 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 def count_tokens(text: str) -> int:
+    """Count tokens in ``text``, treating ``None`` as empty."""
     return int(_count_tokens(text or ""))
 
 
 def trim_to_tokens(text: str, max_tokens: int) -> str:
+    """Trim ``text`` to at most ``max_tokens`` tokens, treating ``None`` as empty."""
     return _trim_to_tokens(text or "", max_tokens)
 
 

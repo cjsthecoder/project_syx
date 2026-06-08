@@ -69,6 +69,11 @@ _current_project = None
 
 
 def _origin_memory_ids(item: Dict[str, Any]) -> List[str]:
+    """Collect de-duplicated origin memory ids referenced by a dream item.
+
+    Gathers ids from the item's top-level keys and nested ``metadata`` block
+    (single and list forms), preserving first-seen order.
+    """
     values: List[str] = []
     for key in ("origin_memory_id", "memory_id"):
         val = item.get(key)
@@ -96,6 +101,12 @@ def _dream_markdown_block(
     user_text: str,
     assistant_text: str,
 ) -> str:
+    """Render a dream item as a memory-artifact markdown block.
+
+    Assembles entry metadata (memory id, dream provenance, route, topics,
+    semantic handle) and delegates to ``render_memory_entry`` to produce the
+    persisted block.
+    """
     tags = tags_meta if isinstance(tags_meta, dict) else {}
     metadata: Dict[str, Any] = {
         "memory_id": memory_id,
@@ -148,6 +159,12 @@ def _validate_dream_payload(data: Any) -> Optional[dict]:
 
 
 def _read_latest_sleep_summary(project_id: str) -> Optional[dict]:
+    """Return the project's latest sleep summary as a dream-shaped dict, or None.
+
+    Reads ``latest_sleep_summary.txt`` and wraps its text as
+    ``{"project_summary": ..., "items": []}``; returns ``None`` when the file
+    is missing, empty, or unreadable.
+    """
     summary_path = os.path.join(get_settings().memory_root, project_id, "latest_sleep_summary.txt")
     try:
         if not os.path.isfile(summary_path):
@@ -169,6 +186,11 @@ def _read_latest_sleep_summary(project_id: str) -> Optional[dict]:
 
 
 def _read_pending_dream_project_summary(project_id: str, dream_path: str) -> Optional[str]:
+    """Return the ``project_summary`` string from a pending dream.json, or None.
+
+    Returns ``None`` when the file is missing, malformed, or lacks a non-empty
+    string summary.
+    """
     try:
         if not os.path.isfile(dream_path):
             return None
@@ -190,6 +212,11 @@ def _read_pending_dream_project_summary(project_id: str, dream_path: str) -> Opt
 
 
 def _normalize_resolution(value: Any) -> str:
+    """Normalize a dream source resolution to a known value, or empty string.
+
+    Recognizes ``ignore``, ``answer_local``, and ``answer_remote``; any other
+    value yields ``""``.
+    """
     res = str(value or "").strip().lower()
     if res in {"ignore", "answer_local", "answer_remote"}:
         return res
@@ -197,6 +224,7 @@ def _normalize_resolution(value: Any) -> str:
 
 
 def _valid_research_entries(item: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Return the item's research entries that have both a topic and a summary."""
     out: List[Dict[str, str]] = []
     research_list = item.get("research") if isinstance(item.get("research"), list) else []
     for r in research_list:
@@ -211,6 +239,12 @@ def _valid_research_entries(item: Dict[str, Any]) -> List[Dict[str, str]]:
 
 
 def _dream_memory_pairs_for_item(item: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Expand a dream item into the user/assistant memory pairs to persist.
+
+    For ``answer_remote`` items, emits one pair per valid research entry
+    (topic as user text, summary as assistant text). Otherwise emits a single
+    pair from the item's origin text and assistant response.
+    """
     resolution = _normalize_resolution(item.get("source_resolution"))
     if resolution == "answer_remote":
         pairs = []
@@ -234,6 +268,11 @@ def _dream_memory_pairs_for_item(item: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _filter_remote_without_research(items: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
+    """Drop ``answer_remote`` items that lack valid research entries.
+
+    Returns:
+        Tuple of ``(kept_items, dropped_count)``.
+    """
     kept: List[Dict[str, Any]] = []
     dropped = 0
     for it in items:
@@ -250,6 +289,15 @@ def _filter_remote_without_research(items: List[Dict[str, Any]]) -> tuple[List[D
 def _filter_remote_without_research_with_rows(
     items: List[Dict[str, Any]],
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Drop ``answer_remote`` items without research, returning kept items and report rows.
+
+    Like :func:`_filter_remote_without_research`, but instead of a count it
+    returns detailed rows describing each dropped item for the persist-filter
+    report.
+
+    Returns:
+        Tuple of ``(kept_items, dropped_rows)``.
+    """
     kept: List[Dict[str, Any]] = []
     dropped_rows: List[Dict[str, Any]] = []
     for it in items:
@@ -281,6 +329,12 @@ def _write_persist_filter_report(
     kept_after_filter: int,
     dropped_rows: List[Dict[str, Any]],
 ) -> None:
+    """Write a debug report of the dream persist filtering decisions.
+
+    Records the remembered-item count, per-item drop decisions, and the
+    kept/dropped totals to the project's ``dreaming/persist_filter_report.txt``
+    debug file.
+    """
     ts = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
     body = (
         f"# timestamp: {ts}\n"
@@ -298,6 +352,15 @@ def _write_persist_filter_report(
 
 @router.get("/projects")
 async def get_projects() -> JSONResponse:
+    """List all projects and the currently selected project.
+
+    Initializes the in-memory current-project pointer to "Main" (or the first
+    project) on first call, and normalizes legacy ``Project {id}`` names.
+
+    Returns:
+        JSON with ``current_project``, ``available_projects`` (ids), and a
+        ``project_names`` id-to-name mapping.
+    """
     try:
         request_logger.log_request(endpoint="/projects", method="GET")
         with get_session() as session:
@@ -629,6 +692,22 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
 
 @router.post("/projects")
 async def create_or_switch_project(request: ProjectRequest) -> JSONResponse:
+    """Create a new project or switch the current selection to an existing one.
+
+    When ``project_id`` is provided, switches the in-memory current project to
+    it. Otherwise creates a project from ``project_name`` (case-insensitive
+    unique), seeds default prompt/personality files and a baseline
+    USER_PROFILE.txt, and rebuilds the project's RAG index.
+
+    Returns:
+        JSON with the result message, the new ``current_project``,
+        ``available_projects``, and a ``project_names`` mapping.
+
+    Raises:
+        HTTPException: 404 if switching to an unknown project, 400 if
+            ``project_name`` is missing on create, 409 if the name already
+            exists.
+    """
     try:
         request_logger.log_request(endpoint="/projects", method="POST", user_id=request.project_id)
         global _current_project
@@ -709,6 +788,19 @@ async def create_or_switch_project(request: ProjectRequest) -> JSONResponse:
 
 @router.patch("/projects/{project_id}")
 async def rename_project(project_id: str, request: ProjectRequest) -> JSONResponse:
+    """Update a project's name and/or daily-RAG toggle.
+
+    At least one of ``project_name`` or ``daily_rag_enabled`` must be present.
+    System projects cannot be modified.
+
+    Returns:
+        JSON with the updated ``name`` and ``daily_rag_enabled`` values.
+
+    Raises:
+        HTTPException: 400 if no fields are provided or the project is a system
+            project, 404 if the project is missing, 409 if the new name
+            already exists.
+    """
     try:
         if not request.project_name and (request.daily_rag_enabled is None):
             raise HTTPException(status_code=400, detail={"error": "No fields to update"})
@@ -741,6 +833,20 @@ async def rename_project(project_id: str, request: ProjectRequest) -> JSONRespon
 
 @router.delete("/projects/{project_id}")
 async def delete_project(project_id: str) -> JSONResponse:
+    """Delete a project and its on-disk memory, then clear cached state.
+
+    Removes the DB row, recursively deletes the project's memory directory,
+    drops the project's in-memory deque and context-token cache, and resets
+    the current-project pointer to "Main" (or another project) if it pointed
+    at the deleted one. System projects cannot be deleted.
+
+    Returns:
+        JSON confirming deletion and the resulting ``current_project``.
+
+    Raises:
+        HTTPException: 404 if the project is missing, 400 if it is a system
+            project.
+    """
     try:
         with get_session() as session:
             obj = session.get(Project, project_id)
@@ -872,6 +978,15 @@ async def project_stats(project_id: str) -> JSONResponse:
 
 @router.get("/projects/{project_id}")
 async def get_project_detail(project_id: str) -> JSONResponse:
+    """Return a single project's metadata.
+
+    Returns:
+        JSON with the project's id, name, description, timestamps, system
+        flag, and daily-RAG setting.
+
+    Raises:
+        HTTPException: 404 if the project does not exist.
+    """
     try:
         with get_session() as session:
             obj = session.get(Project, project_id)

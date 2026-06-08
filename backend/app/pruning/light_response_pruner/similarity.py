@@ -35,6 +35,19 @@ class SentenceSpan:
 
 
 def prune_similar_sentences(text: str, *, threshold: int = 94) -> str:
+    """Remove sentences that are near-duplicates of earlier kept sentences.
+
+    Similarity is measured with a fuzzy token-set ratio against previously kept
+    sentences. Fenced code blocks and sentences containing digits, requirement
+    ids, or code-like identifiers are protected from removal.
+
+    Args:
+        text: Prose (possibly containing code blocks) to deduplicate.
+        threshold: Minimum similarity score (0-100) to treat as a duplicate.
+
+    Returns:
+        Text with near-duplicate sentences removed.
+    """
     if not text.strip():
         return text
 

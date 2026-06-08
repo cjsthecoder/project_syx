@@ -48,6 +48,7 @@ def _empty_result(*, route: str, per_source_k: int = 0, max_keep: int = 0, daily
 
 
 def _daily_enabled(project_id: str) -> bool:
+    """Return the project's daily-RAG flag, defaulting to True when lookup fails."""
     try:
         with get_session() as session:
             project = session.exec(select(Project).where(Project.id == project_id)).first()

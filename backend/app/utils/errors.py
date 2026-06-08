@@ -116,7 +116,18 @@ def create_error_response(
 
 
 def handle_llm_error(error: Exception) -> HTTPException:
-    """Handle LLM-related errors."""
+    """Map an LLM error to an HTTPException by inspecting its message.
+
+    The error message is matched (case-insensitively) against known failure
+    signatures (missing key, timeout, quota) and falls back to a generic
+    service-unavailable response.
+
+    Args:
+        error: The LLM-related exception that occurred.
+
+    Returns:
+        An HTTPException with an appropriate status code and error code.
+    """
     if "api key" in str(error).lower():
         return create_error_response(
             error,

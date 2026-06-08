@@ -85,7 +85,13 @@ class CustomFormatter(logging.Formatter):  # pylint: disable=R0903
 
 
 def setup_logging() -> None:
-    """Set up application logging configuration with colored console and timestamped files."""
+    """Configure application-wide logging handlers and levels.
+
+    Side effects: creates the logs directory, clears and reconfigures the root
+    logger, attaches a rotating timestamped file handler plus a colored console
+    handler, tunes third-party logger levels, and reroutes uvicorn logging
+    through the shared handlers. Intended to be called once at startup.
+    """
     
     settings = get_settings()
     # Legacy global level (retained for component loggers default)
@@ -177,38 +183,47 @@ _ns_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("namespace"
 
 
 def set_message_id(message_id: str | None) -> None:
+    """Bind the per-request message correlation id for the current context."""
     _message_id_var.set(message_id)
 
 
 def get_message_id() -> str | None:
+    """Return the current context's message correlation id, if set."""
     return _message_id_var.get()
 
 
 def clear_message_id() -> None:
+    """Clear the current context's message correlation id."""
     _message_id_var.set(None)
 
 
 def set_route(route: str | None) -> None:
+    """Bind the active route label for the current context."""
     _route_var.set(route)
 
 
 def get_route() -> str | None:
+    """Return the current context's route label, if set."""
     return _route_var.get()
 
 
 def clear_route() -> None:
+    """Clear the current context's route label."""
     _route_var.set(None)
 
 
 def set_namespace(namespace: str | None) -> None:
+    """Bind the active namespace for the current context."""
     _ns_var.set(namespace)
 
 
 def get_namespace() -> str | None:
+    """Return the current context's namespace, if set."""
     return _ns_var.get()
 
 
 def clear_namespace() -> None:
+    """Clear the current context's namespace."""
     _ns_var.set(None)
 
 

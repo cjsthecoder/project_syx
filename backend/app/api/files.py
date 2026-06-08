@@ -48,6 +48,26 @@ def _compute_file_stats(path: str) -> tuple[int, int]:
 
 @router.post("/projects/{project_id}/files")
 async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> JSONResponse:
+    """Upload one or more files to a project and index them for RAG.
+
+    Accepts only ``.txt`` and ``.md`` files (PDFs are unsupported in the
+    current RAG path). Enforces per-file, per-batch, and per-project storage
+    limits, rolling back any writes that would breach a limit. Persists a
+    ``File`` row per saved file with computed page/token stats, then rebuilds
+    the project's FAISS index.
+
+    Args:
+        project_id: Target project identifier.
+        files: Multipart upload payload of one or more files.
+
+    Returns:
+        JSON describing each uploaded file, the rebuilt index directory,
+        the index rebuild status, total file count, and total token count.
+
+    Raises:
+        HTTPException: 400 if a file type is unsupported or any size limit
+            (per-file, batch, or storage) would be exceeded.
+    """
     settings = get_settings()
 
     # PDFs are intentionally unsupported in the current RAG path.

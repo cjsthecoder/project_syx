@@ -28,6 +28,17 @@ RuleSources = RuleSource | Sequence[RuleSource]
 
 
 def validate_rules(data: Mapping[str, Any] | PruneRules) -> PruneRules:
+    """Validate a mapping (or pass through a model) into a PruneRules instance.
+
+    Args:
+        data: Raw rule mapping or an already-built PruneRules.
+
+    Returns:
+        A validated PruneRules instance.
+
+    Raises:
+        RuleConfigError: If the mapping fails Pydantic validation.
+    """
     if isinstance(data, PruneRules):
         return data
 
@@ -38,6 +49,19 @@ def validate_rules(data: Mapping[str, Any] | PruneRules) -> PruneRules:
 
 
 def load_rule_file(path: str | Path, *, strip_comment_keys: bool = False) -> PruneRules:
+    """Load and validate pruning rules from a JSON file.
+
+    Args:
+        path: Path to a JSON file containing a top-level rules object.
+        strip_comment_keys: When True, drop keys prefixed with "_comment".
+
+    Returns:
+        A validated PruneRules instance.
+
+    Raises:
+        RuleConfigError: If the file cannot be read, is invalid JSON, is not a
+            JSON object, or fails validation.
+    """
     rule_path = Path(path)
 
     try:
@@ -62,6 +86,19 @@ def load_rule_file(path: str | Path, *, strip_comment_keys: bool = False) -> Pru
 
 
 def load_rules(sources: RuleSources, *, strip_comment_keys: bool = False) -> PruneRules:
+    """Load one or more rule sources and merge them into a single PruneRules.
+
+    Args:
+        sources: A single source or sequence of sources; each may be a
+            PruneRules, a mapping, or a file path.
+        strip_comment_keys: When True, drop "_comment" keys from file sources.
+
+    Returns:
+        The merged PruneRules instance.
+
+    Raises:
+        RuleConfigError: If no sources are provided or any source is invalid.
+    """
     normalized_sources = _normalize_sources(sources)
     rule_sets = [
         _coerce_rule_source(source, strip_comment_keys=strip_comment_keys)
@@ -71,6 +108,21 @@ def load_rules(sources: RuleSources, *, strip_comment_keys: bool = False) -> Pru
 
 
 def merge_rules(rule_sets: Sequence[PruneRules]) -> PruneRules:
+    """Merge multiple rule sets, unioning prefixes per section.
+
+    Front and end sections are merged independently; their cut modes must agree
+    across all sets. A single rule set is returned unchanged.
+
+    Args:
+        rule_sets: Rule sets to combine, in priority order.
+
+    Returns:
+        The merged PruneRules instance.
+
+    Raises:
+        RuleConfigError: If no rule sets are given, cut modes conflict, or the
+            merged result fails validation.
+    """
     if not rule_sets:
         raise RuleConfigError("At least one rule configuration is required")
 
@@ -91,6 +143,7 @@ def merge_rules(rule_sets: Sequence[PruneRules]) -> PruneRules:
 
 
 def export_rules_schema() -> dict[str, Any]:
+    """Return the JSON schema for the PruneRules model."""
     return PruneRules.model_json_schema()
 
 

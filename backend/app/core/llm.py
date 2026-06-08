@@ -36,6 +36,12 @@ def _build_messages(
     assistant_hint: Optional[str],
     rag_system_prompt: Optional[str],
 ) -> List[Dict[str, str]]:
+    """Assemble the chat message list in canonical order.
+
+    Order is base system prompt, assistant hint, RAG system prompt, prior
+    conversation history (roles other than user/assistant/system are dropped),
+    and finally the current user message.
+    """
     messages: List[Dict[str, str]] = []
     if base_system_prompt:
         messages.append({"role": "system", "content": base_system_prompt})
@@ -54,7 +60,14 @@ def _build_messages(
 
 
 class LLMProvider:
+    """Runtime entry point for primary chat completions via the LLM factory."""
+
     def __init__(self) -> None:
+        """Initialize the provider from settings.
+
+        Raises:
+            ValueError: If the OpenAI API key is missing or invalid.
+        """
         self.settings = get_settings()
         if not validate_openai_key():
             raise ValueError("OpenAI API key is not configured or invalid")
@@ -71,6 +84,26 @@ class LLMProvider:
         completion_tokens_override: Optional[int] = None,
         instrument: bool = True,
     ) -> Dict[str, Any]:
+        """Generate a chat completion and record instrumentation.
+
+        Args:
+            message: The current user message.
+            conversation_history: Prior turns to include before the user message.
+            base_system_prompt: Base system instructions.
+            assistant_hint: Optional assistant-role priming message.
+            rag_system_prompt: Optional retrieval context injected as a system
+                message.
+            override_model: Model name overriding the configured default.
+            temperature_override: Temperature overriding the configured default.
+            completion_tokens_override: Max completion tokens override.
+            instrument: Whether to record instrumentation for this call.
+
+        Returns:
+            A result dict with ``response`` text, model/usage fields, and a
+            ``success`` flag. On failure the dict carries an apologetic
+            ``response``, ``success`` False, and an ``error`` message rather
+            than raising.
+        """
         invocation_id = ""
         invoke_start = time.perf_counter()
         used_model = str(override_model or self.settings.model_name)
@@ -176,6 +209,7 @@ class LLMProvider:
             }
 
     def get_model_info(self) -> Dict[str, Any]:
+        """Return the active model configuration and API-key readiness."""
         return {
             "model_name": self.settings.model_name,
             "temperature": self.settings.model_temperature,
@@ -184,6 +218,7 @@ class LLMProvider:
         }
 
     def health_check(self) -> Dict[str, str]:
+        """Probe the LLM with a tiny request and report health status."""
         try:
             test = get_llm_client().generate_chat(
                 messages=[{"role": "user", "content": "Hello"}],
@@ -202,6 +237,7 @@ _llm_provider: Optional[LLMProvider] = None
 
 
 def get_llm_provider() -> LLMProvider:
+    """Return the process-wide ``LLMProvider``, creating it on first use."""
     global _llm_provider
     if _llm_provider is None:
         _llm_provider = LLMProvider()
@@ -209,6 +245,7 @@ def get_llm_provider() -> LLMProvider:
 
 
 def reset_llm_provider() -> None:
+    """Clear the cached provider so the next access rebuilds it from settings."""
     global _llm_provider
     _llm_provider = None
 
@@ -223,6 +260,11 @@ def generate_chat_response(
     temperature_override: Optional[float] = None,
     instrument: bool = True,
 ) -> Dict[str, Any]:
+    """Generate a chat completion via the shared ``LLMProvider``.
+
+    Returns:
+        The provider result dict (see ``LLMProvider.generate_response``).
+    """
     provider = get_llm_provider()
     return provider.generate_response(
         message=message,
@@ -334,4 +376,5 @@ def generate_text_response(
 
 
 def get_llm_health() -> Dict[str, str]:
+    """Return the health status of the shared ``LLMProvider``."""
     return get_llm_provider().health_check()

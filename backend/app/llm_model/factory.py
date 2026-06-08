@@ -24,6 +24,18 @@ _MINI_CLIENT: Optional[OpenAILLMProvider] = None
 
 
 def _new_provider(*, default_model: str, timeout_s: float) -> OpenAILLMProvider:
+    """Build an OpenAI LLM provider for the given default model and timeout.
+
+    Only ``openai`` is currently supported; any other configured
+    ``LLM_PROVIDER`` value is logged and falls back to OpenAI.
+
+    Args:
+        default_model: Model used when a request does not specify one.
+        timeout_s: Per-request timeout in seconds.
+
+    Returns:
+        A configured ``OpenAILLMProvider`` instance.
+    """
     settings = get_settings()
     provider = str(getattr(settings, "llm_provider", "openai") or "openai").strip().lower()
     if provider != "openai":
@@ -38,6 +50,14 @@ def _new_provider(*, default_model: str, timeout_s: float) -> OpenAILLMProvider:
 
 
 def get_llm_client() -> OpenAILLMProvider:
+    """Return the cached main LLM client, creating it on first use.
+
+    Uses ``MODEL_NAME`` as the default model and ``LLM_REQUEST_TIMEOUT_S`` for
+    the request timeout.
+
+    Returns:
+        The process-wide main ``OpenAILLMProvider`` instance.
+    """
     global _MAIN_CLIENT
     if _MAIN_CLIENT is None:
         settings = get_settings()
@@ -54,6 +74,15 @@ def get_llm_client() -> OpenAILLMProvider:
 
 
 def get_llm_client_mini() -> OpenAILLMProvider:
+    """Return the cached mini LLM client, creating it on first use.
+
+    The mini client targets the smaller/faster model used for auxiliary tasks
+    (e.g., tagging, builder). Defaults to ``LLM_MINI_MODEL`` (falling back to
+    ``BUILDER_MODEL``) with the ``LLM_MINI_REQUEST_TIMEOUT_S`` timeout.
+
+    Returns:
+        The process-wide mini ``OpenAILLMProvider`` instance.
+    """
     global _MINI_CLIENT
     if _MINI_CLIENT is None:
         settings = get_settings()
@@ -70,6 +99,10 @@ def get_llm_client_mini() -> OpenAILLMProvider:
 
 
 def reset_llm_clients() -> None:
+    """Clear cached main and mini LLM clients so they rebuild on next use.
+
+    Useful after configuration changes and in tests.
+    """
     global _MAIN_CLIENT, _MINI_CLIENT
     _MAIN_CLIENT = None
     _MINI_CLIENT = None

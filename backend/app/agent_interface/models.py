@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 
 
 class AgentMemorySnippet(BaseModel):
+    """A single structured retrieval snippet returned by agent memory search."""
+
     snippet_number: int
     source: Optional[str] = None
     cos: Optional[float] = None
@@ -47,6 +49,8 @@ class AgentMemorySnippet(BaseModel):
 
 
 class AgentMemorySearchResponse(BaseModel):
+    """Top-level response body for the agent memory search endpoint."""
+
     project_name: str
     project_id: str
     category: str
@@ -58,6 +62,7 @@ class AgentMemorySearchResponse(BaseModel):
     snippets: List[AgentMemorySnippet] = Field(default_factory=list)
 
     def to_response_dict(self) -> Dict[str, Any]:
+        """Serialize to a JSON-ready dict, omitting null fields and unset model."""
         data = self.model_dump(exclude_none=True)
         if self.model is None:
             data.pop("model", None)

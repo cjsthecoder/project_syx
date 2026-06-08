@@ -31,6 +31,14 @@ def _ensure_dir(path: str) -> None:
 
 
 def get_engine():
+    """Create the SQLModel engine for the configured SQLite database.
+
+    Accepts either a raw ``sqlite`` URL or a filesystem path (whose parent
+    directory is created if needed).
+
+    Returns:
+        A SQLAlchemy engine bound to the configured database.
+    """
     settings = get_settings()
     db_path = settings.db_path
     if db_path.startswith("sqlite"):
@@ -80,6 +88,11 @@ def init_db() -> None:
 
 @contextmanager
 def get_session() -> Iterator[Session]:
+    """Yield a database session scoped to the surrounding ``with`` block.
+
+    Yields:
+        An open SQLModel session that is closed on context exit.
+    """
     with Session(engine) as session:
         yield session
 

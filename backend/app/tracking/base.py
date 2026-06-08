@@ -23,10 +23,12 @@ _ACTIVE_TURN_ID: contextvars.ContextVar[Optional[int]] = contextvars.ContextVar(
 
 
 def utc_iso() -> str:
+    """Return the current UTC time as an ISO-8601 string."""
     return datetime.now(timezone.utc).isoformat()
 
 
 def local_timestamp_compact() -> str:
+    """Return a compact local timestamp (``YYYYMMDD_HHMMSS``)."""
     # Match logger file timestamp format in utils/logging.py
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -34,24 +36,38 @@ def local_timestamp_compact() -> str:
 class Instrumentation(Protocol):
     """Common interface used by application code."""
 
-    def start_run(self, config: Optional[dict] = None) -> str: ...
+    def start_run(self, config: Optional[dict] = None) -> str:
+        """Begin a run and return its run id."""
+        ...
 
-    def end_run(self, summary: Optional[dict] = None) -> None: ...
+    def end_run(self, summary: Optional[dict] = None) -> None:
+        """Finalize the active run with an optional summary."""
+        ...
 
-    def start_turn(self, turn_id: int, user_meta: Optional[dict] = None) -> None: ...
+    def start_turn(self, turn_id: int, user_meta: Optional[dict] = None) -> None:
+        """Mark the start of a conversation turn."""
+        ...
 
-    def end_turn(self, output_meta: Optional[dict] = None) -> None: ...
+    def end_turn(self, output_meta: Optional[dict] = None) -> None:
+        """Mark the end of the active turn and persist its rollup."""
+        ...
 
-    def start_invocation(self, purpose: str, model: str, meta: Optional[dict] = None) -> str: ...
+    def start_invocation(self, purpose: str, model: str, meta: Optional[dict] = None) -> str:
+        """Begin a model invocation and return its invocation id."""
+        ...
 
     def end_invocation(
         self,
         invocation_id: str,
         usage: Optional[dict] = None,
         timing: Optional[dict] = None,
-    ) -> None: ...
+    ) -> None:
+        """Finalize an invocation with usage and timing data."""
+        ...
 
-    def record_stage(self, name: str, data: dict) -> None: ...
+    def record_stage(self, name: str, data: dict) -> None:
+        """Record a named pipeline stage for the active turn."""
+        ...
 
 
 class NoopInstrumentation:

@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 def _origin_memory_ids(item: Dict[str, Any]) -> List[str]:
+    """Collect de-duplicated origin/memory ids from an item and its metadata."""
     values: List[str] = []
     for key in ("origin_memory_id", "memory_id"):
         val = item.get(key)
@@ -105,6 +106,8 @@ def _dream_markdown_block(
 
 @dataclass
 class DreamAutoAcceptResult:
+    """Outcome counters and artifacts for a single auto-accept run."""
+
     processed: int = 0
     accepted: int = 0
     failed: int = 0
@@ -122,6 +125,7 @@ def _normalize_resolution(value: Any) -> str:
 
 
 def _valid_research_entries(item: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Return research entries that have both a non-empty topic and summary."""
     out: List[Dict[str, str]] = []
     research_list = item.get("research") if isinstance(item.get("research"), list) else []
     for r in research_list:
@@ -138,6 +142,12 @@ def _valid_research_entries(item: Dict[str, Any]) -> List[Dict[str, str]]:
 def _filter_remote_without_research_with_rows(
     items: List[Dict[str, Any]],
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Split items into kept and dropped, removing answer_remote items lacking research.
+
+    Returns:
+        Tuple of (kept_items, dropped_rows) where dropped_rows describe each
+        answer_remote item discarded for having no valid research entries.
+    """
     kept: List[Dict[str, Any]] = []
     dropped_rows: List[Dict[str, Any]] = []
     for it in items:
@@ -226,6 +236,11 @@ def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
 
 
 def _memory_pairs_for_item(item: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Expand an item into the user/assistant memory pairs to persist.
+
+    answer_remote items yield one pair per valid research entry; other items
+    yield a single pair from origin_text and assistant_response.
+    """
     resolution = _normalize_resolution(item.get("source_resolution"))
     if resolution == "answer_remote":
         pairs = []

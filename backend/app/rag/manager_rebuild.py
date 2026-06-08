@@ -46,6 +46,7 @@ from .manager_index_io import (
 logger = logging.getLogger(__name__)
 
 def is_rate_limit_error_message(err: Exception) -> bool:
+    """Return True when an exception message looks like a provider rate-limit error."""
     msg = str(err or "").lower()
     return ("rate limit" in msg) or ("too many requests" in msg) or ("429" in msg) or ("rate_limit_exceeded" in msg)
 
@@ -89,21 +90,33 @@ def read_file_text(path: str, *, artifact_path: str | None = None) -> List[Tuple
 
 
 def count_tokens(text: str) -> int:
+    """Return the model token count for ``text``."""
     return int(_count_tokens(text))
 
 
 def trim_to_tokens(text: str, max_tokens: int) -> str:
+    """Return ``text`` truncated to at most ``max_tokens`` tokens."""
     return _trim_to_tokens(text, max_tokens)
 
 
 def ltm_docstore_item_id(metadata: dict) -> str:
+    """Build the stable docstore key ``{doc_id}::chunk={chunk_seq}`` for a chunk."""
     did = str((metadata or {}).get("doc_id") or "")
     seq = int((metadata or {}).get("chunk_seq") or 0)
     return f"{did}::chunk={seq}"
 
 
 def rebuild_faiss_index(project_id: str) -> str:
-    """Rebuild FAISS index for a project from uploads directory."""
+    """Rebuild a project's FAISS index from scratch from its uploads directory.
+
+    Clears the existing FAISS directory, parses and chunks every uploaded file,
+    embeds the chunks in parallel batches, then persists the index, docstore,
+    index-to-id map, manifest, and adjacency sidecar. Also backfills per-file
+    token/page counts and embedding status in the database.
+
+    Returns:
+        The absolute path to the project's FAISS directory.
+    """
     settings = get_settings()
     active_embedding_model = get_active_embedding_model()
     memory_root = settings.memory_root

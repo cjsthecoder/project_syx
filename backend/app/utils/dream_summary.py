@@ -18,6 +18,17 @@ logger = logging.getLogger(__name__)
 
 
 def collect_research_topics(items: Iterable[Dict[str, Any]]) -> List[str]:
+    """Collect distinct research topics from accepted dream items.
+
+    Only topics with both a non-empty topic and summary are included, and
+    duplicates are removed case-insensitively while preserving first-seen order.
+
+    Args:
+        items: Accepted dream items, each optionally carrying a "research" list.
+
+    Returns:
+        Ordered list of unique research topic strings.
+    """
     topics: List[str] = []
     seen: set[str] = set()
     for item in items:
@@ -40,6 +51,18 @@ def collect_research_topics(items: Iterable[Dict[str, Any]]) -> List[str]:
 
 
 def format_latest_sleep_summary(project_summary: str, accepted_items: Iterable[Dict[str, Any]]) -> str:
+    """Build the dream summary card text from a project summary and research topics.
+
+    Appends a "[RESEARCH]" block listing collected topics beneath the base
+    summary; returns the research block alone when no base summary is present.
+
+    Args:
+        project_summary: Base project summary text.
+        accepted_items: Accepted dream items used to derive research topics.
+
+    Returns:
+        The combined summary text.
+    """
     base = str(project_summary or "").strip()
     topics = collect_research_topics(accepted_items)
     if not topics:
@@ -55,6 +78,17 @@ def write_latest_sleep_summary(
     project_summary: Optional[str],
     accepted_items: Iterable[Dict[str, Any]],
 ) -> None:
+    """Write the latest dream summary card to ``latest_sleep_summary.txt``.
+
+    No-ops when the project summary is missing or blank. Write failures are
+    logged as warnings and suppressed so summary persistence is best-effort.
+
+    Args:
+        project_id: Project identifier used for log context.
+        base_dir: Directory in which the summary file is written.
+        project_summary: Base project summary text; skipped when empty.
+        accepted_items: Accepted dream items used to derive research topics.
+    """
     if not isinstance(project_summary, str) or not project_summary.strip():
         return
     summary_path = os.path.join(base_dir, "latest_sleep_summary.txt")

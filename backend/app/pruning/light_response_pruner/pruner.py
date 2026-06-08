@@ -39,6 +39,12 @@ logger = logging.getLogger(__name__)
 
 
 class PrunerConfig:
+    """Validated runtime configuration for the pruning pipeline.
+
+    Holds size/threshold limits, the whitespace mode, and per-stage enable
+    flags. All values are validated on construction.
+    """
+
     def __init__(
         self,
         *,
@@ -48,6 +54,12 @@ class PrunerConfig:
         whitespace_mode: WhitespaceMode = "compact_prose",
         response_pruning: Mapping[str, bool] | None = None,
     ) -> None:
+        """Validate and store pruning configuration.
+
+        Raises:
+            PrunerConfigError: If any value has the wrong type or is outside its
+                allowed range, or if ``response_pruning`` has unsupported keys.
+        """
         if not isinstance(max_response_size, int):
             raise PrunerConfigError("max_response_size must be an int")
         if max_response_size <= 0:
@@ -88,6 +100,13 @@ class PrunerConfig:
 
 
 class Pruner:
+    """Orchestrates the light response pruning pipeline.
+
+    Applies markdown stripping, front/end prefix trimming, whitespace
+    compaction, and near-duplicate sentence removal against a set of rules,
+    returning a structured PruneResult.
+    """
+
     def __init__(self, *, rules: PruneRules, config: PrunerConfig | None = None) -> None:
         self.rules = rules
         self.config = config or PrunerConfig()
@@ -102,6 +121,16 @@ class Pruner:
         config: PrunerConfig | None = None,
         strip_comment_keys: bool = False,
     ) -> "Pruner":
+        """Build a Pruner from one or more rule sources.
+
+        Args:
+            rules: A single source or sequence of PruneRules, mappings, or paths.
+            config: Optional runtime configuration; defaults are used if omitted.
+            strip_comment_keys: When True, drop "_comment" keys from file sources.
+
+        Returns:
+            A configured Pruner instance.
+        """
         loaded_rules = load_rules(rules, strip_comment_keys=strip_comment_keys)
         return cls(rules=loaded_rules, config=config)
 
@@ -113,6 +142,16 @@ class Pruner:
         config: PrunerConfig | None = None,
         strip_comment_keys: bool = True,
     ) -> "Pruner":
+        """Build a Pruner from a single rule file (comment keys stripped by default).
+
+        Args:
+            path: Path to a JSON rule file.
+            config: Optional runtime configuration.
+            strip_comment_keys: When True, drop "_comment" keys.
+
+        Returns:
+            A configured Pruner instance.
+        """
         return cls.from_rules(path, config=config, strip_comment_keys=strip_comment_keys)
 
     @classmethod
@@ -123,9 +162,35 @@ class Pruner:
         config: PrunerConfig | None = None,
         strip_comment_keys: bool = True,
     ) -> "Pruner":
+        """Build a Pruner from multiple rule files (comment keys stripped by default).
+
+        Args:
+            paths: Paths to JSON rule files, in priority order.
+            config: Optional runtime configuration.
+            strip_comment_keys: When True, drop "_comment" keys.
+
+        Returns:
+            A configured Pruner instance with merged rules.
+        """
         return cls.from_rules(list(paths), config=config, strip_comment_keys=strip_comment_keys)
 
     def prune(self, text: str) -> PruneResult:
+        """Run the configured pruning stages over ``text``.
+
+        Stages run in order (markdown, front, end, whitespace, similarity) and
+        each is skipped when disabled in the config. A safety guard prevents
+        trimming that would leave the text empty.
+
+        Args:
+            text: The response text to prune.
+
+        Returns:
+            A PruneResult describing the pruned text and what changed.
+
+        Raises:
+            PrunerInputError: If ``text`` is not a string or exceeds the
+                configured ``max_response_size``.
+        """
         if not isinstance(text, str):
             raise PrunerInputError("text must be a string")
 
@@ -300,6 +365,17 @@ def prune_response(
     config: PrunerConfig | None = None,
     strip_comment_keys: bool = False,
 ) -> PruneResult:
+    """Prune ``text`` using ``rules`` in a single convenience call.
+
+    Args:
+        text: The response text to prune.
+        rules: Rule source(s) accepted by ``Pruner.from_rules``.
+        config: Optional runtime configuration.
+        strip_comment_keys: When True, drop "_comment" keys from file sources.
+
+    Returns:
+        A PruneResult describing the pruned text and what changed.
+    """
     pruner = Pruner.from_rules(rules, config=config, strip_comment_keys=strip_comment_keys)
     return pruner.prune(text)
 

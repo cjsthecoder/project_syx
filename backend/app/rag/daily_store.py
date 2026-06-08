@@ -67,12 +67,15 @@ class DailyVectorIndex:
         self._dim: int = int(dim)
 
     def size(self) -> int:
+        """Return the number of vectors held by the index."""
         return int(self.index.ntotal)
 
     def info(self) -> VectorIndexInfo:
+        """Return descriptive metadata about this index (kind, dim, score mode)."""
         return VectorIndexInfo(index_kind="daily", dim=int(self._dim), score_mode="cosine_ip_mapped_01")
 
     def get_by_id(self, item_id: str) -> Optional[VectorEntry]:
+        """Return the stored entry for an item_id, or None if absent/malformed."""
         try:
             entry = self.docstore.get(str(item_id))
             if not isinstance(entry, dict):
@@ -84,6 +87,11 @@ class DailyVectorIndex:
             return None
 
     def add(self, *, item_id: str, vector: List[float], text: str, metadata: Dict[str, Any]) -> None:
+        """Add a single entry, unit-normalizing its vector before insertion.
+
+        Raises:
+            RuntimeError: If the vector dimension does not match the index.
+        """
         mat = _normalize_rows(np.array([vector], dtype="float32"))
         if mat.shape[1] != int(self.index.d):
             raise RuntimeError(f"DailyVectorIndex dim mismatch: got={mat.shape[1]} expected={self.index.d}")
@@ -94,6 +102,11 @@ class DailyVectorIndex:
     def add_many(
         self, *, item_ids: List[str], vectors: List[List[float]], texts: List[str], metadatas: List[dict]
     ) -> None:
+        """Add a batch of entries, unit-normalizing their vectors before insertion.
+
+        Raises:
+            RuntimeError: If the vector dimension does not match the index.
+        """
         if not vectors:
             return
         mat = _normalize_rows(np.array(vectors, dtype="float32"))
@@ -105,6 +118,11 @@ class DailyVectorIndex:
             self.docstore[str(item_id)] = {"text": str(txt or ""), "metadata": dict(md or {})}
 
     def search_by_vector(self, qvec_norm: np.ndarray, *, k: int) -> List[VectorHit]:
+        """Search for the top-k nearest entries to a unit-normalized query vector.
+
+        Returns hits ordered by FAISS, each carrying the raw inner product and a
+        cosine-to-[0,1] mapped score. Returns an empty list for an empty index.
+        """
         if int(self.index.ntotal) <= 0:
             return []
         q = np.array([qvec_norm], dtype="float32")
@@ -168,6 +186,11 @@ def _semantic_handle(tags_meta: Optional[Dict[str, Any]]) -> Optional[str]:
 
 
 def _render_markdown_entry(entry: Dict[str, Any], *, user_text: str, assistant_text: str) -> str:
+    """Assemble the canonical Syx metadata and render a daily.md entry block.
+
+    Derives scope/source defaults from ``entry_type`` and only emits optional
+    tag/dream fields when present, then delegates to ``render_memory_entry``.
+    """
     tags_meta = _entry_tags_meta(entry)
     entry_type = str(entry.get("entry_type", "chat_pair") or "chat_pair")
     metadata: Dict[str, Any] = {
@@ -207,6 +230,11 @@ def _render_markdown_entry(entry: Dict[str, Any], *, user_text: str, assistant_t
     )
 
 def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
+    """Resolve the (daily.json, daily.lock, daily.md) paths for a project.
+
+    Creates the project and state directories and migrates a legacy top-level
+    ``daily.lock`` into the ``state/`` directory when present.
+    """
     base_dir = os.path.join(get_settings().memory_root, project_id)
     os.makedirs(base_dir, exist_ok=True)
     meta_path = os.path.join(base_dir, "daily.json")
@@ -316,6 +344,11 @@ _WARMING: Set[str] = set()
 
 
 def _get_project_lock(project_id: str) -> threading.RLock:
+    """Return the per-project re-entrant lock, creating it on first use.
+
+    Re-entrant so that ``ensure_daily_cache`` can call ``rebuild_daily_cache``
+    while already holding the lock.
+    """
     with _CACHE_LOCK:
         lock = _PROJECT_LOCKS.get(project_id)
         if lock is None:
@@ -378,6 +411,7 @@ def _save_metadata(meta_path: str, entries: List[Dict[str, Any]]) -> None:
 
 
 def reset_daily(project_id: str) -> None:
+    """Delete a project's daily.json and clear its in-memory cache."""
     meta_path, lock_path, _txt_path = _project_daily_paths(project_id)
     with FileLock(lock_path):
         for p in (meta_path,):
@@ -826,6 +860,7 @@ def append_pair_text_only(
 
 
 def daily_stats(project_id: str) -> Dict[str, int]:
+    """Return daily index size, indexed token count, and vector count for a project."""
     meta_path, lock_path, _txt_path = _project_daily_paths(project_id)
     with FileLock(lock_path):
         entries = _load_metadata(meta_path)

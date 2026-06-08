@@ -19,6 +19,17 @@ _INTERNAL_SPACES_RE = re.compile(r"[ \t]+")
 
 
 def compact_whitespace(text: str) -> str:
+    """Collapse redundant spaces and blank prose lines outside code blocks.
+
+    Trims trailing spaces, collapses internal space/tab runs, and reduces
+    consecutive blank lines to one; fenced code blocks are emitted verbatim.
+
+    Args:
+        text: Text to compact.
+
+    Returns:
+        The compacted text, stripped of leading/trailing whitespace.
+    """
     if not text or text.strip() == "":
         return ""
 

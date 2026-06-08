@@ -59,6 +59,15 @@ def _nl(s: str) -> str:
 
 
 def _sleep_cycle_worker():
+    """Run the full sleep cycle for all projects under the global sleep lock.
+
+    Orchestrates the end-to-end pipeline: flush active chat pairs into indexed
+    daily memory, backfill daily markdown, consolidate open questions, build the
+    deterministic sleep summary, run the Dream cycle and optional auto-accept,
+    then merge per-cycle artifacts and rebuild the FAISS index. Per-project
+    failures are logged and downgrade overall status to ``partial`` rather than
+    aborting the run; the sleep lock is always released on exit.
+    """
     start_iso = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime())
     job_id = f"sleep_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
     status = "success"
@@ -611,6 +620,7 @@ async def sleep_cycle_endpoint(request: SleepCycleRequest) -> SleepCycleResponse
 
 @router.get("/sleep/status")
 async def sleep_status() -> JSONResponse:
+    """Report whether a sleep cycle is active, its start time, and the lock path."""
     try:
         return JSONResponse(status_code=200, content={
             "sleeping": bool(is_sleeping()),

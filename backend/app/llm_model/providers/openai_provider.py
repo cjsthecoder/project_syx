@@ -181,7 +181,21 @@ def _responses_output_text(resp: Any) -> str:
 
 
 class OpenAILLMProvider:
+    """LLM client backed by the OpenAI Chat Completions and Responses APIs.
+
+    Implements both the ``LLMChatClient`` and ``LLMResponsesClient`` contracts,
+    normalizing OpenAI SDK envelopes into the project's ``LLMResponse``/``LLMUsage``
+    types and tolerating SDK-version differences in usage/output shapes.
+    """
+
     def __init__(self, *, api_key: str, default_model: str, timeout_s: float) -> None:
+        """Construct the provider and initialize the OpenAI SDK client.
+
+        Args:
+            api_key: OpenAI API key used to authenticate requests.
+            default_model: Model used when a request does not specify one.
+            timeout_s: Per-request timeout in seconds.
+        """
         self._timeout_s = float(timeout_s)
         self._client = OpenAI(api_key=api_key, timeout=self._timeout_s)
         self._default_model = str(default_model)
@@ -194,6 +208,20 @@ class OpenAILLMProvider:
         temperature: Optional[float] = None,
         max_completion_tokens: Optional[int] = None,
     ) -> LLMResponse:
+        """Generate a chat completion via the OpenAI Chat Completions API.
+
+        Issues a network request. If the model rejects ``temperature``, the call
+        is retried once without it.
+
+        Args:
+            messages: Chat messages in OpenAI ``{role, content}`` form.
+            model: Optional model override; defaults to the provider's default.
+            temperature: Optional sampling temperature.
+            max_completion_tokens: Optional cap on generated tokens.
+
+        Returns:
+            An ``LLMResponse`` with the completion text, model, and usage.
+        """
         kwargs: Dict[str, Any] = {
             "model": str(model or self._default_model),
             "messages": messages,
@@ -239,6 +267,22 @@ class OpenAILLMProvider:
         temperature: Optional[float] = None,
         max_completion_tokens: Optional[int] = None,
     ) -> Iterable[Tuple[str, Optional[LLMUsage]]]:
+        """Stream a chat completion as ``(text_delta, usage)`` tuples.
+
+        Issues a streaming network request with usage included. Yields text
+        chunks with ``None`` usage as they arrive, plus a final tuple carrying
+        the usage payload with an empty text chunk. Retries once without
+        ``temperature`` if the model rejects it.
+
+        Args:
+            messages: Chat messages in OpenAI ``{role, content}`` form.
+            model: Optional model override; defaults to the provider's default.
+            temperature: Optional sampling temperature.
+            max_completion_tokens: Optional cap on generated tokens.
+
+        Yields:
+            Tuples of a text delta and optional usage payload.
+        """
         kwargs: Dict[str, Any] = {
             "model": str(model or self._default_model),
             "messages": messages,
@@ -289,6 +333,26 @@ class OpenAILLMProvider:
         tools: Optional[List[Dict[str, Any]]] = None,
         temperature: Optional[float] = None,
     ) -> LLMResponse:
+        """Generate a response via the OpenAI Responses API.
+
+        Issues a network request built from the system/user prompts. Includes
+        SDK-compatibility fallbacks: it retries with a flattened string ``input``
+        if the structured input is rejected, and drops the JSON-object
+        ``text.format`` directive if that contract is rejected.
+
+        Args:
+            model: Optional model override; defaults to the provider's default.
+            system_prompt: Optional system instructions.
+            user_prompt: User prompt text.
+            max_output_tokens: Optional cap on generated tokens.
+            reasoning_effort: Optional reasoning effort hint (e.g., "low").
+            require_json_object: When True, request a strict JSON-object response.
+            tools: Optional tool definitions to expose to the model.
+            temperature: Optional sampling temperature.
+
+        Returns:
+            An ``LLMResponse`` with the output text, model, and usage.
+        """
         msg_input: List[Dict[str, str]] = []
         if system_prompt:
             msg_input.append({"role": "system", "content": str(system_prompt)})

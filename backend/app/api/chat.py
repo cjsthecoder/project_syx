@@ -43,6 +43,7 @@ _TURN_SEQ = 0
 _TURN_SEQ_LOCK = threading.Lock()
 
 def _next_turn_id() -> int:
+    """Return the next monotonic turn id, incrementing a shared counter under a lock."""
     global _TURN_SEQ
     with _TURN_SEQ_LOCK:
         _TURN_SEQ += 1

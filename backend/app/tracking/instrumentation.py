@@ -379,6 +379,18 @@ class RealInstrumentation:
         self._append_jsonl("benchmark_results.jsonl", record)
 
     def start_run(self, config: Optional[dict] = None) -> str:
+        """Create the run directory and write the immutable startup snapshot.
+
+        Idempotent: a second call is logged and ignored, returning the existing
+        run id.
+
+        Args:
+            config: Optional config payload; a nested ``config_snapshot`` is
+                used when present, otherwise the dict itself is snapshotted.
+
+        Returns:
+            The new run id, or an empty string if setup failed.
+        """
         with self._lock:
             try:
                 if self.run_id and self.run_dir:
@@ -443,6 +455,14 @@ class RealInstrumentation:
                 return ""
 
     def end_run(self, summary: Optional[dict] = None) -> None:
+        """Finalize the run, recording end time, observed models, and summary.
+
+        Idempotent and safe to call before ``start_run``: both cases are logged
+        and ignored.
+
+        Args:
+            summary: Optional run-level summary persisted into ``run.json``.
+        """
         with self._lock:
             try:
                 if not self.run_id:
@@ -465,6 +485,16 @@ class RealInstrumentation:
                 logger.warning("tracking.end_run failed; operation=end_run run_id=%s detail=%s", self._run_id, e, exc_info=True)
 
     def start_turn(self, turn_id: int, user_meta: Optional[dict] = None) -> None:
+        """Open a turn, initializing its rollup state and active-turn context.
+
+        Duplicate or non-monotonic turn ids are logged and skipped to keep the
+        turn stream ordered.
+
+        Args:
+            turn_id: Monotonically increasing turn identifier.
+            user_meta: Optional turn metadata (e.g. ``project_id``) recorded and
+                used to observe the project for the run.
+        """
         with self._lock:
             try:
                 if not self.run_id or self._ended:
@@ -505,6 +535,18 @@ class RealInstrumentation:
                 logger.warning("tracking.start_turn failed; operation=start_turn turn_id=%s detail=%s", turn_id, e, exc_info=True)
 
     def end_turn(self, output_meta: Optional[dict] = None) -> None:
+        """Validate turn invariants and persist the turn rollup record.
+
+        Enforces a strict set of consistency checks (token decomposition,
+        prompt-sum, retrieval counters, RAG skip-reason, latency presence). When
+        any invariant fails, the turn write is skipped with a warning rather
+        than emitting a malformed record. On success it also emits a benchmark
+        result and clears the active-turn context.
+
+        Args:
+            output_meta: Optional per-turn outputs (route, RAG counters,
+                response/finish metadata) merged with accumulated turn state.
+        """
         with self._lock:
             try:
                 if not self.run_id or self._ended:
@@ -696,6 +738,20 @@ class RealInstrumentation:
                 logger.warning("tracking.end_turn failed; operation=end_turn turn_id=%s detail=%s", turn_id, e, exc_info=True)
 
     def start_invocation(self, purpose: str, model: str, meta: Optional[dict] = None) -> str:
+        """Open a model invocation under the active turn.
+
+        Records schema errors for missing/invalid fields without raising, and
+        binds the invocation to the active turn.
+
+        Args:
+            purpose: Invocation purpose (e.g. ``main`` or a mini purpose);
+                defaults to ``other`` when empty.
+            model: Model identifier; may be backfilled at ``end_invocation``.
+            meta: Optional invocation metadata (e.g. ``streaming``).
+
+        Returns:
+            A run-unique invocation id, or an empty string when inactive.
+        """
         with self._lock:
             try:
                 if not self.run_id or self._ended:
@@ -750,6 +806,18 @@ class RealInstrumentation:
         usage: Optional[dict] = None,
         timing: Optional[dict] = None,
     ) -> None:
+        """Close an invocation and fold its usage/timing into the turn rollup.
+
+        Normalizes usage source and estimate flags, derives latency (TTLT and,
+        for streaming, TTFB), and accumulates token totals into the owning
+        turn's state. ``main`` and mini invocations roll up separately.
+
+        Args:
+            invocation_id: Id returned by :meth:`start_invocation`.
+            usage: Optional reported token usage and source metadata.
+            timing: Optional latency timing (``ttlt_ms``, ``ttfb_ms``,
+                ``first_token_ts``).
+        """
         with self._lock:
             try:
                 if not self.run_id or self._ended:
@@ -982,6 +1050,18 @@ class RealInstrumentation:
                 )
 
     def record_stage(self, name: str, data: dict) -> None:
+        """Record a pipeline stage event and update derived turn rollups.
+
+        Only the ``prompt_assembly`` and ``retrieval_selection_expansion``
+        stages are accepted; others are dropped with a warning. Normalizes
+        deprecated retrieval count keys at this instrumentation boundary while
+        leaving RAG internals unchanged.
+
+        Args:
+            name: Stage name.
+            data: Stage payload; reserved keys (``run_id``, ``turn_id``, ``ts``,
+                ``event``) are stripped.
+        """
         with self._lock:
             try:
                 if not self.run_id or self._ended:
@@ -1070,6 +1150,7 @@ _INIT_LOCK = threading.RLock()
 
 
 def get_instrumentation() -> Instrumentation:
+    """Return the process-wide instrumentation singleton."""
     return _INSTRUMENTATION
 
 

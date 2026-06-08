@@ -301,20 +301,25 @@ def tag_pair(
     *,
     project_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """
-    Generate tag metadata (#topics, #intent, #type, #semantic_handle, #questions)
-    using the builder model.
+    """Generate retrieval metadata for a chat turn via the tagger LLM.
 
-    Return value:
-    - None on failure
-    - On success:
-      {
-        "topics": str,
-        "intent": str,
-        "type": str,
-        "semantic_handle": str,
-        "questions": [{"question": str, "topic": str, "resolution": str}, ...],
-      }
+    Calls the mini/tagger model to extract topics, intent, type, a semantic
+    handle, and high-value open questions for the CURRENT turn, using the
+    previous turn only as interpretive context. Performs network I/O and,
+    when ``GENERATE_DEBUG_FILES`` is enabled, writes best-effort debug dumps.
+    Instrumentation is recorded for both success and failure paths.
+
+    Args:
+        user_text: The current turn's user message.
+        assistant_text: The current turn's assistant response.
+        previous_pair_text: Optional stored text of the prior turn for context.
+        project_id: Optional project identifier for instrumentation and debug dumps.
+
+    Returns:
+        On success, a dict with keys ``topics``, ``intent``, ``type``,
+        ``semantic_handle`` (all ``str``) and ``questions`` (a list of
+        ``{"question", "topic", "resolution"}`` dicts). Returns ``None`` if
+        tagging fails or the model returns non-JSON output.
     """
     try:
         settings = get_settings()

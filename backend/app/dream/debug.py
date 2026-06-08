@@ -19,6 +19,14 @@ from ..utils.tokens import count_tokens
 
 
 def safe_dream_purpose(value: Optional[str]) -> str:
+    """Sanitize a dream purpose label into a filesystem-safe token.
+
+    Args:
+        value: Raw purpose label; ``None`` or empty falls back to ``"dream"``.
+
+    Returns:
+        A token containing only ``[A-Za-z0-9_.-]``, never empty.
+    """
     purpose = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or "dream").strip())
     return purpose.strip("_") or "dream"
 
@@ -31,6 +39,17 @@ def write_dream_prompt_to_execute(
     model: str,
     max_output_tokens: int,
 ) -> None:
+    """Write the about-to-execute Dream prompt to a per-cycle debug artifact.
+
+    No-op when ``project_id`` is falsy.
+
+    Args:
+        project_id: Project whose debug folder receives the artifact.
+        prompt: The user prompt that will be sent to the LLM.
+        purpose: Dream purpose label used in the artifact filename.
+        model: Target model identifier.
+        max_output_tokens: Requested output token cap, recorded in the header.
+    """
     if not project_id:
         return
     ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
@@ -62,6 +81,18 @@ def write_dream_response_usage_debug(
     max_output_tokens: int,
     usage: object,
 ) -> None:
+    """Write the Dream LLM response plus token-usage stats to a debug artifact.
+
+    No-op when ``project_id`` is falsy.
+
+    Args:
+        project_id: Project whose debug folder receives the artifact.
+        response_text: Raw model response text.
+        purpose: Dream purpose label used in the artifact filename.
+        model: Target model identifier.
+        max_output_tokens: Requested output token cap, recorded in the header.
+        usage: Usage object whose reported/estimated token attributes are recorded.
+    """
     if not project_id:
         return
     ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")

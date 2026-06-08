@@ -24,6 +24,19 @@ _EMBEDDING_CLIENT: Optional[object] = None
 
 
 def get_embedding_client() -> object:
+    """Return the process-wide embedding client, creating it on first use.
+
+    Selects the provider from ``EMBEDDING_PROVIDER`` (``openai`` or
+    ``sentence_transformers``) and caches the resulting instance for reuse.
+    Construction may load a local model or initialize a network-backed client.
+
+    Returns:
+        The cached embedding client implementing the ``EmbeddingClient`` protocol.
+
+    Raises:
+        RuntimeError: If the OpenAI provider is selected without ``OPENAI_API_KEY``,
+            or if the configured provider name is unsupported.
+    """
     global _EMBEDDING_CLIENT
     if _EMBEDDING_CLIENT is not None:
         return _EMBEDDING_CLIENT
@@ -67,5 +80,9 @@ def get_embedding_client() -> object:
 
 
 def reset_embedding_client() -> None:
+    """Clear the cached embedding client so the next call rebuilds it.
+
+    Useful after configuration changes (e.g., provider or model) and in tests.
+    """
     global _EMBEDDING_CLIENT
     _EMBEDDING_CLIENT = None

@@ -44,6 +44,11 @@ def _normalize_text_key(text: str) -> str:
 
 
 def _question_key_equivalent(a: str, b: str) -> bool:
+    """Return True if two question strings are equivalent under fuzzy containment.
+
+    Treats normalized strings as equivalent when they match exactly or when one
+    sufficiently long phrasing contains the other.
+    """
     ak = _normalize_text_key(a)
     bk = _normalize_text_key(b)
     if not ak or not bk:
@@ -88,6 +93,7 @@ def _write_dreaming_debug_txt(
 
 
 def _build_research_plan_rows(idea_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Flatten idea items into one debug row per recommended research topic."""
     rows: List[Dict[str, Any]] = []
     items = idea_data.get("items") if isinstance(idea_data, dict) else []
     if not isinstance(items, list):
@@ -114,6 +120,7 @@ def _build_research_plan_rows(idea_data: Dict[str, Any]) -> List[Dict[str, Any]]
 
 
 def _extract_question_resolution_rows(questions_data: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Extract (question, resolution) rows, keeping only recognized resolutions."""
     rows: List[Dict[str, str]] = []
     question_rows = questions_data.get("questions") if isinstance(questions_data, dict) else []
     if not isinstance(question_rows, list):
@@ -210,6 +217,12 @@ def _filter_idea_items_to_known_questions(
 
 
 def _build_synthetic_open_question_item(question_obj: Dict[str, Any], idx: int) -> Dict[str, Any]:
+    """Build an idea/research-compatible item from a remote-research question.
+
+    Args:
+        question_obj: Source question row carrying question/topic/answer fields.
+        idx: One-based index used to make the synthetic item id unique.
+    """
     q_text = str(question_obj.get("question", "") or "").strip()
     topic = str(question_obj.get("topic", "") or "").strip()
     answer = str(question_obj.get("answer", "") or "").strip()

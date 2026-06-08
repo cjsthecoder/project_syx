@@ -1,0 +1,23 @@
+{
+  "venvPath": ".",
+  "venv": "venv",
+  "pythonVersion": "3.13",
+  "include": [
+    "backend/app",
+    "tests",
+    "tools"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules",
+    "frontend",
+    "venv",
+    "backend/alembic/versions"
+  ],
+  "extraPaths": [
+    "backend"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning",
+  "reportMissingModuleSource": "none"
+}

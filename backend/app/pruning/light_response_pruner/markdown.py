@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Markdown markup stripping for the light response pruner.
 
@@ -25,9 +26,7 @@ _LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 _INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 _STRONG_RE = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1")
 _EMPHASIS_RE = re.compile(r"(?<!\*)\*(?!\*)(?=\S)(.+?)(?<=\S)(?<!\*)\*(?!\*)")
-_UNDERSCORE_EMPHASIS_RE = re.compile(
-    r"(?<![\w_])_(?!_)(?=\S)(.+?)(?<=\S)(?<!_)_(?![\w_])"
-)
+_UNDERSCORE_EMPHASIS_RE = re.compile(r"(?<![\w_])_(?!_)(?=\S)(.+?)(?<=\S)(?<!_)_(?![\w_])")
 _STRIKETHROUGH_RE = re.compile(r"~~(?=\S)(.+?)(?<=\S)~~")
 _REQUIREMENT_NUMBERED_LINE_RE = re.compile(
     r"^\s*\d+[.)]\s*(?:"

@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Shared helpers for persisting dream items as Dream memory.
 
@@ -126,7 +127,9 @@ def dream_memory_pairs_for_item(item: Dict[str, Any]) -> List[Dict[str, Any]]:
         {
             "item": item,
             "user_text": str(item.get("origin_text") or "").strip(),
-            "assistant_text": (str(item.get("assistant_response") or "").strip() or "(no summary)").strip(),
+            "assistant_text": (
+                str(item.get("assistant_response") or "").strip() or "(no summary)"
+            ).strip(),
         }
     ]
 
@@ -213,7 +216,9 @@ def format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
         semantic_handle = tags_meta.get("semantic_handle", None)
         lines = [f"#topics: {topics}", f"#intent: {intent}", f"#type: {tag_type}"]
         if semantic_handle is not None:
-            lines.append(f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}")
+            lines.append(
+                f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}"
+            )
         return "\n".join(lines) + "\n"
     except Exception as exc:
         logger.warning("dream: failed formatting tags block detail=%s", exc)

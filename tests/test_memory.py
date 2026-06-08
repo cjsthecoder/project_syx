@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for app.core.memory.MemoryManager.
 
@@ -15,11 +16,10 @@ disabled so no embedding/network calls occur.
 import json
 from collections import deque
 
-from sqlmodel import Session, select
-
 from app.core import memory as memory_module
 from app.core.db_models import ChatMessage, Project
 from app.core.memory import MemoryManager
+from sqlmodel import Session, select
 
 
 def _seed_project(engine, project_id, *, daily_rag_enabled=False):
@@ -131,9 +131,11 @@ def test_get_memory_stats_shape(fresh_memory_manager):
 # breaking these large methods into helpers.
 # ---------------------------------------------------------------------------
 
+
 def _tagger_returning(meta):
     def _fake_tag_pair(user_text, assistant_text, *, previous_pair_text=None, project_id=None):
         return dict(meta)
+
     return _fake_tag_pair
 
 
@@ -147,7 +149,13 @@ def test_append_assistant_message_tagging_persists_metadata(
         memory_module,
         "tag_pair",
         _tagger_returning(
-            {"topics": "alpha", "intent": "learn", "type": "fact", "semantic_handle": "h1", "questions": []}
+            {
+                "topics": "alpha",
+                "intent": "learn",
+                "type": "fact",
+                "semantic_handle": "h1",
+                "questions": [],
+            }
         ),
     )
     # Force a non-identity prune so the pruned-text path is exercised and stored.
@@ -159,7 +167,9 @@ def test_append_assistant_message_tagging_persists_metadata(
 
     with Session(db) as s:
         row = s.exec(
-            select(ChatMessage).where(ChatMessage.project_id == "pT", ChatMessage.role == "assistant")
+            select(ChatMessage).where(
+                ChatMessage.project_id == "pT", ChatMessage.role == "assistant"
+            )
         ).first()
         assert row.semantic_handle == "h1"
         meta = json.loads(row.tags_meta_json)
@@ -181,10 +191,18 @@ def test_rolloff_appends_pair_to_daily_when_enabled(
         memory_module,
         "tag_pair",
         _tagger_returning(
-            {"topics": "alpha", "intent": "learn", "type": "fact", "semantic_handle": "h", "questions": []}
+            {
+                "topics": "alpha",
+                "intent": "learn",
+                "type": "fact",
+                "semantic_handle": "h",
+                "questions": [],
+            }
         ),
     )
-    monkeypatch.setattr(memory_module, "_prune_assistant_for_tagger", lambda **kw: kw["assistant_text"])
+    monkeypatch.setattr(
+        memory_module, "_prune_assistant_for_tagger", lambda **kw: kw["assistant_text"]
+    )
 
     calls = []
     monkeypatch.setattr(
@@ -217,7 +235,9 @@ def test_rolloff_skips_daily_append_when_forget(
     settings_override(chat_history_limit_pairs=1, chat_history_limit=10)
     _seed_project(db, "pF", daily_rag_enabled=True)
 
-    monkeypatch.setattr(memory_module, "_prune_assistant_for_tagger", lambda **kw: kw["assistant_text"])
+    monkeypatch.setattr(
+        memory_module, "_prune_assistant_for_tagger", lambda **kw: kw["assistant_text"]
+    )
     calls = []
     monkeypatch.setattr(
         memory_module,

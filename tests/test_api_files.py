@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Contract tests for the files API router.
 
@@ -13,10 +14,9 @@ rebuild is patched to a no-op so uploads never reach embeddings/network.
 """
 
 import pytest
+from app.api import files as files_module
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from app.api import files as files_module
 
 
 @pytest.fixture
@@ -42,7 +42,9 @@ def test_upload_text_file_succeeds(client):
 
 
 def test_upload_rejects_unsupported_extension(client):
-    resp = client.post("/projects/p1/files", files=[("files", ("doc.pdf", b"x", "application/pdf"))])
+    resp = client.post(
+        "/projects/p1/files", files=[("files", ("doc.pdf", b"x", "application/pdf"))]
+    )
     assert resp.status_code == 400
     assert "Unsupported file type" in str(resp.json())
 

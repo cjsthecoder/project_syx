@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """Retrieval adapter for the A.4 agent memory search endpoint."""
 
 import json
@@ -101,7 +102,9 @@ def retrieve_agent_memory(
     """
     settings = get_settings()
     policy = get_route_policy(category or "OTHER")
-    per_source_k = compute_per_source_k(int(settings.base_top_k), float(policy.retrieval_multiplier))
+    per_source_k = compute_per_source_k(
+        int(settings.base_top_k), float(policy.retrieval_multiplier)
+    )
     max_keep = int(policy.max_keep)
     parser_warnings: List[str] = []
 
@@ -265,7 +268,11 @@ def _entry_expansion_summary(response_payload: Dict[str, Any]) -> Dict[str, Any]
     snippets = response_payload.get("snippets")
     if not isinstance(snippets, list):
         snippets = []
-    bounded = [snip for snip in snippets if isinstance(snip, dict) and snip.get("result_mode") == "bounded_entry"]
+    bounded = [
+        snip
+        for snip in snippets
+        if isinstance(snip, dict) and snip.get("result_mode") == "bounded_entry"
+    ]
     statuses: Dict[str, int] = {}
     methods: Dict[str, int] = {}
     memory_ids: List[str] = []

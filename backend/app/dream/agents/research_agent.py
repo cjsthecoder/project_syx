@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Research Agent for the Syx Dream cycle.
 
@@ -16,12 +17,17 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.utils.debug_utils import write_debug_file
+
 from ...core.config import get_settings
 from ...core.llm_service import generate_text_response
-from app.utils.debug_utils import write_debug_file
-from ..debug import safe_dream_purpose, write_dream_prompt_to_execute, write_dream_response_usage_debug
-from ..research import count_tokens
+from ..debug import (
+    safe_dream_purpose,
+    write_dream_prompt_to_execute,
+    write_dream_response_usage_debug,
+)
 from ..rag import retrieve_dream_context
+from ..research import count_tokens
 from .prompts.research_prompts import build_research_prompt
 
 logger = logging.getLogger(__name__)
@@ -257,7 +263,9 @@ def run_research_agent(
         debug_payload = json.dumps(result, ensure_ascii=False, indent=2)
         write_debug_file(project_id, "debug_research.txt", debug_payload)
     except Exception as de:
-        logger.warning("Research Agent failed to write debug_research.txt project=%s: %s", project_id, de)
+        logger.warning(
+            "Research Agent failed to write debug_research.txt project=%s: %s", project_id, de
+        )
     try:
         if debug_ts:
             prompts_body = (
@@ -269,7 +277,11 @@ def run_research_agent(
             )
             write_debug_file(project_id, f"dreaming/{debug_ts}_research_prompts.txt", prompts_body)
     except Exception as de:
-        logger.warning("Research Agent failed to write dreaming research prompts project=%s: %s", project_id, de)
+        logger.warning(
+            "Research Agent failed to write dreaming research prompts project=%s: %s",
+            project_id,
+            de,
+        )
 
     logger.info(
         "[DREAM][RESEARCH] Completed project=%s items=%s topics=%s skipped_non_remote=%s",

@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Shared vector index protocol and plain-data types.
 
@@ -117,4 +118,3 @@ class VectorIndex(Protocol):
             A ``VectorIndexInfo`` describing the index kind, dimensionality, and
             scoring mode.
         """
-

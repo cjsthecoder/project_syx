@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Remote research helpers for the Dream cycle.
 
@@ -14,7 +15,8 @@ import logging
 
 from ..core.config import get_settings
 from ..core.llm_service import generate_text_response
-from ..utils.tokens import count_tokens as _count_tokens, trim_to_tokens as _trim_to_tokens
+from ..utils.tokens import count_tokens as _count_tokens
+from ..utils.tokens import trim_to_tokens as _trim_to_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,3 @@ def fetch_remote_research(query: str) -> str:
     except Exception as e:
         logger.warning("[DREAM][WARN] Remote research failed: %s", e)
         return ""
-
-
-

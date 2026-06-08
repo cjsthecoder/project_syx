@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Prompt construction and debugging helpers for the Syx chat API.
 
@@ -113,7 +114,7 @@ def dump_prompt_debug(
     if conversation_history:
         for m in conversation_history:
             role = (m.get("role") or "").lower()
-            content = (m.get("content") or "")
+            content = m.get("content") or ""
             if role == "user":
                 hist_lines.append("USER:")
                 hist_lines.append(content)

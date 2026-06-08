@@ -5,6 +5,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Import ChatGPT HTML exports into Syx daily-memory text format.
 
@@ -31,14 +32,11 @@ Behavior:
 import argparse
 import json
 import logging
-import os
 import re
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
-
 
 logger = logging.getLogger("import_chat_html_to_daily")
 
@@ -62,6 +60,7 @@ def _ensure_import_paths() -> None:
 
 def _repo_root_from_this_file() -> Path:
     return Path(__file__).resolve().parent.parent
+
 
 def _require_dependencies() -> tuple[Any, Any]:
     try:
@@ -268,7 +267,9 @@ def _validate_input_file(path: Path) -> None:
     if not path.is_file():
         raise ValueError(f"Input path is not a file: {path}")
     if not _is_html_file(path):
-        raise ValueError(f"Unsupported input extension '{path.suffix.lower()}'. Expected .html/.htm")
+        raise ValueError(
+            f"Unsupported input extension '{path.suffix.lower()}'. Expected .html/.htm"
+        )
 
 
 def _process_one_file(
@@ -388,7 +389,9 @@ def _write_concatenated_output(out_dir: Path, output_files: list[Path]) -> Path:
         try:
             parts.append(p.read_text(encoding="utf-8"))
         except Exception as exc:
-            raise RuntimeError(f"Failed reading generated output '{p}' for concatenation: {exc}") from exc
+            raise RuntimeError(
+                f"Failed reading generated output '{p}' for concatenation: {exc}"
+            ) from exc
     combined = "\n".join(part.rstrip() for part in parts) + "\n"
     try:
         concat_path.write_text(combined, encoding="utf-8", newline="\n")
@@ -485,4 +488,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

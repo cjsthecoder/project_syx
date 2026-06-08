@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Syx markdown memory artifact helpers.
 
@@ -11,11 +12,11 @@ This module owns source-neutral memory IDs, Syx boundary parsing, and the
 minimal markdown rendering needed by Daily/Sleep/Dream artifacts.
 """
 
-from dataclasses import dataclass
 import hashlib
 import logging
 import re
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -228,11 +229,14 @@ def ensure_artifact_header(
     normalized = LEGACY_MEMORY_WRAPPER_RE.sub("", normalized).lstrip()
     if normalized.startswith("---\n") and "format_version:" in normalized.split("---", 2)[1]:
         return normalized
-    return render_artifact_header(
-        artifact_type=artifact_type,
-        project_id=project_id,
-        memory_date=memory_date,
-    ) + normalized
+    return (
+        render_artifact_header(
+            artifact_type=artifact_type,
+            project_id=project_id,
+            memory_date=memory_date,
+        )
+        + normalized
+    )
 
 
 def normalize_legacy_artifact_wrappers(
@@ -259,7 +263,11 @@ def normalize_legacy_artifact_wrappers(
     """
     normalized = normalize_lf(text)
     match = LEGACY_MEMORY_WRAPPER_RE.search(normalized)
-    resolved_date = memory_date or (slash_date_to_memory_date(match.group("date")) if match else memory_date_from_local_timestamp())
+    resolved_date = memory_date or (
+        slash_date_to_memory_date(match.group("date"))
+        if match
+        else memory_date_from_local_timestamp()
+    )
     return ensure_artifact_header(
         normalized,
         artifact_type=artifact_type,
@@ -604,7 +612,10 @@ def parse_yaml_metadata_with_warnings(entry_text: str) -> Tuple[Dict[str, Any], 
             else:
                 out[key] = []
                 current_list_key = key
-        return out, [*warnings, f"invalid Syx metadata fence after line {idx + 1}: missing closing fence"]
+        return out, [
+            *warnings,
+            f"invalid Syx metadata fence after line {idx + 1}: missing closing fence",
+        ]
     return {}, []
 
 
@@ -658,8 +669,8 @@ def ensure_entry_headings(text: str) -> str:
     pieces: List[str] = []
     cursor = 0
     for entry in parsed.entries:
-        pieces.append(normalized[cursor:entry.start_offset])
-        block = normalized[entry.start_offset:entry.end_offset]
+        pieces.append(normalized[cursor : entry.start_offset])
+        block = normalized[entry.start_offset : entry.end_offset]
         block_lines = block.splitlines(keepends=True)
         if len(block_lines) > 1:
             probe = "".join(block_lines[1:5])
@@ -727,12 +738,16 @@ def parse_syx_entries(text: str, *, artifact_path: Optional[str] = None) -> SyxP
             if end:
                 end_offset = offset + len(lines[idx])
                 if end.group(1) != memory_id:
-                    structural_warnings.append(f"mismatched end marker for memory_id={memory_id} at line {idx + 1}")
+                    structural_warnings.append(
+                        f"mismatched end marker for memory_id={memory_id} at line {idx + 1}"
+                    )
                     found = True
                     break
                 body_text = normalized[body_start_offset:offset]
                 if memory_id in seen:
-                    structural_warnings.append(f"duplicate memory_id={memory_id} at line {start_idx + 1}")
+                    structural_warnings.append(
+                        f"duplicate memory_id={memory_id} at line {start_idx + 1}"
+                    )
                     occupied.append((start_offset, end_offset))
                     found = True
                     break
@@ -761,7 +776,9 @@ def parse_syx_entries(text: str, *, artifact_path: Optional[str] = None) -> SyxP
             offset += len(lines[idx])
             idx += 1
         if not found:
-            structural_warnings.append(f"begin without end for memory_id={memory_id} at line {start_idx + 1}")
+            structural_warnings.append(
+                f"begin without end for memory_id={memory_id} at line {start_idx + 1}"
+            )
             continue
         if idx < len(lines):
             offset += len(lines[idx])
@@ -808,8 +825,8 @@ def replace_current_scope_for_ltm(text: str) -> str:
     pieces: List[str] = []
     cursor = 0
     for entry in result.entries:
-        pieces.append(normalized[cursor:entry.start_offset])
-        block = normalized[entry.start_offset:entry.end_offset]
+        pieces.append(normalized[cursor : entry.start_offset])
+        block = normalized[entry.start_offset : entry.end_offset]
         block = re.sub(r"(?m)^current_scope:\s*\S+\s*$", "current_scope: ltm", block)
         pieces.append(block)
         cursor = entry.end_offset

@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Route policy loader and validator.
 
@@ -133,7 +134,9 @@ def load_and_validate_route_policy() -> Dict[str, RoutePolicy]:
         if not isinstance(node, dict):
             raise ValueError(f"route_policy missing/invalid route block: {r}")
         if "retrieval_multiplier" not in node or "max_keep" not in node or "min_score" not in node:
-            raise ValueError(f"route_policy route {r} missing retrieval_multiplier/max_keep/min_score")
+            raise ValueError(
+                f"route_policy route {r} missing retrieval_multiplier/max_keep/min_score"
+            )
         if "expansion" not in node or not isinstance(node.get("expansion"), dict):
             raise ValueError(f"route_policy route {r} missing/invalid expansion block")
         rm = _coerce_float(node.get("retrieval_multiplier"), field="retrieval_multiplier", route=r)
@@ -181,4 +184,3 @@ def get_route_policy(route: str) -> RoutePolicy:
     if r in _POLICY:
         return _POLICY[r]
     return _POLICY["OTHER"]
-

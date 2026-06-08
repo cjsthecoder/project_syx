@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Build the Dream Context Block consumed by the Sleep/Dream agents.
 
@@ -16,13 +17,18 @@ import os
 import re
 from typing import Any, Dict, List
 
+from app.utils.debug_utils import write_debug_file
+
 from ..core.config import get_settings
 from ..core.llm_service import generate_text_response
 from ..utils.tokens import count_tokens
-from .debug import safe_dream_purpose, write_dream_prompt_to_execute, write_dream_response_usage_debug
+from .debug import (
+    safe_dream_purpose,
+    write_dream_prompt_to_execute,
+    write_dream_response_usage_debug,
+)
 from .prompts import build_project_summary_prompt
 from .rag import retrieve_dream_context
-from app.utils.debug_utils import write_debug_file
 
 logger = logging.getLogger(__name__)
 
@@ -64,15 +70,15 @@ def _strip_open_questions_section(text: str) -> str:
     """
     Remove the [Open Questions] section and its JSON block from sleep_summary.md.
     This prevents duplicate questions since they're already in questions_data.
-    
+
     Args:
         text: The full content of sleep_summary.md
-        
+
     Returns:
         Text with [Open Questions] section removed
     """
     # Find [Open Questions] marker (case-insensitive, with optional whitespace)
-    pattern = r'\[Open Questions\][\s\S]*'
+    pattern = r"\[Open Questions\][\s\S]*"
     match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
     if match:
         # Remove everything from the marker to the end
@@ -80,7 +86,7 @@ def _strip_open_questions_section(text: str) -> str:
         start_pos = match.start()
         # Check if there's an END DAILY MEMORY tag after the Open Questions section
         remaining = text[start_pos:]
-        end_tag_match = re.search(r'=== END DAILY MEMORY.*?===', remaining, re.IGNORECASE)
+        end_tag_match = re.search(r"=== END DAILY MEMORY.*?===", remaining, re.IGNORECASE)
         if end_tag_match:
             # Keep the END tag, remove everything between [Open Questions] and the tag
             end_pos = start_pos + end_tag_match.start()
@@ -121,14 +127,18 @@ def _get_user_profile(project_id: str) -> str:
     )
     user_profile_text = up.get("context_text") or ""
     if not user_profile_text.strip():
-        fallback_profile_path = os.path.join(get_settings().memory_root, project_id, "default_profile.txt")
+        fallback_profile_path = os.path.join(
+            get_settings().memory_root, project_id, "default_profile.txt"
+        )
         user_profile_text = _read_file_safe(fallback_profile_path)
         if user_profile_text.strip():
             logger.warning("User profile missing from RAG. Using fallback file.")
         else:
             logger.warning("User profile missing from RAG and fallback file not found.")
             user_profile_text = "(empty)"
-    logger.info("[DREAM][CONTEXT] Retrieved user profile tokens=%s", _count_tokens(user_profile_text))
+    logger.info(
+        "[DREAM][CONTEXT] Retrieved user profile tokens=%s", _count_tokens(user_profile_text)
+    )
     return user_profile_text
 
 
@@ -148,12 +158,16 @@ def _get_project_system_prompt(project_id: str) -> str:
     )
     system_prompt_text = sp.get("context_text") or ""
     if not system_prompt_text.strip():
-        fallback_sys_path = os.path.join(get_settings().memory_root, project_id, "system_prompt.txt")
+        fallback_sys_path = os.path.join(
+            get_settings().memory_root, project_id, "system_prompt.txt"
+        )
         system_prompt_text = _read_file_safe(fallback_sys_path)
         if not system_prompt_text.strip():
             logger.warning("Project system rules missing.")
             system_prompt_text = "(empty)"
-    logger.info("[DREAM][CONTEXT] Retrieved system prompt tokens=%s", _count_tokens(system_prompt_text))
+    logger.info(
+        "[DREAM][CONTEXT] Retrieved system prompt tokens=%s", _count_tokens(system_prompt_text)
+    )
     return system_prompt_text
 
 
@@ -205,12 +219,19 @@ def _get_project_context_summary(project_id: str) -> str:
         )
         project_summary_text = response.text
     except Exception as exc:
-        logger.warning("[DREAM][WARN] LLM call failed project=%s purpose=%s detail=%s", project_id, purpose, exc)
+        logger.warning(
+            "[DREAM][WARN] LLM call failed project=%s purpose=%s detail=%s",
+            project_id,
+            purpose,
+            exc,
+        )
         project_summary_text = '{"answer": "Dream agent failed to generate a valid answer."}'
     if not (project_summary_text or "").strip():
         logger.warning("Project summary empty.")
         project_summary_text = "(empty)"
-    logger.info("[DREAM][CONTEXT] Generated project summary tokens=%s", _count_tokens(project_summary_text))
+    logger.info(
+        "[DREAM][CONTEXT] Generated project summary tokens=%s", _count_tokens(project_summary_text)
+    )
     return project_summary_text
 
 
@@ -304,7 +325,10 @@ def _extract_rag_topics(project_id: str) -> List[str]:
     summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.md")
     text = _read_file_safe(summary_path)
     if not text.strip():
-        logger.debug("[DREAM][CONTEXT] RAG enrichment: sleep_summary.md missing or empty for project=%s", project_id)
+        logger.debug(
+            "[DREAM][CONTEXT] RAG enrichment: sleep_summary.md missing or empty for project=%s",
+            project_id,
+        )
         return []
 
     lines = text.splitlines()
@@ -371,7 +395,9 @@ def _build_project_rag_context(project_id: str) -> str:
     lines: List[str] = ["=== PROJECT RAG CONTEXT ==="]
 
     if not topic_list:
-        logger.debug("[DREAM][CONTEXT] RAG enrichment: No topics extracted for project=%s", project_id)
+        logger.debug(
+            "[DREAM][CONTEXT] RAG enrichment: No topics extracted for project=%s", project_id
+        )
         # Header only; downstream agents see the presence of the section but no entries
         return "\n".join(lines) + "\n"
 
@@ -503,6 +529,3 @@ def build_dream_context(project_id: str, questions_data: Dict[str, Any]) -> tupl
         _CONTEXT_CACHE[project_id] = context_block
         write_debug_file(project_id, "debug_context.txt", context_block)
         return context_block, "(empty)"
-
-
-

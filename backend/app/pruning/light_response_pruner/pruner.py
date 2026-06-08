@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Core pruning engine for the light response pruner.
 
@@ -550,9 +551,7 @@ def _normalize_response_pruning_config(
     supported_keys = set(defaults)
     unknown_keys = set(response_pruning) - supported_keys
     if unknown_keys:
-        raise PrunerConfigError(
-            f"Unsupported response_pruning keys: {sorted(unknown_keys)}"
-        )
+        raise PrunerConfigError(f"Unsupported response_pruning keys: {sorted(unknown_keys)}")
 
     normalized = defaults.copy()
     for key, value in response_pruning.items():

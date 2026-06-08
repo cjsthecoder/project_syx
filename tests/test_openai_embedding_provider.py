@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for the OpenAI embedding provider.
 
@@ -15,9 +16,8 @@ OpenAI client.
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import pytest
-
 import app.embedding.providers.openai_provider as provider_mod
+import pytest
 from app.embedding.providers.openai_provider import OpenAIEmbeddingProvider
 
 
@@ -25,7 +25,9 @@ def _make_provider(monkeypatch, create_side_effect):
     monkeypatch.setattr(
         provider_mod, "get_settings", lambda: SimpleNamespace(embedding_request_timeout_s=10.0)
     )
-    monkeypatch.setattr(provider_mod, "get_active_embedding_model", lambda: "text-embedding-3-small")
+    monkeypatch.setattr(
+        provider_mod, "get_active_embedding_model", lambda: "text-embedding-3-small"
+    )
     with patch.object(provider_mod, "OpenAI") as MockOpenAI:
         client = MockOpenAI.return_value
         client.embeddings.create.side_effect = create_side_effect
@@ -82,14 +84,14 @@ def test_rate_limit_base_wait_honors_retry_after_hint():
 
 def test_rate_limit_base_wait_exponential_without_hint():
     exc = Exception("rate limit")
-    assert OpenAIEmbeddingProvider._rate_limit_base_wait_seconds(exc, 1) == 0.6 * (2 ** 0)
-    assert OpenAIEmbeddingProvider._rate_limit_base_wait_seconds(exc, 2) == 0.6 * (2 ** 1)
+    assert OpenAIEmbeddingProvider._rate_limit_base_wait_seconds(exc, 1) == 0.6 * (2**0)
+    assert OpenAIEmbeddingProvider._rate_limit_base_wait_seconds(exc, 2) == 0.6 * (2**1)
 
 
 def test_rate_limit_base_wait_caps_backoff():
     exc = Exception("rate limit")
     # Attempt index is capped at 5, so attempts beyond that stay at 0.6 * 2**5.
-    assert OpenAIEmbeddingProvider._rate_limit_base_wait_seconds(exc, 20) == 0.6 * (2 ** 5)
+    assert OpenAIEmbeddingProvider._rate_limit_base_wait_seconds(exc, 20) == 0.6 * (2**5)
 
 
 # ----- embed / embed_query -----
@@ -128,9 +130,7 @@ def test_embed_retries_after_rate_limit_then_succeeds(monkeypatch):
 
 
 def test_embed_raises_after_exhausting_retries(monkeypatch):
-    provider, _client = _make_provider(
-        monkeypatch, create_side_effect=RuntimeError("boom")
-    )
+    provider, _client = _make_provider(monkeypatch, create_side_effect=RuntimeError("boom"))
     monkeypatch.setattr(provider_mod.time, "sleep", lambda s: None)
 
     with pytest.raises(RuntimeError, match="embedding provider failed after retries"):

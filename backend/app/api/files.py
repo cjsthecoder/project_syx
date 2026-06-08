@@ -4,23 +4,23 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 File upload endpoints: upload files to a project and store to disk.
 """
-import os
-import time
-from typing import List
 import logging
+import os
+from typing import List
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from ..core.config import get_settings
-from ..rag.manager import rebuild_faiss_index, _read_file_text
 from ..core.database import get_session
 from ..core.db_models import File as FileRow
+from ..rag.manager import rebuild_faiss_index
+from ..rag.manager_rebuild import read_file_text
 from ..utils.tokens import count_tokens
-
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ def _compute_file_stats(path: str) -> tuple[int, int]:
     page_count = 1
     total_tokens = 0
     try:
-        for raw_text, meta in _read_file_text(path):
+        for raw_text, meta in read_file_text(path):
             if meta.get("page_number"):
                 page_count = max(page_count, int(meta["page_number"]))
             total_tokens += int(count_tokens(raw_text or ""))
@@ -105,10 +105,15 @@ async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> 
         # Per-file limit
         if _bytes_to_mb(size) > settings.max_upload_mb:
             os.remove(target)
-            raise HTTPException(status_code=400, detail={"error": f"File {name} exceeds max size {settings.max_upload_mb}MB"})
+            raise HTTPException(
+                status_code=400,
+                detail={"error": f"File {name} exceeds max size {settings.max_upload_mb}MB"},
+            )
 
         total_written += size
-        saved.append({"filename": name, "size_bytes": size, "content_type": f.content_type, "path": target})
+        saved.append(
+            {"filename": name, "size_bytes": size, "content_type": f.content_type, "path": target}
+        )
 
     # Batch limit
     if _bytes_to_mb(total_written) > settings.max_batch_mb:
@@ -123,7 +128,9 @@ async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> 
                     s.get("path"),
                     exc,
                 )
-        raise HTTPException(status_code=400, detail={"error": f"Batch exceeds max size {settings.max_batch_mb}MB"})
+        raise HTTPException(
+            status_code=400, detail={"error": f"Batch exceeds max size {settings.max_batch_mb}MB"}
+        )
 
     # Storage limit per project (existing + new)
     existing_total = 0
@@ -139,7 +146,12 @@ async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> 
                     exc,
                 )
     if _bytes_to_mb(existing_total) > settings.storage_limit_mb:
-        raise HTTPException(status_code=400, detail={"error": f"Project storage already exceeds limit {settings.storage_limit_mb}MB"})
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": f"Project storage already exceeds limit {settings.storage_limit_mb}MB"
+            },
+        )
     if _bytes_to_mb(existing_total + total_written) > settings.storage_limit_mb:
         # Roll back this batch
         for s in saved:
@@ -152,7 +164,10 @@ async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> 
                     s.get("path"),
                     exc,
                 )
-        raise HTTPException(status_code=400, detail={"error": f"Storage limit {settings.storage_limit_mb}MB would be exceeded"})
+        raise HTTPException(
+            status_code=400,
+            detail={"error": f"Storage limit {settings.storage_limit_mb}MB would be exceeded"},
+        )
 
     # Record files in DB with stats
     uploaded = []
@@ -170,12 +185,14 @@ async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> 
                 token_count=token_count,
             )
             session.add(row)
-            uploaded.append({
-                "filename": s["filename"],  # type: ignore
-                "status": "ok",
-                "size_bytes": s["size_bytes"],  # type: ignore
-                "token_count": token_count,
-            })
+            uploaded.append(
+                {
+                    "filename": s["filename"],  # type: ignore
+                    "status": "ok",
+                    "size_bytes": s["size_bytes"],  # type: ignore
+                    "token_count": token_count,
+                }
+            )
             total_tokens += token_count
         session.commit()
 
@@ -183,18 +200,21 @@ async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> 
     try:
         index_dir = rebuild_faiss_index(project_id)
         rebuild_status = "completed"
-    except Exception as e:
+    except Exception:
         index_dir = None
         rebuild_status = "failed"
 
-    return JSONResponse(status_code=200, content={
-        "project_id": project_id,
-        "uploaded": uploaded,
-        "index_dir": index_dir,
-        "rebuild_status": rebuild_status,
-        "total_files": len(uploaded),
-        "total_tokens": total_tokens,
-    })
+    return JSONResponse(
+        status_code=200,
+        content={
+            "project_id": project_id,
+            "uploaded": uploaded,
+            "index_dir": index_dir,
+            "rebuild_status": rebuild_status,
+            "total_files": len(uploaded),
+            "total_tokens": total_tokens,
+        },
+    )
 
 
 @router.get("/projects/{project_id}/files")
@@ -210,6 +230,7 @@ async def list_files(project_id: str) -> JSONResponse:
         and ``token_count`` totals.
     """
     from sqlmodel import select
+
     with get_session() as session:
         rows = session.exec(select(FileRow).where(FileRow.project_id == project_id)).all()
         files = [
@@ -226,12 +247,15 @@ async def list_files(project_id: str) -> JSONResponse:
         ]
         storage_bytes = sum(r.size_bytes for r in rows)
         token_count = sum(r.token_count for r in rows)
-    return JSONResponse(status_code=200, content={
-        "project_id": project_id,
-        "files": files,
-        "storage_bytes": storage_bytes,
-        "token_count": token_count,
-    })
+    return JSONResponse(
+        status_code=200,
+        content={
+            "project_id": project_id,
+            "files": files,
+            "storage_bytes": storage_bytes,
+            "token_count": token_count,
+        },
+    )
 
 
 @router.delete("/projects/{project_id}/files/{file_id}")
@@ -251,7 +275,7 @@ async def delete_file(project_id: str, file_id: int) -> JSONResponse:
             given project.
     """
     upload_root = os.path.join(get_settings().memory_root, project_id, "uploads")
-    from sqlmodel import select
+
     with get_session() as session:
         row = session.get(FileRow, file_id)
         if not row or row.project_id != project_id:
@@ -279,10 +303,11 @@ async def delete_file(project_id: str, file_id: int) -> JSONResponse:
         index_dir = None
         rebuild_status = "failed"
 
-    return JSONResponse(status_code=200, content={
-        "project_id": project_id,
-        "rebuild_status": rebuild_status,
-        "index_dir": index_dir,
-    })
-
-
+    return JSONResponse(
+        status_code=200,
+        content={
+            "project_id": project_id,
+            "rebuild_status": rebuild_status,
+            "index_dir": index_dir,
+        },
+    )

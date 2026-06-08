@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for agent memory snippet entry expansion.
 
@@ -80,7 +81,9 @@ def test_unbounded_snippet_gets_not_applicable_status(tmp_path, monkeypatch):
         "get_settings",
         lambda: SimpleNamespace(memory_root=str(tmp_path), agent_memory_max_entry_chars=25_000),
     )
-    snippet = AgentMemorySnippet(snippet_number=1, result_mode="unbounded_chunk_group", text="ordinary upload")
+    snippet = AgentMemorySnippet(
+        snippet_number=1, result_mode="unbounded_chunk_group", text="ordinary upload"
+    )
 
     expanded = expand_agent_memory_snippets(project_id="project", snippets=[snippet])[0]
 
@@ -211,4 +214,7 @@ def test_artifact_expansion_truncates_without_boundary_markers(tmp_path, monkeyp
     assert f"<!-- begin syx:memory_id={memory_id} -->" not in expanded.text
     assert f"<!-- end syx:memory_id={memory_id} -->" not in expanded.text
     assert "TRUNCATED" in expanded.text
-    assert len(json.dumps(expanded.model_dump(exclude_none=True), ensure_ascii=False, sort_keys=True)) <= 900
+    assert (
+        len(json.dumps(expanded.model_dump(exclude_none=True), ensure_ascii=False, sort_keys=True))
+        <= 900
+    )

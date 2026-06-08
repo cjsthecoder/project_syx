@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Debug file writing utilities for memory pipelines.
 
@@ -40,6 +41,3 @@ def write_debug_file(project_id: str, filename: str, content: str) -> None:
         logger.debug("Wrote debug file to %s", debug_path)
     except Exception as de:
         logger.warning("Failed writing debug file %s for project=%s: %s", filename, project_id, de)
-
-
-

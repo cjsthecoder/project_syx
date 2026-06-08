@@ -5,6 +5,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """CLI bridge for POST /agent/memory/search."""
 
 import argparse
@@ -16,7 +17,6 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
-
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 

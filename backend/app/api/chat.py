@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Chat API endpoint for Syx AGI Chatbot Framework.
 
@@ -11,26 +12,34 @@ This module provides the main chat functionality via factory-backed LLM clients.
 """
 
 import logging
-import time
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from ..core.models import ChatRequest, ChatResponse
-from ..core.llm_service import generate_chat_response, get_llm_health
-from ..llm_model.factory import get_llm_client
-from ..core.memory import get_memory_manager, set_last_context_tokens
-from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id, clear_namespace
-from ..utils.errors import handle_llm_error, log_error_context
 from ..core.config import get_settings
+from ..core.llm_service import generate_chat_response, get_llm_health
+from ..core.memory import get_memory_manager, set_last_context_tokens
+from ..core.models import ChatRequest, ChatResponse
+from ..llm_model.factory import get_llm_client
 from ..tracking import get_instrumentation
+from ..utils.errors import handle_llm_error, log_error_context
+from ..utils.logging import (
+    LLMLogger,
+    RequestLogger,
+    clear_message_id,
+    clear_namespace,
+    get_message_id,
+    set_message_id,
+)
 from ..utils.tokens import count_tokens
-from .chat_prompting import dump_prompt_debug, estimate_message_tokens, estimate_tokens
 from .chat_pipeline import ChatPipeline
+from .chat_prompting import dump_prompt_debug, estimate_message_tokens, estimate_tokens
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -40,6 +49,7 @@ request_logger = RequestLogger("chat")
 llm_logger = LLMLogger()
 _TURN_SEQ = 0
 _TURN_SEQ_LOCK = threading.Lock()
+
 
 def _next_turn_id() -> int:
     """Return the next monotonic turn id, incrementing a shared counter under a lock.
@@ -126,7 +136,9 @@ def _prepare_prompts(
         text, the primary namespace, and the turn RAG metrics.
     """
     conversation_history = pipeline.build_conversation_history(project_id)
-    base_system_prompt, assistant_hint, personality_creativity = pipeline.load_project_prompts(project_id)
+    base_system_prompt, assistant_hint, personality_creativity = pipeline.load_project_prompts(
+        project_id
+    )
     rag_system_prompt, primary_ns, rag_metrics = pipeline.compute_rag_context(
         project_id=project_id,
         message=message,
@@ -192,7 +204,9 @@ def _turn_end_meta(
         "rag_enabled": bool(m.get("rag_enabled", False)),
         "retrieved_count": int(m.get("retrieved_count", 0) or 0),
         "kept_count": int(m.get("kept_count", 0) or 0),
-        "expanded_unique_chunks_after_merge": int(m.get("expanded_unique_chunks_after_merge", 0) or 0),
+        "expanded_unique_chunks_after_merge": int(
+            m.get("expanded_unique_chunks_after_merge", 0) or 0
+        ),
         "rag_tokens_injected_est": int(m.get("rag_tokens_injected_est", 0) or 0),
         "final_context_clipped": bool(m.get("final_context_clipped", False)),
     }
@@ -224,12 +238,12 @@ def _update_context_token_stats(
         msg_id: Per-message correlation id for logging.
     """
     try:
-        combined_text = ''
+        combined_text = ""
         if conversation_history:
             for msg in conversation_history:
-                combined_text += (msg.get('content') or '') + '\n'
-        combined_text += message or ''
-        combined_text += '\n' + (response_text or '')
+                combined_text += (msg.get("content") or "") + "\n"
+        combined_text += message or ""
+        combined_text += "\n" + (response_text or "")
         context_tokens = int(count_tokens(combined_text))
         if project_id:
             set_last_context_tokens(project_id, context_tokens)
@@ -273,12 +287,9 @@ def _build_stream_usage_payload(
         "total_tokens_reported": int(total_tokens_est),
         "usage_is_estimate": True,
     }
-    if (
-        not provider_usage
-        and (
-            not isinstance(usage_payload.get("total_tokens_reported"), int)
-            or int(usage_payload.get("total_tokens_reported", 0)) <= 0
-        )
+    if not provider_usage and (
+        not isinstance(usage_payload.get("total_tokens_reported"), int)
+        or int(usage_payload.get("total_tokens_reported", 0)) <= 0
     ):
         usage_payload = {
             "prompt_tokens_reported": 0,
@@ -336,9 +347,9 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         request_logger.log_request(endpoint="/chat", method="POST", user_id=request.conversation_id)
         # [PROMPT]
         settings = get_settings()
-        preview = (request.message or "")[:settings.log_preview_max_chars]
+        preview = (request.message or "")[: settings.log_preview_max_chars]
         logger.debug(
-            "[PROMPT] project_id=%s message_id=%s preview=\"%s\"",
+            '[PROMPT] project_id=%s message_id=%s preview="%s"',
             proj,
             msg_id,
             preview,
@@ -364,7 +375,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         # Log LLM request
         try:
             logger.debug(
-                "[PROMPT] base_sys_bytes=%s rag_sys_bytes=%s hint_bytes=%s base_sys_preview=\"%s\"",
+                '[PROMPT] base_sys_bytes=%s rag_sys_bytes=%s hint_bytes=%s base_sys_preview="%s"',
                 len((base_system_prompt or "").encode("utf-8")),
                 len((rag_system_prompt or "").encode("utf-8")),
                 len((assistant_hint or "").encode("utf-8")),
@@ -375,10 +386,12 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         llm_logger.log_llm_request(
             model=(request.model or settings.model_name),
             message_length=len(request.message),
-            conversation_id=request.conversation_id
+            conversation_id=request.conversation_id,
         )
-        
-        logger.debug(f"Chat: model={request.model or 'default'} message_len={len(request.message)} conv_id={request.conversation_id}")
+
+        logger.debug(
+            f"Chat: model={request.model or 'default'} message_len={len(request.message)} conv_id={request.conversation_id}"
+        )
         # Prompt debug snapshot (best-effort; no-op unless GENERATE_DEBUG_FILES=true)
         try:
             dump_prompt_debug(
@@ -409,20 +422,22 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             temperature_override=personality_creativity,
         )
         t_model1 = time.time()
-        
+
         # Check if LLM response was successful
         if not llm_response.get("success", False):
             raise Exception(llm_response.get("error", "Unknown LLM error"))
-        
+
         # Log LLM response
         llm_logger.log_llm_response(
             model=llm_response.get("llm_model", settings.model_name),
             response_length=len(llm_response["response"]),
             tokens_used=llm_response.get("tokens_used"),
-            conversation_id=request.conversation_id
+            conversation_id=request.conversation_id,
         )
-        logger.debug(f"Chat: response_len={len(llm_response['response'])} tokens_used={llm_response.get('tokens_used')} model={llm_response.get('llm_model')}")
-        
+        logger.debug(
+            f"Chat: response_len={len(llm_response['response'])} tokens_used={llm_response.get('tokens_used')} model={llm_response.get('llm_model')}"
+        )
+
         # Persist user and assistant messages (project-scoped working memory)
         try:
             if request.project_id and memory_manager is not None:
@@ -446,30 +461,30 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 str(e),
                 exc_info=True,
             )
-        
+
         # Update context tokens for stats (exclude RAG system prompt)
         _update_context_token_stats(
             project_id=request.project_id,
             conversation_history=conversation_history,
             message=request.message,
-            response_text=llm_response.get('response'),
+            response_text=llm_response.get("response"),
             msg_id=msg_id,
         )
-        
+
         # Create response
         response = ChatResponse(
             response=llm_response["response"],
             conversation_id=request.conversation_id,
             llm_model=llm_response.get("llm_model"),
-            tokens_used=llm_response.get("tokens_used")
+            tokens_used=llm_response.get("tokens_used"),
         )
-        
+
         # Log successful response
         latency_ms = int((time.time() - t0) * 1000)
         model_ms = int((t_model1 - t_model0) * 1000)
-        resp_prev = (llm_response.get("response") or "")[:settings.log_preview_max_chars]
+        resp_prev = (llm_response.get("response") or "")[: settings.log_preview_max_chars]
         logger.debug(
-            "[RESPONSE] project_id=%s message_id=%s llm_model=%s tokens_used=%s latency_ms=%s model_ms=%s response_preview=\"%s\"",
+            '[RESPONSE] project_id=%s message_id=%s llm_model=%s tokens_used=%s latency_ms=%s model_ms=%s response_preview="%s"',
             proj,
             msg_id,
             llm_response.get("llm_model", ""),
@@ -482,25 +497,25 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             endpoint="/chat",
             status_code=200,
             response_time=0.0,  # Would be calculated in real implementation
-            user_id=request.conversation_id
+            user_id=request.conversation_id,
         )
-        
+
         return response
-        
+
     except Exception as e:
         # Log error
         request_logger.log_error(endpoint="/chat", error=e, user_id=request.conversation_id)
         # [ERROR]
         proj = request.project_id or "Main"
         mid = get_message_id() or "-"
-        err_prev = (str(e) or "")[:get_settings().log_preview_max_chars]
+        err_prev = (str(e) or "")[: get_settings().log_preview_max_chars]
         logger.debug(
-            "project_id=%s message_id=%s error=\"%s\"",
+            'project_id=%s message_id=%s error="%s"',
             proj,
             mid,
             err_prev,
         )
-        
+
         # Log error context
         log_error_context(
             error=e,
@@ -508,27 +523,27 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 "endpoint": "/chat",
                 "conversation_id": request.conversation_id,
                 "project_id": request.project_id,
-                "message_length": len(request.message)
-            }
+                "message_length": len(request.message),
+            },
         )
-        
+
         # Handle different types of errors
         if "llm" in str(e).lower() or "openai" in str(e).lower():
-            raise handle_llm_error(e)
+            raise handle_llm_error(e) from e
         else:
             raise HTTPException(
                 status_code=500,
                 detail={
                     "success": False,
                     "error": "Internal server error",
-                    "error_code": "INTERNAL_ERROR"
-                }
-            )
+                    "error_code": "INTERNAL_ERROR",
+                },
+            ) from e
     finally:
         try:
             if "turn_started" in locals() and turn_started:
                 _resp_text = None
-                _model_id = (request.model or settings.model_name)
+                _model_id = request.model or settings.model_name
                 if isinstance(locals().get("llm_response"), dict):
                     _resp_text = str(locals()["llm_response"].get("response") or "")
                     _model_id = str(locals()["llm_response"].get("llm_model") or _model_id)
@@ -584,7 +599,6 @@ async def chat_stream(request: ChatRequest):
     turn_closed = False
     rag_turn_metrics: Dict[str, Any] = _default_rag_metrics()
     try:
-        t0 = time.time()
         msg_id = str(uuid.uuid4())
         set_message_id(msg_id)
         instr.start_turn(
@@ -597,15 +611,16 @@ async def chat_stream(request: ChatRequest):
             },
         )
         turn_started = True
-        request_logger.log_request(endpoint="/chat/stream", method="POST", user_id=request.conversation_id)
-        proj = request.project_id or "Main"
+        request_logger.log_request(
+            endpoint="/chat/stream", method="POST", user_id=request.conversation_id
+        )
 
         pipeline = ChatPipeline(settings)
         prepared = _prepare_prompts(
             pipeline,
             project_id=request.project_id,
             message=(request.message or ""),
-            preview=(request.message or "")[:settings.log_preview_max_chars],
+            preview=(request.message or "")[: settings.log_preview_max_chars],
             msg_id=msg_id,
         )
         conversation_history = prepared.conversation_history
@@ -621,6 +636,7 @@ async def chat_stream(request: ChatRequest):
         is_chitchat = str(primary_ns or "").strip().lower() == "chitchat"
         # Fallback: if streaming is disabled, return a simulated stream using the non-streaming path
         if not settings.streaming_enabled:
+
             async def fake_stream():
                 try:
                     resp = generate_chat_response(
@@ -655,6 +671,7 @@ async def chat_stream(request: ChatRequest):
                     yield "\n::event: done\n"
                 except Exception as e:
                     yield f"\n[error] {str(e)}\n"
+
             return StreamingResponse(fake_stream(), media_type="text/plain; charset=utf-8")
         # True streaming via provider factory client
         msgs = pipeline.build_llm_messages(
@@ -693,7 +710,7 @@ async def chat_stream(request: ChatRequest):
             first_token_ts = None
             provider_usage: Optional[dict] = None
             try:
-                model_name = (request.model or settings.model_name)
+                model_name = request.model or settings.model_name
                 invocation_id = instr.start_invocation(
                     purpose="main",
                     model=model_name,
@@ -729,10 +746,16 @@ async def chat_stream(request: ChatRequest):
                     usage_payload = _build_stream_usage_payload(provider_usage, msgs, full_text)
                     if invocation_id:
                         if first_token_ms is None:
-                            logger.warning("chat.stream produced no first token timing; forcing ttfb_ms=0")
+                            logger.warning(
+                                "chat.stream produced no first token timing; forcing ttfb_ms=0"
+                            )
                         instr.end_invocation(
                             invocation_id,
-                            usage={"purpose": "main", "model": (request.model or settings.model_name), **usage_payload},
+                            usage={
+                                "purpose": "main",
+                                "model": (request.model or settings.model_name),
+                                **usage_payload,
+                            },
                             timing={
                                 "ttfb_ms": int(first_token_ms or 0),
                                 "ttlt_ms": int((time.perf_counter() - t_invoke0) * 1000.0),
@@ -823,6 +846,7 @@ async def chat_stream(request: ChatRequest):
         except Exception as exc:
             logger.debug("chat.stream clear_namespace failed detail=%s", exc)
 
+
 @router.get("/chat/health")
 async def chat_health() -> JSONResponse:
     """Health check for chat functionality.
@@ -835,7 +859,7 @@ async def chat_health() -> JSONResponse:
     try:
         # Check LLM health
         llm_health = get_llm_health()
-        
+
         if llm_health["status"] == "healthy":
             return JSONResponse(
                 status_code=200,
@@ -843,8 +867,8 @@ async def chat_health() -> JSONResponse:
                     "status": "healthy",
                     "service": "chat",
                     "llm_status": llm_health["status"],
-                    "model": llm_health.get("model", "unknown")
-                }
+                    "model": llm_health.get("model", "unknown"),
+                },
             )
         else:
             return JSONResponse(
@@ -853,19 +877,14 @@ async def chat_health() -> JSONResponse:
                     "status": "unhealthy",
                     "service": "chat",
                     "llm_status": llm_health["status"],
-                    "error": llm_health.get("error", "Unknown error")
-                }
+                    "error": llm_health.get("error", "Unknown error"),
+                },
             )
-            
+
     except Exception as e:
         logger.error(f"Chat health check failed: {str(e)}")
         return JSONResponse(
-            status_code=503,
-            content={
-                "status": "unhealthy",
-                "service": "chat",
-                "error": str(e)
-            }
+            status_code=503, content={"status": "unhealthy", "service": "chat", "error": str(e)}
         )
 
 
@@ -880,23 +899,19 @@ async def chat_stats() -> JSONResponse:
     try:
         memory_manager = get_memory_manager()
         stats = memory_manager.get_memory_stats()
-        
+
         return JSONResponse(
             status_code=200,
             content={
                 "conversations": stats["total_conversations"],
                 "messages": stats["total_messages"],
                 "memory_mode": stats["memory_mode"],
-                "features": stats["features_available"]
-            }
+                "features": stats["features_available"],
+            },
         )
-        
+
     except Exception as e:
         logger.error(f"Failed to get chat stats: {str(e)}")
         return JSONResponse(
-            status_code=500,
-            content={
-                "error": "Failed to retrieve statistics",
-                "details": str(e)
-            }
+            status_code=500, content={"error": "Failed to retrieve statistics", "details": str(e)}
         )

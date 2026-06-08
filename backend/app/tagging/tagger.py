@@ -4,17 +4,18 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Memory tagging model for chat exchanges.
 
 This module calls the tagger LLM to extract topics, intent, type, a semantic
 handle, and open questions for a chat pair, returning normalized metadata.
 """
-import logging
 import json
+import logging
 import time
-from typing import Dict, Optional, Any, List
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from ..core.config import get_settings
 from ..llm_model.factory import get_llm_client_mini
@@ -207,7 +208,9 @@ def _safe_percent(value: Any, default: int, name: str) -> int:
         logger.warning("[TAGGER] invalid %s=%r; using default=%s", name, value, default)
         return int(default)
     if coerced < 10 or coerced > 90:
-        logger.warning("[TAGGER] out-of-range %s=%s; expected 10-90, using default=%s", name, coerced, default)
+        logger.warning(
+            "[TAGGER] out-of-range %s=%s; expected 10-90, using default=%s", name, coerced, default
+        )
         return int(default)
     return coerced
 
@@ -287,10 +290,12 @@ def _extract_prev_tag_value(text: str, key: str) -> str:
     import re
 
     m = re.search(rf"(?m)^#{re.escape(key)}:\s*(.*)$", text or "")
-    return (m.group(1).strip() if m else "")
+    return m.group(1).strip() if m else ""
 
 
-def _build_previous_turn_block(previous_pair_text: Optional[str], prev_cut_percent: int, min_length_for_chop: int) -> str:
+def _build_previous_turn_block(
+    previous_pair_text: Optional[str], prev_cut_percent: int, min_length_for_chop: int
+) -> str:
     """Build the canonical PREVIOUS TURN block from stored pair text.
 
     Parses prior tags (route, keep, topics, intent, type, semantic_handle) and
@@ -557,7 +562,9 @@ def _write_tagger_success_debug(
             )
             write_debug_file(project_id, f"prompts/{fname}", body)
     except Exception as exc:
-        logger.warning("[TAGGER] Failed writing debug tagger prompt dump project_id=%s: %s", project_id, exc)
+        logger.warning(
+            "[TAGGER] Failed writing debug tagger prompt dump project_id=%s: %s", project_id, exc
+        )
 
 
 def _write_tagger_failure_debug(
@@ -601,7 +608,9 @@ def _write_tagger_failure_debug(
             )
             write_debug_file(project_id, f"prompts/{fname}", body)
     except Exception as exc:
-        logger.warning("[TAGGER] Failed writing debug failure dump project_id=%s: %s", project_id, exc)
+        logger.warning(
+            "[TAGGER] Failed writing debug failure dump project_id=%s: %s", project_id, exc
+        )
 
 
 def tag_pair(
@@ -681,7 +690,9 @@ def tag_pair(
                 int(len(result["questions"])),
             )
         except Exception as exc:
-            logger.warning("[TAGGER] Failed writing tagger summary log project_id=%s: %s", project_id, exc)
+            logger.warning(
+                "[TAGGER] Failed writing tagger summary log project_id=%s: %s", project_id, exc
+            )
         instr.end_invocation(
             invocation_id,
             usage=usage,
@@ -695,20 +706,30 @@ def tag_pair(
             if "invocation_id" in locals() and invocation_id:
                 get_instrumentation().end_invocation(
                     invocation_id,
-                    usage=usage if "usage" in locals() else {
-                        "purpose": "tagger",
-                        "model": get_settings().tagger_model,
-                        "prompt_tokens_reported": 0,
-                        "completion_tokens_reported": 0,
-                        "total_tokens_reported": 0,
-                        "usage_is_estimate": True,
-                    },
-                    timing={"ttlt_ms": int((time.perf_counter() - t0) * 1000.0)} if "t0" in locals() else {},
+                    usage=(
+                        usage
+                        if "usage" in locals()
+                        else {
+                            "purpose": "tagger",
+                            "model": get_settings().tagger_model,
+                            "prompt_tokens_reported": 0,
+                            "completion_tokens_reported": 0,
+                            "total_tokens_reported": 0,
+                            "usage_is_estimate": True,
+                        }
+                    ),
+                    timing=(
+                        {"ttlt_ms": int((time.perf_counter() - t0) * 1000.0)}
+                        if "t0" in locals()
+                        else {}
+                    ),
                 )
         except Exception as exc:
-            logger.warning("[TAGGER] Failed finalizing invocation after error project_id=%s: %s", project_id, exc)
+            logger.warning(
+                "[TAGGER] Failed finalizing invocation after error project_id=%s: %s",
+                project_id,
+                exc,
+            )
         # Debug dump on failure (best-effort)
         _write_tagger_failure_debug(project_id, user_text, assistant_text, previous_pair_text, e)
         return None
-
-

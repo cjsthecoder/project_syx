@@ -83,6 +83,11 @@ pids
 coverage/
 *.lcov
 .nyc_output
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.ruff_cache/
 
 # Temporary folders
 tmp/

@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for app.tagging.tagger.
 
@@ -12,8 +13,6 @@ a fake mini-LLM client so parsing/normalization is covered without any network.
 """
 
 from types import SimpleNamespace
-
-import pytest
 
 import app.tagging.tagger as tagger
 from app.tagging.tagger import (
@@ -116,9 +115,7 @@ def test_tag_pair_success_normalizes(monkeypatch):
     assert out["intent"] == "explain"
     assert out["type"] == "technical"
     assert out["semantic_handle"] == "the thing"
-    assert out["questions"] == [
-        {"question": "Why?", "topic": "t", "resolution": "answer_remote"}
-    ]
+    assert out["questions"] == [{"question": "Why?", "topic": "t", "resolution": "answer_remote"}]
 
 
 def test_tag_pair_filters_bad_questions(monkeypatch):
@@ -128,13 +125,11 @@ def test_tag_pair_filters_bad_questions(monkeypatch):
         '{"question": "", "resolution": "ignore"},'  # empty -> dropped
         '{"question": "Keep me", "resolution": "weird"},'  # bad res -> ignore
         '"not-a-dict"'
-        ']}'
+        "]}"
     )
     _patch_client(monkeypatch, payload)
     out = tag_pair("u", "a", project_id=None)
-    assert out["questions"] == [
-        {"question": "Keep me", "topic": "", "resolution": "ignore"}
-    ]
+    assert out["questions"] == [{"question": "Keep me", "topic": "", "resolution": "ignore"}]
 
 
 def test_tag_pair_missing_semantic_handle_is_empty(monkeypatch):
@@ -144,7 +139,10 @@ def test_tag_pair_missing_semantic_handle_is_empty(monkeypatch):
 
 
 def test_tag_pair_strips_code_fences(monkeypatch):
-    _patch_client(monkeypatch, '```json\n{"topics":"t","intent":"","type":"","semantic_handle":"h","questions":[]}\n```')
+    _patch_client(
+        monkeypatch,
+        '```json\n{"topics":"t","intent":"","type":"","semantic_handle":"h","questions":[]}\n```',
+    )
     out = tag_pair("u", "a", project_id=None)
     assert out["topics"] == "t"
     assert out["semantic_handle"] == "h"

@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for the pure helpers extracted from ``rebuild_faiss_index``.
 
@@ -15,8 +16,6 @@ directly with real chunking and batching.
 """
 import os
 from types import SimpleNamespace
-
-import pytest
 
 from app.rag.manager_rebuild import (
     _collect_chunks_from_uploads,

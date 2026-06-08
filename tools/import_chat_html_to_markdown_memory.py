@@ -5,6 +5,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Import ChatGPT HTML exports into Syx markdown memory artifacts.
 
@@ -27,7 +28,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
-
 
 logger = logging.getLogger("import_chat_html_to_markdown_memory")
 
@@ -305,7 +305,9 @@ def _pair_turns(messages: list[tuple[str, str]]) -> tuple[list[tuple[str, str]],
 
 
 def _extract_dd_trace_ms(html_text: str) -> Optional[int]:
-    match = re.search(r'<meta\s+name="dd-trace-time"\s+content="(\d+)"', html_text, flags=re.IGNORECASE)
+    match = re.search(
+        r'<meta\s+name="dd-trace-time"\s+content="(\d+)"', html_text, flags=re.IGNORECASE
+    )
     if not match:
         return None
     try:
@@ -376,7 +378,9 @@ def _validate_input_file(path: Path) -> None:
     if not path.is_file():
         raise ValueError(f"Input path is not a file: {path}")
     if not _is_html_file(path):
-        raise ValueError(f"Unsupported input extension '{path.suffix.lower()}'. Expected .html/.htm")
+        raise ValueError(
+            f"Unsupported input extension '{path.suffix.lower()}'. Expected .html/.htm"
+        )
 
 
 def _ensure_output_dir(path: Path) -> None:
@@ -632,7 +636,9 @@ def _process_one_file(
         "tokens_user_total_est": int(total_tokens_user),
         "tokens_original_assistant_total_est": int(total_tokens_original_assistant),
         "tokens_pruned_assistant_total_est": int(total_tokens_pruned_assistant),
-        "tokens_user_pruned_assistant_total_est": int(total_tokens_user + total_tokens_pruned_assistant),
+        "tokens_user_pruned_assistant_total_est": int(
+            total_tokens_user + total_tokens_pruned_assistant
+        ),
         "tokens_output_total_est": int(total_tokens_output),
         "timestamp_source": ts_source,
         "extraction_stats": extraction.diagnostics,
@@ -678,7 +684,9 @@ def run(
     tag_pair = _require_tagger() if tagger else None
     prune_assistant_for_tagger, get_settings = _require_pruner()
     settings = get_settings()
-    generate_memory_id, render_artifact_header, render_memory_entry, topics_to_list = _require_markdown_helpers()
+    generate_memory_id, render_artifact_header, render_memory_entry, topics_to_list = (
+        _require_markdown_helpers()
+    )
     encoding = tiktoken.get_encoding("cl100k_base")
 
     if not input_path.exists():
@@ -746,14 +754,20 @@ def main() -> int:
         "input_path",
         help="Path to one .html/.htm file or a directory of top-level .html/.htm files",
     )
-    parser.add_argument("output_dir", help="Output directory for <input_root>.md and statistics.jsonl")
-    parser.add_argument("--project-id", required=True, help="Syx project ID to store in memory metadata")
+    parser.add_argument(
+        "output_dir", help="Output directory for <input_root>.md and statistics.jsonl"
+    )
+    parser.add_argument(
+        "--project-id", required=True, help="Syx project ID to store in memory metadata"
+    )
     parser.add_argument(
         "--tagger",
         default="true",
         help="Whether to run the tagger (true/false). Defaults to true.",
     )
-    parser.add_argument("--route", default="other", help="Route metadata to assign to imported chat pairs")
+    parser.add_argument(
+        "--route", default="other", help="Route metadata to assign to imported chat pairs"
+    )
     parser.add_argument(
         "--artifact-type",
         default="daily_memory",

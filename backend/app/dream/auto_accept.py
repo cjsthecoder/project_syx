@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Auto-accept pending dream items as Dream memory during the Sleep cycle.
 
@@ -159,7 +160,9 @@ def _prepare_dream_summary_paths(base_dir: str, project_id: str) -> tuple[str, s
         try:
             os.replace(legacy_summary_lock_path, summary_lock_path)
         except OSError as exc:
-            logger.warning("dream auto-accept lock migration failed project_id=%s detail=%s", project_id, exc)
+            logger.warning(
+                "dream auto-accept lock migration failed project_id=%s detail=%s", project_id, exc
+            )
     return summary_path, summary_lock_path
 
 
@@ -201,7 +204,12 @@ def _tag_dream_pairs(project_id: str, to_process: List[Dict[str, Any]]) -> List[
             tokens = int(count_tokens(pair_text))
             tags_meta = None
             try:
-                tags_meta = tag_pair(user_text, assistant_text_for_memory, previous_pair_text=previous_pair_text, project_id=project_id)
+                tags_meta = tag_pair(
+                    user_text,
+                    assistant_text_for_memory,
+                    previous_pair_text=previous_pair_text,
+                    project_id=project_id,
+                )
             except Exception as exc:
                 logger.warning(
                     "[DREAM][AUTO_ACCEPT] Tagger failed; persisting without tags project=%s item_id=%s detail=%s",
@@ -258,10 +266,15 @@ def _persist_tagged_pairs(
         try:
             ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())
             accepted_item_id = str(item.get("id") or "").strip() or None
-            dream_output_type = snake_case_value(item.get("origin_type") or item.get("source_resolution")) or None
+            dream_output_type = (
+                snake_case_value(item.get("origin_type") or item.get("source_resolution")) or None
+            )
             origin_ids = origin_memory_ids(item)
             semantic_handle = None
-            if isinstance(rec["tags_meta"], dict) and rec["tags_meta"].get("semantic_handle") is not None:
+            if (
+                isinstance(rec["tags_meta"], dict)
+                and rec["tags_meta"].get("semantic_handle") is not None
+            ):
                 semantic_handle = str(rec["tags_meta"].get("semantic_handle") or "").strip() or None
             memory_id = generate_memory_id(
                 project_id=project_id,
@@ -312,14 +325,18 @@ def _persist_tagged_pairs(
             )
             with FileLock(summary_lock_path):
                 with open(summary_path, "a", encoding="utf-8", newline="\n") as sf:
-                    need_begin = (not os.path.isfile(summary_path)) or os.path.getsize(summary_path) == 0
+                    need_begin = (not os.path.isfile(summary_path)) or os.path.getsize(
+                        summary_path
+                    ) == 0
                     if need_begin:
                         memory_date = time.strftime("%m-%d-%Y", time.localtime())
-                        sf.write(render_artifact_header(
-                            artifact_type="dream_memory",
-                            project_id=project_id,
-                            memory_date=memory_date,
-                        ))
+                        sf.write(
+                            render_artifact_header(
+                                artifact_type="dream_memory",
+                                project_id=project_id,
+                                memory_date=memory_date,
+                            )
+                        )
                     sf.write(block)
             accepted += 1
         except Exception as exc:
@@ -408,11 +425,19 @@ def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
             rebuild_daily_cache(project_id, reason="dream_auto_accept")
         except Exception as exc:
             failures.append(f"rebuild_cache: {exc}")
-            logger.warning("[DREAM][AUTO_ACCEPT] Rebuild daily cache failed project=%s detail=%s", project_id, exc)
+            logger.warning(
+                "[DREAM][AUTO_ACCEPT] Rebuild daily cache failed project=%s detail=%s",
+                project_id,
+                exc,
+            )
 
     if failures or result.accepted != len(tagged):
         result.errors = failures
-        result.failed = len(tagged) - result.accepted + (1 if any(err.startswith("rebuild_cache:") for err in failures) else 0)
+        result.failed = (
+            len(tagged)
+            - result.accepted
+            + (1 if any(err.startswith("rebuild_cache:") for err in failures) else 0)
+        )
         result.renamed_bad_path = _rename_bad_dream(project_id, dream_path)
         return result
 

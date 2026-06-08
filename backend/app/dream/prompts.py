@@ -4,12 +4,15 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Prompt templates for the Dream cycle.
 
 Builds the project-summary prompt that orients Dream agents using the current
 sleep-cycle memory context.
 """
+
+
 def build_project_summary_prompt(rag_context: str) -> str:
     """Build the project/dream-cycle orientation summary prompt from sleep-cycle memory.
 
@@ -29,6 +32,3 @@ Current Sleep-Cycle Memory:
 {rag_context}
 
 Summary:"""
-
-
-

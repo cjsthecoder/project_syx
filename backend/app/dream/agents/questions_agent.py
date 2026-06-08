@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Open Questions agent for the Syx Dream cycle.
 
@@ -11,18 +12,22 @@ Loads the consolidated open-question artifact, answers each question using local
 RAG context and optional remote research via the Dream LLM, and returns the
 question/answer set as an in-memory structure.
 """
-import logging
-import time
-from typing import List, Dict, Any
 import json
+import logging
 import os
+from typing import Any, Dict, List
 
-from ..research import count_tokens, trim_to_tokens, fetch_remote_research
+from app.utils.debug_utils import write_debug_file
+
 from ...core.config import get_settings
 from ...core.llm_service import generate_text_response
-from ..debug import safe_dream_purpose, write_dream_prompt_to_execute, write_dream_response_usage_debug
+from ..debug import (
+    safe_dream_purpose,
+    write_dream_prompt_to_execute,
+    write_dream_response_usage_debug,
+)
 from ..rag import retrieve_dream_context
-from app.utils.debug_utils import write_debug_file
+from ..research import count_tokens, fetch_remote_research, trim_to_tokens
 from .prompts.questions_prompts import (
     build_answer_question_prompt_local,
     build_answer_question_prompt_remote,
@@ -57,11 +62,15 @@ def _load_consolidated_questions(project_id: str) -> Dict[str, Any]:
             return {"questions": []}
         return {"questions": lst}
     except Exception as e:
-        logger.warning("project=%s failed reading open_questions_consolidated.json: %s", project_id, e)
+        logger.warning(
+            "project=%s failed reading open_questions_consolidated.json: %s", project_id, e
+        )
         return {"questions": []}
 
 
-def _run_open_question_pipeline(project_id: str, question: str, topic: str, resolution: str) -> Dict[str, Any]:
+def _run_open_question_pipeline(
+    project_id: str, question: str, topic: str, resolution: str
+) -> Dict[str, Any]:
     """Process a single open question per 4.1.2.
 
     Retrieves local RAG context, optionally augments with remote research when the
@@ -94,7 +103,9 @@ def _run_open_question_pipeline(project_id: str, question: str, topic: str, reso
         )
         local_context = rc.get("context_text") or ""
     except Exception as e:
-        logger.warning("project=%s question=%s RAG retrieval failed: %s", project_id, question[:120], e)
+        logger.warning(
+            "project=%s question=%s RAG retrieval failed: %s", project_id, question[:120], e
+        )
         local_context = ""
 
     local_tokens = count_tokens(local_context)
@@ -114,7 +125,9 @@ def _run_open_question_pipeline(project_id: str, question: str, topic: str, reso
             remote_context = capped_remote
             used_remote = True
         else:
-            logger.warning("project=%s question=%s empty remote research result", project_id, question[:120])
+            logger.warning(
+                "project=%s question=%s empty remote research result", project_id, question[:120]
+            )
 
     # Build prompt based on availability
     if used_remote and remote_context:
@@ -152,7 +165,12 @@ def _run_open_question_pipeline(project_id: str, question: str, topic: str, reso
         )
         raw = response.text
     except Exception as exc:
-        logger.warning("[DREAM][WARN] LLM call failed project=%s purpose=%s detail=%s", project_id, purpose, exc)
+        logger.warning(
+            "[DREAM][WARN] LLM call failed project=%s purpose=%s detail=%s",
+            project_id,
+            purpose,
+            exc,
+        )
         raw = '{"answer": "Dream agent failed to generate a valid answer."}'
     # Trim logs
     preview = (raw or "")[:250]
@@ -164,7 +182,9 @@ def _run_open_question_pipeline(project_id: str, question: str, topic: str, reso
         if isinstance(obj, dict) and isinstance(obj.get("answer"), str):
             answer_text = obj["answer"]
         else:
-            logger.warning("project=%s question=%s invalid answer JSON shape", project_id, question[:120])
+            logger.warning(
+                "project=%s question=%s invalid answer JSON shape", project_id, question[:120]
+            )
     except Exception:
         logger.warning("project=%s question=%s invalid answer JSON", project_id, question[:120])
 
@@ -194,15 +214,15 @@ def run_questions_agent(
 ) -> Dict[str, Any]:
     """
     Run the Open Questions agent for a project.
-    
+
     This function reads deterministic consolidated questions from
     open_questions_consolidated.json, processes each question through the RAG
     pipeline, and returns an in-memory data structure.
-    
+
     Args:
         project_id: Project identifier
         summary_text: Backward-compatibility placeholder (unused).
-    
+
     Returns:
         Dictionary with {"questions": [...]}
     """
@@ -226,8 +246,11 @@ def run_questions_agent(
                     {
                         "question": out.get("question") or q,
                         "topic": out.get("topic") or topic,
-                        "resolution": str(out.get("resolution") or resolution or "").strip().lower(),
-                        "answer": out.get("answer") or "Dream agent failed to generate a valid answer.",
+                        "resolution": str(out.get("resolution") or resolution or "")
+                        .strip()
+                        .lower(),
+                        "answer": out.get("answer")
+                        or "Dream agent failed to generate a valid answer.",
                         "used_remote_research": bool(out.get("used_remote_research", False)),
                     }
                 )
@@ -248,6 +271,3 @@ def run_questions_agent(
     except Exception as e:
         logger.error("project=%s %s", project_id, e, exc_info=True)
         return {"questions": []}
-
-
-

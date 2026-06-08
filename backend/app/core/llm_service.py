@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 LLM service layer for the Syx chatbot runtime.
 
@@ -18,11 +19,11 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from .config import get_settings, validate_openai_key
 from ..llm_model.base import LLMResponse
 from ..llm_model.factory import get_llm_client
 from ..tracking import get_instrumentation
 from ..utils.tokens import count_tokens
+from .config import get_settings, validate_openai_key
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +149,10 @@ class LLMProvider:
                         "prompt_system_tokens_est": int(_estimate_tokens(base_system_prompt or "")),
                         "prompt_history_tokens_est": int(
                             _estimate_tokens(
-                                "\n".join(str((msg.get("content") or "")) for msg in (conversation_history or []))
+                                "\n".join(
+                                    str((msg.get("content") or ""))
+                                    for msg in (conversation_history or [])
+                                )
                             )
                         ),
                         "prompt_rag_tokens_est": int(_estimate_tokens(rag_system_prompt or "")),
@@ -166,7 +170,11 @@ class LLMProvider:
             response = get_llm_client().generate_chat(
                 messages=messages,
                 model=override_model or self.settings.model_name,
-                temperature=temperature_override if temperature_override is not None else self.settings.model_temperature,
+                temperature=(
+                    temperature_override
+                    if temperature_override is not None
+                    else self.settings.model_temperature
+                ),
                 max_completion_tokens=(
                     int(completion_tokens_override)
                     if completion_tokens_override is not None

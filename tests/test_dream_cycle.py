@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for Dream cycle orchestration and remote-question bridging.
 
@@ -79,7 +80,9 @@ def test_dream_runs_full_pipeline_and_cleans_artifacts(tmp_path, monkeypatch):
     )
 
     monkeypatch.setattr(
-        dreams, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path), enable_dream=True)
+        dreams,
+        "get_settings",
+        lambda: SimpleNamespace(memory_root=str(tmp_path), enable_dream=True),
     )
 
     calls = []
@@ -88,7 +91,10 @@ def test_dream_runs_full_pipeline_and_cleans_artifacts(tmp_path, monkeypatch):
     monkeypatch.setattr(
         dreams,
         "run_questions_agent",
-        lambda pid: (calls.append("questions"), {"questions": [{"question": "Q1?", "resolution": "answer_local"}]})[1],
+        lambda pid: (
+            calls.append("questions"),
+            {"questions": [{"question": "Q1?", "resolution": "answer_local"}]},
+        )[1],
     )
     monkeypatch.setattr(
         dreams,
@@ -129,7 +135,9 @@ def test_dream_runs_full_pipeline_and_cleans_artifacts(tmp_path, monkeypatch):
 def test_dream_no_op_when_disabled(tmp_path, monkeypatch):
     dreams = _load_dreams_module(monkeypatch)
     monkeypatch.setattr(
-        dreams, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path), enable_dream=False)
+        dreams,
+        "get_settings",
+        lambda: SimpleNamespace(memory_root=str(tmp_path), enable_dream=False),
     )
     called = []
     monkeypatch.setattr(dreams, "run_questions_agent", lambda pid: called.append(pid))
@@ -144,7 +152,11 @@ def test_bridge_annotates_matching_item(monkeypatch):
     ideas = {"items": [{"id": "i1", "origin_text": "What is the budget for next quarter?"}]}
     questions = {
         "questions": [
-            {"question": "What is the budget for next quarter?", "topic": "finance", "used_remote_research": True}
+            {
+                "question": "What is the budget for next quarter?",
+                "topic": "finance",
+                "used_remote_research": True,
+            }
         ]
     }
 
@@ -192,12 +204,18 @@ def test_bridge_fuzzy_matches_existing_item(monkeypatch):
     dreams = _load_dreams_module(monkeypatch)
     ideas = {
         "items": [
-            {"id": "i1", "origin_text": "What is our long term product roadmap for 2027 and beyond?"}
+            {
+                "id": "i1",
+                "origin_text": "What is our long term product roadmap for 2027 and beyond?",
+            }
         ]
     }
     questions = {
         "questions": [
-            {"question": "what is our long term product roadmap for 2027", "used_remote_research": True}
+            {
+                "question": "what is our long term product roadmap for 2027",
+                "used_remote_research": True,
+            }
         ]
     }
 

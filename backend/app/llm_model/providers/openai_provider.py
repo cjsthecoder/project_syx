@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 OpenAI-backed implementations for chat + responses APIs.
 """
@@ -115,14 +116,18 @@ def _safe_usage_from_chat(usage: Any) -> LLMUsage:
     """
     try:
         usage_map = _as_mapping(usage)
-        prompt = _coerce_int(getattr(usage, "prompt_tokens", None), _coerce_int(usage_map.get("prompt_tokens", 0)))
+        prompt = _coerce_int(
+            getattr(usage, "prompt_tokens", None), _coerce_int(usage_map.get("prompt_tokens", 0))
+        )
         completion = _coerce_int(
             getattr(usage, "completion_tokens", None),
             _coerce_int(usage_map.get("completion_tokens", 0)),
         )
         # SDK 2.x can surface input/output naming in some envelopes.
         if prompt <= 0:
-            prompt = _coerce_int(getattr(usage, "input_tokens", None), _coerce_int(usage_map.get("input_tokens", 0)))
+            prompt = _coerce_int(
+                getattr(usage, "input_tokens", None), _coerce_int(usage_map.get("input_tokens", 0))
+            )
         if completion <= 0:
             completion = _coerce_int(
                 getattr(usage, "output_tokens", None),
@@ -139,7 +144,9 @@ def _safe_usage_from_chat(usage: Any) -> LLMUsage:
             usage_is_estimate=False,
         )
     except Exception as exc:
-        logger.warning("openai_provider usage parse failed; operation=_safe_usage_from_chat detail=%s", exc)
+        logger.warning(
+            "openai_provider usage parse failed; operation=_safe_usage_from_chat detail=%s", exc
+        )
         return LLMUsage(
             prompt_tokens_reported=0,
             completion_tokens_reported=0,
@@ -163,14 +170,23 @@ def _safe_usage_from_responses(usage: Any) -> LLMUsage:
     """
     try:
         usage_map = _as_mapping(usage)
-        prompt = _coerce_int(getattr(usage, "input_tokens", None), _coerce_int(usage_map.get("input_tokens", 0)))
-        completion = _coerce_int(getattr(usage, "output_tokens", None), _coerce_int(usage_map.get("output_tokens", 0)))
+        prompt = _coerce_int(
+            getattr(usage, "input_tokens", None), _coerce_int(usage_map.get("input_tokens", 0))
+        )
+        completion = _coerce_int(
+            getattr(usage, "output_tokens", None), _coerce_int(usage_map.get("output_tokens", 0))
+        )
         total = _coerce_int(
             getattr(usage, "total_tokens", None),
             _coerce_int(usage_map.get("total_tokens", prompt + completion)),
         )
         extra: Dict[str, Any] = {}
-        for k in ("input_token_details", "output_token_details", "reasoning_tokens", "cached_tokens"):
+        for k in (
+            "input_token_details",
+            "output_token_details",
+            "reasoning_tokens",
+            "cached_tokens",
+        ):
             try:
                 v = getattr(usage, k, None)
                 if v is None:
@@ -187,7 +203,10 @@ def _safe_usage_from_responses(usage: Any) -> LLMUsage:
             extra_usage=extra or None,
         )
     except Exception as exc:
-        logger.warning("openai_provider usage parse failed; operation=_safe_usage_from_responses detail=%s", exc)
+        logger.warning(
+            "openai_provider usage parse failed; operation=_safe_usage_from_responses detail=%s",
+            exc,
+        )
         return LLMUsage(
             prompt_tokens_reported=0,
             completion_tokens_reported=0,

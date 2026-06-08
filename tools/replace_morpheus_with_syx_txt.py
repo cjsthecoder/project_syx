@@ -5,6 +5,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Replace every case-insensitive occurrence of "Morpheus" with "Syx" in top-level .txt files.
 - Input: one directory; only immediate children named *.txt are processed (no recursion).
@@ -16,7 +17,6 @@ import logging
 import re
 import sys
 from pathlib import Path
-
 
 logger = logging.getLogger("replace_morpheus_with_syx_txt")
 

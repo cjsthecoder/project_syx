@@ -4,18 +4,19 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Enhanced logging configuration for Syx AGI Chatbot Framework.
 
 This module provides structured logging with colored console output and timestamped files.
 """
 
+import contextvars
+import logging
 import os
 import sys
-import logging
-from logging.handlers import RotatingFileHandler
-import contextvars
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 from typing import Optional
 
 # Import ctypes for Windows color support
@@ -34,6 +35,7 @@ class CustomFormatter(logging.Formatter):  # pylint: disable=R0903
     terminal is detected to support them, falling back to plain text otherwise
     (e.g. when output is redirected or on unsupported terminals).
     """
+
     # pylint: disable=C0301
 
     def __init__(self):
@@ -43,20 +45,20 @@ class CustomFormatter(logging.Formatter):  # pylint: disable=R0903
 
         if self.use_colors:
             self.formats = {
-                logging.DEBUG: '\033[90m%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s\033[0m',
-                logging.INFO: '\033[92m%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s\033[0m',
-                logging.WARNING: '\033[93m%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s\033[0m',
-                logging.ERROR: '\033[91m%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s\033[0m',
-                logging.CRITICAL: '\033[95m%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s\033[0m',
+                logging.DEBUG: "\033[90m%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s\033[0m",
+                logging.INFO: "\033[92m%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s\033[0m",
+                logging.WARNING: "\033[93m%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s\033[0m",
+                logging.ERROR: "\033[91m%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s\033[0m",
+                logging.CRITICAL: "\033[95m%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s\033[0m",
             }
         else:
             # Fallback to plain text format
             self.formats = {
-                logging.DEBUG: '%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s',
-                logging.INFO: '%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s',
-                logging.WARNING: '%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s',
-                logging.ERROR: '%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s',
-                logging.CRITICAL: '%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s',
+                logging.DEBUG: "%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s",
+                logging.INFO: "%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s",
+                logging.WARNING: "%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s",
+                logging.ERROR: "%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s",
+                logging.CRITICAL: "%(asctime)s [%(levelname)s] %(name)s:%(funcName)s : %(message)s",
             }
 
     def _supports_colors(self):
@@ -68,19 +70,21 @@ class CustomFormatter(logging.Formatter):  # pylint: disable=R0903
             otherwise False.
         """
         # Check if we're in a terminal
-        if not hasattr(sys.stdout, 'isatty') or not sys.stdout.isatty():
+        if not hasattr(sys.stdout, "isatty") or not sys.stdout.isatty():
             return False
 
         # Check for common terminal types that support colors
-        term = os.environ.get('TERM', '')
-        if term in ('xterm', 'xterm-256color', 'linux', 'screen', 'screen-256color'):
+        term = os.environ.get("TERM", "")
+        if term in ("xterm", "xterm-256color", "linux", "screen", "screen-256color"):
             return True
 
         # Check for Windows 10+ with ANSI support
-        if os.name == 'nt' and ctypes:
+        if os.name == "nt" and ctypes:
             try:
                 kernel32 = ctypes.windll.kernel32
-                return kernel32.GetConsoleMode(kernel32.GetStdHandle(-11)) & 0x0004  # pragma: no cover - Windows-specific API call
+                return (
+                    kernel32.GetConsoleMode(kernel32.GetStdHandle(-11)) & 0x0004
+                )  # pragma: no cover - Windows-specific API call
             except AttributeError:
                 return False
 
@@ -97,9 +101,8 @@ class CustomFormatter(logging.Formatter):  # pylint: disable=R0903
             terminal supports them.
         """
         log_fmt = self.formats.get(record.levelno, self.formats[logging.INFO])
-        formatter = logging.Formatter(log_fmt, datefmt='%Y-%m-%d %H:%M:%S')
+        formatter = logging.Formatter(log_fmt, datefmt="%Y-%m-%d %H:%M:%S")
         return formatter.format(record)
-
 
 
 def setup_logging() -> None:
@@ -110,14 +113,14 @@ def setup_logging() -> None:
     handler, tunes third-party logger levels, and reroutes uvicorn logging
     through the shared handlers. Intended to be called once at startup.
     """
-    
+
     settings = get_settings()
     # Legacy global level (retained for component loggers default)
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
     # New per-handler levels
     console_level = getattr(logging, settings.log_level_console.upper(), logging.INFO)
     file_level = getattr(logging, settings.log_level_file.upper(), logging.DEBUG)
-    
+
     # Create logs directory from runtime config (may be nested, e.g. tests/).
     logs_dir = str(settings.logs_dir)
     os.makedirs(logs_dir, exist_ok=True)
@@ -125,35 +128,35 @@ def setup_logging() -> None:
     # Create timestamped log filename. The prefix is configurable so test runs
     # can write 'test_<timestamp>.log' and keep them out of normal runtime logs.
     prefix = str(getattr(settings, "log_file_prefix", "syx_") or "syx_")
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_filename = os.path.join(logs_dir, f'{prefix}{timestamp}.log')
-    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = os.path.join(logs_dir, f"{prefix}{timestamp}.log")
+
     # Configure root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
     root_logger.handlers.clear()
-    
+
     # Create rotating file handler (DEBUG level for detailed logs)
     file_handler = RotatingFileHandler(
         log_filename,
         maxBytes=int(settings.log_max_bytes),
-        backupCount=int(settings.log_backup_count)
+        backupCount=int(settings.log_backup_count),
     )
     file_handler.setLevel(file_level)
     file_formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)s - %(name)s:%(funcName)s - %(message)s'
+        "%(asctime)s - %(levelname)s - %(name)s:%(funcName)s - %(message)s"
     )
     file_handler.setFormatter(file_formatter)
-    
+
     # Create console handler with custom formatter honoring LOG_LEVEL
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(console_level)
     console_handler.setFormatter(CustomFormatter())
-    
+
     # Add handlers to root logger
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
-    
+
     # Configure specific loggers to reduce noise and use our formatter
     if console_level == logging.DEBUG or log_level == logging.DEBUG:
         logging.getLogger("uvicorn").setLevel(logging.DEBUG)
@@ -171,31 +174,33 @@ def setup_logging() -> None:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     # Silence filelock library debug messages (only show warnings/errors)
     logging.getLogger("filelock").setLevel(logging.WARNING)
-    
+
     # Make uvicorn use our formatter for all its messages
     uvicorn_logger = logging.getLogger("uvicorn")
     uvicorn_logger.handlers.clear()
     uvicorn_logger.addHandler(console_handler)
     uvicorn_logger.addHandler(file_handler)
     uvicorn_logger.propagate = False  # Prevent double logging
-    
+
     # Also capture uvicorn.error logger which handles WARNING messages
     uvicorn_error_logger = logging.getLogger("uvicorn.error")
     uvicorn_error_logger.handlers.clear()
     uvicorn_error_logger.addHandler(console_handler)
     uvicorn_error_logger.addHandler(file_handler)
     uvicorn_error_logger.propagate = False
-    
+
     # Set our application logger
     app_logger = logging.getLogger("syx")
     app_logger.setLevel(min(console_level, file_level, log_level))
-    
+
     # Log initialization
-    app_logger.info(f'Logging initialized. Log file: {log_filename}')
+    app_logger.info(f"Logging initialized. Log file: {log_filename}")
 
 
 # Context variable for per-request message correlation id
-_message_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("message_id", default=None)
+_message_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "message_id", default=None
+)
 _route_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("route", default=None)
 _ns_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("namespace", default=None)
 
@@ -281,7 +286,7 @@ class RequestLogger:
     through the single shared ``syx`` logger regardless of the name passed at
     construction.
     """
-    
+
     def __init__(self, logger_name: str = "api"):
         """Initialize the request logger.
 
@@ -290,13 +295,9 @@ class RequestLogger:
                 logger is used regardless of this value.
         """
         self.logger = get_logger()  # Use single shared logger
-    
+
     def log_request(
-        self, 
-        endpoint: str, 
-        method: str, 
-        user_id: Optional[str] = None,
-        **kwargs
+        self, endpoint: str, method: str, user_id: Optional[str] = None, **kwargs
     ) -> None:
         """Log an incoming request at INFO level.
 
@@ -308,21 +309,16 @@ class RequestLogger:
         """
         self.logger.info(
             f"Request: {method} {endpoint}",
-            extra={
-                "endpoint": endpoint,
-                "method": method,
-                "user_id": user_id,
-                "type": "request"
-            }
+            extra={"endpoint": endpoint, "method": method, "user_id": user_id, "type": "request"},
         )
-    
+
     def log_response(
-        self, 
-        endpoint: str, 
-        status_code: int, 
+        self,
+        endpoint: str,
+        status_code: int,
         response_time: float,
         user_id: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         """Log a completed response at DEBUG level.
 
@@ -340,16 +336,12 @@ class RequestLogger:
                 "status_code": status_code,
                 "response_time": response_time,
                 "user_id": user_id,
-                "type": "response"
-            }
+                "type": "response",
+            },
         )
-    
+
     def log_error(
-        self, 
-        endpoint: str, 
-        error: Exception, 
-        user_id: Optional[str] = None,
-        **kwargs
+        self, endpoint: str, error: Exception, user_id: Optional[str] = None, **kwargs
     ) -> None:
         """Log an endpoint error at ERROR level with a traceback.
 
@@ -366,9 +358,9 @@ class RequestLogger:
                 "error": str(error),
                 "error_type": type(error).__name__,
                 "user_id": user_id,
-                "type": "error"
+                "type": "error",
             },
-            exc_info=True
+            exc_info=True,
         )
 
 
@@ -379,15 +371,12 @@ class LLMLogger:
     LLM calls (model, prompt size, latency, token usage). Writes through the
     single shared ``syx`` logger.
     """
-    
+
     def __init__(self):
         self.logger = get_logger()  # Use single shared logger
-    
+
     def log_llm_request(
-        self, 
-        model: str, 
-        message_length: int, 
-        conversation_id: Optional[str] = None
+        self, model: str, message_length: int, conversation_id: Optional[str] = None
     ) -> None:
         """Log an outbound LLM request at INFO level.
 
@@ -402,16 +391,16 @@ class LLMLogger:
                 "model": model,
                 "message_length": message_length,
                 "conversation_id": conversation_id,
-                "type": "llm_request"
-            }
+                "type": "llm_request",
+            },
         )
-    
+
     def log_llm_response(
-        self, 
-        model: str, 
-        response_length: int, 
+        self,
+        model: str,
+        response_length: int,
         tokens_used: Optional[int] = None,
-        conversation_id: Optional[str] = None
+        conversation_id: Optional[str] = None,
     ) -> None:
         """Log an LLM response at INFO level.
 
@@ -428,15 +417,12 @@ class LLMLogger:
                 "response_length": response_length,
                 "tokens_used": tokens_used,
                 "conversation_id": conversation_id,
-                "type": "llm_response"
-            }
+                "type": "llm_response",
+            },
         )
-    
+
     def log_llm_error(
-        self, 
-        model: str, 
-        error: Exception, 
-        conversation_id: Optional[str] = None
+        self, model: str, error: Exception, conversation_id: Optional[str] = None
     ) -> None:
         """Log an LLM call failure at ERROR level with a traceback.
 
@@ -453,9 +439,9 @@ class LLMLogger:
                 "error": str(error),
                 "error_type": type(error).__name__,
                 "conversation_id": conversation_id,
-                "type": "llm_error"
+                "type": "llm_error",
             },
-            exc_info=True
+            exc_info=True,
         )
 
 

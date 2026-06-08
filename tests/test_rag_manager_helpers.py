@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Unit tests for the pure helpers extracted from ``merge_daily_and_main``.
 
@@ -14,7 +15,6 @@ document ordering, and prompt assembly.
 """
 from types import SimpleNamespace
 
-import app.rag.manager as manager
 from app.rag.manager import (
     _assemble_context_prompt,
     _dedupe_expanded_chunks,

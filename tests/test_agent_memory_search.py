@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for the agent memory search interface.
 
@@ -46,8 +47,8 @@ sys.modules.setdefault("app.embedding.factory", embedding_factory_module)
 from app.agent_interface.models import AgentMemorySearchResponse, AgentMemorySnippet
 from app.agent_interface.parser import parse_prompt_context_to_snippets
 from app.agent_interface.router import router
-from tools import agent_memory_search
 
+from tools import agent_memory_search
 
 app = FastAPI()
 app.include_router(router)
@@ -196,13 +197,23 @@ def test_agent_memory_search_endpoint_returns_structured_snippets(monkeypatch):
         )
         return response, "Context:\n---\nSnippet 1 (...)\nbody", []
 
-    monkeypatch.setattr("app.agent_interface.router.resolve_project_name", lambda _name: SimpleNamespace(id="proj-1"))
+    monkeypatch.setattr(
+        "app.agent_interface.router.resolve_project_name",
+        lambda _name: SimpleNamespace(id="proj-1"),
+    )
     monkeypatch.setattr("app.agent_interface.router.is_sleeping", lambda: False)
     monkeypatch.setattr("app.agent_interface.router.retrieve_agent_memory", fake_retrieve)
-    monkeypatch.setattr("app.agent_interface.router.write_agent_debug_files", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        "app.agent_interface.router.write_agent_debug_files", lambda **_kwargs: None
+    )
 
-    with patch("app.core.query_builder.build_query", side_effect=AssertionError("classifier called")):
-        with patch("app.core.llm_service.generate_chat_response", side_effect=AssertionError("model called")):
+    with patch(
+        "app.core.query_builder.build_query", side_effect=AssertionError("classifier called")
+    ):
+        with patch(
+            "app.core.llm_service.generate_chat_response",
+            side_effect=AssertionError("model called"),
+        ):
             response = client.post(
                 "/agent/memory/search",
                 json={
@@ -238,7 +249,10 @@ def test_agent_memory_search_missing_token_returns_401():
 
 def test_agent_memory_search_sleep_lock_reaches_endpoint(monkeypatch):
     monkeypatch.setattr("app.agent_interface.router.is_sleeping", lambda: True)
-    monkeypatch.setattr("app.agent_interface.router.resolve_project_name", lambda _name: SimpleNamespace(id="proj-1"))
+    monkeypatch.setattr(
+        "app.agent_interface.router.resolve_project_name",
+        lambda _name: SimpleNamespace(id="proj-1"),
+    )
 
     response = client.post(
         "/agent/memory/search",
@@ -275,7 +289,9 @@ def test_cli_prints_raw_json_and_writes_debug(tmp_path, monkeypatch, capsys):
                 }
             ).encode("utf-8")
 
-    monkeypatch.setattr(agent_memory_search.urllib.request, "urlopen", lambda *_args, **_kwargs: _Response())
+    monkeypatch.setattr(
+        agent_memory_search.urllib.request, "urlopen", lambda *_args, **_kwargs: _Response()
+    )
 
     rc = agent_memory_search.main(
         [

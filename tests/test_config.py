@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Unit tests for app.core.config.
 
@@ -11,8 +12,6 @@ Covers field validators, derived-config helpers, and model/key resolution.
 """
 
 import pytest
-from pydantic import ValidationError
-
 from app.core.config import (
     Settings,
     compute_per_source_k,
@@ -21,6 +20,7 @@ from app.core.config import (
     get_response_pruning_stage_config,
     validate_openai_key,
 )
+from pydantic import ValidationError
 
 
 def test_tagger_percent_coerces_float_string_to_int():
@@ -35,7 +35,9 @@ def test_tagger_percent_accepts_plain_int():
 
 def test_whitespace_mode_accepts_valid():
     for mode in ("off", "compact_prose", "preserve_code"):
-        assert Settings(response_pruning_whitespace_mode=mode).response_pruning_whitespace_mode == mode
+        assert (
+            Settings(response_pruning_whitespace_mode=mode).response_pruning_whitespace_mode == mode
+        )
 
 
 def test_whitespace_mode_rejects_invalid():

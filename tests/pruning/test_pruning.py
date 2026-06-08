@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for the light response pruner.
 
@@ -14,7 +15,6 @@ fenced-code-block safety, per-stage enable toggles, and config validation.
 from typing import cast
 
 import pytest
-
 from app.pruning.light_response_pruner import (
     Pruner,
     PrunerConfig,
@@ -31,9 +31,7 @@ def test_normalize_for_prefix_match_follows_requirement_order() -> None:
 
 
 def test_front_pruning_removes_matching_leading_sentence() -> None:
-    pruner = Pruner.from_rules(
-        {"front": {"prefix": ["you're right"], "cut_mode": "sentence"}}
-    )
+    pruner = Pruner.from_rules({"front": {"prefix": ["you're right"], "cut_mode": "sentence"}})
 
     result = pruner.prune("You\u2019re right. The substantive answer stays.")
 
@@ -57,9 +55,7 @@ def test_front_pruning_respects_max_front_units() -> None:
 
 
 def test_front_pruning_blocks_empty_result() -> None:
-    pruner = Pruner.from_rules(
-        {"front": {"prefix": ["got it"], "cut_mode": "sentence"}}
-    )
+    pruner = Pruner.from_rules({"front": {"prefix": ["got it"], "cut_mode": "sentence"}})
 
     result = pruner.prune("Got it.")
 
@@ -69,9 +65,7 @@ def test_front_pruning_blocks_empty_result() -> None:
 
 
 def test_end_pruning_removes_matching_paragraph_to_end() -> None:
-    pruner = Pruner.from_rules(
-        {"end": {"prefix": ["let me know"], "cut_mode": "paragraph_to_end"}}
-    )
+    pruner = Pruner.from_rules({"end": {"prefix": ["let me know"], "cut_mode": "paragraph_to_end"}})
     text = "The substantive answer stays.\n\nLet me know if you want more examples."
 
     result = pruner.prune(text)
@@ -104,7 +98,7 @@ def test_end_pruning_skips_matching_prefix_inside_fenced_code_block() -> None:
         {"end": {"prefix": ["let me know"], "cut_mode": "paragraph_to_end"}},
         config=PrunerConfig(whitespace_mode="off"),
     )
-    text = "The substantive answer stays.\n\n```\nLet me know = \"not boilerplate\"\n```"
+    text = 'The substantive answer stays.\n\n```\nLet me know = "not boilerplate"\n```'
 
     result = pruner.prune(text)
 
@@ -217,11 +211,11 @@ def test_markdown_stripping_preserves_fenced_code_safety() -> None:
         {"end": {"prefix": ["let me know"], "cut_mode": "paragraph_to_end"}},
         config=PrunerConfig(whitespace_mode="off"),
     )
-    text = "**Important** answer.\n\n```\nLet me know = \"not boilerplate\"\n```"
+    text = '**Important** answer.\n\n```\nLet me know = "not boilerplate"\n```'
 
     result = pruner.prune(text)
 
-    assert result.pruned_text == "Important answer.\n\n```\nLet me know = \"not boilerplate\"\n```"
+    assert result.pruned_text == 'Important answer.\n\n```\nLet me know = "not boilerplate"\n```'
     assert result.changed is True
     assert result.trimmed_end is False
 
@@ -239,14 +233,7 @@ def test_compact_whitespace_preserves_fenced_code_block_contents() -> None:
     result = compact_whitespace(text)
 
     assert result == (
-        "A spaced line.\n"
-        "\n"
-        "```python\n"
-        "x  =   1\n"
-        "print(x)\n"
-        "```\n"
-        "\n"
-        "Another line."
+        "A spaced line.\n" "\n" "```python\n" "x  =   1\n" "print(x)\n" "```\n" "\n" "Another line."
     )
 
 
@@ -414,9 +401,7 @@ def test_prune_similar_sentences_preserves_protected_sentences() -> None:
 
 
 def test_pruner_similarity_stage_runs_after_whitespace() -> None:
-    pruner = Pruner.from_rules(
-        {"front": {"prefix": ["not a match"], "cut_mode": "sentence"}}
-    )
+    pruner = Pruner.from_rules({"front": {"prefix": ["not a match"], "cut_mode": "sentence"}})
     text = (
         "The tagger   should return structured spans.\n\n"
         "The tagger should return structured spans."

@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Factory functions for provider-selected LLM clients.
 """
@@ -44,7 +45,9 @@ def _new_provider(*, default_model: str, timeout_s: float) -> OpenAILLMProvider:
         str(default_model),
         float(timeout_s),
     )
-    return OpenAILLMProvider(api_key=settings.openai_api_key, default_model=default_model, timeout_s=float(timeout_s))
+    return OpenAILLMProvider(
+        api_key=settings.openai_api_key, default_model=default_model, timeout_s=float(timeout_s)
+    )
 
 
 def get_llm_client() -> OpenAILLMProvider:

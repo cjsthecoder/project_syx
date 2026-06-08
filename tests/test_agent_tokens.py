@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Unit tests for app.security.agent_tokens.
 
@@ -15,9 +16,7 @@ real validation is an intentional, visible change.
 import dataclasses
 
 import pytest
-
 from app.security.agent_tokens import (
-    AgentAuthorizationResult,
     authorize_agent_token,
 )
 

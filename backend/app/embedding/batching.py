@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Token-aware batching helpers for embeddings API calls.
 
@@ -96,4 +97,3 @@ def iter_token_batches(
 
     if batch_texts:
         yield batch_texts, (batch_metas if use_metas else None), int(batch_tokens)
-

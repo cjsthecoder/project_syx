@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Text chunking and chunk post-processing helpers for RAG.
 
@@ -150,7 +151,9 @@ def collapse_snippet_groups(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]
             _flush()
             continue
         if group:
-            first_md = group[0].get("metadata") if isinstance(group[0].get("metadata"), dict) else {}
+            first_md = (
+                group[0].get("metadata") if isinstance(group[0].get("metadata"), dict) else {}
+            )
             first_sid = first_md.get("source_document_id")
             first_src = group[0].get("source")
             prev_idx = _chunk_index(group[-1])

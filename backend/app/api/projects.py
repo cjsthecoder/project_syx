@@ -4,38 +4,42 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Projects API endpoint for Syx AGI Chatbot Framework.
 
 This module provides project management functionality (stubbed).
 """
 
-import logging
 import json
+import logging
 import os
 import time
-from typing import Optional, List, Any, Dict
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 # Set up module-level logger
 logger = logging.getLogger(__name__)
 
-from ..core.models import ProjectRequest, ProjectResponse, ErrorResponse
-from ..core.database import get_session
-from ..core.db_models import Project, File
-from sqlmodel import select
-from ..utils.logging import RequestLogger
-from ..utils.errors import handle_project_error, log_error_context
+import shutil
 import uuid
-import os
-from ..core.memory import get_memory_manager, get_last_context_tokens, _prune_assistant_for_tagger
-from ..tagging.tagger import tag_pair
-from ..rag.daily_store import append_pair, daily_stats, rebuild_daily_cache, start_daily_cache_rebuild
-from ..rag.syx_memory_artifact import (
-    generate_memory_id,
-    render_artifact_header,
-    snake_case_value,
+
+from filelock import FileLock
+from sqlmodel import select
+
+from ..core.config import get_settings
+from ..core.database import get_session
+from ..core.db_models import ChatMessage, File, Project
+from ..core.memory import _prune_assistant_for_tagger, get_last_context_tokens, get_memory_manager
+from ..core.models import ProjectRequest
+from ..core.personality import (
+    load_project_personality,
+    load_project_system_prompt,
+    save_project_personality,
+    save_project_system_prompt,
+    seed_project_defaults,
 )
 from ..dream.common import (
     dream_markdown_block,
@@ -45,22 +49,24 @@ from ..dream.common import (
     format_tags_block,
     origin_memory_ids,
 )
-from ..core.config import get_settings
-from filelock import FileLock
-from ..core.personality import (
-    load_project_system_prompt,
-    load_project_personality,
-    save_project_system_prompt,
-    save_project_personality,
-    seed_project_defaults,
+from ..rag.daily_store import (
+    append_pair,
+    daily_stats,
+    rebuild_daily_cache,
+    start_daily_cache_rebuild,
 )
-from ..core.database import get_session
-from ..core.db_models import ChatMessage
 from ..rag.manager import rebuild_faiss_index
+from ..rag.syx_memory_artifact import (
+    generate_memory_id,
+    render_artifact_header,
+    snake_case_value,
+)
+from ..tagging.tagger import tag_pair
 from ..utils.debug_utils import write_debug_file
 from ..utils.dream_summary import write_latest_sleep_summary
+from ..utils.errors import handle_project_error, log_error_context
+from ..utils.logging import RequestLogger
 from ..utils.tokens import count_tokens
-import shutil
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -213,7 +219,7 @@ async def get_projects() -> JSONResponse:
             for p in rows:
                 name = p.name or p.id
                 # Normalize legacy pattern 'Project {id}' to just id
-                if isinstance(name, str) and name.lower().startswith('project '):
+                if isinstance(name, str) and name.lower().startswith("project "):
                     tail = name[8:].strip()
                     if tail == p.id:
                         name = tail
@@ -228,16 +234,19 @@ async def get_projects() -> JSONResponse:
                 if _current_project is None and rows:
                     _current_project = rows[0].id
         request_logger.log_response(endpoint="/projects", status_code=200, response_time=0.0)
-        return JSONResponse(status_code=200, content={
-            "response": "OK",
-            "current_project": _current_project,
-            "available_projects": available_projects,
-            "project_names": id_to_name,
-        })
+        return JSONResponse(
+            status_code=200,
+            content={
+                "response": "OK",
+                "current_project": _current_project,
+                "available_projects": available_projects,
+                "project_names": id_to_name,
+            },
+        )
     except Exception as e:
         request_logger.log_error(endpoint="/projects", error=e)
         log_error_context(error=e, context={"endpoint": "/projects", "method": "GET"})
-        raise handle_project_error(e)
+        raise handle_project_error(e) from e
 
 
 @router.get("/projects/{project_id}/dream")
@@ -256,22 +265,36 @@ async def get_project_dream(project_id: str) -> JSONResponse:
         payload (or the sleep-summary fallback); a 500 ``JSONResponse`` on
         read failure.
     """
-    request_logger.log_request(endpoint="/projects/{project_id}/dream", method="GET", user_id=project_id)
+    request_logger.log_request(
+        endpoint="/projects/{project_id}/dream", method="GET", user_id=project_id
+    )
     dream_path = os.path.join(get_settings().memory_root, project_id, "dream.json")
     try:
         if not os.path.isfile(dream_path):
-            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_sleep_summary(project_id)})
+            return JSONResponse(
+                status_code=200,
+                content={"project_id": project_id, "dream": _read_latest_sleep_summary(project_id)},
+            )
         with open(dream_path, "r", encoding="utf-8") as f:
             raw = f.read().strip()
         if not raw:
-            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_sleep_summary(project_id)})
+            return JSONResponse(
+                status_code=200,
+                content={"project_id": project_id, "dream": _read_latest_sleep_summary(project_id)},
+            )
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
-            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_sleep_summary(project_id)})
+            return JSONResponse(
+                status_code=200,
+                content={"project_id": project_id, "dream": _read_latest_sleep_summary(project_id)},
+            )
         validated = _validate_dream_payload(data)
         if not validated:
-            return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_sleep_summary(project_id)})
+            return JSONResponse(
+                status_code=200,
+                content={"project_id": project_id, "dream": _read_latest_sleep_summary(project_id)},
+            )
         filtered_items, dropped = filter_remote_without_research(validated.get("items", []))
         validated["items"] = filtered_items
         if dropped:
@@ -282,8 +305,13 @@ async def get_project_dream(project_id: str) -> JSONResponse:
             )
         return JSONResponse(status_code=200, content={"project_id": project_id, "dream": validated})
     except Exception as e:
-        logger.warning("[PROJECT][DREAM] Failed reading dream for %s: %s", project_id, e, exc_info=True)
-        return JSONResponse(status_code=500, content={"project_id": project_id, "error": "Failed to read dream.json"})
+        logger.warning(
+            "[PROJECT][DREAM] Failed reading dream for %s: %s", project_id, e, exc_info=True
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"project_id": project_id, "error": "Failed to read dream.json"},
+        )
 
 
 def _filter_remote_and_report(
@@ -352,7 +380,11 @@ def _prepare_dream_summary_paths(project_id: str) -> tuple[str, str, str]:
         try:
             os.replace(legacy_summary_lock_path, summary_lock_path)
         except OSError as exc:
-            logger.warning("projects dream_summary lock migration failed project_id=%s detail=%s", project_id, exc)
+            logger.warning(
+                "projects dream_summary lock migration failed project_id=%s detail=%s",
+                project_id,
+                exc,
+            )
     return base_dir, summary_path, summary_lock_path
 
 
@@ -397,7 +429,12 @@ def _tag_dream_pairs(project_id: str, to_process: List[Dict[str, Any]]) -> List[
 
             tags_meta = None
             try:
-                tags_meta = tag_pair(user_text, assistant_text_for_memory, previous_pair_text=previous_pair_text, project_id=project_id)
+                tags_meta = tag_pair(
+                    user_text,
+                    assistant_text_for_memory,
+                    previous_pair_text=previous_pair_text,
+                    project_id=project_id,
+                )
             except Exception as exc:
                 logger.warning(
                     "[PROJECT][DREAM][KEEP] Tagger failed; persisting without tags project=%s item_id=%s detail=%s",
@@ -409,16 +446,18 @@ def _tag_dream_pairs(project_id: str, to_process: List[Dict[str, Any]]) -> List[
 
             tags_block = format_tags_block(tags_meta)
             embed_text = (tags_block + pair_text) if tags_block else pair_text
-            tagged.append({
-                "it": it,
-                "user_text": user_text,
-                "assistant_resp_full": assistant_text_for_memory,
-                "pair_text": pair_text,
-                "tokens": tokens,
-                "tags_meta": tags_meta,
-                "tags_block": tags_block,
-                "embed_text": embed_text,
-            })
+            tagged.append(
+                {
+                    "it": it,
+                    "user_text": user_text,
+                    "assistant_resp_full": assistant_text_for_memory,
+                    "pair_text": pair_text,
+                    "tokens": tokens,
+                    "tags_meta": tags_meta,
+                    "tags_block": tags_block,
+                    "embed_text": embed_text,
+                }
+            )
             previous_pair_text = pair_text
     return tagged
 
@@ -459,7 +498,9 @@ def _persist_tagged_dream_pairs(
         try:
             ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())
             accepted_item_id = str(it.get("id") or "").strip() or None
-            dream_output_type = snake_case_value(it.get("origin_type") or it.get("source_resolution")) or None
+            dream_output_type = (
+                snake_case_value(it.get("origin_type") or it.get("source_resolution")) or None
+            )
             origin_ids = origin_memory_ids(it)
             semantic_handle = None
             if isinstance(tags_meta, dict) and tags_meta.get("semantic_handle") is not None:
@@ -512,14 +553,18 @@ def _persist_tagged_dream_pairs(
             )
             with FileLock(summary_lock_path):
                 with open(summary_path, "a", encoding="utf-8", newline="\n") as sf:
-                    need_begin = (not os.path.isfile(summary_path)) or os.path.getsize(summary_path) == 0
+                    need_begin = (not os.path.isfile(summary_path)) or os.path.getsize(
+                        summary_path
+                    ) == 0
                     if need_begin:
                         memory_date = time.strftime("%m-%d-%Y", time.localtime())
-                        sf.write(render_artifact_header(
-                            artifact_type="dream_memory",
-                            project_id=project_id,
-                            memory_date=memory_date,
-                        ))
+                        sf.write(
+                            render_artifact_header(
+                                artifact_type="dream_memory",
+                                project_id=project_id,
+                                memory_date=memory_date,
+                            )
+                        )
                     sf.write(block)
             successes += 1
         except Exception as e:
@@ -558,7 +603,9 @@ def _finalize_dream_keep(
         try:
             rebuild_daily_cache(project_id, reason="dream_batch")
         except Exception as rb:
-            logger.warning("[PROJECT][DREAM][KEEP] Rebuild daily cache failed project=%s: %s", project_id, rb)
+            logger.warning(
+                "[PROJECT][DREAM][KEEP] Rebuild daily cache failed project=%s: %s", project_id, rb
+            )
             failures.append(f"rebuild_cache: {rb}")
 
     deleted = False
@@ -609,10 +656,20 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
         # Only tag and persist items where the user checked Remember
         to_process: List[Dict[str, Any]] = [it for it in entries if it.get("remember")]
         if not to_process:
-            return JSONResponse(status_code=200, content={"project_id": project_id, "processed": 0, "kept": 0, "deleted_dream": False})
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "project_id": project_id,
+                    "processed": 0,
+                    "kept": 0,
+                    "deleted_dream": False,
+                },
+            )
 
         total_remembered = len(to_process)
-        to_process, dropped_remote_no_research = _filter_remote_and_report(project_id, to_process, total_remembered)
+        to_process, dropped_remote_no_research = _filter_remote_and_report(
+            project_id, to_process, total_remembered
+        )
         if not to_process:
             return JSONResponse(
                 status_code=200,
@@ -631,11 +688,15 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
         tagged = _tag_dream_pairs(project_id, to_process)
 
         # Pass 2: append each to daily.json only (no cache update), write bounded dream_summary blocks.
-        successes, failures = _persist_tagged_dream_pairs(project_id, tagged, summary_path, summary_lock_path)
+        successes, failures = _persist_tagged_dream_pairs(
+            project_id, tagged, summary_path, summary_lock_path
+        )
 
         # Rebuild the daily cache once, then delete dream.json only on full success.
         dream_path = os.path.join(get_settings().memory_root, project_id, "dream.json")
-        deleted = _finalize_dream_keep(project_id, base_dir, dream_path, tagged, successes, failures)
+        deleted = _finalize_dream_keep(
+            project_id, base_dir, dream_path, tagged, successes, failures
+        )
 
         status = 200 if not failures else 500
         return JSONResponse(
@@ -652,7 +713,10 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
         )
     except Exception as e:
         logger.error("[PROJECT][DREAM][KEEP] Failed for %s: %s", project_id, e, exc_info=True)
-        return JSONResponse(status_code=500, content={"project_id": project_id, "error": "Failed to persist kept dream items"})
+        return JSONResponse(
+            status_code=500,
+            content={"project_id": project_id, "error": "Failed to persist kept dream items"},
+        )
 
 
 @router.post("/projects")
@@ -689,66 +753,109 @@ async def create_or_switch_project(request: ProjectRequest) -> JSONResponse:
                 if not request.project_name:
                     raise HTTPException(status_code=400, detail={"error": "project_name required"})
                 # Enforce case-insensitive unique name
-                lower = request.project_name.strip().lower()
-                exists = session.exec(select(Project).where(Project.name.ilike(request.project_name))).first()
+                exists = session.exec(
+                    select(Project).where(Project.name.ilike(request.project_name))
+                ).first()
                 if exists:
-                    raise HTTPException(status_code=409, detail={"error": "Project name already exists"})
+                    raise HTTPException(
+                        status_code=409, detail={"error": "Project name already exists"}
+                    )
                 new_id = str(uuid.uuid4())
-                obj = Project(id=new_id, name=request.project_name.strip(), description=request.project_name.strip(), system=False)
+                obj = Project(
+                    id=new_id,
+                    name=request.project_name.strip(),
+                    description=request.project_name.strip(),
+                    system=False,
+                )
                 session.add(obj)
                 session.commit()
                 # Seed default prompt/personality files
                 try:
                     seed_project_defaults(obj.id)
                 except Exception as e:
-                    logger.warning("[PROJECT] Failed to seed defaults for project %s: %s", obj.id, e, exc_info=True)
+                    logger.warning(
+                        "[PROJECT] Failed to seed defaults for project %s: %s",
+                        obj.id,
+                        e,
+                        exc_info=True,
+                    )
                 _current_project = obj.id
                 message = f"Created and switched to new project '{obj.name}'"
                 # Seed USER_PROFILE.txt baseline and rebuild RAG
                 try:
                     uploads_dir = os.path.join(get_settings().memory_root, obj.id, "uploads")
                     os.makedirs(uploads_dir, exist_ok=True)
-                    default_src = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "defaults", "USER_PROFILE.txt"))
+                    default_src = os.path.abspath(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "..",
+                            "config",
+                            "defaults",
+                            "USER_PROFILE.txt",
+                        )
+                    )
                     default_dst = os.path.join(uploads_dir, "USER_PROFILE.txt")
                     if os.path.isfile(default_src):
                         if os.path.exists(default_dst):
-                            logger.warning("[INIT] USER_PROFILE.txt already exists for project %s; skipping copy", obj.id)
+                            logger.warning(
+                                "[INIT] USER_PROFILE.txt already exists for project %s; skipping copy",
+                                obj.id,
+                            )
                         else:
                             shutil.copy(default_src, default_dst)
                             logger.info("[INIT] Added user profile file to %s", default_dst)
                     else:
-                        logger.warning("[WARN] USER_PROFILE.txt not found; project %s created without baseline knowledge.", obj.id)
+                        logger.warning(
+                            "[WARN] USER_PROFILE.txt not found; project %s created without baseline knowledge.",
+                            obj.id,
+                        )
                     try:
                         rebuild_faiss_index(obj.id)
-                        logger.info("[INIT] RAG rebuilt for project %s (includes USER_PROFILE.txt when present)", obj.id)
+                        logger.info(
+                            "[INIT] RAG rebuilt for project %s (includes USER_PROFILE.txt when present)",
+                            obj.id,
+                        )
                     except Exception as re:
                         logger.warning("[INIT] RAG rebuild failed for project %s: %s", obj.id, re)
                 except Exception as se:
-                    logger.warning("[INIT] Failed seeding user profile for project %s: %s", obj.id, se)
+                    logger.warning(
+                        "[INIT] Failed seeding user profile for project %s: %s", obj.id, se
+                    )
         with get_session() as session:
             rows = session.exec(select(Project)).all()
             available_projects = [p.id for p in rows]
             id_to_name = {}
             for p in rows:
                 name = p.name or p.id
-                if isinstance(name, str) and name.lower().startswith('project '):
+                if isinstance(name, str) and name.lower().startswith("project "):
                     tail = name[8:].strip()
                     if tail == p.id:
                         name = tail
                 id_to_name[p.id] = name
-        return JSONResponse(status_code=200, content={
-            "success": True,
-            "response": message,
-            "current_project": _current_project,
-            "available_projects": available_projects,
-            "project_names": id_to_name,
-        })
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "response": message,
+                "current_project": _current_project,
+                "available_projects": available_projects,
+                "project_names": id_to_name,
+            },
+        )
     except HTTPException:
         raise
     except Exception as e:
         request_logger.log_error(endpoint="/projects", error=e, user_id=request.project_id)
-        log_error_context(error=e, context={"endpoint": "/projects", "method": "POST", "project_id": request.project_id, "project_name": request.project_name})
-        raise handle_project_error(e)
+        log_error_context(
+            error=e,
+            context={
+                "endpoint": "/projects",
+                "method": "POST",
+                "project_id": request.project_id,
+                "project_name": request.project_name,
+            },
+        )
+        raise handle_project_error(e) from e
 
 
 @router.patch("/projects/{project_id}")
@@ -779,14 +886,24 @@ async def rename_project(project_id: str, request: ProjectRequest) -> JSONRespon
             if not obj:
                 raise HTTPException(status_code=404, detail={"error": "Project not found"})
             if obj.system:
-                raise HTTPException(status_code=400, detail={"error": "Cannot modify system project"})
+                raise HTTPException(
+                    status_code=400, detail={"error": "Cannot modify system project"}
+                )
             if request.project_name:
                 # unique name check
-                exists = session.exec(select(Project).where(Project.name.ilike(request.project_name)).where(Project.id != project_id)).first()
+                exists = session.exec(
+                    select(Project)
+                    .where(Project.name.ilike(request.project_name))
+                    .where(Project.id != project_id)
+                ).first()
                 if exists:
-                    raise HTTPException(status_code=409, detail={"error": "Project name already exists"})
+                    raise HTTPException(
+                        status_code=409, detail={"error": "Project name already exists"}
+                    )
                 obj.name = request.project_name.strip()
-                obj.description = request.project_name.strip() if obj.description is None else obj.description
+                obj.description = (
+                    request.project_name.strip() if obj.description is None else obj.description
+                )
             if request.daily_rag_enabled is not None:
                 obj.daily_rag_enabled = bool(request.daily_rag_enabled)
             session.add(obj)
@@ -794,11 +911,20 @@ async def rename_project(project_id: str, request: ProjectRequest) -> JSONRespon
             # capture values before session context exits to avoid DetachedInstanceError
             name_val = obj.name
             daily_val = obj.daily_rag_enabled
-        return JSONResponse(status_code=200, content={"success": True, "response": "Updated", "project_id": project_id, "name": name_val, "daily_rag_enabled": daily_val})
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "response": "Updated",
+                "project_id": project_id,
+                "name": name_val,
+                "daily_rag_enabled": daily_val,
+            },
+        )
     except HTTPException:
         raise
     except Exception as e:
-        raise handle_project_error(e)
+        raise handle_project_error(e) from e
 
 
 @router.delete("/projects/{project_id}")
@@ -826,7 +952,9 @@ async def delete_project(project_id: str) -> JSONResponse:
             if not obj:
                 raise HTTPException(status_code=404, detail={"error": "Project not found"})
             if obj.system:
-                raise HTTPException(status_code=400, detail={"error": "Cannot delete system project"})
+                raise HTTPException(
+                    status_code=400, detail={"error": "Cannot delete system project"}
+                )
             session.delete(obj)
             session.commit()
         # Delete disk directories
@@ -838,12 +966,16 @@ async def delete_project(project_id: str) -> JSONResponse:
                         try:
                             os.remove(os.path.join(root, name))
                         except Exception as e:
-                            logger.warning("[PROJECT] Failed removing file %s: %s", os.path.join(root, name), e)
+                            logger.warning(
+                                "[PROJECT] Failed removing file %s: %s", os.path.join(root, name), e
+                            )
                     for name in dirs:
                         try:
                             os.rmdir(os.path.join(root, name))
                         except Exception as e:
-                            logger.warning("[PROJECT] Failed removing dir %s: %s", os.path.join(root, name), e)
+                            logger.warning(
+                                "[PROJECT] Failed removing dir %s: %s", os.path.join(root, name), e
+                            )
                 os.rmdir(base)
         except Exception as e:
             logger.warning("[PROJECT] Failed cleaning project directory %s: %s", base, e)
@@ -853,7 +985,9 @@ async def delete_project(project_id: str) -> JSONResponse:
             try:
                 mm.project_deques.pop(project_id, None)
             except Exception as exc:
-                logger.info("[PROJECT] Failed clearing project deque project_id=%s: %s", project_id, exc)
+                logger.info(
+                    "[PROJECT] Failed clearing project deque project_id=%s: %s", project_id, exc
+                )
             try:
                 mm.last_context_tokens_per_project.pop(project_id, None)
             except Exception as exc:
@@ -863,7 +997,9 @@ async def delete_project(project_id: str) -> JSONResponse:
                     exc,
                 )
         except Exception as exc:
-            logger.info("[PROJECT] Memory manager cleanup failed project_id=%s: %s", project_id, exc)
+            logger.info(
+                "[PROJECT] Memory manager cleanup failed project_id=%s: %s", project_id, exc
+            )
         # Reset current project to Main if needed
         global _current_project
         if _current_project == project_id:
@@ -875,12 +1011,26 @@ async def delete_project(project_id: str) -> JSONResponse:
                         fallback = p.id
                         break
                 _current_project = fallback or (rows[0].id if rows else None)
-        return JSONResponse(status_code=200, content={"message": "Project deleted", "project_id": project_id, "current_project": _current_project})
+        return JSONResponse(
+            status_code=200,
+            content={
+                "message": "Project deleted",
+                "project_id": project_id,
+                "current_project": _current_project,
+            },
+        )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to delete project {project_id}: {str(e)}")
-        return JSONResponse(status_code=500, content={"error": "Failed to delete project", "project_id": project_id, "details": str(e)})
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Failed to delete project",
+                "project_id": project_id,
+                "details": str(e),
+            },
+        )
 
 
 @router.get("/projects/{project_id}/stats")
@@ -904,7 +1054,11 @@ async def project_stats(project_id: str) -> JSONResponse:
     try:
         start_daily_cache_rebuild(project_id, reason="project_stats")
     except Exception as exc:
-        logger.info("[PROJECT] Daily cache warm request failed project_id=%s op=project_stats detail=%s", project_id, exc)
+        logger.info(
+            "[PROJECT] Daily cache warm request failed project_id=%s op=project_stats detail=%s",
+            project_id,
+            exc,
+        )
     # storage and tokens from DB
     with get_session() as session:
         rows = session.exec(select(File).where(File.project_id == project_id)).all()
@@ -949,18 +1103,21 @@ async def project_stats(project_id: str) -> JSONResponse:
         active_pairs = mm2.get_active_pair_count(project_id)
     except Exception:
         active_pairs = 0
-    return JSONResponse(status_code=200, content={
-        "project_id": project_id,
-        "storage_bytes": storage_bytes,
-        "index_size_bytes": index_size,
-        "tokens_indexed": tokens_indexed,
-        "context_tokens": context_tokens,
-        "file_count": file_count,
-        "daily_index_size_bytes": dstat.get("daily_index_size_bytes", 0),
-        "daily_tokens_indexed": dstat.get("daily_tokens_indexed", 0),
-        "daily_vector_count": dstat.get("daily_vector_count", 0),
-        "active_pairs": active_pairs,
-    })
+    return JSONResponse(
+        status_code=200,
+        content={
+            "project_id": project_id,
+            "storage_bytes": storage_bytes,
+            "index_size_bytes": index_size,
+            "tokens_indexed": tokens_indexed,
+            "context_tokens": context_tokens,
+            "file_count": file_count,
+            "daily_index_size_bytes": dstat.get("daily_index_size_bytes", 0),
+            "daily_tokens_indexed": dstat.get("daily_tokens_indexed", 0),
+            "daily_vector_count": dstat.get("daily_vector_count", 0),
+            "active_pairs": active_pairs,
+        },
+    )
 
 
 @router.get("/projects/{project_id}")
@@ -982,17 +1139,20 @@ async def get_project_detail(project_id: str) -> JSONResponse:
             obj = session.get(Project, project_id)
             if not obj:
                 raise HTTPException(status_code=404, detail={"error": "Project not found"})
-            return JSONResponse(status_code=200, content={
-                "project": {
-                    "id": obj.id,
-                    "name": obj.name,
-                    "description": obj.description,
-                    "created_at": obj.created_at.isoformat(),
-                    "updated_at": obj.updated_at.isoformat(),
-                    "system": obj.system,
-                    "daily_rag_enabled": obj.daily_rag_enabled,
-                }
-            })
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "project": {
+                        "id": obj.id,
+                        "name": obj.name,
+                        "description": obj.description,
+                        "created_at": obj.created_at.isoformat(),
+                        "updated_at": obj.updated_at.isoformat(),
+                        "system": obj.system,
+                        "daily_rag_enabled": obj.daily_rag_enabled,
+                    }
+                },
+            )
     except HTTPException:
         raise
     except Exception as e:
@@ -1021,19 +1181,28 @@ async def get_project_chats(project_id: str) -> JSONResponse:
                 "id": m.get("id"),
                 "role": m.get("role"),
                 "content": m.get("content"),
-                "created_at": (m.get("created_at").isoformat() if hasattr(m.get("created_at"), "isoformat") else m.get("created_at")),
+                "created_at": (
+                    m.get("created_at").isoformat()
+                    if hasattr(m.get("created_at"), "isoformat")
+                    else m.get("created_at")
+                ),
                 "forget": (bool(m.get("forget")) if m.get("role") == "assistant" else None),
                 "keep": (bool(m.get("keep")) if m.get("role") == "assistant" else None),
             }
             for m in messages
         ]
-        return JSONResponse(status_code=200, content={
-            "project_id": project_id,
-            "messages": normalized,
-        })
+        return JSONResponse(
+            status_code=200,
+            content={
+                "project_id": project_id,
+                "messages": normalized,
+            },
+        )
     except Exception as e:
         logger.error("Failed to get chats for project %s: %s", project_id, e, exc_info=True)
-        return JSONResponse(status_code=500, content={"error": "Failed to retrieve chats", "detail": str(e)})
+        return JSONResponse(
+            status_code=500, content={"error": "Failed to retrieve chats", "detail": str(e)}
+        )
 
 
 @router.patch("/projects/{project_id}/chats/{assistant_msg_id}")
@@ -1058,17 +1227,21 @@ async def set_chat_forget(project_id: str, assistant_msg_id: int, payload: dict)
         forget_val_present = "forget" in (payload or {})
         keep_val_present = "keep" in (payload or {})
         if not forget_val_present and not keep_val_present:
-            return JSONResponse(status_code=400, content={"error": "No updatable fields in payload"})
+            return JSONResponse(
+                status_code=400, content={"error": "No updatable fields in payload"}
+            )
         forget_val = bool((payload or {}).get("forget", False)) if forget_val_present else None
         keep_val = bool((payload or {}).get("keep", False)) if keep_val_present else None
         with get_session() as session:
             row = session.get(ChatMessage, assistant_msg_id)
             if not row or row.project_id != project_id or row.role != "assistant":
-                return JSONResponse(status_code=404, content={"error": "Assistant message not found"})
+                return JSONResponse(
+                    status_code=404, content={"error": "Assistant message not found"}
+                )
             if forget_val_present:
                 row.forget = bool(forget_val)  # type: ignore[attr-defined]
             if keep_val_present:
-                setattr(row, "keep", bool(keep_val))
+                row.keep = bool(keep_val)
             session.add(row)
             session.commit()
         # Also update in-memory deque if present
@@ -1097,10 +1270,16 @@ async def set_chat_forget(project_id: str, assistant_msg_id: int, payload: dict)
                 "assistant_msg_id": assistant_msg_id,
                 **({"forget": bool(forget_val)} if forget_val_present else {}),
                 **({"keep": bool(keep_val)} if keep_val_present else {}),
-            }
+            },
         )
     except Exception as e:
-        logger.error("Failed to update forget flag project_id=%s assistant_msg_id=%s: %s", project_id, str(assistant_msg_id), e, exc_info=True)
+        logger.error(
+            "Failed to update forget flag project_id=%s assistant_msg_id=%s: %s",
+            project_id,
+            str(assistant_msg_id),
+            e,
+            exc_info=True,
+        )
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
@@ -1128,13 +1307,20 @@ async def get_project_personality(project_id: str) -> JSONResponse:
                 p.get("format"),
             )
         except Exception as exc:
-            logger.info("[PROJECT] personality_get debug log failed project_id=%s detail=%s", project_id, exc)
-        return JSONResponse(status_code=200, content={
-            "project_id": project_id,
-            "personality": p,
-            "system_prompt": sp,
-            "system_prompt_bytes": len((sp or "").encode("utf-8")),
-        })
+            logger.info(
+                "[PROJECT] personality_get debug log failed project_id=%s detail=%s",
+                project_id,
+                exc,
+            )
+        return JSONResponse(
+            status_code=200,
+            content={
+                "project_id": project_id,
+                "personality": p,
+                "system_prompt": sp,
+                "system_prompt_bytes": len((sp or "").encode("utf-8")),
+            },
+        )
     except Exception as e:
         logger.error(f"Failed to load personality for project {project_id}: {e}")
         return JSONResponse(status_code=500, content={"error": "Failed to load personality"})
@@ -1158,10 +1344,13 @@ async def patch_project_personality(project_id: str, payload: dict) -> JSONRespo
         current = load_project_personality(project_id)
         current.update(payload or {})
         saved = save_project_personality(project_id, current)
-        return JSONResponse(status_code=200, content={
-            "project_id": project_id,
-            "personality": saved,
-        })
+        return JSONResponse(
+            status_code=200,
+            content={
+                "project_id": project_id,
+                "personality": saved,
+            },
+        )
     except ValueError as ve:
         return JSONResponse(status_code=400, content={"error": str(ve)})
     except Exception as e:
@@ -1196,14 +1385,22 @@ async def get_project_user_profile(project_id: str) -> JSONResponse:
             with open(path, "r", encoding="utf-8") as fh:
                 content = fh.read()
         except OSError as exc:
-            logger.warning("[PROJECT] user_profile read failed project_id=%s path=%s detail=%s", project_id, path, exc)
+            logger.warning(
+                "[PROJECT] user_profile read failed project_id=%s path=%s detail=%s",
+                project_id,
+                path,
+                exc,
+            )
             return JSONResponse(status_code=500, content={"error": "Failed to read user profile"})
-    return JSONResponse(status_code=200, content={
-        "project_id": project_id,
-        "filename": USER_PROFILE_FILENAME,
-        "content": content,
-        "exists": exists,
-    })
+    return JSONResponse(
+        status_code=200,
+        content={
+            "project_id": project_id,
+            "filename": USER_PROFILE_FILENAME,
+            "content": content,
+            "exists": exists,
+        },
+    )
 
 
 @router.put("/projects/{project_id}/user_profile")
@@ -1226,7 +1423,10 @@ async def put_project_user_profile(project_id: str, payload: dict) -> JSONRespon
     settings = get_settings()
     max_bytes = int(settings.max_upload_mb * 1024 * 1024)
     if len(content.encode("utf-8")) > max_bytes:
-        return JSONResponse(status_code=400, content={"error": f"User profile exceeds max size {settings.max_upload_mb}MB"})
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"User profile exceeds max size {settings.max_upload_mb}MB"},
+        )
 
     uploads_dir = os.path.join(settings.memory_root, project_id, "uploads")
     os.makedirs(uploads_dir, exist_ok=True)
@@ -1235,7 +1435,12 @@ async def put_project_user_profile(project_id: str, payload: dict) -> JSONRespon
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(content)
     except OSError as exc:
-        logger.warning("[PROJECT] user_profile write failed project_id=%s path=%s detail=%s", project_id, path, exc)
+        logger.warning(
+            "[PROJECT] user_profile write failed project_id=%s path=%s detail=%s",
+            project_id,
+            path,
+            exc,
+        )
         return JSONResponse(status_code=500, content={"error": "Failed to save user profile"})
 
     token_count = int(count_tokens(content))
@@ -1243,15 +1448,20 @@ async def put_project_user_profile(project_id: str, payload: dict) -> JSONRespon
         rebuild_faiss_index(project_id)
         rebuild_status = "completed"
     except Exception as exc:
-        logger.warning("[PROJECT] user_profile RAG rebuild failed project_id=%s detail=%s", project_id, exc)
+        logger.warning(
+            "[PROJECT] user_profile RAG rebuild failed project_id=%s detail=%s", project_id, exc
+        )
         rebuild_status = "failed"
 
-    return JSONResponse(status_code=200, content={
-        "project_id": project_id,
-        "filename": USER_PROFILE_FILENAME,
-        "token_count": token_count,
-        "rebuild_status": rebuild_status,
-    })
+    return JSONResponse(
+        status_code=200,
+        content={
+            "project_id": project_id,
+            "filename": USER_PROFILE_FILENAME,
+            "token_count": token_count,
+            "rebuild_status": rebuild_status,
+        },
+    )
 
 
 @router.put("/projects/{project_id}/system_prompt")
@@ -1269,11 +1479,14 @@ async def put_project_system_prompt(project_id: str, payload: dict) -> JSONRespo
     try:
         content = str((payload or {}).get("content", ""))
         save_project_system_prompt(project_id, content)
-        return JSONResponse(status_code=200, content={
-            "project_id": project_id,
-            "content": content,
-            "bytes": len(content.encode("utf-8")),
-        })
+        return JSONResponse(
+            status_code=200,
+            content={
+                "project_id": project_id,
+                "content": content,
+                "bytes": len(content.encode("utf-8")),
+            },
+        )
     except ValueError as ve:
         return JSONResponse(status_code=400, content={"error": str(ve)})
     except Exception as e:

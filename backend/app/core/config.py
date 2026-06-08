@@ -4,16 +4,18 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Configuration management for Syx AGI Chatbot Framework.
 
 This module handles environment variable loading and configuration validation.
 """
 
-import os
 import logging
 import math
+import os
 from typing import Optional
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
@@ -36,7 +38,7 @@ class Settings(BaseSettings):
     constructed once and shared via ``get_settings()``. Individual fields carry
     their own descriptions and validation constraints below.
     """
-    
+
     model_config = {
         "protected_namespaces": ("settings_",),
         "env_file": _ENV_FILE,
@@ -44,7 +46,7 @@ class Settings(BaseSettings):
         "case_sensitive": False,
         "extra": "ignore",
     }
-    
+
     # OpenAI Configuration
     openai_api_key: str = Field(default="", description="OpenAI API key")
     llm_provider: str = Field(default="openai", description="LLM provider selector (openai)")
@@ -62,38 +64,44 @@ class Settings(BaseSettings):
         gt=0.0,
         description="Timeout in seconds for mini/helper LLM HTTP requests (builder/tagger)",
     )
-    
+
     # Server Configuration
     host: str = Field(default="0.0.0.0", description="Server host")
     port: int = Field(default=8000, gt=0, le=65535, description="Server port")
     reload: bool = Field(default=True, description="Enable auto-reload in development")
-    
+
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Global logging level (legacy)")
     log_level_console: str = Field(default="INFO", description="Console log level")
     log_level_file: str = Field(default="DEBUG", description="File log level")
-    log_max_bytes: int = Field(default=10 * 1024 * 1024, description="Max bytes per log file before rotation")
+    log_max_bytes: int = Field(
+        default=10 * 1024 * 1024, description="Max bytes per log file before rotation"
+    )
     log_backup_count: int = Field(default=5, description="Number of rotated log files to keep")
     log_preview_max_chars: int = Field(default=1024, gt=0, description="Max chars for log previews")
-    
+
     # CORS Configuration
     cors_origins: list[str] = Field(
         default=["http://localhost:3000", "http://localhost:5173"],
-        description="Allowed CORS origins"
+        description="Allowed CORS origins",
     )
 
     # Database and storage
     db_path: str = Field(default="../data/db/syx.db", description="SQLite DB path")
     max_upload_mb: int = Field(default=10, gt=0, description="Max upload size per file (MB)")
     max_batch_mb: int = Field(default=50, gt=0, description="Max total batch size (MB)")
-    storage_limit_mb: int = Field(default=500, gt=0, description="Total storage limit per project (MB)")
+    storage_limit_mb: int = Field(
+        default=500, gt=0, description="Total storage limit per project (MB)"
+    )
 
     # Embeddings and RAG
     embedding_provider: str = Field(
         default="openai",
         description="Embedding provider selector (openai|sentence_transformers)",
     )
-    embedding_model: str = Field(default="text-embedding-3-large", description="Embedding model name")
+    embedding_model: str = Field(
+        default="text-embedding-3-large", description="Embedding model name"
+    )
     sentence_transformers_model_id: str = Field(
         default="BAAI/bge-m3",
         description="SentenceTransformers model id used when EMBEDDING_PROVIDER=sentence_transformers",
@@ -136,12 +144,18 @@ class Settings(BaseSettings):
         ],
         description="Whitelisted chat models",
     )
-    
+
     # RAG-on-chat controls
     rag_on_chat: bool = Field(default=True, description="Enable retrieval injection during chat")
     # Retrieval-stage limits are controlled by BASE_TOP_K + RETRIEVAL_MULTIPLIER (not route config).
-    base_top_k: int = Field(default=6, gt=0, description="Base retrieval top-K (used to derive per-source K)")
-    retrieval_multiplier: float = Field(default=2.0, gt=0.0, description="Per-source K multiplier (PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER))")
+    base_top_k: int = Field(
+        default=6, gt=0, description="Base retrieval top-K (used to derive per-source K)"
+    )
+    retrieval_multiplier: float = Field(
+        default=2.0,
+        gt=0.0,
+        description="Per-source K multiplier (PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER))",
+    )
     agent_memory_max_entry_chars: int = Field(
         default=25_000,
         gt=0,
@@ -149,13 +163,19 @@ class Settings(BaseSettings):
     )
 
     # Chat history working memory
-    chat_history_limit: int = Field(default=20, gt=0, description="Number of recent messages kept per project")
+    chat_history_limit: int = Field(
+        default=20, gt=0, description="Number of recent messages kept per project"
+    )
 
     # Daily RAG bridge controls (global defaults)
-    chat_history_limit_pairs: int = Field(default=3, gt=0, description="Number of recent prompt/response pairs kept in working memory")
+    chat_history_limit_pairs: int = Field(
+        default=3, gt=0, description="Number of recent prompt/response pairs kept in working memory"
+    )
 
     # Builder and reranking
-    builder_model: str = Field(default="gpt-5-mini", description="LLM used for query builder/router")
+    builder_model: str = Field(
+        default="gpt-5-mini", description="LLM used for query builder/router"
+    )
     tagger_model: str = Field(default="gpt-5-mini", description="LLM used for tagging")
     builder_max_tokens: int = Field(default=1024, gt=0, description="Max tokens for builder output")
     tagger_current_response_middle_cut_percent: int = Field(
@@ -222,36 +242,57 @@ class Settings(BaseSettings):
     # Defaults and file paths
     default_system_prompt_path: str = Field(
         default="backend/app/config/defaults/system_prompt.txt",
-        description="Path to the default system prompt file"
+        description="Path to the default system prompt file",
     )
     default_personality_prompt_path: str = Field(
         default="backend/app/config/defaults/personality.json",
-        description="Path to the default personality JSON file"
+        description="Path to the default personality JSON file",
     )
     # Runtime/storage roots
-    memory_root: str = Field(default="../data/memory", description="Root directory for per-project memory artifacts")
+    memory_root: str = Field(
+        default="../data/memory", description="Root directory for per-project memory artifacts"
+    )
     runs_dir: str = Field(default="../runtime/runs", description="Root directory for run artifacts")
     logs_dir: str = Field(default="../runtime/logs", description="Root directory for log files")
-    log_file_prefix: str = Field(default="syx_", description="Filename prefix for timestamped log files (tests override to 'test_')")
+    log_file_prefix: str = Field(
+        default="syx_",
+        description="Filename prefix for timestamped log files (tests override to 'test_')",
+    )
     lock_dir: str = Field(default="../runtime/state", description="Directory for lock/state files")
     # Size caps
-    system_prompt_max_bytes: int = Field(default=64 * 1024, gt=0, description="Max size of system_prompt.txt in bytes")
-    personality_max_bytes: int = Field(default=8 * 1024, gt=0, description="Max size of personality.json in bytes")
+    system_prompt_max_bytes: int = Field(
+        default=64 * 1024, gt=0, description="Max size of system_prompt.txt in bytes"
+    )
+    personality_max_bytes: int = Field(
+        default=8 * 1024, gt=0, description="Max size of personality.json in bytes"
+    )
 
     # Sleep scheduler
     enable_scheduler: bool = Field(default=True, description="Enable sleep cycle scheduler (daily)")
-    sleep_cycle_hour: int = Field(default=3, ge=0, le=23, description="Local hour (0-23) to run sleep cycle")
-    sleep_cycle_minute: int = Field(default=0, ge=0, le=59, description="Local minute (0-59) to run sleep cycle")
+    sleep_cycle_hour: int = Field(
+        default=3, ge=0, le=23, description="Local hour (0-23) to run sleep cycle"
+    )
+    sleep_cycle_minute: int = Field(
+        default=0, ge=0, le=59, description="Local minute (0-59) to run sleep cycle"
+    )
     verify_rag: bool = Field(default=True, description="Enable post-rebuild verification step")
     force_rag_rebuild_on_startup: bool = Field(
         default=False,
         description="Force rebuilding all project FAISS indexes during server startup",
     )
     # Instrumentation
-    instrumentation_enabled: bool = Field(default=False, description="Enable instrumentation telemetry")
-    instrumentation_mode: str = Field(default="metrics", description="Instrumentation mode: metrics or research")
-    instrumentation_run_id: Optional[str] = Field(default=None, description="Optional run id override")
-    instrumentation_runs_dir: str = Field(default="../runtime/runs", description="Root directory for instrumentation run artifacts")
+    instrumentation_enabled: bool = Field(
+        default=False, description="Enable instrumentation telemetry"
+    )
+    instrumentation_mode: str = Field(
+        default="metrics", description="Instrumentation mode: metrics or research"
+    )
+    instrumentation_run_id: Optional[str] = Field(
+        default=None, description="Optional run id override"
+    )
+    instrumentation_runs_dir: str = Field(
+        default="../runtime/runs", description="Root directory for instrumentation run artifacts"
+    )
     instrumentation_prompt_tol_abs_tokens: int = Field(
         default=25,
         ge=0,
@@ -272,12 +313,22 @@ class Settings(BaseSettings):
     )
     # Dream agent configuration
     dream_model: str = Field(default="gpt-5.5", description="Dream LLM model")
-    dream_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Dream LLM temperature")
-    dream_max_tokens: int = Field(default=32000, gt=0, description="Max tokens for Dream LLM completion")
-    dream_enable_remote_research: bool = Field(default=True, description="Enable OpenAI web_search for Dream")
-    dream_remote_context_max_tokens: int = Field(default=32000, gt=0, description="Max tokens for remote context inclusion")
+    dream_temperature: float = Field(
+        default=1.0, ge=0.0, le=2.0, description="Dream LLM temperature"
+    )
+    dream_max_tokens: int = Field(
+        default=32000, gt=0, description="Max tokens for Dream LLM completion"
+    )
+    dream_enable_remote_research: bool = Field(
+        default=True, description="Enable OpenAI web_search for Dream"
+    )
+    dream_remote_context_max_tokens: int = Field(
+        default=32000, gt=0, description="Max tokens for remote context inclusion"
+    )
     # Debug file generation
-    generate_debug_files: bool = Field(default=False, description="Enable writing debug files (e.g., debug_context.txt)")
+    generate_debug_files: bool = Field(
+        default=False, description="Enable writing debug files (e.g., debug_context.txt)"
+    )
     # Frontend-only Vite flags may live in the same .env; keep backend parsing tolerant.
     vite_show_debug_values: Optional[str] = Field(
         default="false",
@@ -341,6 +392,7 @@ class Settings(BaseSettings):
                 "off, compact_prose, preserve_code"
             )
         return normalized
+
 
 # Global settings instance
 settings = Settings()

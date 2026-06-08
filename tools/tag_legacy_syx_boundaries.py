@@ -5,14 +5,15 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """Add Syx memory boundary comments to legacy Daily/Sleep pair artifacts."""
 
 import argparse
 import logging
-from pathlib import Path
 import re
 import shutil
 import sys
+from pathlib import Path
 from typing import Iterable, List, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -185,7 +186,9 @@ def main() -> int:
         if not path.is_file():
             logger.warning("skipping non-file path=%s", path)
             continue
-        total += process_path(path, dry_run=args.dry_run, in_place=args.in_place, backup=args.backup)
+        total += process_path(
+            path, dry_run=args.dry_run, in_place=args.in_place, backup=args.backup
+        )
     logger.info("wrapped total pair blocks=%s", total)
     return 0
 

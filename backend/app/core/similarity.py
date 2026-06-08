@@ -4,12 +4,15 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 FAISS distance-to-cosine similarity conversion.
 
 This module converts L2 distances returned by FAISS retrieval into approximate
 cosine similarities in [0.0, 1.0], handling both distance and squared-distance inputs.
 """
+
+
 def cosine_from_l2_distance(dist: float) -> float:
     """Convert a FAISS L2 distance into an approximate cosine similarity.
 
@@ -40,4 +43,3 @@ def cosine_from_l2_distance(dist: float) -> float:
     # Interpret `d` as squared distance (legacy), use it directly.
     cos_b = _cos_from_d2(d)
     return max(min(cos_a, 1.0), min(cos_b, 1.0))
-

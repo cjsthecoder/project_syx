@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for the dream auto-accept pipeline.
 
@@ -45,7 +46,9 @@ def _load_auto_accept_module(monkeypatch, *, append_ok=True, tagger_raises=False
     memory_module = types.ModuleType("app.core.memory")
 
     def prune_assistant_for_tagger(*, project_id, assistant_text, settings):
-        calls["pruner"].append({"project_id": project_id, "assistant_text": assistant_text, "settings": settings})
+        calls["pruner"].append(
+            {"project_id": project_id, "assistant_text": assistant_text, "settings": settings}
+        )
         return pruned_text if pruned_text is not None else assistant_text
 
     memory_module._prune_assistant_for_tagger = prune_assistant_for_tagger  # type: ignore[attr-defined]
@@ -65,8 +68,12 @@ def _load_auto_accept_module(monkeypatch, *, append_ok=True, tagger_raises=False
     daily_module.rebuild_daily_cache = rebuild_daily_cache  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.rag.daily_store", daily_module)
 
-    syx_module_path = Path(__file__).resolve().parents[1] / "backend" / "app" / "rag" / "syx_memory_artifact.py"
-    syx_spec = importlib.util.spec_from_file_location("app.rag.syx_memory_artifact", syx_module_path)
+    syx_module_path = (
+        Path(__file__).resolve().parents[1] / "backend" / "app" / "rag" / "syx_memory_artifact.py"
+    )
+    syx_spec = importlib.util.spec_from_file_location(
+        "app.rag.syx_memory_artifact", syx_module_path
+    )
     assert syx_spec is not None
     syx_module = importlib.util.module_from_spec(syx_spec)
     monkeypatch.setitem(sys.modules, "app.rag.syx_memory_artifact", syx_module)
@@ -79,7 +86,12 @@ def _load_auto_accept_module(monkeypatch, *, append_ok=True, tagger_raises=False
         calls["tagger"].append({"args": args, "kwargs": kwargs})
         if tagger_raises:
             raise RuntimeError("tagger failed")
-        return {"topics": "dream", "intent": "auto_accept", "type": "memory", "semantic_handle": "Dream item"}
+        return {
+            "topics": "dream",
+            "intent": "auto_accept",
+            "type": "memory",
+            "semantic_handle": "Dream item",
+        }
 
     tagger_module.tag_pair = tag_pair  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.tagging.tagger", tagger_module)
@@ -107,7 +119,9 @@ def _load_auto_accept_module(monkeypatch, *, append_ok=True, tagger_raises=False
     dream_summary_module.write_latest_sleep_summary = write_latest_sleep_summary  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.utils.dream_summary", dream_summary_module)
 
-    module_path = Path(__file__).resolve().parents[1] / "backend" / "app" / "dream" / "auto_accept.py"
+    module_path = (
+        Path(__file__).resolve().parents[1] / "backend" / "app" / "dream" / "auto_accept.py"
+    )
     spec = importlib.util.spec_from_file_location("app.dream.auto_accept", module_path)
     assert spec is not None
     module = importlib.util.module_from_spec(spec)
@@ -119,7 +133,9 @@ def _load_auto_accept_module(monkeypatch, *, append_ok=True, tagger_raises=False
 
 def test_auto_accept_processes_dream_json_with_keep_false(tmp_path, monkeypatch):
     auto_accept, calls = _load_auto_accept_module(monkeypatch)
-    monkeypatch.setattr(auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path)))
+    monkeypatch.setattr(
+        auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
     project_id = "project-1"
     project_dir = tmp_path / project_id
     project_dir.mkdir()
@@ -142,7 +158,10 @@ def test_auto_accept_processes_dream_json_with_keep_false(tmp_path, monkeypatch)
                         "source_resolution": "answer_remote",
                         "research": [
                             {"research_topic": "topic", "research_summary": "summary"},
-                            {"research_topic": "second topic", "research_summary": "second summary"},
+                            {
+                                "research_topic": "second topic",
+                                "research_summary": "second summary",
+                            },
                         ],
                     },
                     {
@@ -150,7 +169,7 @@ def test_auto_accept_processes_dream_json_with_keep_false(tmp_path, monkeypatch)
                         "origin_text": "bad remote question",
                         "source_resolution": "answer_remote",
                     },
-                ]
+                ],
             }
         ),
         encoding="utf-8",
@@ -171,7 +190,9 @@ def test_auto_accept_processes_dream_json_with_keep_false(tmp_path, monkeypatch)
     assert calls["append"][0]["kwargs"]["source_scope"] == "dream"
     assert calls["append"][0]["kwargs"]["current_scope"] == "dream"
     assert calls["append"][1]["args"][1] == "User: topic\nAssistant: [RESEARCH]\nsummary"
-    assert calls["append"][2]["args"][1] == "User: second topic\nAssistant: [RESEARCH]\nsecond summary"
+    assert (
+        calls["append"][2]["args"][1] == "User: second topic\nAssistant: [RESEARCH]\nsecond summary"
+    )
     assert calls["rebuild"] == 1
     assert not (project_dir / "dream_summary.txt").exists()
     summary = (project_dir / "dream_summary.md").read_text(encoding="utf-8")
@@ -192,12 +213,24 @@ def test_auto_accept_processes_dream_json_with_keep_false(tmp_path, monkeypatch)
 
 def test_auto_accept_prunes_before_tagger(tmp_path, monkeypatch):
     auto_accept, calls = _load_auto_accept_module(monkeypatch, pruned_text="pruned assistant text")
-    monkeypatch.setattr(auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path)))
+    monkeypatch.setattr(
+        auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
     project_id = "project-prune"
     project_dir = tmp_path / project_id
     project_dir.mkdir()
     (project_dir / "dream.json").write_text(
-        json.dumps({"items": [{"id": "local-1", "origin_text": "q", "assistant_response": "full assistant text"}]}),
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "id": "local-1",
+                        "origin_text": "q",
+                        "assistant_response": "full assistant text",
+                    }
+                ]
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -215,7 +248,9 @@ def test_auto_accept_prunes_before_tagger(tmp_path, monkeypatch):
 
 def test_auto_accept_deletes_dream_json_when_no_items_survive_filter(tmp_path, monkeypatch):
     auto_accept, calls = _load_auto_accept_module(monkeypatch)
-    monkeypatch.setattr(auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path)))
+    monkeypatch.setattr(
+        auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
     project_id = "project-2"
     project_dir = tmp_path / project_id
     project_dir.mkdir()
@@ -238,7 +273,9 @@ def test_auto_accept_deletes_dream_json_when_no_items_survive_filter(tmp_path, m
 
 def test_auto_accept_renames_dream_json_on_persist_failure(tmp_path, monkeypatch):
     auto_accept, _calls = _load_auto_accept_module(monkeypatch, append_ok=False)
-    monkeypatch.setattr(auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path)))
+    monkeypatch.setattr(
+        auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
     project_id = "project-3"
     project_dir = tmp_path / project_id
     project_dir.mkdir()

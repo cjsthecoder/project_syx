@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Prompt builder for the Dream cycle Idea Agent.
 
@@ -11,6 +12,8 @@ Provides build_idea_prompt, which constructs the Idea Agent instruction prompt,
 including the DreamEntry schema and selection policy, around a supplied dream
 context.
 """
+
+
 def build_idea_prompt(dream_context: str) -> str:
     """
     Build the Idea Agent prompt with the provided dream context.

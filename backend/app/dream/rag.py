@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Dream-specific RAG retrieval adapter for the Sleep/Dream pipeline.
 
@@ -25,7 +26,9 @@ from ..rag.manager import merge_daily_and_main
 logger = logging.getLogger(__name__)
 
 
-def _empty_result(*, route: str, per_source_k: int = 0, max_keep: int = 0, daily_enabled: bool = False) -> Dict[str, Any]:
+def _empty_result(
+    *, route: str, per_source_k: int = 0, max_keep: int = 0, daily_enabled: bool = False
+) -> Dict[str, Any]:
     """Build a zeroed retrieval result dict used as a no-hit/failure fallback.
 
     Args:
@@ -106,7 +109,9 @@ def retrieve_dream_context(
     try:
         settings = get_settings()
         policy = get_route_policy(resolved_route)
-        per_source_k = compute_per_source_k(int(settings.base_top_k), float(policy.retrieval_multiplier))
+        per_source_k = compute_per_source_k(
+            int(settings.base_top_k), float(policy.retrieval_multiplier)
+        )
         max_keep = int(policy.max_keep)
         daily_enabled = bool(include_daily) and _daily_enabled(project_id)
 

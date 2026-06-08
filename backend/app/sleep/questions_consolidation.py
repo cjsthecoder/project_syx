@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Sleep-stage consolidation of open questions.
 
@@ -36,6 +37,7 @@ def _normalize_question_key(question: str, topic: str) -> str:
     Returns:
         Combined key of the form ``"<norm question>||<norm topic>"``.
     """
+
     def _norm(text: str) -> str:
         lowered = str(text or "").strip().lower()
         lowered = re.sub(r"['\"`“”’]", "", lowered)
@@ -75,7 +77,9 @@ def consolidate_open_questions_artifact(project_id: str) -> Dict[str, Any]:
         try:
             os.replace(legacy_lock_path, lock_path)
         except OSError as exc:
-            logger.warning("[SLEEP][QUESTIONS] lock migration failed project=%s detail=%s", project_id, exc)
+            logger.warning(
+                "[SLEEP][QUESTIONS] lock migration failed project=%s detail=%s", project_id, exc
+            )
     consolidated: Dict[str, Any] = {"questions": []}
     if not os.path.isfile(src_path):
         try:
@@ -139,7 +143,11 @@ def consolidate_open_questions_artifact(project_id: str) -> Dict[str, Any]:
                             },
                         )
         except Exception as e:
-            logger.warning("[SLEEP][QUESTIONS] Failed reading open_questions.jsonl project=%s: %s", project_id, e)
+            logger.warning(
+                "[SLEEP][QUESTIONS] Failed reading open_questions.jsonl project=%s: %s",
+                project_id,
+                e,
+            )
             try:
                 with open(out_path, "w", encoding="utf-8", newline="\n") as f:
                     json.dump(consolidated, f, ensure_ascii=False, indent=2)
@@ -171,7 +179,11 @@ def consolidate_open_questions_artifact(project_id: str) -> Dict[str, Any]:
             with open(out_path, "w", encoding="utf-8", newline="\n") as f:
                 json.dump(consolidated, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            logger.warning("[SLEEP][QUESTIONS] Failed writing consolidated artifact project=%s: %s", project_id, e)
+            logger.warning(
+                "[SLEEP][QUESTIONS] Failed writing consolidated artifact project=%s: %s",
+                project_id,
+                e,
+            )
     logger.info(
         "[SLEEP][QUESTIONS] project=%s parsed=%s deduped=%s kept=%s ignored=%s",
         project_id,

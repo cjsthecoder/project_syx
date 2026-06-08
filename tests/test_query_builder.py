@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Unit tests for the pure helpers in app.core.query_builder.
 
@@ -15,7 +16,6 @@ slicing, and contextual-turn formatting.
 import json
 
 import pytest
-
 from app.core.query_builder import (
     _cache_key,
     _filter_route_only,
@@ -145,7 +145,7 @@ def test_parse_builder_response_missing_route_raises():
 
 def test_parse_builder_response_non_dict_raises():
     with pytest.raises(ValueError):
-        _parse_builder_response('[1, 2, 3]', "p1")
+        _parse_builder_response("[1, 2, 3]", "p1")
 
 
 def test_parse_builder_response_unparseable_raises():

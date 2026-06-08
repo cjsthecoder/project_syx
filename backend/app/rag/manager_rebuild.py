@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Long-term memory FAISS index rebuild pipeline.
 
@@ -21,15 +22,15 @@ import faiss  # type: ignore
 import numpy as np  # type: ignore
 from sqlmodel import select
 
-from ..core.config import get_settings, get_active_embedding_model
+from ..core.config import get_active_embedding_model, get_settings
 from ..core.database import get_session
 from ..core.db_models import File as FileRow
 from ..embedding.batching import iter_token_batches
 from ..embedding.factory import get_embedding_client
-from ..utils.tokens import count_tokens as _count_tokens, trim_to_tokens as _trim_to_tokens
 from ..utils.debug_utils import write_debug_file
+from ..utils.tokens import count_tokens as _count_tokens
+from ..utils.tokens import trim_to_tokens as _trim_to_tokens
 from .chunk_utils import split_text_simple
-from .syx_memory_artifact import parse_syx_entries
 from .manager_index_io import (
     LTM_DOCSTORE_NAME,
     LTM_INDEX_FILE_NAME,
@@ -40,8 +41,10 @@ from .manager_index_io import (
     uploads_relative_doc_id,
     write_ltm_manifest_and_adjacency,
 )
+from .syx_memory_artifact import parse_syx_entries
 
 logger = logging.getLogger(__name__)
+
 
 def is_rate_limit_error_message(err: Exception) -> bool:
     """Return True when an exception message looks like a provider rate-limit error.
@@ -54,7 +57,12 @@ def is_rate_limit_error_message(err: Exception) -> bool:
         ``rate limit``, ``too many requests``, ``429``).
     """
     msg = str(err or "").lower()
-    return ("rate limit" in msg) or ("too many requests" in msg) or ("429" in msg) or ("rate_limit_exceeded" in msg)
+    return (
+        ("rate limit" in msg)
+        or ("too many requests" in msg)
+        or ("429" in msg)
+        or ("rate_limit_exceeded" in msg)
+    )
 
 
 def read_file_text(path: str, *, artifact_path: str | None = None) -> List[Tuple[str, dict]]:
@@ -321,7 +329,9 @@ def _embed_batches_parallel(
     batch_results: Dict[int, Dict[str, Any]] = {}
     with ThreadPoolExecutor(max_workers=int(worker_count)) as pool:
         future_to_batch: Dict[Any, int] = {}
-        for batch_id, (batch_texts, batch_metas, est_tokens) in enumerate(prepared_batches, start=1):
+        for batch_id, (batch_texts, batch_metas, est_tokens) in enumerate(
+            prepared_batches, start=1
+        ):
             fut = pool.submit(
                 _embed_one_batch,
                 batch_id,
@@ -405,7 +415,9 @@ def _assemble_index_from_results(
         elapsed_s = float(payload.get("elapsed_s") or 0.0)
         vecs = payload.get("vectors") if isinstance(payload.get("vectors"), list) else []
         if not vecs:
-            logger.warning("RAG: embed returned empty vectors project=%s batch=%s", project_id, int(batch_id))
+            logger.warning(
+                "RAG: embed returned empty vectors project=%s batch=%s", project_id, int(batch_id)
+            )
             continue
         mat = normalize_rows(np.array(vecs, dtype="float32"))
         if index is None:
@@ -414,7 +426,7 @@ def _assemble_index_from_results(
         if mat.shape[1] != int(index_dim or 0):
             raise RuntimeError(f"Embedding dim changed mid-build: {mat.shape[1]} vs {index_dim}")
 
-        for txt, md in zip(list(batch_texts), list(batch_metas)):
+        for txt, md in zip(list(batch_texts), list(batch_metas), strict=False):
             item_id = ltm_docstore_item_id(md)
             index_to_id.append(item_id)
             docstore[item_id] = {"text": str(txt or ""), "metadata": dict(md or {})}
@@ -473,7 +485,9 @@ def _persist_index_artifacts(
         if not ok:
             logger.warning("RAG: failed to write adjacency index project=%s", project_id)
     except Exception as exc:
-        logger.warning("RAG: exception writing adjacency index project=%s detail=%s", project_id, exc)
+        logger.warning(
+            "RAG: exception writing adjacency index project=%s detail=%s", project_id, exc
+        )
 
 
 def _backfill_file_stats(
@@ -495,7 +509,9 @@ def _backfill_file_stats(
         with get_session() as session:
             for fname, tok_sum in file_token_sums.items():
                 row = session.exec(
-                    select(FileRow).where((FileRow.project_id == project_id) & (FileRow.filename == fname))
+                    select(FileRow).where(
+                        (FileRow.project_id == project_id) & (FileRow.filename == fname)
+                    )
                 ).first()
                 if row:
                     row.token_count = int(tok_sum)

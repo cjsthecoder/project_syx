@@ -5,6 +5,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Build benchmark_turns.csv from turns.jsonl and web_turns.jsonl.
 Output format:
@@ -98,7 +99,9 @@ def _build_web_map(web_turns_path: str) -> dict[int, tuple[int, int]]:
 
 
 def _main() -> int:
-    parser = argparse.ArgumentParser(description="Build benchmark_turns.csv from run JSONL artifacts.")
+    parser = argparse.ArgumentParser(
+        description="Build benchmark_turns.csv from run JSONL artifacts."
+    )
     parser.add_argument(
         "--test-run-dir",
         required=True,
@@ -114,7 +117,11 @@ def _main() -> int:
     test_run_dir = os.path.abspath(args.test_run_dir)
     turns_path = os.path.join(test_run_dir, "turns.jsonl")
     web_turns_path = os.path.join(test_run_dir, "web_turns.jsonl")
-    output_path = os.path.abspath(args.output) if args.output else os.path.join(test_run_dir, "benchmark_turns.csv")
+    output_path = (
+        os.path.abspath(args.output)
+        if args.output
+        else os.path.join(test_run_dir, "benchmark_turns.csv")
+    )
 
     if not os.path.isdir(test_run_dir):
         raise FileNotFoundError(f"test-run-dir does not exist: {test_run_dir}")

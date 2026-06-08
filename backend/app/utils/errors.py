@@ -4,14 +4,17 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Error handling utilities for Syx AGI Chatbot Framework.
 
 This module provides custom exceptions and error handling utilities.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
 from fastapi import HTTPException, status
+
 from .logging import get_logger
 
 logger = get_logger()  # Use single shared logger
@@ -19,12 +22,12 @@ logger = get_logger()  # Use single shared logger
 
 class SyxError(Exception):
     """Base exception for Syx application errors."""
-    
+
     def __init__(
-        self, 
-        message: str, 
+        self,
+        message: str,
         error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None
+        details: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the error with a message and optional structured metadata.
 
@@ -47,6 +50,7 @@ class LLMError(SyxError):
 
     Inherits the message/error_code/details contract from :class:`SyxError`.
     """
+
     pass
 
 
@@ -56,6 +60,7 @@ class ConfigurationError(SyxError):
     Used for startup/runtime misconfiguration such as an absent API key or an
     unparseable policy file. Inherits the :class:`SyxError` contract.
     """
+
     pass
 
 
@@ -65,6 +70,7 @@ class MemoryError(SyxError):
     Covers daily/LTM read-write failures and cache inconsistencies. Inherits the
     :class:`SyxError` contract.
     """
+
     pass
 
 
@@ -74,6 +80,7 @@ class RAGError(SyxError):
     Covers embedding, FAISS index, and context-assembly failures. Inherits the
     :class:`SyxError` contract.
     """
+
     pass
 
 
@@ -83,6 +90,7 @@ class ProjectError(SyxError):
     Covers selecting a nonexistent project or mutating a protected system
     project. Inherits the :class:`SyxError` contract.
     """
+
     pass
 
 
@@ -100,23 +108,23 @@ ERROR_CODES = {
     "RAG_SEARCH_ERROR": "RAG search error",
     "CLEANUP_FAILED": "Memory cleanup failed",
     "VALIDATION_ERROR": "Request validation error",
-    "INTERNAL_ERROR": "Internal server error"
+    "INTERNAL_ERROR": "Internal server error",
 }
 
 
 def create_error_response(
     error: Exception,
     error_code: Optional[str] = None,
-    status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR
+    status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
 ) -> HTTPException:
     """
     Create a standardized error response.
-    
+
     Args:
         error: The exception that occurred
         error_code: Optional error code
         status_code: HTTP status code
-        
+
     Returns:
         HTTPException with standardized format
     """
@@ -127,18 +135,15 @@ def create_error_response(
     else:
         message = str(error)
         details = {}
-    
+
     # Log the error
-    logger.error(f"Error {error_code}: {message}", extra={"error_code": error_code, "details": details})
-    
+    logger.error(
+        f"Error {error_code}: {message}", extra={"error_code": error_code, "details": details}
+    )
+
     return HTTPException(
         status_code=status_code,
-        detail={
-            "success": False,
-            "error": message,
-            "error_code": error_code,
-            "details": details
-        }
+        detail={"success": False, "error": message, "error_code": error_code, "details": details},
     )
 
 
@@ -157,27 +162,19 @@ def handle_llm_error(error: Exception) -> HTTPException:
     """
     if "api key" in str(error).lower():
         return create_error_response(
-            error,
-            error_code="MISSING_API_KEY",
-            status_code=status.HTTP_401_UNAUTHORIZED
+            error, error_code="MISSING_API_KEY", status_code=status.HTTP_401_UNAUTHORIZED
         )
     elif "timeout" in str(error).lower():
         return create_error_response(
-            error,
-            error_code="LLM_TIMEOUT",
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT
+            error, error_code="LLM_TIMEOUT", status_code=status.HTTP_504_GATEWAY_TIMEOUT
         )
     elif "quota" in str(error).lower():
         return create_error_response(
-            error,
-            error_code="LLM_QUOTA_EXCEEDED",
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS
+            error, error_code="LLM_QUOTA_EXCEEDED", status_code=status.HTTP_429_TOO_MANY_REQUESTS
         )
     else:
         return create_error_response(
-            error,
-            error_code="LLM_UNAVAILABLE",
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+            error, error_code="LLM_UNAVAILABLE", status_code=status.HTTP_503_SERVICE_UNAVAILABLE
         )
 
 
@@ -191,9 +188,7 @@ def handle_validation_error(error: Exception) -> HTTPException:
         An HTTPException carrying the ``VALIDATION_ERROR`` code and a 422 status.
     """
     return create_error_response(
-        error,
-        error_code="VALIDATION_ERROR",
-        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT
+        error, error_code="VALIDATION_ERROR", status_code=status.HTTP_422_UNPROCESSABLE_CONTENT
     )
 
 
@@ -207,9 +202,7 @@ def handle_memory_error(error: Exception) -> HTTPException:
         An HTTPException carrying the ``MEMORY_FULL`` code and a 507 status.
     """
     return create_error_response(
-        error,
-        error_code="MEMORY_FULL",
-        status_code=status.HTTP_507_INSUFFICIENT_STORAGE
+        error, error_code="MEMORY_FULL", status_code=status.HTTP_507_INSUFFICIENT_STORAGE
     )
 
 
@@ -223,9 +216,7 @@ def handle_rag_error(error: Exception) -> HTTPException:
         An HTTPException carrying the ``RAG_SEARCH_ERROR`` code and a 503 status.
     """
     return create_error_response(
-        error,
-        error_code="RAG_SEARCH_ERROR",
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+        error, error_code="RAG_SEARCH_ERROR", status_code=status.HTTP_503_SERVICE_UNAVAILABLE
     )
 
 
@@ -239,9 +230,7 @@ def handle_project_error(error: Exception) -> HTTPException:
         An HTTPException carrying the ``PROJECT_NOT_FOUND`` code and a 404 status.
     """
     return create_error_response(
-        error,
-        error_code="PROJECT_NOT_FOUND",
-        status_code=status.HTTP_404_NOT_FOUND
+        error, error_code="PROJECT_NOT_FOUND", status_code=status.HTTP_404_NOT_FOUND
     )
 
 
@@ -259,9 +248,7 @@ def get_error_message(error_code: str) -> str:
 
 
 def log_error_context(
-    error: Exception,
-    context: Dict[str, Any],
-    logger_name: str = "errors"
+    error: Exception, context: Dict[str, Any], logger_name: str = "errors"
 ) -> None:
     """Log an error together with extra structured context and a traceback.
 
@@ -275,10 +262,6 @@ def log_error_context(
     context_logger = get_logger()  # Use single shared logger
     context_logger.error(
         f"Error occurred: {str(error)}",
-        extra={
-            "error_type": type(error).__name__,
-            "error_message": str(error),
-            **context
-        },
-        exc_info=True
+        extra={"error_type": type(error).__name__, "error_message": str(error), **context},
+        exc_info=True,
     )

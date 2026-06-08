@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Project system prompt and personality management.
 
@@ -103,7 +104,9 @@ def load_default_prompt_and_personality() -> Tuple[str, Dict[str, Any]]:
             if os.path.isfile(alt):
                 resolved_path = alt
                 exists = True
-                logger.debug("[PROJECT] Default system_prompt resolved via REPO_ROOT: %s", resolved_path)
+                logger.debug(
+                    "[PROJECT] Default system_prompt resolved via REPO_ROOT: %s", resolved_path
+                )
         size = os.path.getsize(resolved_path) if exists else 0
         logger.debug(
             "[PROJECT] Default system_prompt path=%s exists=%s size_bytes=%s",
@@ -164,16 +167,28 @@ def seed_project_defaults(project_id: str) -> None:
                 f.write(default_prompt or "")
             wrote_any = True
         except OSError as exc:
-            logger.warning("[PROJECT] Failed writing project prompt project_id=%s path=%s detail=%s", project_id, prompt_path, exc)
+            logger.warning(
+                "[PROJECT] Failed writing project prompt project_id=%s path=%s detail=%s",
+                project_id,
+                prompt_path,
+                exc,
+            )
     if not os.path.isfile(pers_path):
         try:
             with open(pers_path, "w", encoding="utf-8") as f:
                 json.dump(default_personality, f, ensure_ascii=False, indent=2)
             wrote_any = True
         except (OSError, TypeError, ValueError) as exc:
-            logger.warning("[PROJECT] Failed writing project personality project_id=%s path=%s detail=%s", project_id, pers_path, exc)
+            logger.warning(
+                "[PROJECT] Failed writing project personality project_id=%s path=%s detail=%s",
+                project_id,
+                pers_path,
+                exc,
+            )
     if wrote_any:
-        logger.debug("[PROJECT] Loaded system_prompt=system_prompt.txt personality=personality.json")
+        logger.debug(
+            "[PROJECT] Loaded system_prompt=system_prompt.txt personality=personality.json"
+        )
 
 
 def backfill_all_projects() -> None:
@@ -321,7 +336,9 @@ def load_project_personality(project_id: str) -> Dict[str, Any]:
             return norm
     except Exception:
         _, default_personality = load_default_prompt_and_personality()
-        logger.debug("[PROJECT] Using default system prompt and personality (empty personality possible)")
+        logger.debug(
+            "[PROJECT] Using default system prompt and personality (empty personality possible)"
+        )
         norm = _normalize_personality(default_personality)
         _PERSONALITY_CACHE[project_id] = norm
         return norm
@@ -376,5 +393,3 @@ def save_project_personality(project_id: str, payload: Dict[str, Any]) -> Dict[s
         sorted(list(norm.keys())),
     )
     return norm
-
-

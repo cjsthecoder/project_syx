@@ -4,14 +4,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Unit tests for app.utils.errors.
 
 Covers the standardized error-response shape, status-code mapping for the
 typed handlers, and the error-code message lookup.
 """
-
-from fastapi import status
 
 from app.utils.errors import (
     ConfigurationError,
@@ -28,6 +27,7 @@ from app.utils.errors import (
     handle_rag_error,
     handle_validation_error,
 )
+from fastapi import status
 
 
 def test_syxerror_stores_fields_with_default_details():

@@ -14,3 +14,29 @@ line-length = 100
 [tool.isort]
 profile = "black"
 line_length = 100
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+# F: pyflakes (unused imports/vars, undefined names), B: flake8-bugbear
+# (likely-bug patterns). Import sorting is owned by isort; line length by
+# black, so E501 stays off. pyupgrade (UP) is intentionally not enabled to
+# avoid churny annotation rewrites.
+select = ["F", "B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI dependency/param helpers are designed to be used as argument
+# defaults, so they are not mutable-default bugs.
+extend-immutable-calls = [
+    "fastapi.Body",
+    "fastapi.Cookie",
+    "fastapi.Depends",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Header",
+    "fastapi.Path",
+    "fastapi.Query",
+]

@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Chat pipeline helpers extracted from chat routes.
 """
@@ -27,7 +28,7 @@ from ..rag.manager import merge_daily_and_main
 from ..tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
 from ..utils.logging import set_namespace, set_route
-from .chat_prompting import RAG_SYSTEM_PROMPT, estimate_message_tokens, estimate_tokens
+from .chat_prompting import RAG_SYSTEM_PROMPT, estimate_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +77,14 @@ class ChatPipeline:
                 for m in hist
             ]
         except (AttributeError, TypeError, ValueError) as exc:
-            logger.warning("chat.pipeline history load failed project_id=%s detail=%s", project_id, exc)
+            logger.warning(
+                "chat.pipeline history load failed project_id=%s detail=%s", project_id, exc
+            )
             return None
 
-    def load_project_prompts(self, project_id: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[float]]:
+    def load_project_prompts(
+        self, project_id: Optional[str]
+    ) -> Tuple[Optional[str], Optional[str], Optional[float]]:
         """Load the project's system prompt, assistant hint, and creativity.
 
         Builds an assistant-hint string from the project's personality
@@ -111,10 +116,14 @@ class ChatPipeline:
             )
             return base_system_prompt, assistant_hint, personality_creativity
         except (KeyError, TypeError, ValueError) as exc:
-            logger.warning("chat.pipeline prompt load failed project_id=%s detail=%s", project_id, exc)
+            logger.warning(
+                "chat.pipeline prompt load failed project_id=%s detail=%s", project_id, exc
+            )
             return None, None, None
 
-    def _build_builder_summary(self, project_id: Optional[str], conversation_history: Optional[list[dict]]) -> str:
+    def _build_builder_summary(
+        self, project_id: Optional[str], conversation_history: Optional[list[dict]]
+    ) -> str:
         """Return a short context summary for the query builder.
 
         Prefers the most recent assistant tag metadata; falls back to the
@@ -135,7 +144,9 @@ class ChatPipeline:
                 return direct_summary
             return self._project_semantic_handle_summary(project_id)
         except Exception as exc:
-            logger.warning("chat.pipeline builder summary failed project_id=%s detail=%s", project_id, exc)
+            logger.warning(
+                "chat.pipeline builder summary failed project_id=%s detail=%s", project_id, exc
+            )
             return ""
 
     def _latest_assistant_tags_meta(self, conversation_history: Optional[list[dict]]) -> str:
@@ -176,9 +187,13 @@ class ChatPipeline:
         try:
             with get_session() as session:
                 project = session.get(Project, project_id)
-                handle = getattr(project, "last_semantic_handle", None) if project is not None else None
+                handle = (
+                    getattr(project, "last_semantic_handle", None) if project is not None else None
+                )
                 if isinstance(handle, str) and handle.strip():
-                    return json.dumps({"semantic_handle": handle.strip()}, ensure_ascii=False)[:2000]
+                    return json.dumps({"semantic_handle": handle.strip()}, ensure_ascii=False)[
+                        :2000
+                    ]
         except Exception as exc:
             logger.warning(
                 "chat.builder_summary failed fallback lookup project_id=%s detail=%s",
@@ -271,7 +286,9 @@ class ChatPipeline:
                 if p is not None:
                     return bool(p.daily_rag_enabled)
         except (OSError, TypeError, ValueError):
-            logger.debug("chat.daily_enabled lookup failed project_id=%s", project_id, exc_info=True)
+            logger.debug(
+                "chat.daily_enabled lookup failed project_id=%s", project_id, exc_info=True
+            )
         return True
 
     @staticmethod
@@ -322,7 +339,7 @@ class ChatPipeline:
         if b is None:
             try:
                 logger.debug(
-                    "[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview=\"%s\"",
+                    '[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview="%s"',
                     project_id,
                     msg_id,
                     "OTHER",
@@ -339,19 +356,25 @@ class ChatPipeline:
                     [],
                 )
             except Exception:
-                logger.debug("chat.builder debug logging failed project_id=%s", project_id, exc_info=True)
+                logger.debug(
+                    "chat.builder debug logging failed project_id=%s", project_id, exc_info=True
+                )
             logger.debug("builder unavailable; skipping RAG for this turn")
             return None
 
         route = (b.get("route") or "OTHER").upper()
-        conf = float(b.get("confidence") or 0.0) if isinstance(b.get("confidence"), (int, float, str)) else 0.0
+        conf = (
+            float(b.get("confidence") or 0.0)
+            if isinstance(b.get("confidence"), (int, float, str))
+            else 0.0
+        )
         topics = b.get("topics") or []
         standalone = b.get("standalone") or message
 
         try:
-            builder_prev = (standalone or preview or "")[:self.settings.log_preview_max_chars]
+            builder_prev = (standalone or preview or "")[: self.settings.log_preview_max_chars]
             logger.debug(
-                "[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview=\"%s\"",
+                '[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview="%s"',
                 project_id,
                 msg_id,
                 route,
@@ -361,7 +384,9 @@ class ChatPipeline:
                 builder_prev,
             )
         except Exception as exc:
-            logger.debug("chat.builder route logging failed project_id=%s detail=%s", project_id, exc)
+            logger.debug(
+                "chat.builder route logging failed project_id=%s detail=%s", project_id, exc
+            )
 
         return route
 
@@ -377,7 +402,9 @@ class ChatPipeline:
             retrieval multiplier.
         """
         pol = get_route_policy(route)
-        per_source_k = compute_per_source_k(int(self.settings.base_top_k), float(pol.retrieval_multiplier))
+        per_source_k = compute_per_source_k(
+            int(self.settings.base_top_k), float(pol.retrieval_multiplier)
+        )
         return pol, per_source_k
 
     def _write_rag_query_debug(
@@ -522,13 +549,17 @@ class ChatPipeline:
                 "rag_enabled": True,
                 "retrieved_count": int(rc.get("ordered_candidates", 0) or 0),
                 "kept_count": int(rc.get("selected_candidates", 0) or 0),
-                "expanded_unique_chunks_after_merge": int(rc.get("expanded_unique_chunks_after_merge", 0) or 0),
+                "expanded_unique_chunks_after_merge": int(
+                    rc.get("expanded_unique_chunks_after_merge", 0) or 0
+                ),
                 "rag_tokens_injected_est": int(rc.get("tokens_used", 0) or 0),
             }
         )
         return rag_system_prompt, primary_ns, rag_metrics
 
-    def apply_rag_guidance(self, base_system_prompt: Optional[str], rag_system_prompt: Optional[str]) -> Optional[str]:
+    def apply_rag_guidance(
+        self, base_system_prompt: Optional[str], rag_system_prompt: Optional[str]
+    ) -> Optional[str]:
         """Append RAG usage guidance to the base system prompt when RAG context is present.
 
         Args:
@@ -617,7 +648,11 @@ class ChatPipeline:
                     "module": "chat_stream",
                     "prompt_system_tokens_est": int(estimate_tokens(base_system_prompt or "")),
                     "prompt_history_tokens_est": int(
-                        estimate_tokens("\n".join(str((m.get("content") or "")) for m in (conversation_history or [])))
+                        estimate_tokens(
+                            "\n".join(
+                                str((m.get("content") or "")) for m in (conversation_history or [])
+                            )
+                        )
                     ),
                     "prompt_rag_tokens_est": int(estimate_tokens(rag_system_prompt or "")),
                     "prompt_profile_tokens_est": int(estimate_tokens(assistant_hint or "")),

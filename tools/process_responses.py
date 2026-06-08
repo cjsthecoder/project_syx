@@ -5,6 +5,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Process top-level .txt chat logs and emit opening/closing boundary JSONL files.
 """
@@ -15,7 +16,6 @@ import logging
 import re
 from pathlib import Path
 from typing import Any
-
 
 logger = logging.getLogger("process_responses")
 
@@ -49,7 +49,9 @@ def _validate_directory(path: Path) -> None:
 
 def _iter_txt_files(path: Path) -> list[Path]:
     # Per spec: process ".txt" only (lowercase), no recursion.
-    return sorted([p for p in path.iterdir() if p.is_file() and p.suffix == ".txt"], key=lambda p: p.name)
+    return sorted(
+        [p for p in path.iterdir() if p.is_file() and p.suffix == ".txt"], key=lambda p: p.name
+    )
 
 
 def _normalize_text(text: str) -> str:
@@ -241,9 +243,10 @@ def run(directory_path_raw: str) -> int:
     blocks_skipped = 0
     records_written = 0
 
-    with open(front_path, "w", encoding="utf-8", newline="\n") as front_fh, open(
-        end_path, "w", encoding="utf-8", newline="\n"
-    ) as end_fh:
+    with (
+        open(front_path, "w", encoding="utf-8", newline="\n") as front_fh,
+        open(end_path, "w", encoding="utf-8", newline="\n") as end_fh,
+    ):
         for txt_file in txt_files:
             source_file = txt_file.name
             try:
@@ -290,7 +293,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Process .txt chat logs and emit front.jsonl and end.jsonl boundary records.",
     )
-    parser.add_argument("directory_path", help="Directory containing top-level .txt files to process")
+    parser.add_argument(
+        "directory_path", help="Directory containing top-level .txt files to process"
+    )
     args = parser.parse_args()
 
     try:

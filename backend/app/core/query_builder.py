@@ -4,22 +4,23 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Query Builder / Router.
 
 Calls a lightweight LLM to produce routing + rewritten queries and caches results briefly.
 """
 
-import time
 import json
 import logging
-from typing import Dict, Any, Tuple, Optional
+import time
 from datetime import datetime
+from typing import Any, Dict, Optional, Tuple
 
-from .config import get_settings
 from ..llm_model.factory import get_llm_client_mini
 from ..tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
+from .config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -122,12 +123,8 @@ class _BuilderPromptDumper:
             pretty = "{}"
         body = (
             f"# timestamp: {ts}\n"
-            f"# project_id: {project_id}\n"
-            + (f"# model: {model}\n" if model else "")
-            + "\n"
-            "====== USER_TEXT (passed into build_query) ======\n"
-            + (user_text or "")
-            + "\n"
+            f"# project_id: {project_id}\n" + (f"# model: {model}\n" if model else "") + "\n"
+            "====== USER_TEXT (passed into build_query) ======\n" + (user_text or "") + "\n"
             "====== BUILDER PROMPT (SYSTEM) ======\n"
             + (system_prompt or "")
             + "\n\n====== BUILDER PROMPT (USER) ======\n"
@@ -156,6 +153,7 @@ def _cache_key(project_id: str, history_summary: str, user_text: str) -> str:
         A hex SHA-256 digest combining the three inputs.
     """
     from hashlib import sha256
+
     h = sha256()
     h.update(project_id.encode("utf-8", errors="ignore"))
     h.update(b"\n\n")
@@ -314,8 +312,11 @@ def _parse_builder_response(raw: str, project_id: str) -> Dict[str, Any]:
             snippet = clean[max(0, pos - 80) : pos + 80]
             logger.debug("builder json decode failed near pos=%s snippet=%r", pos, snippet)
         except Exception as exc:
-            logger.warning("builder json decode diagnostics failed project_id=%s detail=%s", project_id, exc)
+            logger.warning(
+                "builder json decode diagnostics failed project_id=%s detail=%s", project_id, exc
+            )
         import re
+
         m = re.search(r"\{[\s\S]*\}", clean)
         if not m:
             raise
@@ -361,7 +362,11 @@ def _dump_builder_prompt(
             model=model,
         )
     except Exception as exc:
-        label = "builder failure-path prompt dump failed" if failure else "builder debug prompt dump failed"
+        label = (
+            "builder failure-path prompt dump failed"
+            if failure
+            else "builder debug prompt dump failed"
+        )
         logger.warning("%s project_id=%s detail=%s", label, project_id, exc)
 
 
@@ -476,5 +481,3 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
                 timing={"ttlt_ms": int((time.perf_counter() - t0) * 1000.0)},
             )
         return None
-
-

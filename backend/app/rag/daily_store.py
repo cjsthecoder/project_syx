@@ -4,40 +4,43 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Daily memory vector store and metadata management.
 
 This module maintains the per-project in-memory FAISS Daily index and the
 daily.json/daily.md artifacts, handling pair appends, cache rebuilds, and adjacency lookups.
 """
-from dataclasses import dataclass
-import os
 import json
-import time
 import logging
+import os
 import threading
-from typing import List, Dict, Any, Optional, Tuple, Set, Sequence
+import time
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-from filelock import FileLock
 import faiss  # type: ignore
 import numpy as np  # type: ignore
+from filelock import FileLock
 
 from ..core.config import get_active_embedding_model, get_settings
 from ..embedding.batching import iter_token_batches
-from ..embedding.vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
 from ..embedding.factory import get_embedding_client
+from ..embedding.vector_index import VectorEntry, VectorHit, VectorIndex, VectorIndexInfo
 from ..utils.debug_utils import write_debug_file
 from .syx_memory_artifact import (
-    render_artifact_header,
     generate_memory_id,
     local_timestamp_from_iso,
     memory_date_from_local_timestamp,
+    render_artifact_header,
     render_memory_entry,
     snake_case_value,
     split_pair_text,
     topics_to_list,
 )
+
 logger = logging.getLogger(__name__)
+
 
 def _normalize_rows(v: np.ndarray) -> np.ndarray:
     """Unit-normalize each row of a matrix, treating zero rows as unit-norm.
@@ -84,7 +87,9 @@ class DailyVectorIndex:
 
     def info(self) -> VectorIndexInfo:
         """Return descriptive metadata about this index (kind, dim, score mode)."""
-        return VectorIndexInfo(index_kind="daily", dim=int(self._dim), score_mode="cosine_ip_mapped_01")
+        return VectorIndexInfo(
+            index_kind="daily", dim=int(self._dim), score_mode="cosine_ip_mapped_01"
+        )
 
     def get_by_id(self, item_id: str) -> Optional[VectorEntry]:
         """Return the stored entry for an item_id, or None if absent/malformed.
@@ -106,7 +111,9 @@ class DailyVectorIndex:
         except Exception:
             return None
 
-    def add(self, *, item_id: str, vector: List[float], text: str, metadata: Dict[str, Any]) -> None:
+    def add(
+        self, *, item_id: str, vector: List[float], text: str, metadata: Dict[str, Any]
+    ) -> None:
         """Add a single entry, unit-normalizing its vector before insertion.
 
         Args:
@@ -120,13 +127,20 @@ class DailyVectorIndex:
         """
         mat = _normalize_rows(np.array([vector], dtype="float32"))
         if mat.shape[1] != int(self.index.d):
-            raise RuntimeError(f"DailyVectorIndex dim mismatch: got={mat.shape[1]} expected={self.index.d}")
+            raise RuntimeError(
+                f"DailyVectorIndex dim mismatch: got={mat.shape[1]} expected={self.index.d}"
+            )
         self.index.add(mat)
         self.index_to_id.append(str(item_id))
         self.docstore[str(item_id)] = {"text": str(text or ""), "metadata": dict(metadata or {})}
 
     def add_many(
-        self, *, item_ids: List[str], vectors: List[List[float]], texts: List[str], metadatas: List[dict]
+        self,
+        *,
+        item_ids: List[str],
+        vectors: List[List[float]],
+        texts: List[str],
+        metadatas: List[dict],
     ) -> None:
         """Add a batch of entries, unit-normalizing their vectors before insertion.
 
@@ -144,9 +158,11 @@ class DailyVectorIndex:
             return
         mat = _normalize_rows(np.array(vectors, dtype="float32"))
         if mat.shape[1] != int(self.index.d):
-            raise RuntimeError(f"DailyVectorIndex dim mismatch: got={mat.shape[1]} expected={self.index.d}")
+            raise RuntimeError(
+                f"DailyVectorIndex dim mismatch: got={mat.shape[1]} expected={self.index.d}"
+            )
         self.index.add(mat)
-        for item_id, txt, md in zip(item_ids, texts, metadatas):
+        for item_id, txt, md in zip(item_ids, texts, metadatas, strict=False):
             self.index_to_id.append(str(item_id))
             self.docstore[str(item_id)] = {"text": str(txt or ""), "metadata": dict(md or {})}
 
@@ -168,7 +184,7 @@ class DailyVectorIndex:
         D, I = self.index.search(q, k=int(k))
         out: List[VectorHit] = []
         # NOTE: I[0] and D[0] are numpy arrays; do not use `or []` which triggers ambiguous truthiness.
-        for idx, ip in zip(I[0].tolist(), D[0].tolist()):
+        for idx, ip in zip(I[0].tolist(), D[0].tolist(), strict=False):
             if int(idx) < 0 or int(idx) >= len(self.index_to_id):
                 continue
             item_id = self.index_to_id[int(idx)]
@@ -181,12 +197,15 @@ class DailyVectorIndex:
             out.append(VectorHit(entry=ve, ip=ipf, score01=float(score01)))
         return out
 
+
 def _nl(s: str) -> str:
     """Normalize line endings to LF to avoid mixed terminators."""
     return s.replace("\r\n", "\n").replace("\r", "\n")
 
+
 _BEGIN_DAILY_PAIR = "=== BEGIN DAILY PAIR ==="
 _END_DAILY_PAIR = "=== END DAILY PAIR ==="
+
 
 def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
     """Format tag metadata lines for inclusion in daily.md.
@@ -212,7 +231,9 @@ def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
         lines = [f"#topics: {topics}", f"#intent: {intent}", f"#type: {tag_type}"]
         # semantic_handle is required but may be empty; include only when present.
         if semantic_handle is not None:
-            lines.append(f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}")
+            lines.append(
+                f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}"
+            )
         return "\n".join(lines) + "\n"
     except Exception as exc:
         logger.warning("DailyRAG: failed formatting tag metadata detail=%s", exc)
@@ -269,7 +290,9 @@ def _render_markdown_entry(entry: Dict[str, Any], *, user_text: str, assistant_t
         "entry_type": entry_type,
         "source": entry.get("source", "chat"),
         "source_agent": entry.get("source_agent", "syx"),
-        "source_scope": entry.get("source_scope", "dream" if entry_type == "dream_output" else "daily"),
+        "source_scope": entry.get(
+            "source_scope", "dream" if entry_type == "dream_output" else "daily"
+        ),
         "current_scope": entry.get("current_scope", "daily"),
         "timestamp": entry.get("timestamp"),
         "route": entry.get("route"),
@@ -300,6 +323,7 @@ def _render_markdown_entry(entry: Dict[str, Any], *, user_text: str, assistant_t
         assistant_text=assistant_text,
     )
 
+
 def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
     """Resolve the (daily.json, daily.lock, daily.md) paths for a project.
 
@@ -325,7 +349,9 @@ def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
         try:
             os.replace(legacy_lock_path, lock_path)
         except OSError as exc:
-            logger.warning("daily_store lock migration failed project_id=%s detail=%s", project_id, exc)
+            logger.warning(
+                "daily_store lock migration failed project_id=%s detail=%s", project_id, exc
+            )
     md_path = os.path.join(base_dir, "daily.md")
     return meta_path, lock_path, md_path
 
@@ -343,6 +369,7 @@ class _DailyCache:
             authoritative metadata.
         id_by_seq: O(1) adjacency lookup mapping ``day_sequence`` to entry id.
     """
+
     embedding_model: str
     vs: Optional[VectorIndex]
     meta_by_id: Dict[str, Dict[str, Any]]
@@ -363,6 +390,7 @@ class DailySource:
         meta_by_id: Authoritative metadata keyed by stable entry id.
         id_by_seq: Adjacency lookup mapping ``day_sequence`` to entry id.
     """
+
     embedding_model: str
     vs: VectorIndex
     meta_by_id: Dict[str, Dict[str, Any]]
@@ -384,7 +412,6 @@ def get_daily_source(project_id: str) -> Optional[DailySource]:
         A ``DailySource`` when a warm, model-matched, non-empty cache exists;
         otherwise None.
     """
-    settings = get_settings()
     # Warm lazily on first use for a project (non-blocking; return None for this request).
     with _CACHE_LOCK:
         cache = _CACHE.get(project_id)
@@ -407,7 +434,9 @@ def get_daily_source(project_id: str) -> Optional[DailySource]:
     )
 
 
-def daily_lookup_adjacent_entry_ids(project_id: str, *, day_sequence: int) -> Dict[str, Optional[str]]:
+def daily_lookup_adjacent_entry_ids(
+    project_id: str, *, day_sequence: int
+) -> Dict[str, Optional[str]]:
     """Look up the deterministic neighbors of a Daily entry by day sequence.
 
     Args:
@@ -446,7 +475,12 @@ def notify_daily_search_failure(project_id: str, reason: str) -> None:
     try:
         start_daily_cache_rebuild(project_id, reason=reason)
     except Exception as exc:
-        logger.warning("DailyRAG: failed scheduling cache rebuild project=%s reason=%s detail=%s", project_id, reason, exc)
+        logger.warning(
+            "DailyRAG: failed scheduling cache rebuild project=%s reason=%s detail=%s",
+            project_id,
+            reason,
+            exc,
+        )
 
 
 _CACHE: Dict[str, _DailyCache] = {}
@@ -666,7 +700,12 @@ def _collect_daily_texts_and_maps(
                 if seq > 0:
                     id_by_seq[seq] = eid
             except Exception as exc:
-                logger.debug("DailyRAG: invalid day_sequence for entry id=%s project=%s detail=%s", eid, project_id, exc)
+                logger.debug(
+                    "DailyRAG: invalid day_sequence for entry id=%s project=%s detail=%s",
+                    eid,
+                    project_id,
+                    exc,
+                )
         texts.append(t)
         metas.append(
             {
@@ -777,7 +816,11 @@ def _write_daily_rebuild_report(
         )
         write_debug_file(project_id, f"rag/daily/{ts}_daily_cache_report.txt", body)
     except Exception as exc:
-        logger.warning("DailyRAG: failed writing daily cache debug report project=%s detail=%s", project_id, exc)
+        logger.warning(
+            "DailyRAG: failed writing daily cache debug report project=%s detail=%s",
+            project_id,
+            exc,
+        )
 
 
 def rebuild_daily_cache(project_id: str, reason: str) -> bool:
@@ -803,7 +846,9 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
     with lock:
         # Always clear first to avoid using a corrupt instance
         clear_daily_cache(project_id)
-        entries = _reconcile_daily_embedding_model(project_id, meta_path, lock_path, runtime_model, reason)
+        entries = _reconcile_daily_embedding_model(
+            project_id, meta_path, lock_path, runtime_model, reason
+        )
         # Build the in-memory vectorstore from the snapshot we just loaded/updated.
         try:
             texts, metas, meta_by_id, id_by_seq = _collect_daily_texts_and_maps(entries, project_id)
@@ -815,10 +860,16 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
                         meta_by_id={},
                         id_by_seq={},
                     )
-                logger.debug("DailyRAG: rebuilt empty in-memory cache project=%s (reason=%s)", project_id, reason)
+                logger.debug(
+                    "DailyRAG: rebuilt empty in-memory cache project=%s (reason=%s)",
+                    project_id,
+                    reason,
+                )
                 return True
             max_req_tokens = int(getattr(settings, "max_embed_tokens_per_request", 250_000))
-            vs = _embed_daily_batches(texts, metas, runtime_model, max_req_tokens, project_id, reason)
+            vs = _embed_daily_batches(
+                texts, metas, runtime_model, max_req_tokens, project_id, reason
+            )
             if vs is None:
                 with _CACHE_LOCK:
                     _CACHE[project_id] = _DailyCache(
@@ -827,7 +878,11 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
                         meta_by_id=meta_by_id,
                         id_by_seq=id_by_seq,
                     )
-                logger.debug("DailyRAG: rebuilt empty in-memory cache project=%s (reason=%s)", project_id, reason)
+                logger.debug(
+                    "DailyRAG: rebuilt empty in-memory cache project=%s (reason=%s)",
+                    project_id,
+                    reason,
+                )
                 return True
             with _CACHE_LOCK:
                 _CACHE[project_id] = _DailyCache(
@@ -836,11 +891,18 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
                     meta_by_id=meta_by_id,
                     id_by_seq=id_by_seq,
                 )
-            logger.info("DailyRAG: rebuilt in-memory cache project=%s vectors=%s (reason=%s)", project_id, len(texts), reason)
+            logger.info(
+                "DailyRAG: rebuilt in-memory cache project=%s vectors=%s (reason=%s)",
+                project_id,
+                len(texts),
+                reason,
+            )
             _write_daily_rebuild_report(project_id, reason, runtime_model, len(texts), id_by_seq)
             return True
         except Exception as be:
-            logger.error("DailyRAG: rebuild failed project=%s reason=%s err=%s", project_id, reason, be)
+            logger.error(
+                "DailyRAG: rebuild failed project=%s reason=%s err=%s", project_id, reason, be
+            )
             with _CACHE_LOCK:
                 _CACHE.pop(project_id, None)
             return False
@@ -860,7 +922,6 @@ def ensure_daily_cache(project_id: str, reason: str = "warm") -> bool:
         True when the cache is present and consistent (or successfully rebuilt);
         False when a rebuild fails.
     """
-    settings = get_settings()
     runtime_model = get_active_embedding_model()
     meta_path, lock_path, _txt_path = _project_daily_paths(project_id)
     lock = _get_project_lock(project_id)
@@ -877,7 +938,9 @@ def ensure_daily_cache(project_id: str, reason: str = "warm") -> bool:
                     return True
             except Exception as exc:
                 # If we can't validate, rebuild and do not retry this request elsewhere.
-                logger.warning("DailyRAG: cache validation failed project=%s detail=%s", project_id, exc)
+                logger.warning(
+                    "DailyRAG: cache validation failed project=%s detail=%s", project_id, exc
+                )
         # Rebuild if missing or if daily.json indicates mismatch with runtime model.
         return rebuild_daily_cache(project_id, reason=reason)
 
@@ -1043,17 +1106,26 @@ def _append_daily_md_block(
             if (not os.path.isfile(md_path)) or os.path.getsize(md_path) == 0:
                 memory_date = time.strftime("%m-%d-%Y", time.localtime())
                 with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
-                    tf.write(_nl(render_artifact_header(
-                        artifact_type="daily_memory",
-                        project_id=project_id,
-                        memory_date=memory_date,
-                    )))
+                    tf.write(
+                        _nl(
+                            render_artifact_header(
+                                artifact_type="daily_memory",
+                                project_id=project_id,
+                                memory_date=memory_date,
+                            )
+                        )
+                    )
         except Exception as exc:
-            logger.warning("DailyRAG: failed ensuring daily BEGIN header project=%s path=%s detail=%s", project_id, md_path, exc)
+            logger.warning(
+                "DailyRAG: failed ensuring daily BEGIN header project=%s path=%s detail=%s",
+                project_id,
+                md_path,
+                exc,
+            )
         block = _render_markdown_entry(entry, user_text=user_text, assistant_text=assistant_text)
         with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
             tf.write(_nl(block))
-        logger.debug("[DAILYMD] project=%s wrote %s bytes", project_id, len(block.encode('utf-8')))
+        logger.debug("[DAILYMD] project=%s wrote %s bytes", project_id, len(block.encode("utf-8")))
     except Exception as te:
         logger.error("DailyRAG: failed writing daily.md: %s", te)
 
@@ -1106,9 +1178,11 @@ def _update_cache_with_entry(project_id: str, entry: Dict[str, Any], text_for_em
                         embedding_model=get_active_embedding_model(),
                         vs=vs,
                         meta_by_id={str(entry.get("id")): entry} if entry.get("id") else {},
-                        id_by_seq={int(entry.get("day_sequence")): str(entry.get("id"))}
-                        if entry.get("id") and entry.get("day_sequence") is not None
-                        else {},
+                        id_by_seq=(
+                            {int(entry.get("day_sequence")): str(entry.get("id"))}
+                            if entry.get("id") and entry.get("day_sequence") is not None
+                            else {}
+                        ),
                     )
                 return True
             # Normal path: incremental add
@@ -1129,7 +1203,12 @@ def _update_cache_with_entry(project_id: str, entry: Dict[str, Any], text_for_em
                 if eid2:
                     cache.meta_by_id[str(eid2)] = entry
             except Exception as exc:
-                logger.warning("DailyRAG: failed updating meta_by_id project=%s entry_id=%s detail=%s", project_id, entry.get("id"), exc)
+                logger.warning(
+                    "DailyRAG: failed updating meta_by_id project=%s entry_id=%s detail=%s",
+                    project_id,
+                    entry.get("id"),
+                    exc,
+                )
             # Update adjacency map (best-effort)
             try:
                 seq2 = entry.get("day_sequence")
@@ -1137,7 +1216,12 @@ def _update_cache_with_entry(project_id: str, entry: Dict[str, Any], text_for_em
                 if eid3 is not None and seq2 is not None:
                     cache.id_by_seq[int(seq2)] = str(eid3)
             except Exception as exc:
-                logger.warning("DailyRAG: failed updating id_by_seq project=%s entry_id=%s detail=%s", project_id, entry.get("id"), exc)
+                logger.warning(
+                    "DailyRAG: failed updating id_by_seq project=%s entry_id=%s detail=%s",
+                    project_id,
+                    entry.get("id"),
+                    exc,
+                )
             return True
     except Exception as e:
         logger.error("DailyRAG: in-memory add failed project=%s: %s", project_id, e)
@@ -1237,7 +1321,9 @@ def append_pair(
         _save_metadata(meta_path, entries)
         # Append to daily.md (human-readable) unless explicitly skipped.
         if write_daily_md:
-            _append_daily_md_block(project_id, md_path, entry, user_text=user_text, assistant_text=assistant_text)
+            _append_daily_md_block(
+                project_id, md_path, entry, user_text=user_text, assistant_text=assistant_text
+            )
     if not update_cache:
         return True
     return _update_cache_with_entry(project_id, entry, text_for_embed)
@@ -1280,13 +1366,22 @@ def append_pair_text_only(
                 if (not os.path.isfile(md_path)) or os.path.getsize(md_path) == 0:
                     memory_date = time.strftime("%m-%d-%Y", time.localtime())
                     with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
-                        tf.write(_nl(render_artifact_header(
-                            artifact_type="daily_memory",
-                            project_id=project_id,
-                            memory_date=memory_date,
-                        )))
+                        tf.write(
+                            _nl(
+                                render_artifact_header(
+                                    artifact_type="daily_memory",
+                                    project_id=project_id,
+                                    memory_date=memory_date,
+                                )
+                            )
+                        )
             except Exception as exc:
-                logger.warning("DailyRAG: failed ensuring text-only BEGIN header project=%s path=%s detail=%s", project_id, md_path, exc)
+                logger.warning(
+                    "DailyRAG: failed ensuring text-only BEGIN header project=%s path=%s detail=%s",
+                    project_id,
+                    md_path,
+                    exc,
+                )
             ts = created_at_iso_utc or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             # Localize timestamp to MM-DD-YYYY_HH:MM:SS
             try:
@@ -1313,7 +1408,11 @@ def append_pair_text_only(
             )
             with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
                 tf.write(_nl(block))
-            logger.info("[DAILYMD] Text-only append project=%s bytes=%s", project_id, len(block.encode("utf-8")))
+            logger.info(
+                "[DAILYMD] Text-only append project=%s bytes=%s",
+                project_id,
+                len(block.encode("utf-8")),
+            )
             return True
         except Exception as e:
             logger.error("[DAILYMD][ERROR] Text-only append failed project=%s: %s", project_id, e)
@@ -1355,7 +1454,11 @@ def daily_stats(project_id: str) -> Dict[str, int]:
         cache_present,
         os.path.exists(meta_path),
     )
-    return {"daily_index_size_bytes": size_bytes, "daily_tokens_indexed": tokens, "daily_vector_count": len(entries)}
+    return {
+        "daily_index_size_bytes": size_bytes,
+        "daily_tokens_indexed": tokens,
+        "daily_vector_count": len(entries),
+    }
 
 
 def backfill_daily_md_from_meta(project_id: str) -> bool:
@@ -1381,24 +1484,31 @@ def backfill_daily_md_from_meta(project_id: str) -> bool:
             return False
         try:
             with open(md_path, "a", encoding="utf-8", newline="\n") as tf:
-                first_ts = entries[0].get("timestamp") or entries[0].get("created_at") if entries else None
+                first_ts = (
+                    entries[0].get("timestamp") or entries[0].get("created_at") if entries else None
+                )
                 memory_date = memory_date_from_local_timestamp(str(first_ts or ""))
-                tf.write(_nl(render_artifact_header(
-                    artifact_type="daily_memory",
-                    project_id=project_id,
-                    memory_date=memory_date,
-                )))
+                tf.write(
+                    _nl(
+                        render_artifact_header(
+                            artifact_type="daily_memory",
+                            project_id=project_id,
+                            memory_date=memory_date,
+                        )
+                    )
+                )
                 changed = False
                 for e in entries:
                     ts = e.get("created_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                     ns = "other"
-                    keep = bool(e.get("keep", False))
                     text = e.get("text") or ""
                     ts_local = str(e.get("timestamp") or local_timestamp_from_iso(str(ts)))
                     # Best-effort split back into prompt/response
                     u, a = split_pair_text(str(text))
                     tags_meta = e.get("tags_meta") if isinstance(e, dict) else None
-                    semantic_handle = _semantic_handle(tags_meta if isinstance(tags_meta, dict) else None)
+                    semantic_handle = _semantic_handle(
+                        tags_meta if isinstance(tags_meta, dict) else None
+                    )
                     if not e.get("timestamp"):
                         e["timestamp"] = ts_local
                         changed = True
@@ -1409,10 +1519,14 @@ def backfill_daily_md_from_meta(project_id: str) -> bool:
                         e["source_agent"] = "syx"
                         changed = True
                     if not e.get("source_scope"):
-                        e["source_scope"] = "dream" if e.get("entry_type") == "dream_output" else "daily"
+                        e["source_scope"] = (
+                            "dream" if e.get("entry_type") == "dream_output" else "daily"
+                        )
                         changed = True
                     if not e.get("current_scope"):
-                        e["current_scope"] = "dream" if e.get("entry_type") == "dream_output" else "daily"
+                        e["current_scope"] = (
+                            "dream" if e.get("entry_type") == "dream_output" else "daily"
+                        )
                         changed = True
                     if not e.get("route"):
                         e["route"] = ns
@@ -1427,9 +1541,21 @@ def backfill_daily_md_from_meta(project_id: str) -> bool:
                             assistant_text=a,
                             route=str(e.get("route") or ns),
                             semantic_handle=semantic_handle,
-                            dream_output_type=e.get("dream_output_type") if isinstance(e.get("dream_output_type"), str) else None,
-                            accepted_item_id=e.get("accepted_item_id") if isinstance(e.get("accepted_item_id"), str) else None,
-                            origin_memory_ids=e.get("origin_memory_ids") if isinstance(e.get("origin_memory_ids"), list) else None,
+                            dream_output_type=(
+                                e.get("dream_output_type")
+                                if isinstance(e.get("dream_output_type"), str)
+                                else None
+                            ),
+                            accepted_item_id=(
+                                e.get("accepted_item_id")
+                                if isinstance(e.get("accepted_item_id"), str)
+                                else None
+                            ),
+                            origin_memory_ids=(
+                                e.get("origin_memory_ids")
+                                if isinstance(e.get("origin_memory_ids"), list)
+                                else None
+                            ),
                             dream_content=a if e.get("entry_type") == "dream_output" else None,
                         )
                         changed = True
@@ -1441,10 +1567,10 @@ def backfill_daily_md_from_meta(project_id: str) -> bool:
                     tf.write(_nl(block))
                 if changed:
                     _save_metadata(meta_path, entries)
-            logger.warning("[DAILYMD] Backfilled daily.md (canonical format) for project=%s", project_id)
+            logger.warning(
+                "[DAILYMD] Backfilled daily.md (canonical format) for project=%s", project_id
+            )
             return True
         except Exception as e:
             logger.error("[DAILYMD] Failed backfill for project=%s: %s", project_id, e)
             return False
-
-

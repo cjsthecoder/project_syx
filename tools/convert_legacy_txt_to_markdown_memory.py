@@ -5,6 +5,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 CLI tool to convert legacy Syx .txt memory artifacts into Markdown memory.
 
@@ -20,7 +21,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -32,7 +32,6 @@ from backend.app.rag.syx_memory_artifact import (  # noqa: E402
     topics_to_list,
 )
 
-
 logger = logging.getLogger("convert_legacy_txt_to_markdown_memory")
 
 PAIR_RE = re.compile(
@@ -43,9 +42,13 @@ LEGACY_MEMORY_WRAPPER_RE = re.compile(
     r"^=== (?:BEGIN|END) (?P<kind>DAILY|DREAM) MEMORY:\s*(?P<date>\d{2}/\d{2}/\d{4}) ===\s*$",
     re.MULTILINE,
 )
-LEGACY_METADATA_RE = re.compile(r"^#(?P<key>[A-Za-z_][A-Za-z0-9_]*):\s*(?P<value>.*?)\s*$", re.MULTILINE)
+LEGACY_METADATA_RE = re.compile(
+    r"^#(?P<key>[A-Za-z_][A-Za-z0-9_]*):\s*(?P<value>.*?)\s*$", re.MULTILINE
+)
 USER_MARKER_RE = re.compile(r"^--- USER \(data-message-author-role:\s*user\) ---\s*$", re.MULTILINE)
-ASSISTANT_MARKER_RE = re.compile(r"^\*\*\* ASSISTANT \(data-message-author-role:\s*assistant\) \*\*\*\s*$", re.MULTILINE)
+ASSISTANT_MARKER_RE = re.compile(
+    r"^\*\*\* ASSISTANT \(data-message-author-role:\s*assistant\) \*\*\*\s*$", re.MULTILINE
+)
 PAIR_DELIMITER_RE = re.compile(r"^=== (?:BEGIN|END) (?:DAILY|DREAM) PAIR ===\s*$", re.MULTILINE)
 TOPIC_HEADER_RE = re.compile(r"^=== TOPIC:\s*(?P<topic>.*?)\s*===\s*$", re.MULTILINE)
 
@@ -116,7 +119,9 @@ def _parse_bool(value: Any, default: bool = False) -> bool:
 
 
 def _metadata_lines(block: str) -> dict[str, str]:
-    return {m.group("key").strip(): m.group("value").strip() for m in LEGACY_METADATA_RE.finditer(block)}
+    return {
+        m.group("key").strip(): m.group("value").strip() for m in LEGACY_METADATA_RE.finditer(block)
+    }
 
 
 def _strip_legacy_metadata_lines(block: str) -> str:
@@ -290,7 +295,9 @@ def convert_text(
         block = match.group("block")
         occupied.append(match.span("block"))
         legacy = _metadata_lines(block)
-        timestamp = _compact_metadata_value(legacy.get("timestamp")) or _fallback_timestamp(memory_date, sequence)
+        timestamp = _compact_metadata_value(legacy.get("timestamp")) or _fallback_timestamp(
+            memory_date, sequence
+        )
         route = _compact_metadata_value(legacy.get("route")) or "legacy"
         semantic_handle = _compact_metadata_value(legacy.get("semantic_handle"))
         user_text, assistant_text = _extract_pair_body(block)
@@ -346,7 +353,9 @@ def convert_text(
                 sequence=sequence,
             )
             metadata["type"] = "unparsed_legacy_pair"
-            rendered = render_memory_entry(memory_id=memory_id, metadata=metadata, body_text=block.strip())
+            rendered = render_memory_entry(
+                memory_id=memory_id, metadata=metadata, body_text=block.strip()
+            )
             fallback_pairs += 1
         memory_ids.append(memory_id)
         blocks.append(rendered)
@@ -382,7 +391,9 @@ def convert_text(
     return output, stats
 
 
-def _iter_input_files(file_path: Optional[str], dir_path: Optional[str], recursive: bool) -> Iterable[Path]:
+def _iter_input_files(
+    file_path: Optional[str], dir_path: Optional[str], recursive: bool
+) -> Iterable[Path]:
     if file_path:
         yield Path(file_path).resolve()
     if dir_path:
@@ -403,7 +414,9 @@ def _destination_path(input_path: Path, output_dir: Path) -> Path:
         idx += 1
 
 
-def process_path(path: Path, *, output_dir: Path, project_id: Optional[str], dry_run: bool) -> dict[str, Any]:
+def process_path(
+    path: Path, *, output_dir: Path, project_id: Optional[str], dry_run: bool
+) -> dict[str, Any]:
     if not path.is_file():
         raise ValueError(f"Input path is not a file: {path}")
     if path.suffix.lower() != ".txt":
@@ -431,10 +444,16 @@ def main() -> int:
     )
     parser.add_argument("--file", help="One legacy .txt memory artifact to convert")
     parser.add_argument("--dir", help="Directory of legacy .txt memory artifacts to convert")
-    parser.add_argument("--output-dir", required=True, help="Directory where converted .md files are written")
-    parser.add_argument("--project-id", default=None, help="Override project_id; defaults to inference from path")
+    parser.add_argument(
+        "--output-dir", required=True, help="Directory where converted .md files are written"
+    )
+    parser.add_argument(
+        "--project-id", default=None, help="Override project_id; defaults to inference from path"
+    )
     parser.add_argument("--recursive", action="store_true", help="Recurse when --dir is provided")
-    parser.add_argument("--dry-run", action="store_true", help="Report conversion stats without writing .md files")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Report conversion stats without writing .md files"
+    )
     args = parser.parse_args()
 
     if not args.file and not args.dir:
@@ -450,7 +469,9 @@ def main() -> int:
     failed = 0
     for path in _iter_input_files(args.file, args.dir, bool(args.recursive)):
         try:
-            stats = process_path(path, output_dir=output_dir, project_id=args.project_id, dry_run=bool(args.dry_run))
+            stats = process_path(
+                path, output_dir=output_dir, project_id=args.project_id, dry_run=bool(args.dry_run)
+            )
             stats_rows.append(stats)
             logger.info(
                 "%s -> %s converted_pairs=%s fallback_pairs=%s residual_entries=%s",

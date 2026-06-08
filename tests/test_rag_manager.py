@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for app.rag.manager retrieval/selection logic.
 
@@ -14,8 +15,6 @@ verified without embeddings, FAISS, or network.
 """
 
 from types import SimpleNamespace
-
-import pytest
 
 import app.rag.manager as manager
 from app.rag.manager import (

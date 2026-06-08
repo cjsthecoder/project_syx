@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Text normalization helpers for prefix matching.
 
@@ -35,4 +36,3 @@ def normalize_for_prefix_match(text: str) -> str:
     normalized = _WHITESPACE_RE.sub(" ", normalized)
     normalized = _TRAILING_SENTENCE_PUNCTUATION_RE.sub("", normalized)
     return normalized.strip()
-

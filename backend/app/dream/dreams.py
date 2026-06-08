@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Dream cycle orchestration for the Syx AGI Chatbot Framework.
 
@@ -19,12 +20,13 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.utils.debug_utils import write_debug_file
+
 from ..core.config import get_settings
-from .agents.questions_agent import run_questions_agent
 from .agents.idea_agent import run_idea_agent
+from .agents.questions_agent import run_questions_agent
 from .agents.research_agent import run_research_agent
 from .context import build_dream_context
-from app.utils.debug_utils import write_debug_file
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +126,9 @@ def _write_dreaming_debug_txt(
         body_lines.append(f"====== {title} ======")
         body_lines.append(str(content or ""))
         body_lines.append("")
-    write_debug_file(project_id, f"dreaming/{debug_ts}_{suffix}.txt", "\n".join(body_lines).rstrip() + "\n")
+    write_debug_file(
+        project_id, f"dreaming/{debug_ts}_{suffix}.txt", "\n".join(body_lines).rstrip() + "\n"
+    )
 
 
 def _safe_write_dreaming_debug(
@@ -147,7 +151,9 @@ def _safe_write_dreaming_debug(
     try:
         _write_dreaming_debug_txt(project_id, debug_ts, suffix, sections)
     except Exception as de:
-        logger.warning("[DREAM][DEBUG] Failed writing %s debug project=%s: %s", suffix, project_id, de)
+        logger.warning(
+            "[DREAM][DEBUG] Failed writing %s debug project=%s: %s", suffix, project_id, de
+        )
 
 
 def _build_research_plan_rows(idea_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -361,8 +367,11 @@ def _remote_research_questions(questions_data: Dict[str, Any]) -> List[Dict[str,
     if not isinstance(question_rows, list):
         return []
     return [
-        q for q in question_rows
-        if isinstance(q, dict) and bool(q.get("used_remote_research", False)) and str(q.get("question", "") or "").strip()
+        q
+        for q in question_rows
+        if isinstance(q, dict)
+        and bool(q.get("used_remote_research", False))
+        and str(q.get("question", "") or "").strip()
     ]
 
 
@@ -410,7 +419,9 @@ def _find_matching_item(
     return None, key
 
 
-def _annotate_matched_item(target: Dict[str, Any], qobj: Dict[str, Any], q_text: str) -> Tuple[int, int]:
+def _annotate_matched_item(
+    target: Dict[str, Any], qobj: Dict[str, Any], q_text: str
+) -> Tuple[int, int]:
     """Annotate a matched idea item with remote resolution and seeded research.
 
     Sets ``source_resolution`` to ``answer_remote``, ensures a metadata block
@@ -551,7 +562,11 @@ def _cleanup_question_artifacts(project_id: str) -> None:
         try:
             if os.path.isfile(path):
                 os.remove(path)
-                logger.info("[DREAM] Removed consumed questions artifact project=%s file=%s", project_id, os.path.basename(path))
+                logger.info(
+                    "[DREAM] Removed consumed questions artifact project=%s file=%s",
+                    project_id,
+                    os.path.basename(path),
+                )
         except Exception as e:
             logger.warning(
                 "[DREAM] Failed removing questions artifact project=%s file=%s err=%s",
@@ -576,6 +591,7 @@ def write_dream_output(project_id: str, dream_data: dict, project_summary_text: 
         project_summary_text: Project summary stored at the top level of the file.
     """
     try:
+
         def _capitalize_first_letter(text: str) -> str:
             """Capitalize the first non-whitespace character if it is a letter."""
             if not isinstance(text, str):
@@ -664,7 +680,9 @@ def _run_questions_stage(project_id: str, debug_ts: str) -> Dict[str, Any]:
     Returns:
         The Questions Agent output.
     """
-    consolidated_questions_path = os.path.join(get_settings().memory_root, project_id, "open_questions_consolidated.json")
+    consolidated_questions_path = os.path.join(
+        get_settings().memory_root, project_id, "open_questions_consolidated.json"
+    )
     questions_input = _read_json_file_safe(consolidated_questions_path)
     _safe_write_dreaming_debug(
         project_id,
@@ -724,7 +742,12 @@ def _run_idea_stage(
         filter_stats.get("after", 0),
         filter_stats.get("dropped", 0),
     )
-    _safe_write_dreaming_debug(project_id, debug_ts, "idea_output", [("OUTPUT", json.dumps(ideas, ensure_ascii=False, indent=2))])
+    _safe_write_dreaming_debug(
+        project_id,
+        debug_ts,
+        "idea_output",
+        [("OUTPUT", json.dumps(ideas, ensure_ascii=False, indent=2))],
+    )
 
     # Ensure remote-backed question research is represented in idea_data
     # so Research Agent can persist it into final dream.json.
@@ -741,22 +764,24 @@ def _run_idea_stage(
         project_id,
         debug_ts,
         "bridge_report",
-        [(
-            "DECISIONS",
-            json.dumps(
-                {
-                    "stats": {
-                        "remote_questions": bridge_stats.get("remote_questions", 0),
-                        "matched_items": bridge_stats.get("matched_items", 0),
-                        "injected_items": bridge_stats.get("injected_items", 0),
-                        "seeded_research_topics": bridge_stats.get("seeded_research_topics", 0),
+        [
+            (
+                "DECISIONS",
+                json.dumps(
+                    {
+                        "stats": {
+                            "remote_questions": bridge_stats.get("remote_questions", 0),
+                            "matched_items": bridge_stats.get("matched_items", 0),
+                            "injected_items": bridge_stats.get("injected_items", 0),
+                            "seeded_research_topics": bridge_stats.get("seeded_research_topics", 0),
+                        },
+                        "rows": bridge_stats.get("decisions", []),
                     },
-                    "rows": bridge_stats.get("decisions", []),
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-        )],
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
+        ],
     )
     return bridged_ideas, project_summary_text
 
@@ -783,7 +808,12 @@ def _run_research_stage(
         The Research Agent's Dream data.
     """
     research_plan_rows = _build_research_plan_rows(bridged_ideas)
-    _safe_write_dreaming_debug(project_id, debug_ts, "research_plan", [("INPUT", json.dumps(research_plan_rows, ensure_ascii=False, indent=2))])
+    _safe_write_dreaming_debug(
+        project_id,
+        debug_ts,
+        "research_plan",
+        [("INPUT", json.dumps(research_plan_rows, ensure_ascii=False, indent=2))],
+    )
 
     # Run Research Agent on the Idea Agent output, using the project summary text.
     dream_data = run_research_agent(
@@ -792,7 +822,12 @@ def _run_research_stage(
         project_summary_text,
         debug_ts=debug_ts,
     )
-    _safe_write_dreaming_debug(project_id, debug_ts, "research_results", [("OUTPUT", json.dumps(dream_data, ensure_ascii=False, indent=2))])
+    _safe_write_dreaming_debug(
+        project_id,
+        debug_ts,
+        "research_results",
+        [("OUTPUT", json.dumps(dream_data, ensure_ascii=False, indent=2))],
+    )
 
     # Write dreaming-scoped debug artifact for research input/output.
     try:
@@ -807,22 +842,30 @@ def _run_research_stage(
         )
         write_debug_file(project_id, f"dreaming/{debug_ts}_research.txt", research_debug_body)
     except Exception as de:
-        logger.warning("[DREAM][DEBUG] Failed writing dreaming research debug project=%s: %s", project_id, de)
+        logger.warning(
+            "[DREAM][DEBUG] Failed writing dreaming research debug project=%s: %s", project_id, de
+        )
 
     # Mirror the current debug_dream_summary.txt into dreaming/{timestamp}_dream_summary.txt.
     try:
-        summary_debug_path = os.path.join(get_settings().memory_root, project_id, "debug", "debug_dream_summary.txt")
+        summary_debug_path = os.path.join(
+            get_settings().memory_root, project_id, "debug", "debug_dream_summary.txt"
+        )
         if os.path.isfile(summary_debug_path):
             with open(summary_debug_path, "r", encoding="utf-8", errors="ignore") as sf:
                 summary_debug_text = sf.read()
-            write_debug_file(project_id, f"dreaming/{debug_ts}_dream_summary.txt", summary_debug_text)
+            write_debug_file(
+                project_id, f"dreaming/{debug_ts}_dream_summary.txt", summary_debug_text
+            )
         else:
             logger.info(
                 "[DREAM][DEBUG] debug_dream_summary.txt missing for project=%s; skipping dreaming summary mirror.",
                 project_id,
             )
     except Exception as de:
-        logger.warning("[DREAM][DEBUG] Failed writing dreaming summary debug project=%s: %s", project_id, de)
+        logger.warning(
+            "[DREAM][DEBUG] Failed writing dreaming summary debug project=%s: %s", project_id, de
+        )
 
     # Serialize final Dream output to disk for downstream consumers (e.g., GUI).
     _safe_write_dreaming_debug(
@@ -830,7 +873,10 @@ def _run_research_stage(
         debug_ts,
         "dream_write",
         [
-            ("INPUT", json.dumps({"project_summary": project_summary_text}, ensure_ascii=False, indent=2)),
+            (
+                "INPUT",
+                json.dumps({"project_summary": project_summary_text}, ensure_ascii=False, indent=2),
+            ),
             ("OUTPUT", json.dumps(dream_data, ensure_ascii=False, indent=2)),
         ],
     )
@@ -860,7 +906,9 @@ def dream(project_id: str) -> None:
         logger.info("[DREAM] Starting dreaming for project=%s", project_id)
         try:
             questions_data = _run_questions_stage(project_id, debug_ts)
-            bridged_ideas, project_summary_text = _run_idea_stage(project_id, debug_ts, questions_data)
+            bridged_ideas, project_summary_text = _run_idea_stage(
+                project_id, debug_ts, questions_data
+            )
             _run_research_stage(project_id, debug_ts, bridged_ideas, project_summary_text)
 
             # Clear consumed question artifacts to prevent duplicate re-answering next cycle.
@@ -871,7 +919,9 @@ def dream(project_id: str) -> None:
         except Exception as de:
             logger.error("project=%s %s", project_id, de, exc_info=True)
     except Exception as exc:
-        logger.warning("[DREAM] Non-fatal dream cycle failure project=%s detail=%s", project_id, exc, exc_info=True)
-
-
-
+        logger.warning(
+            "[DREAM] Non-fatal dream cycle failure project=%s detail=%s",
+            project_id,
+            exc,
+            exc_info=True,
+        )

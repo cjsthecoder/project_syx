@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Idea Agent for the Syx Dream cycle.
 
@@ -16,10 +17,15 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
+from app.utils.debug_utils import write_debug_file
+
 from ...core.config import get_settings
 from ...core.llm_service import generate_text_response
-from app.utils.debug_utils import write_debug_file
-from ..debug import safe_dream_purpose, write_dream_prompt_to_execute, write_dream_response_usage_debug
+from ..debug import (
+    safe_dream_purpose,
+    write_dream_prompt_to_execute,
+    write_dream_response_usage_debug,
+)
 from .prompts.idea_prompts import build_idea_prompt
 
 logger = logging.getLogger(__name__)
@@ -111,7 +117,9 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
         )
         raw = response.text
     except Exception as e:
-        logger.error("Idea Agent LLM invocation failed project=%s: %s", project_id, e, exc_info=True)
+        logger.error(
+            "Idea Agent LLM invocation failed project=%s: %s", project_id, e, exc_info=True
+        )
         raw = '{"answer": "Dream agent failed to generate a valid answer."}'
 
     # Debug: write raw response if enabled
@@ -138,7 +146,9 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
     elif isinstance(items_raw, dict):
         candidates = [items_raw]
     else:
-        logger.warning("Idea Agent items invalid or missing project=%s; returning empty items.", project_id)
+        logger.warning(
+            "Idea Agent items invalid or missing project=%s; returning empty items.", project_id
+        )
         return {"date": date_str, "items": []}
 
     validated: List[Dict[str, Any]] = []
@@ -158,7 +168,11 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
             "context_link",
         ]
         if any(k not in item for k in required_fields):
-            logger.warning("Idea Agent skipping item missing required fields index=%s project=%s", idx, project_id)
+            logger.warning(
+                "Idea Agent skipping item missing required fields index=%s project=%s",
+                idx,
+                project_id,
+            )
             continue
 
         # Agent: auto-correct to "idea_agent"
@@ -187,13 +201,21 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
         # Metadata and nested fields
         metadata = item.get("metadata")
         if not isinstance(metadata, dict):
-            logger.warning("Idea Agent skipping item with missing/invalid metadata index=%s project=%s", idx, project_id)
+            logger.warning(
+                "Idea Agent skipping item with missing/invalid metadata index=%s project=%s",
+                idx,
+                project_id,
+            )
             continue
 
         # Required metadata keys
-        if any(k not in metadata for k in ("priority", "confidence", "theme", "recommended_research")):
+        if any(
+            k not in metadata for k in ("priority", "confidence", "theme", "recommended_research")
+        ):
             logger.warning(
-                "Idea Agent skipping item with incomplete metadata index=%s project=%s", idx, project_id
+                "Idea Agent skipping item with incomplete metadata index=%s project=%s",
+                idx,
+                project_id,
             )
             continue
 
@@ -222,7 +244,9 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
         # Confidence: must exist; range hints are in prompt, but we don't hard-enforce
         if "confidence" not in metadata:
             logger.warning(
-                "Idea Agent skipping item with missing confidence index=%s project=%s", idx, project_id
+                "Idea Agent skipping item with missing confidence index=%s project=%s",
+                idx,
+                project_id,
             )
             continue
 
@@ -230,7 +254,9 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
         rec_raw = metadata.get("recommended_research", None)
         if rec_raw is None:
             logger.warning(
-                "Idea Agent skipping item missing recommended_research index=%s project=%s", idx, project_id
+                "Idea Agent skipping item missing recommended_research index=%s project=%s",
+                idx,
+                project_id,
             )
             continue
         rec_norm = _normalize_recommended_research(rec_raw)
@@ -292,6 +318,3 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
 
     logger.info("[DREAM][IDEA] Completed project=%s count=%s", project_id, len(validated))
     return {"date": date_str, "items": validated}
-
-
-

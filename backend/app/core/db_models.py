@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 SQLModel database models for the Syx persistence layer.
 
@@ -13,7 +14,7 @@ timestamp helper used as the default for created/updated fields.
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlmodel import SQLModel, Field
+from sqlmodel import Field, SQLModel
 
 
 def utc_now() -> datetime:
@@ -70,7 +71,6 @@ class File(SQLModel, table=True):
     token_count: int = Field(default=0, description="Tokens computed for this file")
 
 
-
 class ChatMessage(SQLModel, table=True):
     """A persisted chat message (user or assistant turn) within a project.
 
@@ -81,16 +81,24 @@ class ChatMessage(SQLModel, table=True):
     headers. Rows are consumed and removed during the sleep flush once their
     pair is persisted to Daily memory.
     """
+
     id: Optional[int] = Field(default=None, primary_key=True)
     project_id: str = Field(index=True, foreign_key="project.id")
     role: str = Field(description="user|assistant")
     content: str
     created_at: datetime = Field(default_factory=utc_now, index=True)
     forget: bool = Field(default=False, description="If true, skip roll-off embedding and daily.md")
-    namespace: Optional[str] = Field(default=None, description="Primary namespace captured at assistant creation")
-    keep: bool = Field(default=False, description="User preference tag propagated into daily headers/metadata")
+    namespace: Optional[str] = Field(
+        default=None, description="Primary namespace captured at assistant creation"
+    )
+    keep: bool = Field(
+        default=False, description="User preference tag propagated into daily headers/metadata"
+    )
     # Store per-assistant metadata produced immediately after response.
     # tags_meta_json stores parsed tagger output (topics/intent/type/semantic_handle).
-    tags_meta_json: Optional[str] = Field(default=None, description="JSON string for tagger metadata; nullable on failure")
-    semantic_handle: Optional[str] = Field(default=None, description="Short noun phrase naming the exchange; nullable on failure")
-
+    tags_meta_json: Optional[str] = Field(
+        default=None, description="JSON string for tagger metadata; nullable on failure"
+    )
+    semantic_handle: Optional[str] = Field(
+        default=None, description="Short noun phrase naming the exchange; nullable on failure"
+    )

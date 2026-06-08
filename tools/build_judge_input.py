@@ -5,6 +5,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Build blind judging artifacts from a test run directory.
 Inputs read from the test run directory:
@@ -107,9 +108,13 @@ def _load_prompt_turns(prompts_json_path: str) -> tuple[Dict[int, PromptTurn], D
             continue
         turns[tid] = PromptTurn(
             turn_id=tid,
-            prompt_text=item.get("prompt_text") if isinstance(item.get("prompt_text"), str) else None,
+            prompt_text=(
+                item.get("prompt_text") if isinstance(item.get("prompt_text"), str) else None
+            ),
             rubric_id=item.get("rubric_id") if isinstance(item.get("rubric_id"), str) else None,
-            rubric_text=item.get("rubric_text") if isinstance(item.get("rubric_text"), str) else None,
+            rubric_text=(
+                item.get("rubric_text") if isinstance(item.get("rubric_text"), str) else None
+            ),
         )
     return turns, payload
 
@@ -146,8 +151,12 @@ def build_judge_rows(
         mor = syx_rows.get(tid, {})
         web = web_rows.get(tid, {})
 
-        candidate_a = mor.get("response_text") if isinstance(mor.get("response_text"), str) else None
-        candidate_b = web.get("response_text") if isinstance(web.get("response_text"), str) else None
+        candidate_a = (
+            mor.get("response_text") if isinstance(mor.get("response_text"), str) else None
+        )
+        candidate_b = (
+            web.get("response_text") if isinstance(web.get("response_text"), str) else None
+        )
 
         missing_fields: List[str] = []
         if not candidate_a:
@@ -160,7 +169,11 @@ def build_judge_rows(
         row: Dict[str, Any] = {
             "ts": _utc_iso(),
             "run_id": run_id,
-            "benchmark_name": prompt_meta.get("benchmark_name") if isinstance(prompt_meta.get("benchmark_name"), str) else None,
+            "benchmark_name": (
+                prompt_meta.get("benchmark_name")
+                if isinstance(prompt_meta.get("benchmark_name"), str)
+                else None
+            ),
             "turn_id": int(tid),
             "prompt_text": (p.prompt_text if p else None),
             "rubric_id": (p.rubric_id if p else None),
@@ -192,8 +205,7 @@ def _build_blind_runbook_md(
     prefix = "a" if blind_batch == "blind_a" else "b"
     scores_filename = f"{prefix}_benchmark_scores_<model_slug>.jsonl"
 
-    header = dedent(
-        f"""\
+    header = dedent(f"""\
         # Judge Runbook ({blind_batch})
 
         - run_id: `{run_id}`
@@ -254,8 +266,7 @@ def _build_blind_runbook_md(
         ```
 
         ## Steps
-        """
-    )
+        """)
 
     step_blocks: List[str] = []
     for step_num, sample in enumerate(samples, start=1):
@@ -276,8 +287,7 @@ def _build_blind_runbook_md(
         }
         case_json = json.dumps(case_payload, ensure_ascii=False, indent=2)
         output_json = json.dumps(output_shape, ensure_ascii=False, indent=2)
-        step_blocks.append(
-            f"""### Step {step_num}: Evaluate sample {sample.get('sample_id')}
+        step_blocks.append(f"""### Step {step_num}: Evaluate sample {sample.get('sample_id')}
 
 Case input:
 
@@ -292,17 +302,14 @@ Expected output shape (strict JSON only):
 ```
 
 After generating this JSON, append it as one line to `{scores_path}`.
-"""
-        )
+""")
 
-    completion = dedent(
-        f"""\
+    completion = dedent(f"""\
         ## Completion
 
         - When all steps are done, `{scores_path}` should contain one JSON line per sample in this runbook.
         - Re-run this same runbook with a different model for fair comparison.
-        """
-    )
+        """)
 
     return f"{header}\n{'\n'.join(step_blocks)}\n{completion}".strip()
 
@@ -317,25 +324,21 @@ def _build_judging_prompts_text(
     runbook_b_path: str,
     judging_dir: str,
 ) -> str:
-    prompt_a = dedent(
-        f"""\
+    prompt_a = dedent(f"""\
         Use @{runbook_a_path} as the only workflow.
         Follow all steps in order.
         For each step, produce strict JSON only for that sample.
         Append one JSON line per step to `{os.path.join(judging_dir, "a_benchmark_scores_<model_slug>.jsonl")}`.
         Do not skip steps.
-        """
-    ).strip()
+        """).strip()
 
-    prompt_b = dedent(
-        f"""\
+    prompt_b = dedent(f"""\
         Use @{runbook_b_path} as the only workflow.
         Follow all steps in order.
         For each step, produce strict JSON only for that sample.
         Append one JSON line per step to `{os.path.join(judging_dir, "b_benchmark_scores_<model_slug>.jsonl")}`.
         Do not skip steps.
-        """
-    ).strip()
+        """).strip()
 
     return (
         "Prompt 1 (blind_a)\n"
@@ -464,7 +467,9 @@ def run(test_run_dir: str, prompts_json_path: str) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build blind judging artifacts from benchmark outputs.")
+    parser = argparse.ArgumentParser(
+        description="Build blind judging artifacts from benchmark outputs."
+    )
     parser.add_argument("test_run_dir", help="Path to test_run directory")
     parser.add_argument("prompts_json", help="Path to prompts JSON file")
     args = parser.parse_args()
@@ -477,4 +482,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

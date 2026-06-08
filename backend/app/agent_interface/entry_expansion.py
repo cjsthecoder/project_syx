@@ -4,13 +4,14 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """A.5 full-entry expansion for agent memory search snippets."""
 
 import json
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from ..core.config import get_settings
 from ..rag.manager_index_io import LTM_DOCSTORE_NAME, safe_load_json
@@ -93,7 +94,9 @@ def expand_agent_memory_snippets(
             snippet.entry_expansion_error = result.error
         if result.warning:
             snippet.entry_expansion_warning = result.warning
-        _apply_size_guard(snippet, max_chars=max_chars, artifact_expansion=result.status == "expanded")
+        _apply_size_guard(
+            snippet, max_chars=max_chars, artifact_expansion=result.status == "expanded"
+        )
         out.append(snippet)
     return out
 
@@ -144,7 +147,9 @@ def _expand_one(*, project_id: str, snippet: AgentMemorySnippet) -> _ExpansionRe
         )
 
     if artifact_path:
-        expanded, error = _extract_from_artifact(project_id, artifact_path, str(snippet.memory_id), snippet.snippet_number)
+        expanded, error = _extract_from_artifact(
+            project_id, artifact_path, str(snippet.memory_id), snippet.snippet_number
+        )
         if expanded is not None:
             return _ExpansionResult(
                 text=expanded,
@@ -171,7 +176,9 @@ def _expand_one(*, project_id: str, snippet: AgentMemorySnippet) -> _ExpansionRe
             )
         error = source_error or error
 
-    reconstructed = _reconstruct_from_docstore(project_id=project_id, source_document_id=snippet.source_document_id)
+    reconstructed = _reconstruct_from_docstore(
+        project_id=project_id, source_document_id=snippet.source_document_id
+    )
     if reconstructed:
         return _ExpansionResult(
             text=reconstructed,
@@ -304,7 +311,11 @@ def _reconstruct_from_docstore(*, project_id: str, source_document_id: Optional[
         if metadata.get("source_document_id") != source_document_id:
             continue
         try:
-            chunk_index = int(metadata.get("chunk_index") if metadata.get("chunk_index") is not None else metadata.get("chunk_seq"))
+            chunk_index = int(
+                metadata.get("chunk_index")
+                if metadata.get("chunk_index") is not None
+                else metadata.get("chunk_seq")
+            )
         except (TypeError, ValueError):
             continue
         text = entry.get("text") if isinstance(entry.get("text"), str) else ""
@@ -314,7 +325,9 @@ def _reconstruct_from_docstore(*, project_id: str, source_document_id: Optional[
     return "\n".join(text for _idx, text in sorted(chunks, key=lambda item: item[0]) if text)
 
 
-def _apply_size_guard(snippet: AgentMemorySnippet, *, max_chars: int, artifact_expansion: bool) -> None:
+def _apply_size_guard(
+    snippet: AgentMemorySnippet, *, max_chars: int, artifact_expansion: bool
+) -> None:
     """Truncate an oversized snippet in place and record truncation metadata.
 
     No-op when the serialized snippet already fits within ``max_chars``. Sets
@@ -488,6 +501,8 @@ def _is_within(path: str, base: str) -> bool:
         or when the paths are not comparable (e.g. different drives).
     """
     try:
-        return os.path.commonpath([os.path.abspath(path), os.path.abspath(base)]) == os.path.abspath(base)
+        return os.path.commonpath(
+            [os.path.abspath(path), os.path.abspath(base)]
+        ) == os.path.abspath(base)
     except ValueError:
         return False

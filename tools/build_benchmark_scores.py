@@ -5,6 +5,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Build per-turn average benchmark score CSV for blind batch A and/or B.
 Behavior:
@@ -164,7 +165,9 @@ def _build_csv_for_batch(
 
             scorer_model = row.get("scorer_model")
             scorer_model_norm = (
-                scorer_model.strip() if isinstance(scorer_model, str) and scorer_model.strip() else "unknown"
+                scorer_model.strip()
+                if isinstance(scorer_model, str) and scorer_model.strip()
+                else "unknown"
             )
             dedupe_key = (scorer_model_norm, sample_id)
             if dedupe_key in seen:
@@ -237,7 +240,9 @@ def _build_combined_csv(
 
                 scorer_model = row.get("scorer_model")
                 scorer_model_norm = (
-                    scorer_model.strip() if isinstance(scorer_model, str) and scorer_model.strip() else "unknown"
+                    scorer_model.strip()
+                    if isinstance(scorer_model, str) and scorer_model.strip()
+                    else "unknown"
                 )
                 dedupe_key = (scorer_model_norm, sample_id)
                 if dedupe_key in seen:
@@ -267,10 +272,12 @@ def _build_combined_csv(
         writer = csv.writer(f)
         writer.writerow(["A", "B"])
         for turn_id in all_turns:
-            writer.writerow([
-                batch_values["A"].get(turn_id, ""),
-                batch_values["B"].get(turn_id, ""),
-            ])
+            writer.writerow(
+                [
+                    batch_values["A"].get(turn_id, ""),
+                    batch_values["B"].get(turn_id, ""),
+                ]
+            )
 
     print(f"[A+B] Wrote {len(all_turns)} rows to {output_path}")
 
@@ -311,7 +318,11 @@ def _main() -> int:
         raise FileNotFoundError(f"judge_map.json not found: {judge_map_path}")
 
     if args.batch == "BOTH":
-        output_path = os.path.abspath(args.output) if args.output else os.path.join(test_run_dir, "benchmark_scores.csv")
+        output_path = (
+            os.path.abspath(args.output)
+            if args.output
+            else os.path.join(test_run_dir, "benchmark_scores.csv")
+        )
         output_parent = os.path.dirname(output_path)
         if output_parent and not os.path.isdir(output_parent):
             raise FileNotFoundError(f"output directory does not exist: {output_parent}")
@@ -324,7 +335,11 @@ def _main() -> int:
         )
     else:
         output_filename_default = f"benchmark_scores_{args.batch}.csv"
-        output_path = os.path.abspath(args.output) if args.output else os.path.join(test_run_dir, output_filename_default)
+        output_path = (
+            os.path.abspath(args.output)
+            if args.output
+            else os.path.join(test_run_dir, output_filename_default)
+        )
         output_parent = os.path.dirname(output_path)
         if output_parent and not os.path.isdir(output_parent):
             raise FileNotFoundError(f"output directory does not exist: {output_parent}")

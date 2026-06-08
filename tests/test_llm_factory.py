@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for the LLM and embedding provider factories.
 
@@ -17,10 +18,9 @@ import os
 import sys
 import types
 
-import pytest
-
 import app.embedding
 import app.llm_model.factory as llm_factory
+import pytest
 
 
 class _FakeLLMProvider:

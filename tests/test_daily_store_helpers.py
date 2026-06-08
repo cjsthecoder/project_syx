@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for the pure/IO helpers extracted from daily_store append/rebuild.
 
@@ -13,8 +14,8 @@ rules), ``_cache_entry_metadata`` (vector metadata shape),
 ``_reconcile_daily_embedding_model`` (in-place model reconciliation in
 daily.json).
 """
-import json
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -66,8 +67,12 @@ def _load_daily_store(monkeypatch):
     debug_utils_module.write_debug_file = lambda *_args, **_kwargs: None  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.utils.debug_utils", debug_utils_module)
 
-    syx_module_path = Path(__file__).resolve().parents[1] / "backend" / "app" / "rag" / "syx_memory_artifact.py"
-    syx_spec = importlib.util.spec_from_file_location("app.rag.syx_memory_artifact", syx_module_path)
+    syx_module_path = (
+        Path(__file__).resolve().parents[1] / "backend" / "app" / "rag" / "syx_memory_artifact.py"
+    )
+    syx_spec = importlib.util.spec_from_file_location(
+        "app.rag.syx_memory_artifact", syx_module_path
+    )
     assert syx_spec is not None
     syx_module = importlib.util.module_from_spec(syx_spec)
     monkeypatch.setitem(sys.modules, "app.rag.syx_memory_artifact", syx_module)
@@ -282,13 +287,17 @@ def test_collect_texts_and_maps_empty(monkeypatch):
 
 def test_reconcile_updates_stale_model_in_place(tmp_path, monkeypatch):
     daily_store = _load_daily_store(monkeypatch)
-    monkeypatch.setattr(daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path)))
+    monkeypatch.setattr(
+        daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
     project_id = "proj-reconcile"
     meta_path, lock_path, _md = daily_store._project_daily_paths(project_id)
     Path(meta_path).write_text(
-        json.dumps([
-            {"id": "e1", "text": "x", "day_sequence": 1, "embedding_model": "old-model"},
-        ]),
+        json.dumps(
+            [
+                {"id": "e1", "text": "x", "day_sequence": 1, "embedding_model": "old-model"},
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -303,13 +312,17 @@ def test_reconcile_updates_stale_model_in_place(tmp_path, monkeypatch):
 
 def test_reconcile_noop_when_model_matches(tmp_path, monkeypatch):
     daily_store = _load_daily_store(monkeypatch)
-    monkeypatch.setattr(daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path)))
+    monkeypatch.setattr(
+        daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
     project_id = "proj-match"
     meta_path, lock_path, _md = daily_store._project_daily_paths(project_id)
     Path(meta_path).write_text(
-        json.dumps([
-            {"id": "e1", "text": "x", "day_sequence": 1, "embedding_model": "test-embedding"},
-        ]),
+        json.dumps(
+            [
+                {"id": "e1", "text": "x", "day_sequence": 1, "embedding_model": "test-embedding"},
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -321,7 +334,9 @@ def test_reconcile_noop_when_model_matches(tmp_path, monkeypatch):
 
 def test_reconcile_empty_metadata_returns_empty(tmp_path, monkeypatch):
     daily_store = _load_daily_store(monkeypatch)
-    monkeypatch.setattr(daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path)))
+    monkeypatch.setattr(
+        daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
     project_id = "proj-empty"
     meta_path, lock_path, _md = daily_store._project_daily_paths(project_id)
 

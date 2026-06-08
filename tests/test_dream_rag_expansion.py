@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for dream RAG context expansion.
 
@@ -90,14 +91,20 @@ def test_dream_rag_adapter_uses_route_policy_and_merge(monkeypatch):
 
     def merge_daily_and_main(**kwargs):
         calls.update(kwargs)
-        return {"context_text": "expanded context", "total_hits": 2, "expanded_unique_chunks_after_merge": 5}
+        return {
+            "context_text": "expanded context",
+            "total_hits": 2,
+            "expanded_unique_chunks_after_merge": 5,
+        }
 
     manager_module.merge_daily_and_main = merge_daily_and_main  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.rag.manager", manager_module)
 
     dream_rag = _load_module(monkeypatch, "app.dream.rag", "backend/app/dream/rag.py")
 
-    result = dream_rag.retrieve_dream_context(project_id="project-1", query="memory decay", route="SYNTHESIS")
+    result = dream_rag.retrieve_dream_context(
+        project_id="project-1", query="memory decay", route="SYNTHESIS"
+    )
 
     assert result["context_text"] == "expanded context"
     assert result["route"] == "SYNTHESIS"
@@ -115,7 +122,14 @@ def test_dream_rag_adapter_uses_route_policy_and_merge(monkeypatch):
 
 
 def test_questions_agent_uses_expanded_dream_rag(monkeypatch):
-    for name in ("app", "app.core", "app.dream", "app.dream.agents", "app.dream.agents.prompts", "app.utils"):
+    for name in (
+        "app",
+        "app.core",
+        "app.dream",
+        "app.dream.agents",
+        "app.dream.agents.prompts",
+        "app.utils",
+    ):
         _ensure_module(monkeypatch, name)
 
     calls = {"rag": [], "prompt": []}
@@ -161,7 +175,9 @@ def test_questions_agent_uses_expanded_dream_rag(monkeypatch):
     prompts_module = types.ModuleType("app.dream.agents.prompts.questions_prompts")
 
     def build_answer_question_prompt_local(question, topic, local_context):
-        calls["prompt"].append({"question": question, "topic": topic, "local_context": local_context})
+        calls["prompt"].append(
+            {"question": question, "topic": topic, "local_context": local_context}
+        )
         return "prompt"
 
     prompts_module.build_answer_question_prompt_local = build_answer_question_prompt_local  # type: ignore[attr-defined]
@@ -174,15 +190,26 @@ def test_questions_agent_uses_expanded_dream_rag(monkeypatch):
         "backend/app/dream/agents/questions_agent.py",
     )
 
-    result = questions_agent._run_open_question_pipeline("project-1", "Can STDP help?", "STDP", "answer_local")
+    result = questions_agent._run_open_question_pipeline(
+        "project-1", "Can STDP help?", "STDP", "answer_local"
+    )
 
     assert result["answer"] == "ok"
-    assert calls["rag"] == [{"project_id": "project-1", "query": "Can STDP help?", "route": "EXPLORATORY"}]
+    assert calls["rag"] == [
+        {"project_id": "project-1", "query": "Can STDP help?", "route": "EXPLORATORY"}
+    ]
     assert calls["prompt"][0]["local_context"] == "expanded local context"
 
 
 def test_research_agent_adds_synthesis_expanded_context(monkeypatch):
-    for name in ("app", "app.core", "app.dream", "app.dream.agents", "app.dream.agents.prompts", "app.utils"):
+    for name in (
+        "app",
+        "app.core",
+        "app.dream",
+        "app.dream.agents",
+        "app.dream.agents.prompts",
+        "app.utils",
+    ):
         _ensure_module(monkeypatch, name)
 
     calls = {"rag": [], "prompt": []}

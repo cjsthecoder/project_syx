@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Helpers for project-level Dream summary card text.
 """
@@ -48,7 +49,9 @@ def collect_research_topics(items: Iterable[Dict[str, Any]]) -> List[str]:
     return topics
 
 
-def format_latest_sleep_summary(project_summary: str, accepted_items: Iterable[Dict[str, Any]]) -> str:
+def format_latest_sleep_summary(
+    project_summary: str, accepted_items: Iterable[Dict[str, Any]]
+) -> str:
     """Build the dream summary card text from a project summary and research topics.
 
     Appends a "[RESEARCH]" block listing collected topics beneath the base

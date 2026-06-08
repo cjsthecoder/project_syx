@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for app.sleep.cycle.
 
@@ -13,11 +14,10 @@ verifies the lock is always released via the finally block without any LLM,
 embedding, or FAISS calls.
 """
 
+import app.sleep.cycle as cycle
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-import app.sleep.cycle as cycle
 
 
 @pytest.fixture
@@ -67,8 +67,12 @@ def test_sleep_cycle_health(client):
 
 def test_worker_releases_lock_on_empty_db(db, monkeypatch):
     calls = {"engage": 0, "release": 0}
-    monkeypatch.setattr(cycle, "engage_lock", lambda: calls.__setitem__("engage", calls["engage"] + 1))
-    monkeypatch.setattr(cycle, "release_lock", lambda: calls.__setitem__("release", calls["release"] + 1))
+    monkeypatch.setattr(
+        cycle, "engage_lock", lambda: calls.__setitem__("engage", calls["engage"] + 1)
+    )
+    monkeypatch.setattr(
+        cycle, "release_lock", lambda: calls.__setitem__("release", calls["release"] + 1)
+    )
 
     # Empty DB -> no projects -> worker should be a quick, side-effect-free no-op.
     cycle._sleep_cycle_worker()

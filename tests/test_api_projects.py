@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Contract tests for the projects API router.
 
@@ -17,12 +18,11 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from app.api import projects as projects_module
+from app.core.db_models import Project
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlmodel import Session
-
-from app.api import projects as projects_module
-from app.core.db_models import Project
 
 
 @pytest.fixture
@@ -200,6 +200,7 @@ def test_project_detail_missing_404(client):
 # here we exercise the router orchestration so it can be refactored safely.
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def dream_keep_env(monkeypatch):
     """Patch the dream-keep collaborators with deterministic recording fakes.
@@ -215,11 +216,19 @@ def dream_keep_env(monkeypatch):
         return {"topics": "alpha, beta", "intent": "learn", "type": "fact", "semantic_handle": "h1"}
 
     monkeypatch.setattr(projects_module, "tag_pair", fake_tag_pair)
-    monkeypatch.setattr(projects_module, "_prune_assistant_for_tagger", lambda **kw: kw["assistant_text"])
-    monkeypatch.setattr(projects_module, "generate_memory_id", lambda **kw: f"mem-{next(memory_id_counter)}")
+    monkeypatch.setattr(
+        projects_module, "_prune_assistant_for_tagger", lambda **kw: kw["assistant_text"]
+    )
+    monkeypatch.setattr(
+        projects_module, "generate_memory_id", lambda **kw: f"mem-{next(memory_id_counter)}"
+    )
     monkeypatch.setattr(projects_module, "append_pair", lambda *a, **k: calls.append.append((a, k)))
-    monkeypatch.setattr(projects_module, "rebuild_daily_cache", lambda *a, **k: calls.rebuild.append((a, k)))
-    monkeypatch.setattr(projects_module, "write_latest_sleep_summary", lambda **k: calls.sleep_summary.append(k))
+    monkeypatch.setattr(
+        projects_module, "rebuild_daily_cache", lambda *a, **k: calls.rebuild.append((a, k))
+    )
+    monkeypatch.setattr(
+        projects_module, "write_latest_sleep_summary", lambda **k: calls.sleep_summary.append(k)
+    )
     return calls
 
 
@@ -239,7 +248,9 @@ def _simple_dream_item(item_id, question, answer):
 def test_dream_keep_persists_and_deletes_on_success(client, temp_memory_root, dream_keep_env):
     pid = "p1"
     _write_dream_json(temp_memory_root, pid)
-    payload = {"items": [_simple_dream_item("i1", "Q1", "A1"), _simple_dream_item("i2", "Q2", "A2")]}
+    payload = {
+        "items": [_simple_dream_item("i1", "Q1", "A1"), _simple_dream_item("i2", "Q2", "A2")]
+    }
 
     resp = client.post(f"/projects/{pid}/dream/keep", json=payload)
 
@@ -270,7 +281,11 @@ def test_dream_keep_rejects_non_list_items(client):
 def test_dream_keep_no_remembered_items_noops(client, dream_keep_env):
     resp = client.post(
         "/projects/p1/dream/keep",
-        json={"items": [{"id": "i1", "remember": False, "origin_text": "Q", "assistant_response": "A"}]},
+        json={
+            "items": [
+                {"id": "i1", "remember": False, "origin_text": "Q", "assistant_response": "A"}
+            ]
+        },
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -308,7 +323,9 @@ def test_dream_keep_partial_failure_preserves_dream_json(
         dream_keep_env.append.append((a, k))
 
     monkeypatch.setattr(projects_module, "append_pair", flaky_append)
-    payload = {"items": [_simple_dream_item("i1", "Q1", "A1"), _simple_dream_item("i2", "Q2", "A2")]}
+    payload = {
+        "items": [_simple_dream_item("i1", "Q1", "A1"), _simple_dream_item("i2", "Q2", "A2")]
+    }
 
     resp = client.post(f"/projects/{pid}/dream/keep", json=payload)
 

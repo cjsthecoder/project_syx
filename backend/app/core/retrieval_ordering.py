@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Deterministic similarity-score ordering for retrieval candidates.
 
@@ -36,4 +37,3 @@ def order_candidates_by_similarity_score(candidates: List[Dict[str, Any]]) -> Li
         key=lambda c: float(c.get("score") or 0.0),
         reverse=True,
     )
-

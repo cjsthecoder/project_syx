@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Sleep Cycle API endpoint for Syx AGI Chatbot Framework.
 
@@ -12,30 +13,33 @@ This module provides memory pruning and cleanup functionality (stubbed).
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, Any, Dict, List
-from fastapi import APIRouter, HTTPException
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 # Set up module-level logger
 logger = logging.getLogger(__name__)
 
-from ..core.models import SleepCycleRequest, SleepCycleResponse, ErrorResponse
-from ..core.memory import get_memory_manager, _prune_assistant_for_tagger
-from ..core.state import engage_lock, release_lock, is_sleeping, since, lock_path
-from ..core.database import get_session
-from ..core.db_models import Project, ChatMessage
-from sqlmodel import select
-from ..rag.daily_store import append_pair, backfill_daily_md_from_meta, rebuild_daily_cache
-from ..tagging.tagger import tag_pair as tag_pair_tagger
-from ..dream import dream
-from ..dream.auto_accept import auto_accept_dreams
-import time
-from ..utils.logging import RequestLogger
-from ..utils.errors import handle_memory_error, log_error_context
-import os
 import json
+import os
+import time
 import uuid
 from datetime import datetime
+
+from sqlmodel import select
+
+from ..core.database import get_session
+from ..core.db_models import ChatMessage, Project
+from ..core.memory import _prune_assistant_for_tagger, get_memory_manager
+from ..core.models import SleepCycleRequest, SleepCycleResponse
+from ..core.state import engage_lock, is_sleeping, lock_path, release_lock, since
+from ..dream import dream
+from ..dream.auto_accept import auto_accept_dreams
+from ..rag.daily_store import append_pair, backfill_daily_md_from_meta, rebuild_daily_cache
+from ..tagging.tagger import tag_pair as tag_pair_tagger
+from ..utils.errors import handle_memory_error, log_error_context
+from ..utils.logging import RequestLogger
 from ..utils.tokens import count_tokens
 
 logger = logging.getLogger(__name__)
@@ -44,14 +48,20 @@ router = APIRouter()
 # Initialize logger
 request_logger = RequestLogger("sleep")
 
-from ..rag.manager import rebuild_faiss_index, load_faiss_index
 from filelock import FileLock
+
 from ..core.config import get_settings
 from ..rag.daily_store import _project_daily_paths, clear_daily_cache
-from ..rag.syx_memory_artifact import normalize_legacy_artifact_wrappers, replace_current_scope_for_ltm
+from ..rag.manager import load_faiss_index, rebuild_faiss_index
+from ..rag.syx_memory_artifact import (
+    normalize_legacy_artifact_wrappers,
+    replace_current_scope_for_ltm,
+)
 from ..utils.debug_utils import write_debug_file
 from .questions_consolidation import consolidate_open_questions_artifact
 from .worker import start_sleep_cycle_runner
+
+
 def _nl(s: str) -> str:
     """Normalize line endings to LF to avoid mixed terminators.
 
@@ -230,7 +240,7 @@ def _prepare_pair_for_daily(u: Any, a: Any, pid: str, previous_pair_text: Option
         if created_at and hasattr(created_at, "strftime")
         else None
     )
-    ns = (getattr(a, "namespace", None) or "other")
+    ns = getattr(a, "namespace", None) or "other"
     ns = ns.lower() if isinstance(ns, str) else "other"
     keep = bool(getattr(a, "keep", False))
     public_tags_meta = _public_tags_meta(tags_meta)
@@ -275,8 +285,8 @@ def _flush_project_pairs(pid: str, pair_limit: int, stats: _SleepCycleStats) -> 
                 _delete_pair_rows(pid, getattr(u, "id", None), getattr(a, "id", None))
                 i += 2
                 continue
-            pair_text, embed_text, public_tags_meta, ns, keep, created_at_iso = _prepare_pair_for_daily(
-                u, a, pid, previous_pair_text
+            pair_text, embed_text, public_tags_meta, ns, keep, created_at_iso = (
+                _prepare_pair_for_daily(u, a, pid, previous_pair_text)
             )
             ok = append_pair(
                 pid,
@@ -378,7 +388,9 @@ def _flush_active_pairs(stats: _SleepCycleStats) -> None:
     except Exception as e:
         stats.status = "partial"
         stats.errors.append("flush:global")
-        logger.warning("[SLEEP][FLUSH][WARN] global flush step failed; operation=flush_pairs detail=%s", e)
+        logger.warning(
+            "[SLEEP][FLUSH][WARN] global flush step failed; operation=flush_pairs detail=%s", e
+        )
 
 
 def _backfill_daily_md(rows: List[Any], stats: _SleepCycleStats) -> None:
@@ -485,7 +497,9 @@ def _post_merge_cleanup(
                 try:
                     os.remove(meta_path)
                 except Exception as exc:
-                    logger.warning("[SLEEP][CLEANUP] Failed removing daily.json for %s: %s", pid, exc)
+                    logger.warning(
+                        "[SLEEP][CLEANUP] Failed removing daily.json for %s: %s", pid, exc
+                    )
             if os.path.exists(md_path):
                 try:
                     os.remove(md_path)
@@ -495,8 +509,12 @@ def _post_merge_cleanup(
         try:
             clear_daily_cache(pid)
         except Exception as exc:
-            logger.warning("[SLEEP][MERGE] Failed clearing in-memory daily cache for %s: %s", pid, exc)
-        logger.info("[SLEEP][MERGE] Cleared in-memory daily cache and removed daily.json for %s", pid)
+            logger.warning(
+                "[SLEEP][MERGE] Failed clearing in-memory daily cache for %s: %s", pid, exc
+            )
+        logger.info(
+            "[SLEEP][MERGE] Cleared in-memory daily cache and removed daily.json for %s", pid
+        )
     except Exception as de:
         logger.warning("[SLEEP][MERGE] Post-merge daily cleanup error for %s: %s", pid, de)
 
@@ -536,7 +554,9 @@ def _write_merge_artifacts_and_rebuild(
                 try:
                     os.replace(legacy_merge_lock, merge_lock)
                 except OSError as exc:
-                    logger.warning("[SLEEP] merge lock migration failed project=%s detail=%s", pid, exc)
+                    logger.warning(
+                        "[SLEEP] merge lock migration failed project=%s detail=%s", pid, exc
+                    )
             with FileLock(merge_lock):
                 os.makedirs(uploads_dir, exist_ok=True)
 
@@ -547,10 +567,14 @@ def _write_merge_artifacts_and_rebuild(
                     sleep_path = os.path.join(sleep_dir, sleep_name)
                     if os.path.exists(sleep_path):
                         # Extremely unlikely, but avoid clobbering if a file already exists.
-                        sleep_path = os.path.join(sleep_dir, f"sleep_{cycle_ts}_{time.time_ns()}.md")
+                        sleep_path = os.path.join(
+                            sleep_dir, f"sleep_{cycle_ts}_{time.time_ns()}.md"
+                        )
                     with open(sleep_path, "w", encoding="utf-8", newline="\n") as sf:
                         sf.write(_nl(sleep_upload_text or ""))
-                    logger.info("[SLEEP][MERGE] Wrote uploads/sleep/%s", os.path.basename(sleep_path))
+                    logger.info(
+                        "[SLEEP][MERGE] Wrote uploads/sleep/%s", os.path.basename(sleep_path)
+                    )
 
                 if (dream_upload_text or "").strip():
                     dream_dir = os.path.join(uploads_dir, "dream")
@@ -559,10 +583,15 @@ def _write_merge_artifacts_and_rebuild(
                     dream_path = os.path.join(dream_dir, dream_name)
                     if os.path.exists(dream_path):
                         # Extremely unlikely, but avoid clobbering if a file already exists.
-                        dream_path = os.path.join(dream_dir, f"dream_{cycle_ts}_{time.time_ns()}.md")
+                        dream_path = os.path.join(
+                            dream_dir, f"dream_{cycle_ts}_{time.time_ns()}.md"
+                        )
                     with open(dream_path, "w", encoding="utf-8", newline="\n") as df:
                         df.write(_nl(dream_upload_text or ""))
-                    logger.info("[SLEEP][DREAM_SUMMARY] Wrote uploads/dream/%s", os.path.basename(dream_path))
+                    logger.info(
+                        "[SLEEP][DREAM_SUMMARY] Wrote uploads/dream/%s",
+                        os.path.basename(dream_path),
+                    )
 
                 rebuild_faiss_index(pid)
                 logger.info("[MERGE] RAG rebuild complete for %s", pid)
@@ -647,7 +676,9 @@ def _run_project_summary_pipeline(p: Any, stats: _SleepCycleStats) -> None:
         try:
             # Validate summary presence and non-empty (beyond just boundary tags).
             if not os.path.isfile(summary_path) or os.path.getsize(summary_path) == 0:
-                logger.warning("[SLEEP][MERGE] Skipped project=%s (empty or missing sleep_summary.md)", pid)
+                logger.warning(
+                    "[SLEEP][MERGE] Skipped project=%s (empty or missing sleep_summary.md)", pid
+                )
                 return
             with open(summary_path, "r", encoding="utf-8") as fsum:
                 sum_text = fsum.read()
@@ -743,9 +774,11 @@ def _sleep_cycle_worker():
         except Exception as e:
             logger.warning("[SLEEP] finalize failed; operation=release_lock detail=%s", e)
 
+
 def start_sleep_cycle_async() -> bool:
     """Start sleep cycle in background if not already sleeping. Returns True if started."""
     return start_sleep_cycle_runner(_sleep_cycle_worker)
+
 
 @router.post("/sleep_cycle", response_model=SleepCycleResponse)
 async def sleep_cycle_endpoint(request: SleepCycleRequest) -> SleepCycleResponse:
@@ -768,58 +801,48 @@ async def sleep_cycle_endpoint(request: SleepCycleRequest) -> SleepCycleResponse
     try:
         # Log the request
         request_logger.log_request(
-            endpoint="/sleep_cycle",
-            method="POST",
-            user_id=request.project_id
+            endpoint="/sleep_cycle", method="POST", user_id=request.project_id
         )
-        
+
         # Get memory manager
         memory_manager = get_memory_manager()
-        
+
         # Perform stubbed cleanup
         cleanup_stats = memory_manager.cleanup_old_memories(
-            retention_days=30,  # Default retention
-            conversation_id=request.project_id
+            retention_days=30, conversation_id=request.project_id  # Default retention
         )
-        
+
         # Create response (stubbed)
         response = SleepCycleResponse(
             response=f"Memory cleanup for project '{request.project_id or 'default'}' is not yet implemented. This feature will be available with scheduled pruning.",
             items_cleaned=cleanup_stats.get("items_cleaned", 0),
             memory_usage_before=cleanup_stats.get("memory_usage_before", "0MB"),
-            memory_usage_after=cleanup_stats.get("memory_usage_after", "0MB")
+            memory_usage_after=cleanup_stats.get("memory_usage_after", "0MB"),
         )
-        
+
         # Log successful response
         request_logger.log_response(
-            endpoint="/sleep_cycle",
-            status_code=200,
-            response_time=0.0,
-            user_id=request.project_id
+            endpoint="/sleep_cycle", status_code=200, response_time=0.0, user_id=request.project_id
         )
-        
+
         return response
-        
+
     except Exception as e:
         # Log error
-        request_logger.log_error(
-            endpoint="/sleep_cycle",
-            error=e,
-            user_id=request.project_id
-        )
-        
+        request_logger.log_error(endpoint="/sleep_cycle", error=e, user_id=request.project_id)
+
         # Log error context
         log_error_context(
             error=e,
             context={
                 "endpoint": "/sleep_cycle",
                 "project_id": request.project_id,
-                "force_cleanup": request.force_cleanup
-            }
+                "force_cleanup": request.force_cleanup,
+            },
         )
-        
+
         # Handle memory errors
-        raise handle_memory_error(e)
+        raise handle_memory_error(e) from e
 
 
 @router.get("/sleep/status")
@@ -831,11 +854,18 @@ async def sleep_status() -> JSONResponse:
         and ``lock_path``; a 500 response with an ``error`` field on failure.
     """
     try:
-        return JSONResponse(status_code=200, content={
-            "sleeping": bool(is_sleeping()),
-            "since": (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(since() or 0)) if is_sleeping() else None),
-            "lock_path": lock_path(),
-        })
+        return JSONResponse(
+            status_code=200,
+            content={
+                "sleeping": bool(is_sleeping()),
+                "since": (
+                    time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(since() or 0))
+                    if is_sleeping()
+                    else None
+                ),
+                "lock_path": lock_path(),
+            },
+        )
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -852,10 +882,14 @@ async def sleep_start() -> JSONResponse:
     try:
         request_logger.log_request(endpoint="/sleep/start", method="POST")
         if is_sleeping():
-            return JSONResponse(status_code=423, content={"error": "System is sleeping. Try again later."})
+            return JSONResponse(
+                status_code=423, content={"error": "System is sleeping. Try again later."}
+            )
         started = start_sleep_cycle_async()
         if not started:
-            return JSONResponse(status_code=423, content={"error": "System is sleeping. Try again later."})
+            return JSONResponse(
+                status_code=423, content={"error": "System is sleeping. Try again later."}
+            )
         return JSONResponse(status_code=200, content={"status": "sleep cycle started"})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
@@ -875,6 +909,7 @@ async def sleep_force_unlock() -> JSONResponse:
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
+
 @router.get("/sleep_cycle/status")
 async def sleep_cycle_status() -> JSONResponse:
     """Get sleep cycle status and statistics.
@@ -886,42 +921,37 @@ async def sleep_cycle_status() -> JSONResponse:
     try:
         memory_manager = get_memory_manager()
         stats = memory_manager.get_memory_stats()
-        
+
         return JSONResponse(
             status_code=200,
             content={
                 "status": "stub",
                 "service": "sleep_cycle",
                 "memory_stats": stats,
-                "implementation": "Scheduled cleanup implementation planned"
-            }
+                "implementation": "Scheduled cleanup implementation planned",
+            },
         )
-        
+
     except Exception as e:
         logger.error(f"Failed to get sleep cycle status: {str(e)}")
         return JSONResponse(
             status_code=500,
-            content={
-                "error": "Failed to retrieve sleep cycle status",
-                "details": str(e)
-            }
+            content={"error": "Failed to retrieve sleep cycle status", "details": str(e)},
         )
 
 
 @router.post("/sleep_cycle/cleanup")
 async def manual_cleanup(
-    project_id: Optional[str] = None,
-    retention_days: int = 30,
-    force: bool = False
+    project_id: Optional[str] = None, retention_days: int = 30, force: bool = False
 ) -> JSONResponse:
     """
     Manually trigger memory cleanup.
-    
+
     Args:
         project_id: Project to clean up
         retention_days: Number of days to retain
         force: Force cleanup even if not needed
-        
+
     Returns:
         Cleanup results
 
@@ -932,19 +962,16 @@ async def manual_cleanup(
     try:
         # Log the request
         request_logger.log_request(
-            endpoint="/sleep_cycle/cleanup",
-            method="POST",
-            user_id=project_id
+            endpoint="/sleep_cycle/cleanup", method="POST", user_id=project_id
         )
-        
+
         memory_manager = get_memory_manager()
-        
+
         # Perform cleanup
         cleanup_stats = memory_manager.cleanup_old_memories(
-            retention_days=retention_days,
-            conversation_id=project_id
+            retention_days=retention_days, conversation_id=project_id
         )
-        
+
         return JSONResponse(
             status_code=200,
             content={
@@ -953,18 +980,14 @@ async def manual_cleanup(
                 "retention_days": retention_days,
                 "force": force,
                 "cleanup_stats": cleanup_stats,
-                "message": "Manual cleanup not yet implemented"
-            }
+                "message": "Manual cleanup not yet implemented",
+            },
         )
-        
+
     except Exception as e:
-        request_logger.log_error(
-            endpoint="/sleep_cycle/cleanup",
-            error=e,
-            user_id=project_id
-        )
-        
-        raise handle_memory_error(e)
+        request_logger.log_error(endpoint="/sleep_cycle/cleanup", error=e, user_id=project_id)
+
+        raise handle_memory_error(e) from e
 
 
 @router.get("/sleep_cycle/schedule")
@@ -984,29 +1007,23 @@ async def get_cleanup_schedule() -> JSONResponse:
                     "enabled": False,
                     "frequency": "daily",
                     "time": "02:00",
-                    "retention_days": 30
+                    "retention_days": 30,
                 },
-                "implementation": "Planned with Celery and Redis"
-            }
+                "implementation": "Planned with Celery and Redis",
+            },
         )
-        
+
     except Exception as e:
         logger.error(f"Failed to get cleanup schedule: {str(e)}")
         return JSONResponse(
             status_code=500,
-            content={
-                "error": "Failed to retrieve cleanup schedule",
-                "details": str(e)
-            }
+            content={"error": "Failed to retrieve cleanup schedule", "details": str(e)},
         )
 
 
 @router.post("/sleep_cycle/schedule")
 async def set_cleanup_schedule(
-    enabled: bool = False,
-    frequency: str = "daily",
-    time: str = "02:00",
-    retention_days: int = 30
+    enabled: bool = False, frequency: str = "daily", time: str = "02:00", retention_days: int = 30
 ) -> JSONResponse:
     """Set the cleanup schedule (stubbed).
 
@@ -1024,14 +1041,11 @@ async def set_cleanup_schedule(
     """
     try:
         # Log the request
-        request_logger.log_request(
-            endpoint="/sleep_cycle/schedule",
-            method="POST"
-        )
-        
+        request_logger.log_request(endpoint="/sleep_cycle/schedule", method="POST")
+
         # Stubbed schedule setting
         logger.info("Cleanup schedule setting requested (stub - not yet implemented)")
-        
+
         return JSONResponse(
             status_code=200,
             content={
@@ -1041,19 +1055,16 @@ async def set_cleanup_schedule(
                     "enabled": enabled,
                     "frequency": frequency,
                     "time": time,
-                    "retention_days": retention_days
+                    "retention_days": retention_days,
                 },
-                "implementation": "Planned with Celery and Redis"
-            }
+                "implementation": "Planned with Celery and Redis",
+            },
         )
-        
+
     except Exception as e:
-        request_logger.log_error(
-            endpoint="/sleep_cycle/schedule",
-            error=e
-        )
-        
-        raise handle_memory_error(e)
+        request_logger.log_error(endpoint="/sleep_cycle/schedule", error=e)
+
+        raise handle_memory_error(e) from e
 
 
 @router.get("/sleep_cycle/health")
@@ -1067,7 +1078,7 @@ async def sleep_cycle_health() -> JSONResponse:
     try:
         memory_manager = get_memory_manager()
         stats = memory_manager.get_memory_stats()
-        
+
         return JSONResponse(
             status_code=200,
             content={
@@ -1075,17 +1086,13 @@ async def sleep_cycle_health() -> JSONResponse:
                 "service": "sleep_cycle",
                 "memory_mode": stats["memory_mode"],
                 "features": stats["features_available"],
-                "implementation": "Scheduled cleanup implementation planned"
-            }
+                "implementation": "Scheduled cleanup implementation planned",
+            },
         )
-        
+
     except Exception as e:
         logger.error(f"Sleep cycle health check failed: {str(e)}")
         return JSONResponse(
             status_code=503,
-            content={
-                "status": "unhealthy",
-                "service": "sleep_cycle",
-                "error": str(e)
-            }
+            content={"status": "unhealthy", "service": "sleep_cycle", "error": str(e)},
         )

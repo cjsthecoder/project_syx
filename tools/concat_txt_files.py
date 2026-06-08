@@ -5,13 +5,13 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Concatenate top-level .txt and .md files from an input directory into one output file.
 """
 
 import argparse
 from pathlib import Path
-
 
 OUTPUT_FILENAME = "concatenated_Syx.txt"
 
@@ -66,7 +66,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Concatenate top-level .txt and .md files from input folder into concatenated_Syx.txt.",
     )
-    parser.add_argument("input_dir", help="Directory containing .txt and/or .md files to concatenate")
+    parser.add_argument(
+        "input_dir", help="Directory containing .txt and/or .md files to concatenate"
+    )
     parser.add_argument("output_dir", help="Directory where concatenated_Syx.txt will be written")
     args = parser.parse_args()
 

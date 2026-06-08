@@ -5,6 +5,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Import pre-tagged chat TXT files into an output directory.
 Behavior:
@@ -24,7 +25,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-
 
 logger = logging.getLogger("import_chat_txt_to_daily")
 
@@ -193,7 +193,13 @@ def run(input_dir_raw: str, output_dir_raw: str) -> int:
                 tokens_total=tokens_total,
                 pairing_stats=pairing_stats,
             )
-            logger.info("Copied %s -> %s (pairs=%s tokens=%s)", src.name, dst.name, pairs_total, tokens_total)
+            logger.info(
+                "Copied %s -> %s (pairs=%s tokens=%s)",
+                src.name,
+                dst.name,
+                pairs_total,
+                tokens_total,
+            )
         except Exception as exc:
             failed_count += 1
             logger.warning("Failed processing file '%s': %s", src.name, exc)
@@ -233,4 +239,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

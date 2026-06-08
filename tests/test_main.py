@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for main FastAPI application.
 """
@@ -11,9 +12,9 @@ Tests for main FastAPI application.
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
 import app.main as main
-from app.main import app, _build_run_config, _collect_git_metadata
+from app.main import _build_run_config, _collect_git_metadata, app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -88,6 +89,7 @@ def test_redoc():
 @patch("app.api.chat.get_llm_client")
 def test_chat_stream_contract(mock_get_llm_client):
     """Streaming endpoint returns plain text tokens and completion marker."""
+
     class _FakeClient:
         @staticmethod
         def stream_chat(**_kwargs):

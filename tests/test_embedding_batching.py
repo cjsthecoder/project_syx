@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Unit tests for app.embedding.batching.
 
@@ -11,9 +12,8 @@ Token estimation is replaced with a deterministic length-based stub so batch
 boundaries are exact and independent of the installed tokenizer.
 """
 
-import pytest
-
 import app.embedding.batching as batching
+import pytest
 from app.embedding.batching import iter_token_batches
 
 
@@ -66,9 +66,7 @@ def test_splits_into_batches_under_budget():
 def test_metadatas_track_texts_and_are_defensively_copied():
     texts = ["aa", "bb"]
     metadatas = [{"i": 0}, {"i": 1}]
-    batches = list(
-        iter_token_batches(texts, metadatas=metadatas, max_tokens_per_batch=100)
-    )
+    batches = list(iter_token_batches(texts, metadatas=metadatas, max_tokens_per_batch=100))
     assert len(batches) == 1
     out_texts, out_metas, _est = batches[0]
     assert out_texts == ["aa", "bb"]

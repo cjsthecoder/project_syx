@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """FastAPI router for local agent memory search."""
 
 import logging
@@ -52,7 +53,9 @@ async def agent_memory_search(payload: Dict[str, Any]) -> JSONResponse:
     model = _optional_str(request_payload.get("model"))
 
     if "agent_token" not in request_payload:
-        logger.warning("agent_memory_search missing agent_token field project_name=%s", project_name)
+        logger.warning(
+            "agent_memory_search missing agent_token field project_name=%s", project_name
+        )
         return JSONResponse(
             status_code=401,
             content={"error": "unauthorized", "message": "Missing agent token."},
@@ -86,13 +89,17 @@ async def agent_memory_search(payload: Dict[str, Any]) -> JSONResponse:
                 status_code=403,
                 content={
                     "error": "forbidden",
-                    "message": auth.message or "Agent token does not have access to the requested project.",
+                    "message": auth.message
+                    or "Agent token does not have access to the requested project.",
                     "project_name": project_name,
                 },
             )
         return JSONResponse(
             status_code=401,
-            content={"error": "unauthorized", "message": auth.message or "Missing or invalid agent token."},
+            content={
+                "error": "unauthorized",
+                "message": auth.message or "Missing or invalid agent token.",
+            },
         )
 
     if is_sleeping():
@@ -150,7 +157,10 @@ async def agent_memory_search(payload: Dict[str, Any]) -> JSONResponse:
         logger.exception("agent_memory_search failed; project_id=%s detail=%s", project.id, exc)
         return JSONResponse(
             status_code=500,
-            content={"error": "agent_memory_search_failed", "message": "Agent memory search failed."},
+            content={
+                "error": "agent_memory_search_failed",
+                "message": "Agent memory search failed.",
+            },
         )
 
 

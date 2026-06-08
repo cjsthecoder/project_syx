@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Instrumentation facade (Option B strategy pattern).
 
@@ -16,14 +17,21 @@ import atexit
 import hashlib
 import json
 import logging
-import time
 import os
 import subprocess
 import threading
+import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, Optional
-from .base import Instrumentation, NoopInstrumentation, local_timestamp_compact, utc_iso
+
+from .base import (
+    _ACTIVE_TURN_ID,
+    Instrumentation,
+    NoopInstrumentation,
+    local_timestamp_compact,
+    utc_iso,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +67,11 @@ class RealInstrumentation:
 
         self.runs_dir = runs_dir or str(getattr(get_settings(), "runs_dir", "runs") or "runs")
         self.mode = (mode or "metrics").strip().lower()
-        self.run_id_override = run_id_override.strip() if isinstance(run_id_override, str) and run_id_override.strip() else None
+        self.run_id_override = (
+            run_id_override.strip()
+            if isinstance(run_id_override, str) and run_id_override.strip()
+            else None
+        )
         self.prompt_tol_abs_tokens = max(0, int(prompt_tol_abs_tokens))
         try:
             self.prompt_tol_pct = max(0.0, float(prompt_tol_pct))
@@ -257,7 +269,10 @@ class RealInstrumentation:
             if dirty.returncode == 0:
                 git_dirty = bool(str(dirty.stdout or "").strip())
         except Exception as exc:
-            logger.warning("tracking.git metadata detection failed; operation=_detect_git_metadata detail=%s", exc)
+            logger.warning(
+                "tracking.git metadata detection failed; operation=_detect_git_metadata detail=%s",
+                exc,
+            )
         return {"git_commit": git_commit, "git_dirty": bool(git_dirty)}
 
     @classmethod
@@ -400,13 +415,19 @@ class RealInstrumentation:
             personality = load_project_personality(pid)
             if isinstance(personality, dict):
                 canonical = json.loads(json.dumps(personality, ensure_ascii=False))
-                digest_src = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                digest_src = json.dumps(
+                    canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+                )
                 out["as_run_personality"] = canonical
-                out["as_run_personality_sha256"] = hashlib.sha256(digest_src.encode("utf-8")).hexdigest()
+                out["as_run_personality_sha256"] = hashlib.sha256(
+                    digest_src.encode("utf-8")
+                ).hexdigest()
                 out["personality_captured_at"] = utc_iso()
                 out["personality_source"] = source
         except Exception as e:
-            logger.warning("tracking.project_observed personality snapshot failed project_id=%s: %s", pid, e)
+            logger.warning(
+                "tracking.project_observed personality snapshot failed project_id=%s: %s", pid, e
+            )
         return out
 
     def _observe_project_for_run(self, user_meta: Optional[dict]) -> None:
@@ -477,7 +498,11 @@ class RealInstrumentation:
         prompt_text_raw = output_meta.get("prompt_text")
         response_text_raw = output_meta.get("response_text")
         model_id_raw = output_meta.get("model_id")
-        model_id = str(model_id_raw).strip() if isinstance(model_id_raw, str) and model_id_raw.strip() else None
+        model_id = (
+            str(model_id_raw).strip()
+            if isinstance(model_id_raw, str) and model_id_raw.strip()
+            else None
+        )
 
         prompt_text = str(prompt_text_raw) if isinstance(prompt_text_raw, str) else None
         response_text = str(response_text_raw) if isinstance(response_text_raw, str) else None
@@ -530,7 +555,9 @@ class RealInstrumentation:
         with self._lock:
             try:
                 if self.run_id and self.run_dir:
-                    logger.error("tracking.start_run called more than once; ignoring duplicate call.")
+                    logger.error(
+                        "tracking.start_run called more than once; ignoring duplicate call."
+                    )
                     return self.run_id
 
                 self._ensure_dir()
@@ -587,7 +614,12 @@ class RealInstrumentation:
 
                 return self.run_id
             except Exception as e:
-                logger.warning("tracking.start_run failed; operation=start_run run_id=%s detail=%s", self._run_id, e, exc_info=True)
+                logger.warning(
+                    "tracking.start_run failed; operation=start_run run_id=%s detail=%s",
+                    self._run_id,
+                    e,
+                    exc_info=True,
+                )
                 return ""
 
     def end_run(self, summary: Optional[dict] = None) -> None:
@@ -618,7 +650,12 @@ class RealInstrumentation:
                 self._write_run_json()
                 self._ended = True
             except Exception as e:
-                logger.warning("tracking.end_run failed; operation=end_run run_id=%s detail=%s", self._run_id, e, exc_info=True)
+                logger.warning(
+                    "tracking.end_run failed; operation=end_run run_id=%s detail=%s",
+                    self._run_id,
+                    e,
+                    exc_info=True,
+                )
 
     def start_turn(self, turn_id: int, user_meta: Optional[dict] = None) -> None:
         """Open a turn, initializing its rollup state and active-turn context.
@@ -638,7 +675,11 @@ class RealInstrumentation:
                 tid = int(turn_id)
                 if self._last_turn_id is not None:
                     if tid == int(self._last_turn_id):
-                        logger.warning("tracking.start_turn duplicate turn_id=%s for run_id=%s; skipping write", tid, self.run_id)
+                        logger.warning(
+                            "tracking.start_turn duplicate turn_id=%s for run_id=%s; skipping write",
+                            tid,
+                            self.run_id,
+                        )
                         return
                     if tid < int(self._last_turn_id):
                         logger.warning(
@@ -668,7 +709,12 @@ class RealInstrumentation:
                 self._append_jsonl("turns.jsonl", payload)
                 self._observe_project_for_run(user_meta)
             except Exception as e:
-                logger.warning("tracking.start_turn failed; operation=start_turn turn_id=%s detail=%s", turn_id, e, exc_info=True)
+                logger.warning(
+                    "tracking.start_turn failed; operation=start_turn turn_id=%s detail=%s",
+                    turn_id,
+                    e,
+                    exc_info=True,
+                )
 
     def end_turn(self, output_meta: Optional[dict] = None) -> None:
         """Validate turn invariants and persist the turn rollup record.
@@ -684,6 +730,7 @@ class RealInstrumentation:
                 response/finish metadata) merged with accumulated turn state.
         """
         with self._lock:
+            tid = None
             try:
                 if not self.run_id or self._ended:
                     return
@@ -695,7 +742,9 @@ class RealInstrumentation:
                     return
                 turn_rollup = self._turn_state.get(int(tid))
                 if not isinstance(turn_rollup, dict):
-                    logger.warning("tracking.end_turn missing turn state turn_id=%s; skipping write", tid)
+                    logger.warning(
+                        "tracking.end_turn missing turn state turn_id=%s; skipping write", tid
+                    )
                     return
                 main_total = int((turn_rollup or {}).get("main_total_tokens_reported", 0))
                 mini_prompt = int((turn_rollup or {}).get("mini_prompt_tokens_reported", 0))
@@ -708,10 +757,14 @@ class RealInstrumentation:
                 has_main_latency = bool((turn_rollup or {}).get("_has_main_latency", False))
                 main_streaming = bool((turn_rollup or {}).get("main_streaming", False))
                 if int((turn_rollup or {}).get("main_invocation_count", 0)) == 0:
-                    logger.warning("tracking.end_turn missing main invocation turn_id=%s; skipping write", tid)
+                    logger.warning(
+                        "tracking.end_turn missing main invocation turn_id=%s; skipping write", tid
+                    )
                     return
                 if not has_main_latency:
-                    logger.warning("tracking.end_turn missing main latency turn_id=%s; skipping write", tid)
+                    logger.warning(
+                        "tracking.end_turn missing main latency turn_id=%s; skipping write", tid
+                    )
                     return
                 out = output_meta or {}
                 prompt_system = int((turn_rollup or {}).get("prompt_system_tokens_est", 0))
@@ -720,9 +773,18 @@ class RealInstrumentation:
                 prompt_profile = int((turn_rollup or {}).get("prompt_profile_tokens_est", 0))
                 prompt_other = int((turn_rollup or {}).get("prompt_other_tokens_est", 0))
                 route = str((out or {}).get("route") or (turn_rollup or {}).get("route") or "OTHER")
-                rag_enabled = bool((out or {}).get("rag_enabled", (turn_rollup or {}).get("rag_enabled", False)))
-                retrieved_count = int((out or {}).get("retrieved_count", (turn_rollup or {}).get("retrieved_count", 0)) or 0)
-                kept_count = int((out or {}).get("kept_count", (turn_rollup or {}).get("kept_count", 0)) or 0)
+                rag_enabled = bool(
+                    (out or {}).get("rag_enabled", (turn_rollup or {}).get("rag_enabled", False))
+                )
+                retrieved_count = int(
+                    (out or {}).get(
+                        "retrieved_count", (turn_rollup or {}).get("retrieved_count", 0)
+                    )
+                    or 0
+                )
+                kept_count = int(
+                    (out or {}).get("kept_count", (turn_rollup or {}).get("kept_count", 0)) or 0
+                )
                 expanded_unique_chunks_after_merge = int(
                     (out or {}).get(
                         "expanded_unique_chunks_after_merge",
@@ -738,7 +800,9 @@ class RealInstrumentation:
                     or 0
                 )
                 final_context_clipped = bool((out or {}).get("final_context_clipped", False))
-                prompt_estimate_sum = int(prompt_system + prompt_history + prompt_rag + prompt_profile + prompt_other)
+                prompt_estimate_sum = int(
+                    prompt_system + prompt_history + prompt_rag + prompt_profile + prompt_other
+                )
                 if final_context_tokens_est != prompt_estimate_sum:
                     logger.warning(
                         "tracking.end_turn prompt sum mismatch turn_id=%s final_context=%s prompt_sum=%s; skipping write",
@@ -747,51 +811,102 @@ class RealInstrumentation:
                         prompt_estimate_sum,
                     )
                     return
-                if (retrieved_count < 0) or (kept_count < 0) or (expanded_unique_chunks_after_merge < 0):
-                    logger.warning("tracking.end_turn negative retrieval counters turn_id=%s; skipping write", tid)
+                if (
+                    (retrieved_count < 0)
+                    or (kept_count < 0)
+                    or (expanded_unique_chunks_after_merge < 0)
+                ):
+                    logger.warning(
+                        "tracking.end_turn negative retrieval counters turn_id=%s; skipping write",
+                        tid,
+                    )
                     return
                 if kept_count > retrieved_count:
-                    logger.warning("tracking.end_turn kept_count>retrieved_count turn_id=%s; skipping write", tid)
+                    logger.warning(
+                        "tracking.end_turn kept_count>retrieved_count turn_id=%s; skipping write",
+                        tid,
+                    )
                     return
-                rag_skip_reason = (out or {}).get("rag_skip_reason", (turn_rollup or {}).get("rag_skip_reason"))
+                rag_skip_reason = (out or {}).get(
+                    "rag_skip_reason", (turn_rollup or {}).get("rag_skip_reason")
+                )
                 if rag_enabled:
                     rag_skip_reason = None
                 else:
-                    allowed_skip_reasons = {"disabled_by_route", "budget_zero", "retrieval_error", "no_candidates"}
-                    if not isinstance(rag_skip_reason, str) or str(rag_skip_reason).strip() not in allowed_skip_reasons:
-                        logger.warning("tracking.end_turn invalid/missing rag_skip_reason turn_id=%s; skipping write", tid)
+                    allowed_skip_reasons = {
+                        "disabled_by_route",
+                        "budget_zero",
+                        "retrieval_error",
+                        "no_candidates",
+                    }
+                    if (
+                        not isinstance(rag_skip_reason, str)
+                        or str(rag_skip_reason).strip() not in allowed_skip_reasons
+                    ):
+                        logger.warning(
+                            "tracking.end_turn invalid/missing rag_skip_reason turn_id=%s; skipping write",
+                            tid,
+                        )
                         return
                     rag_skip_reason = str(rag_skip_reason).strip()
-                    if (retrieved_count != 0) or (kept_count != 0) or (expanded_unique_chunks_after_merge != 0) or (prompt_rag != 0):
-                        logger.warning("tracking.end_turn rag_enabled=false counter invariant failed turn_id=%s; skipping write", tid)
+                    if (
+                        (retrieved_count != 0)
+                        or (kept_count != 0)
+                        or (expanded_unique_chunks_after_merge != 0)
+                        or (prompt_rag != 0)
+                    ):
+                        logger.warning(
+                            "tracking.end_turn rag_enabled=false counter invariant failed turn_id=%s; skipping write",
+                            tid,
+                        )
                         return
-                interactive_non_main_total = int((turn_rollup or {}).get("interactive_non_main_total_tokens_reported", 0))
+                interactive_non_main_total = int(
+                    (turn_rollup or {}).get("interactive_non_main_total_tokens_reported", 0)
+                )
                 if int(mini_total) != int(interactive_non_main_total):
-                    logger.warning("tracking.end_turn mini token rollup mismatch turn_id=%s; skipping write", tid)
+                    logger.warning(
+                        "tracking.end_turn mini token rollup mismatch turn_id=%s; skipping write",
+                        tid,
+                    )
                     return
                 if int((turn_rollup or {}).get("main_invocation_count", 0)) != 1:
-                    logger.warning("tracking.end_turn expected exactly one main invocation turn_id=%s; skipping write", tid)
+                    logger.warning(
+                        "tracking.end_turn expected exactly one main invocation turn_id=%s; skipping write",
+                        tid,
+                    )
                     return
                 turn_started_mono = (turn_rollup or {}).get("_turn_started_monotonic", None)
                 ttlt_turn_total = 0
                 try:
                     if turn_started_mono is not None:
-                        ttlt_turn_total = max(0, int((time.perf_counter() - float(turn_started_mono)) * 1000.0))
+                        ttlt_turn_total = max(
+                            0, int((time.perf_counter() - float(turn_started_mono)) * 1000.0)
+                        )
                 except Exception:
                     ttlt_turn_total = 0
                 if ttlt_turn_total < 0:
-                    logger.warning("tracking.end_turn negative ttlt_ms_turn_total turn_id=%s; skipping write", tid)
+                    logger.warning(
+                        "tracking.end_turn negative ttlt_ms_turn_total turn_id=%s; skipping write",
+                        tid,
+                    )
                     return
                 if main_streaming and ttfb_main is None:
-                    logger.warning("tracking.end_turn missing streaming ttfb_ms_main turn_id=%s; skipping write", tid)
+                    logger.warning(
+                        "tracking.end_turn missing streaming ttfb_ms_main turn_id=%s; skipping write",
+                        tid,
+                    )
                     return
                 if ttlt_main is None:
-                    logger.warning("tracking.end_turn missing ttlt_ms_main turn_id=%s; skipping write", tid)
+                    logger.warning(
+                        "tracking.end_turn missing ttlt_ms_main turn_id=%s; skipping write", tid
+                    )
                     return
 
                 provider_tokens_total = int((turn_rollup or {}).get("provider_tokens_total", 0))
                 estimated_tokens_total = int((turn_rollup or {}).get("estimated_tokens_total", 0))
-                zero_fallback_tokens_total = int((turn_rollup or {}).get("zero_fallback_tokens_total", 0))
+                zero_fallback_tokens_total = int(
+                    (turn_rollup or {}).get("zero_fallback_tokens_total", 0)
+                )
                 if estimated_tokens_total > 0:
                     turn_usage_source = "estimate"
                 elif zero_fallback_tokens_total > 0:
@@ -804,17 +919,34 @@ class RealInstrumentation:
                 main_invocations_count = int((turn_rollup or {}).get("main_invocations_count", 0))
                 mini_invocations_count = int((turn_rollup or {}).get("mini_invocations_count", 0))
                 if invocations_count_total != (main_invocations_count + mini_invocations_count):
-                    logger.warning("tracking.end_turn invocation count mismatch turn_id=%s; skipping write", tid)
+                    logger.warning(
+                        "tracking.end_turn invocation count mismatch turn_id=%s; skipping write",
+                        tid,
+                    )
                     return
                 if main_invocations_count != 1:
-                    logger.warning("tracking.end_turn main_invocations_count!=1 turn_id=%s; skipping write", tid)
+                    logger.warning(
+                        "tracking.end_turn main_invocations_count!=1 turn_id=%s; skipping write",
+                        tid,
+                    )
                     return
 
-                main_prompt_tokens_reported = self._as_int((turn_rollup or {}).get("main_prompt_tokens_reported"), None)
-                main_completion_tokens_reported = self._as_int((turn_rollup or {}).get("main_completion_tokens_reported"), None)
-                if (main_prompt_tokens_reported is not None) and (main_completion_tokens_reported is not None):
-                    if int(main_total) != int(main_prompt_tokens_reported + main_completion_tokens_reported):
-                        logger.warning("tracking.end_turn main token decomposition mismatch turn_id=%s; skipping write", tid)
+                main_prompt_tokens_reported = self._as_int(
+                    (turn_rollup or {}).get("main_prompt_tokens_reported"), None
+                )
+                main_completion_tokens_reported = self._as_int(
+                    (turn_rollup or {}).get("main_completion_tokens_reported"), None
+                )
+                if (main_prompt_tokens_reported is not None) and (
+                    main_completion_tokens_reported is not None
+                ):
+                    if int(main_total) != int(
+                        main_prompt_tokens_reported + main_completion_tokens_reported
+                    ):
+                        logger.warning(
+                            "tracking.end_turn main token decomposition mismatch turn_id=%s; skipping write",
+                            tid,
+                        )
                         return
 
                 payload = {
@@ -871,7 +1003,12 @@ class RealInstrumentation:
                 if tid is not None:
                     self._turn_state.pop(int(tid), None)
             except Exception as e:
-                logger.warning("tracking.end_turn failed; operation=end_turn turn_id=%s detail=%s", turn_id, e, exc_info=True)
+                logger.warning(
+                    "tracking.end_turn failed; operation=end_turn turn_id=%s detail=%s",
+                    tid,
+                    e,
+                    exc_info=True,
+                )
 
     def start_invocation(self, purpose: str, model: str, meta: Optional[dict] = None) -> str:
         """Open a model invocation under the active turn.
@@ -933,7 +1070,11 @@ class RealInstrumentation:
                 }
                 return invocation_id
             except Exception as e:
-                logger.warning("tracking.start_invocation failed; operation=start_invocation detail=%s", e, exc_info=True)
+                logger.warning(
+                    "tracking.start_invocation failed; operation=start_invocation detail=%s",
+                    e,
+                    exc_info=True,
+                )
                 return ""
 
     def end_invocation(
@@ -1022,10 +1163,16 @@ class RealInstrumentation:
 
                 if purpose and model:
                     self._models_observed.setdefault(purpose, set()).add(model)
-                streaming = bool((state.get("meta") or {}).get("streaming", False)) if isinstance(state.get("meta"), dict) else False
+                streaming = (
+                    bool((state.get("meta") or {}).get("streaming", False))
+                    if isinstance(state.get("meta"), dict)
+                    else False
+                )
                 prompt_tok = self._as_int((usage or {}).get("prompt_tokens_reported"), 0)
                 completion_tok = self._as_int((usage or {}).get("completion_tokens_reported"), 0)
-                total_tok = self._as_int((usage or {}).get("total_tokens_reported"), prompt_tok + completion_tok)
+                total_tok = self._as_int(
+                    (usage or {}).get("total_tokens_reported"), prompt_tok + completion_tok
+                )
                 usage_is_estimate_in = bool((usage or {}).get("usage_is_estimate", True))
                 if total_tok <= 0:
                     total_tok = int(prompt_tok + completion_tok)
@@ -1060,13 +1207,12 @@ class RealInstrumentation:
                         )
                     )
 
+                # Validate the optional usage_estimate_method type without retaining
+                # the value: it is not propagated to turn rollups or emitted records.
                 usage_estimate_method_raw = (usage or {}).get("usage_estimate_method")
-                usage_estimate_method: Optional[str] = None
-                if usage_estimate_method_raw is None:
-                    usage_estimate_method = None
-                elif isinstance(usage_estimate_method_raw, str):
-                    usage_estimate_method = usage_estimate_method_raw.strip() or None
-                else:
+                if usage_estimate_method_raw is not None and not isinstance(
+                    usage_estimate_method_raw, str
+                ):
                     schema_errors.append(
                         self._schema_error(
                             code="type_mismatch",
@@ -1075,7 +1221,6 @@ class RealInstrumentation:
                             actual=usage_estimate_method_raw,
                         )
                     )
-                    usage_estimate_method = str(usage_estimate_method_raw)
 
                 # Keep canonical fields stable and permit optional extra usage fields in meta diagnostics.
                 meta_diag: Dict[str, Any] = {}
@@ -1113,7 +1258,10 @@ class RealInstrumentation:
                     if (start_ms is not None) and (end_ms is not None) and (end_ms >= start_ms):
                         ttlt_ms = int(end_ms - start_ms)
                     else:
-                        logger.warning("tracking.ttlt_ms missing/invalid for invocation_id=%s; forcing 0", invocation_id)
+                        logger.warning(
+                            "tracking.ttlt_ms missing/invalid for invocation_id=%s; forcing 0",
+                            invocation_id,
+                        )
                         ttlt_ms = 0
                 first_token_ts = (timing or {}).get("first_token_ts")
                 ttfb_ms: Optional[int]
@@ -1147,7 +1295,9 @@ class RealInstrumentation:
                     if purpose == "main":
                         ts["main_invocation_count"] = int(ts.get("main_invocation_count", 0)) + 1
                         ts["main_invocations_count"] = int(ts.get("main_invocations_count", 0)) + 1
-                        ts["invocations_count_total"] = int(ts.get("invocations_count_total", 0)) + 1
+                        ts["invocations_count_total"] = (
+                            int(ts.get("invocations_count_total", 0)) + 1
+                        )
                         ts["main_invocation_total_tokens_reported"] = int(
                             ts.get("main_invocation_total_tokens_reported", 0)
                         ) + int(total_tok)
@@ -1155,26 +1305,38 @@ class RealInstrumentation:
                         ts["main_completion_tokens_reported"] = int(completion_tok)
                         ts["main_usage_is_estimate"] = bool(usage_is_estimate)
                         ts["main_streaming"] = bool(streaming)
-                        ts["main_total_tokens_reported"] = int(ts.get("main_total_tokens_reported", 0)) + int(total_tok)
-                        ts["ttfb_ms_main"] = (int(ttfb_ms) if ttfb_ms is not None else None)
+                        ts["main_total_tokens_reported"] = int(
+                            ts.get("main_total_tokens_reported", 0)
+                        ) + int(total_tok)
+                        ts["ttfb_ms_main"] = int(ttfb_ms) if ttfb_ms is not None else None
                         ts["ttlt_ms_main"] = int(ttlt_ms)
                         ts["_has_main_latency"] = True
                     else:
-                        ts["mini_prompt_tokens_reported"] = int(ts.get("mini_prompt_tokens_reported", 0)) + int(prompt_tok)
+                        ts["mini_prompt_tokens_reported"] = int(
+                            ts.get("mini_prompt_tokens_reported", 0)
+                        ) + int(prompt_tok)
                         ts["mini_completion_tokens_reported"] = int(
                             ts.get("mini_completion_tokens_reported", 0)
                         ) + int(completion_tok)
                         ts["mini_invocations_count"] = int(ts.get("mini_invocations_count", 0)) + 1
-                        ts["invocations_count_total"] = int(ts.get("invocations_count_total", 0)) + 1
+                        ts["invocations_count_total"] = (
+                            int(ts.get("invocations_count_total", 0)) + 1
+                        )
                         ts["interactive_non_main_total_tokens_reported"] = int(
                             ts.get("interactive_non_main_total_tokens_reported", 0)
                         ) + int(total_tok)
                     if usage_source == "provider":
-                        ts["provider_tokens_total"] = int(ts.get("provider_tokens_total", 0)) + int(total_tok)
+                        ts["provider_tokens_total"] = int(ts.get("provider_tokens_total", 0)) + int(
+                            total_tok
+                        )
                     elif usage_source == "zero_fallback":
-                        ts["zero_fallback_tokens_total"] = int(ts.get("zero_fallback_tokens_total", 0)) + int(total_tok)
+                        ts["zero_fallback_tokens_total"] = int(
+                            ts.get("zero_fallback_tokens_total", 0)
+                        ) + int(total_tok)
                     else:
-                        ts["estimated_tokens_total"] = int(ts.get("estimated_tokens_total", 0)) + int(total_tok)
+                        ts["estimated_tokens_total"] = int(
+                            ts.get("estimated_tokens_total", 0)
+                        ) + int(total_tok)
 
                 self._invocation_state.pop(invocation_id, None)
             except Exception as e:
@@ -1205,20 +1367,31 @@ class RealInstrumentation:
                 stage_name = str(name or "").strip()
                 allowed_stages = {"retrieval_selection_expansion", "prompt_assembly"}
                 if stage_name not in allowed_stages:
-                    logger.warning("tracking.record_stage unknown stage name=%s; dropping record", stage_name)
+                    logger.warning(
+                        "tracking.record_stage unknown stage name=%s; dropping record", stage_name
+                    )
                     return
                 tid = _ACTIVE_TURN_ID.get()
                 if not isinstance(tid, int):
-                    logger.warning("tracking.record_stage missing active turn for stage=%s; dropping record", stage_name)
+                    logger.warning(
+                        "tracking.record_stage missing active turn for stage=%s; dropping record",
+                        stage_name,
+                    )
                     return
                 if not isinstance(data, dict):
-                    logger.warning("tracking.record_stage non-object data for stage=%s; coercing to empty", stage_name)
+                    logger.warning(
+                        "tracking.record_stage non-object data for stage=%s; coercing to empty",
+                        stage_name,
+                    )
                     stage_data: Dict[str, Any] = {}
                 else:
                     stage_data = dict(data)
                 for forbidden in ("run_id", "turn_id", "ts", "event"):
                     if forbidden in stage_data:
-                        logger.warning("tracking.record_stage removing forbidden key '%s' from stage data", forbidden)
+                        logger.warning(
+                            "tracking.record_stage removing forbidden key '%s' from stage data",
+                            forbidden,
+                        )
                         stage_data.pop(forbidden, None)
 
                 if stage_name == "prompt_assembly":
@@ -1226,11 +1399,21 @@ class RealInstrumentation:
                         int(tid),
                         self._turn_state_defaults(),
                     )
-                    ts["prompt_system_tokens_est"] = self._as_int(stage_data.get("prompt_system_tokens_est"), 0)
-                    ts["prompt_history_tokens_est"] = self._as_int(stage_data.get("prompt_history_tokens_est"), 0)
-                    ts["prompt_rag_tokens_est"] = self._as_int(stage_data.get("prompt_rag_tokens_est"), 0)
-                    ts["prompt_profile_tokens_est"] = self._as_int(stage_data.get("prompt_profile_tokens_est"), 0)
-                    ts["prompt_other_tokens_est"] = self._as_int(stage_data.get("prompt_other_tokens_est"), 0)
+                    ts["prompt_system_tokens_est"] = self._as_int(
+                        stage_data.get("prompt_system_tokens_est"), 0
+                    )
+                    ts["prompt_history_tokens_est"] = self._as_int(
+                        stage_data.get("prompt_history_tokens_est"), 0
+                    )
+                    ts["prompt_rag_tokens_est"] = self._as_int(
+                        stage_data.get("prompt_rag_tokens_est"), 0
+                    )
+                    ts["prompt_profile_tokens_est"] = self._as_int(
+                        stage_data.get("prompt_profile_tokens_est"), 0
+                    )
+                    ts["prompt_other_tokens_est"] = self._as_int(
+                        stage_data.get("prompt_other_tokens_est"), 0
+                    )
                 if stage_name == "retrieval_selection_expansion":
                     ts = self._turn_state.setdefault(
                         int(tid),
@@ -1241,15 +1424,23 @@ class RealInstrumentation:
                     if not bool(ts.get("rag_enabled", False)):
                         ts["rag_skip_reason"] = stage_data.get("rag_skip_reason")
                     retrieved_count = self._as_int(
-                        stage_data.get("retrieved_count", stage_data.get("ordered_count", stage_data.get("ordered_candidates"))),
+                        stage_data.get(
+                            "retrieved_count",
+                            stage_data.get("ordered_count", stage_data.get("ordered_candidates")),
+                        ),
                         0,
                     )
                     selected_count = self._as_int(
-                        stage_data.get("selected_count", stage_data.get("selected_candidates", stage_data.get("kept_count"))),
+                        stage_data.get(
+                            "selected_count",
+                            stage_data.get("selected_candidates", stage_data.get("kept_count")),
+                        ),
                         0,
                     )
                     snippet_count_after_merge = self._as_int(
-                        stage_data.get("snippet_count_after_merge", stage_data.get("kept_candidates")),
+                        stage_data.get(
+                            "snippet_count_after_merge", stage_data.get("kept_candidates")
+                        ),
                         0,
                     )
                     expanded_unique_chunks_after_merge = self._as_int(
@@ -1258,16 +1449,26 @@ class RealInstrumentation:
                     )
                     ts["retrieved_count"] = int(retrieved_count or 0)
                     ts["kept_count"] = int(selected_count or 0)
-                    ts["expanded_unique_chunks_after_merge"] = int(expanded_unique_chunks_after_merge or 0)
+                    ts["expanded_unique_chunks_after_merge"] = int(
+                        expanded_unique_chunks_after_merge or 0
+                    )
 
                     # Normalize emitted stage keys at instrumentation boundary while
                     # leaving RAG internals unchanged.
-                    for deprecated in ("ordered_candidates", "selected_candidates", "kept_candidates", "ordered_count", "kept_count"):
+                    for deprecated in (
+                        "ordered_candidates",
+                        "selected_candidates",
+                        "kept_candidates",
+                        "ordered_count",
+                        "kept_count",
+                    ):
                         stage_data.pop(deprecated, None)
                     stage_data["retrieved_count"] = int(retrieved_count or 0)
                     stage_data["selected_count"] = int(selected_count or 0)
                     stage_data["snippet_count_after_merge"] = int(snippet_count_after_merge or 0)
-                    stage_data["expanded_unique_chunks_after_merge"] = int(expanded_unique_chunks_after_merge or 0)
+                    stage_data["expanded_unique_chunks_after_merge"] = int(
+                        expanded_unique_chunks_after_merge or 0
+                    )
                 payload = {
                     "ts": utc_iso(),
                     "event": "stage",
@@ -1278,7 +1479,12 @@ class RealInstrumentation:
                 }
                 self._append_jsonl("turns.jsonl", payload)
             except Exception as e:
-                logger.warning("tracking.record_stage failed; operation=record_stage detail=%s", e, exc_info=True)
+                logger.warning(
+                    "tracking.record_stage failed; operation=record_stage detail=%s",
+                    e,
+                    exc_info=True,
+                )
+
 
 _INSTRUMENTATION: Instrumentation = NoopInstrumentation()
 _REGISTERED_ATEXIT = False
@@ -1317,7 +1523,9 @@ def init_instrumentation(settings: Any, *, has_lifespan_hook: bool = False) -> I
 
         mode = str(getattr(settings, "instrumentation_mode", "metrics") or "metrics")
         default_runs_dir = str(getattr(settings, "runs_dir", "runs") or "runs")
-        runs_dir = str(getattr(settings, "instrumentation_runs_dir", default_runs_dir) or default_runs_dir)
+        runs_dir = str(
+            getattr(settings, "instrumentation_runs_dir", default_runs_dir) or default_runs_dir
+        )
         run_id = getattr(settings, "instrumentation_run_id", None)
         prompt_tol_abs = int(getattr(settings, "instrumentation_prompt_tol_abs_tokens", 25) or 25)
         prompt_tol_pct = float(getattr(settings, "instrumentation_prompt_tol_pct", 0.02) or 0.02)
@@ -1333,13 +1541,16 @@ def init_instrumentation(settings: Any, *, has_lifespan_hook: bool = False) -> I
 
         # Register process-exit fallback only when lifecycle hooks are unavailable.
         if (not has_lifespan_hook) and (not _REGISTERED_ATEXIT):
+
             def _flush_on_exit() -> None:
                 try:
                     get_instrumentation().end_run({"reason": "atexit"})
                 except Exception as exc:
-                    logger.warning("tracking.atexit end_run failed; operation=end_run detail=%s", exc)
+                    logger.warning(
+                        "tracking.atexit end_run failed; operation=end_run detail=%s", exc
+                    )
+
             atexit.register(_flush_on_exit)
             _REGISTERED_ATEXIT = True
 
         return _INSTRUMENTATION
-

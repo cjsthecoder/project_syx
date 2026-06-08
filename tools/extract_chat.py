@@ -5,6 +5,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Extract USER/ASSISTANT pairs from ChatGPT HTML exports and emit benchmark JSONL.
 """
@@ -18,9 +19,8 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from bs4 import BeautifulSoup
 import tiktoken
-
+from bs4 import BeautifulSoup
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("extract_chat")
@@ -278,11 +278,15 @@ def validate_web_turn_record(record: dict[str, Any]) -> tuple[bool, list[str]]:
     if int(record["final_context_tokens_est"]) != prompt_sum:
         return False, ["final_context_tokens_est(prompt_sum_mismatch)"]
 
-    total_expected = int(record["main_total_tokens_reported"]) + int(record["mini_prompt_tokens_reported"])
+    total_expected = int(record["main_total_tokens_reported"]) + int(
+        record["mini_prompt_tokens_reported"]
+    )
     if int(record["turn_total_tokens_reported"]) != total_expected:
         return False, ["turn_total_tokens_reported(total_mismatch)"]
 
-    decomp_expected = int(record["main_prompt_tokens_reported"]) + int(record["main_completion_tokens_reported"])
+    decomp_expected = int(record["main_prompt_tokens_reported"]) + int(
+        record["main_completion_tokens_reported"]
+    )
     if int(record["main_total_tokens_reported"]) != decomp_expected:
         return False, ["main_total_tokens_reported(prompt_completion_mismatch)"]
 
@@ -328,12 +332,16 @@ def run(prompts_json_path: str, input_file: str, test_run_path: str) -> int:
         return 1
 
     try:
-        system_prompt_text, system_prompt_tokens = load_system_prompt_from_benchmark_json(prompts_json_path)
+        system_prompt_text, system_prompt_tokens = load_system_prompt_from_benchmark_json(
+            prompts_json_path
+        )
     except Exception as exc:
         logger.error("%s", exc)
         return 1
     try:
-        profile_prompt_text, profile_prompt_tokens = load_profile_prompt_from_benchmark_json(prompts_json_path)
+        profile_prompt_text, profile_prompt_tokens = load_profile_prompt_from_benchmark_json(
+            prompts_json_path
+        )
     except Exception as exc:
         logger.error("%s", exc)
         return 1
@@ -375,7 +383,9 @@ def run(prompts_json_path: str, input_file: str, test_run_path: str) -> int:
     for idx, (prompt_text, response_text) in enumerate(pairs, start=1):
         case_id = f"{base_name}:turn:{idx}"
         prompt_other_tokens_est = int(estimate_tokens(prompt_text))
-        prompt_history_tokens_est = int(estimate_tokens("\n".join(history_text_parts))) if history_text_parts else 0
+        prompt_history_tokens_est = (
+            int(estimate_tokens("\n".join(history_text_parts))) if history_text_parts else 0
+        )
         prompt_system_tokens_est = int(system_prompt_tokens)
         prompt_profile_tokens_est = int(profile_prompt_tokens)
         prompt_rag_tokens_est = 0
@@ -442,7 +452,9 @@ def run(prompts_json_path: str, input_file: str, test_run_path: str) -> int:
         web_valid, web_missing = validate_web_turn_record(web_turn_record)
         if not web_valid:
             invalid_web_turn_count += 1
-            logger.warning("Skipping invalid web_turn record turn_id=%s issues=%s", idx, web_missing)
+            logger.warning(
+                "Skipping invalid web_turn record turn_id=%s issues=%s", idx, web_missing
+            )
             continue
 
         records.append(record)
@@ -476,7 +488,9 @@ def run(prompts_json_path: str, input_file: str, test_run_path: str) -> int:
         return 1
 
     logger.info("Wrote %s benchmark records to %s", len(records), out_path)
-    logger.info("Wrote %s synthetic web_turn records to %s", len(web_turn_records), web_turns_out_path)
+    logger.info(
+        "Wrote %s synthetic web_turn records to %s", len(web_turn_records), web_turns_out_path
+    )
     logger.info(
         "Extraction stats: messages=%s pairs=%s invalid_records=%s invalid_web_turn_records=%s orphan_assistant=%s replaced_unanswered_user=%s trailing_unanswered_user=%s system_prompt_tokens=%s profile_prompt_tokens=%s total_context_tokens=%s total_main_tokens=%s",
         len(messages),
@@ -496,7 +510,9 @@ def run(prompts_json_path: str, input_file: str, test_run_path: str) -> int:
 
 def main() -> int:
     if len(sys.argv) != 4:
-        logger.error("Usage: python3 extract_chat.py <prompts.json> <chat_export.html> <test_run_path>")
+        logger.error(
+            "Usage: python3 extract_chat.py <prompts.json> <chat_export.html> <test_run_path>"
+        )
         return 1
     return run(sys.argv[1], sys.argv[2], sys.argv[3])
 

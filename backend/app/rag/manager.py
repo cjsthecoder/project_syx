@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 RAG manager for building FAISS indices per project.
 
@@ -14,46 +15,40 @@ Policy:
 - Recreate FAISS index per upload (fresh build from uploads dir)
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import List, Tuple, Optional, Dict, Any, Iterable, Set, cast
-import json
 import logging
 import math
+import os
 import threading
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 import faiss  # type: ignore
 import numpy as np  # type: ignore
 
-from ..core.config import get_settings, compute_per_source_k, get_active_embedding_model
-import os
+from ..core.config import compute_per_source_k, get_active_embedding_model, get_settings
 
 logger = logging.getLogger(__name__)
 from ..core.retrieval_ordering import order_candidates_by_similarity_score
+from ..embedding.factory import get_embedding_client
+from ..embedding.vector_index import VectorEntry, VectorHit, VectorIndexInfo
 from ..tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
-from ..embedding.vector_index import VectorEntry, VectorHit, VectorIndexInfo, VectorIndex
-from ..embedding.factory import get_embedding_client
 from .chunk_utils import collapse_snippet_groups, trim_adjacent_chunk_overlap
+from .manager_index_io import ADJACENCY_SCHEMA_VERSION as _ADJACENCY_SCHEMA_VERSION
+from .manager_index_io import LTM_ADJACENCY_INDEX_NAME as _LTM_ADJACENCY_INDEX_NAME
+from .manager_index_io import LTM_DOCSTORE_NAME as _LTM_DOCSTORE_NAME
+from .manager_index_io import LTM_INDEX_FILE_NAME as _LTM_INDEX_FILE_NAME
+from .manager_index_io import LTM_INDEX_TO_ID_NAME as _LTM_INDEX_TO_ID_NAME
+from .manager_index_io import LTM_MANIFEST_NAME as _LTM_MANIFEST_NAME
+from .manager_index_io import cosine_to_01 as _cosine_to_01
+from .manager_index_io import normalize_rows as _normalize_rows
+from .manager_index_io import safe_load_json as _safe_load_json
 from .manager_rebuild import count_tokens as _count_tokens
-from .manager_rebuild import read_file_text as _read_file_text
 from .manager_rebuild import rebuild_faiss_index
-from .manager_index_io import (
-    ADJACENCY_SCHEMA_VERSION as _ADJACENCY_SCHEMA_VERSION,
-    LTM_ADJACENCY_INDEX_NAME as _LTM_ADJACENCY_INDEX_NAME,
-    LTM_DOCSTORE_NAME as _LTM_DOCSTORE_NAME,
-    LTM_INDEX_FILE_NAME as _LTM_INDEX_FILE_NAME,
-    LTM_INDEX_TO_ID_NAME as _LTM_INDEX_TO_ID_NAME,
-    LTM_MANIFEST_NAME as _LTM_MANIFEST_NAME,
-    atomic_write_json as _atomic_write_json,
-    cosine_to_01 as _cosine_to_01,
-    normalize_rows as _normalize_rows,
-    safe_load_json as _safe_load_json,
-)
 
 _LTM_REBUILDING: Set[str] = set()
 _LTM_REBUILD_LOCK = threading.Lock()
-
 
 
 def _schedule_ltm_rebuild(project_id: str, reason: str) -> None:
@@ -179,7 +174,7 @@ class LTMIndex:
         q = np.array([qvec_norm], dtype="float32")
         D, I = self.index.search(q, k=int(k))
         out: List[VectorHit] = []
-        for idx, ip in zip(I[0].tolist(), D[0].tolist()):
+        for idx, ip in zip(I[0].tolist(), D[0].tolist(), strict=False):
             if int(idx) < 0 or int(idx) >= len(self.index_to_id):
                 continue
             item_id = self.index_to_id[int(idx)]
@@ -215,7 +210,11 @@ def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
         idx_path = os.path.join(faiss_dir, _LTM_INDEX_FILE_NAME)
         ids_path = os.path.join(faiss_dir, _LTM_INDEX_TO_ID_NAME)
         ds_path = os.path.join(faiss_dir, _LTM_DOCSTORE_NAME)
-        if not os.path.isfile(idx_path) or not os.path.isfile(ids_path) or not os.path.isfile(ds_path):
+        if (
+            not os.path.isfile(idx_path)
+            or not os.path.isfile(ids_path)
+            or not os.path.isfile(ds_path)
+        ):
             return None
         index = cast(faiss.IndexFlatIP, faiss.read_index(idx_path))
         ids_obj = _safe_load_json(ids_path)
@@ -229,13 +228,22 @@ def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
             manifest_path = os.path.join(faiss_dir, _LTM_MANIFEST_NAME)
             manifest = _safe_load_json(manifest_path)
             claims_adjacency_schema = bool(
-                isinstance(manifest, dict) and manifest.get("schema_version") == _ADJACENCY_SCHEMA_VERSION
+                isinstance(manifest, dict)
+                and manifest.get("schema_version") == _ADJACENCY_SCHEMA_VERSION
             )
             if claims_adjacency_schema:
                 # Invalidate adjacency (trigger background rebuild) if chunking params changed since build.
                 try:
-                    built_cs = int(manifest.get("chunk_size")) if manifest.get("chunk_size") is not None else None
-                    built_co = int(manifest.get("chunk_overlap")) if manifest.get("chunk_overlap") is not None else None
+                    built_cs = (
+                        int(manifest.get("chunk_size"))
+                        if manifest.get("chunk_size") is not None
+                        else None
+                    )
+                    built_co = (
+                        int(manifest.get("chunk_overlap"))
+                        if manifest.get("chunk_overlap") is not None
+                        else None
+                    )
                 except Exception:
                     built_cs, built_co = None, None
                 if built_cs != int(settings.chunk_size) or built_co != int(settings.chunk_overlap):
@@ -245,8 +253,13 @@ def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
                     adj_path = os.path.join(faiss_dir, str(adj_name))
                     adj_obj = _safe_load_json(adj_path)
                     # If missing/invalid, rebuild when adjacency is expected. Legacy absence is expected.
-                    if not isinstance(adj_obj, dict) or adj_obj.get("schema_version") != _ADJACENCY_SCHEMA_VERSION:
-                        _schedule_ltm_rebuild(project_id, reason="a441_adjacency_missing_or_invalid")
+                    if (
+                        not isinstance(adj_obj, dict)
+                        or adj_obj.get("schema_version") != _ADJACENCY_SCHEMA_VERSION
+                    ):
+                        _schedule_ltm_rebuild(
+                            project_id, reason="a441_adjacency_missing_or_invalid"
+                        )
         except Exception as exc:
             # Best-effort only; never block retrieval.
             logger.warning(
@@ -260,10 +273,20 @@ def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
             manifest_path = os.path.join(faiss_dir, _LTM_MANIFEST_NAME)
             manifest = _safe_load_json(manifest_path)
             if isinstance(manifest, dict):
-                built_at = manifest.get("built_at") if isinstance(manifest.get("built_at"), str) else None
-                schema_version = manifest.get("schema_version") if isinstance(manifest.get("schema_version"), str) else None
+                built_at = (
+                    manifest.get("built_at") if isinstance(manifest.get("built_at"), str) else None
+                )
+                schema_version = (
+                    manifest.get("schema_version")
+                    if isinstance(manifest.get("schema_version"), str)
+                    else None
+                )
         except Exception as exc:
-            logger.debug("RAG: failed loading optional manifest metadata project=%s detail=%s", project_id, exc)
+            logger.debug(
+                "RAG: failed loading optional manifest metadata project=%s detail=%s",
+                project_id,
+                exc,
+            )
         logger.debug(f"RAG: loaded index for '{project_id}' with {int(index.ntotal)} vectors")
         return LTMIndex(
             index=index,
@@ -306,7 +329,9 @@ def ltm_lookup_adjacent_docstore_ids(
     if not claims_adjacency_schema:
         return {"prev_docstore_id": None, "next_docstore_id": None}
 
-    adj_name = (manifest.get("adjacency_index") if isinstance(manifest, dict) else None) or _LTM_ADJACENCY_INDEX_NAME
+    adj_name = (
+        manifest.get("adjacency_index") if isinstance(manifest, dict) else None
+    ) or _LTM_ADJACENCY_INDEX_NAME
     adj = _safe_load_json(os.path.join(faiss_dir, str(adj_name)))
     if not isinstance(adj, dict) or adj.get("schema_version") != _ADJACENCY_SCHEMA_VERSION:
         # Adjacency expected but missing/invalid: degrade (no expansion) and schedule rebuild.
@@ -370,7 +395,9 @@ def _ltm_candidate_metadata(md: Dict[str, Any]) -> Dict[str, Any]:
         A new metadata dict with the canonical candidate fields populated.
     """
     source_document_id = md.get("source_document_id") or md.get("doc_id")
-    chunk_index = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_seq")
+    chunk_index = (
+        md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_seq")
+    )
     return {
         # Allow missing/absent metadata fields.
         "timestamp": md.get("timestamp"),
@@ -457,7 +484,9 @@ def canonical_retrieve_candidates(
     try:
         qvec = get_embedding_client().embed_query(query or "", model=active_embedding_model)
     except Exception as e:
-        logger.warning("RAG: failed to embed query for canonical retrieval project=%s: %s", project_id, e)
+        logger.warning(
+            "RAG: failed to embed query for canonical retrieval project=%s: %s", project_id, e
+        )
         return []
     qmat = _normalize_rows(np.array([qvec], dtype="float32"))
 
@@ -471,8 +500,12 @@ def canonical_retrieve_candidates(
                 try:
                     results = ds.vs.search_by_vector(qmat[0], k=int(per_source_k))
                 except Exception as e:
-                    logger.warning("RAG: Daily candidate search failed project=%s: %s", project_id, e)
-                    notify_daily_search_failure(project_id, reason="canonical_daily_search_exception")
+                    logger.warning(
+                        "RAG: Daily candidate search failed project=%s: %s", project_id, e
+                    )
+                    notify_daily_search_failure(
+                        project_id, reason="canonical_daily_search_exception"
+                    )
                     results = []
                 for hit in results:
                     score01 = float(hit.score01)
@@ -488,7 +521,11 @@ def canonical_retrieve_candidates(
                     if isinstance(entry, dict):
                         created_at = entry.get("created_at")
                         route = None
-                        tags_meta = entry.get("tags_meta") if isinstance(entry.get("tags_meta"), dict) else None
+                        tags_meta = (
+                            entry.get("tags_meta")
+                            if isinstance(entry.get("tags_meta"), dict)
+                            else None
+                        )
                         topics = tags_meta.get("topics") if isinstance(tags_meta, dict) else None
                         intent = tags_meta.get("intent") if isinstance(tags_meta, dict) else None
                         tag_type = tags_meta.get("type") if isinstance(tags_meta, dict) else None
@@ -504,7 +541,9 @@ def canonical_retrieve_candidates(
                                     "source_scope": entry.get("source_scope"),
                                     "current_scope": entry.get("current_scope"),
                                     "timestamp": created_at,
-                                    "route": (str(route).lower() if isinstance(route, str) else route),
+                                    "route": (
+                                        str(route).lower() if isinstance(route, str) else route
+                                    ),
                                     "tags": entry.get("tags"),
                                     "topics": topics,
                                     "intent": intent,
@@ -541,9 +580,13 @@ def canonical_retrieve_candidates(
                                     "day_sequence": None,
                                     "pair_ids": None,
                                     "doc_id": "daily",
-                                    "chunk_seq": md.get("chunk_seq") if isinstance(md, dict) else None,
+                                    "chunk_seq": (
+                                        md.get("chunk_seq") if isinstance(md, dict) else None
+                                    ),
                                     "source_document_id": "daily",
-                                    "chunk_index": md.get("chunk_seq") if isinstance(md, dict) else None,
+                                    "chunk_index": (
+                                        md.get("chunk_seq") if isinstance(md, dict) else None
+                                    ),
                                 },
                             }
                         )
@@ -554,6 +597,7 @@ def canonical_retrieve_candidates(
 
     # LTM (main FAISS index)
     if "ltm" in srcs:
+
         def _ltm_search_by_vector() -> List[VectorHit]:
             """
             Source-owned LTM search wrapper (best-effort rebuild-on-error; no retry in-request).
@@ -566,7 +610,11 @@ def canonical_retrieve_candidates(
                 return ltm.search_by_vector(qmat[0], k=int(per_source_k))
             except Exception as e:
                 try:
-                    logger.warning("RAG: LTM candidate search failed project=%s; scheduling rebuild: %s", project_id, e)
+                    logger.warning(
+                        "RAG: LTM candidate search failed project=%s; scheduling rebuild: %s",
+                        project_id,
+                        e,
+                    )
                     _schedule_ltm_rebuild(project_id, reason="canonical_ltm_search_exception")
                 except Exception as exc:
                     logger.warning(
@@ -578,22 +626,22 @@ def canonical_retrieve_candidates(
 
         results = _ltm_search_by_vector()
         for hit in results:
-                md = hit.entry.metadata if isinstance(hit.entry.metadata, dict) else {}
-                score01 = float(hit.score01)
-                out.append(
-                    {
-                        "source": "ltm",
-                        "text": hit.entry.text or "",
-                        "score": float(score01),
-                        "metadata": _ltm_candidate_metadata(md),
-                    }
-                )
+            md = hit.entry.metadata if isinstance(hit.entry.metadata, dict) else {}
+            score01 = float(hit.score01)
+            out.append(
+                {
+                    "source": "ltm",
+                    "text": hit.entry.text or "",
+                    "score": float(score01),
+                    "metadata": _ltm_candidate_metadata(md),
+                }
+            )
         ltm_count = len(results)
 
     try:
         qprev = (query or "")[:120].replace("\n", " ")
         logger.debug(
-            "[CANONICAL_RETRIEVE] project_id=%s sources=%s per_source_k=%s daily_candidates=%s ltm_candidates=%s query_preview=\"%s\"",
+            '[CANONICAL_RETRIEVE] project_id=%s sources=%s per_source_k=%s daily_candidates=%s ltm_candidates=%s query_preview="%s"',
             project_id,
             srcs,
             int(per_source_k),
@@ -602,7 +650,9 @@ def canonical_retrieve_candidates(
             qprev,
         )
     except Exception as exc:
-        logger.debug("RAG: canonical retrieval debug logging failed project=%s detail=%s", project_id, exc)
+        logger.debug(
+            "RAG: canonical retrieval debug logging failed project=%s detail=%s", project_id, exc
+        )
     return out
 
 
@@ -712,7 +762,7 @@ def retrieve_context(
 
     # Build hits metadata aligned with pieces
     hits = []
-    for (content, meta, score) in filtered[: len(pieces)]:
+    for content, meta, score in filtered[: len(pieces)]:
         hits.append(
             {
                 "snippet": content,
@@ -865,8 +915,16 @@ def _select_score_gated_candidates(
             sid_prev = md_prev.get("source_document_id")
             sid_cur = md_cur.get("source_document_id")
             if isinstance(sid_prev, str) and sid_prev == sid_cur:
-                ci_prev = md_prev.get("chunk_index") if md_prev.get("chunk_index") is not None else md_prev.get("chunk_seq")
-                ci_cur = md_cur.get("chunk_index") if md_cur.get("chunk_index") is not None else md_cur.get("chunk_seq")
+                ci_prev = (
+                    md_prev.get("chunk_index")
+                    if md_prev.get("chunk_index") is not None
+                    else md_prev.get("chunk_seq")
+                )
+                ci_cur = (
+                    md_cur.get("chunk_index")
+                    if md_cur.get("chunk_index") is not None
+                    else md_cur.get("chunk_seq")
+                )
                 try:
                     a, b = int(ci_prev), int(ci_cur)
                     if abs(a - b) == 1:
@@ -925,7 +983,8 @@ def _resolve_expansion_resources(
         faiss_dir = os.path.join(get_settings().memory_root, project_id, "faiss")
         manifest = _safe_load_json(os.path.join(faiss_dir, _LTM_MANIFEST_NAME))
         claims_adjacency_schema = bool(
-            isinstance(manifest, dict) and manifest.get("schema_version") == _ADJACENCY_SCHEMA_VERSION
+            isinstance(manifest, dict)
+            and manifest.get("schema_version") == _ADJACENCY_SCHEMA_VERSION
         )
         if claims_adjacency_schema:
             adj_name = manifest.get("adjacency_index") or _LTM_ADJACENCY_INDEX_NAME
@@ -950,7 +1009,11 @@ def _resolve_expansion_resources(
 
     daily_src = None
     try:
-        if get_daily_source is not None and bool(daily_enabled) and int(max_before) + int(max_after) > 0:
+        if (
+            get_daily_source is not None
+            and bool(daily_enabled)
+            and int(max_before) + int(max_after) > 0
+        ):
             daily_src = get_daily_source(project_id)
     except Exception:
         daily_src = None
@@ -1020,7 +1083,9 @@ def _materialize_candidate_chunks(
     md0 = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
     doc_id_raw = md0.get("source_document_id") or md0.get("doc_id")
     source_document_id = str(doc_id_raw) if isinstance(doc_id_raw, str) else None
-    chunk_idx_raw = md0.get("chunk_index") if md0.get("chunk_index") is not None else md0.get("chunk_seq")
+    chunk_idx_raw = (
+        md0.get("chunk_index") if md0.get("chunk_index") is not None else md0.get("chunk_seq")
+    )
     try:
         ci: Optional[int] = int(chunk_idx_raw)
     except Exception:
@@ -1036,7 +1101,9 @@ def _materialize_candidate_chunks(
     if ci is None:
         return [central_chunk]
 
-    before_n, after_n = _expansion_tier_counts(int(i), int(k), resources.max_before, resources.max_after)
+    before_n, after_n = _expansion_tier_counts(
+        int(i), int(k), resources.max_before, resources.max_after
+    )
     if int(before_n) <= 0 and int(after_n) <= 0:
         return [central_chunk]
 
@@ -1124,13 +1191,22 @@ def _materialize_all_expansions(
                 if not isinstance(c, dict):
                     continue
                 # Output artifact: per-candidate ordered chunk objects.
-                chunks = _materialize_candidate_chunks(int(i), int(k_actual), c, resources=resources)
+                chunks = _materialize_candidate_chunks(
+                    int(i), int(k_actual), c, resources=resources
+                )
                 c["expanded_chunks"] = chunks
                 # Keep downstream prompt assembly compatible by materializing candidate text from chunks.
-                c["text"] = "\n".join(str(ch.get("text") or "") for ch in chunks if isinstance(ch, dict))
+                c["text"] = "\n".join(
+                    str(ch.get("text") or "") for ch in chunks if isinstance(ch, dict)
+                )
     except Exception as exc:
         # Best-effort: never block retrieval/prompt assembly.
-        logger.warning("RAG: failed materializing expanded chunks project=%s detail=%s", project_id, exc, exc_info=True)
+        logger.warning(
+            "RAG: failed materializing expanded chunks project=%s detail=%s",
+            project_id,
+            exc,
+            exc_info=True,
+        )
 
 
 def _dedupe_expanded_chunks(
@@ -1220,7 +1296,12 @@ def _dedupe_expanded_chunks(
         return deduped_chunks, audit
     except Exception as exc:
         # Best-effort: never block retrieval/prompt assembly.
-        logger.warning("RAG: failed deduping expanded chunks project=%s detail=%s", project_id, exc, exc_info=True)
+        logger.warning(
+            "RAG: failed deduping expanded chunks project=%s detail=%s",
+            project_id,
+            exc,
+            exc_info=True,
+        )
         return list(kept_candidates or []), audit
 
 
@@ -1275,7 +1356,12 @@ def _order_chunks_by_source_document(
         return ordered_chunks_list
     except Exception as exc:
         # Best-effort: never block retrieval/prompt assembly.
-        logger.warning("RAG: failed ordering deduped chunks project=%s detail=%s", project_id, exc, exc_info=True)
+        logger.warning(
+            "RAG: failed ordering deduped chunks project=%s detail=%s",
+            project_id,
+            exc,
+            exc_info=True,
+        )
         return list(kept_candidates or [])
 
 
@@ -1352,7 +1438,11 @@ def _write_retrieval_debug_artifacts(
                     src = c.get("source")
                     score = c.get("score")
                     doc_id = md.get("source_document_id") or md.get("doc_id")
-                    chunk_idx = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_seq")
+                    chunk_idx = (
+                        md.get("chunk_index")
+                        if md.get("chunk_index") is not None
+                        else md.get("chunk_seq")
+                    )
                     fname = md.get("filename")
                     lines.append(
                         f"{rank:>3}. source={src} score={score} source_document_id={doc_id} chunk_index={chunk_idx} file={fname}"
@@ -1397,15 +1487,25 @@ def _write_retrieval_debug_artifacts(
                     src = str(c.get("source") or "unknown").lower()
                     score = c.get("score")
                     doc_id = md.get("source_document_id") or md.get("doc_id")
-                    chunk_idx = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_seq")
+                    chunk_idx = (
+                        md.get("chunk_index")
+                        if md.get("chunk_index") is not None
+                        else md.get("chunk_seq")
+                    )
                     fname = md.get("filename")
                     try:
                         ci = int(chunk_idx)
                     except Exception:
                         ci = None
 
-                    before_n, after_n = _expansion_tier_counts(int(rank - 1), int(k_actual), max_before, max_after)
-                    if ci is None or not isinstance(doc_id, str) or (before_n <= 0 and after_n <= 0):
+                    before_n, after_n = _expansion_tier_counts(
+                        int(rank - 1), int(k_actual), max_before, max_after
+                    )
+                    if (
+                        ci is None
+                        or not isinstance(doc_id, str)
+                        or (before_n <= 0 and after_n <= 0)
+                    ):
                         lines.append(
                             f"{rank:>3}. source={src} score={score} source_document_id={doc_id} chunk_index={chunk_idx} file={fname} tier_before={before_n} tier_after={after_n}"
                         )
@@ -1517,7 +1617,12 @@ def _write_retrieval_debug_artifacts(
                 _fmt_deduped_chunks_with_audit(kept_candidates),
             )
     except Exception as exc:
-        logger.warning("RAG: failed writing retrieval debug artifacts project=%s detail=%s", project_id, exc, exc_info=True)
+        logger.warning(
+            "RAG: failed writing retrieval debug artifacts project=%s detail=%s",
+            project_id,
+            exc,
+            exc_info=True,
+        )
 
 
 def _assemble_context_prompt(kept_candidates: List[Dict[str, Any]]) -> _PromptAssembly:
@@ -1567,9 +1672,7 @@ def _assemble_context_prompt(kept_candidates: List[Dict[str, Any]]) -> _PromptAs
         # Candidate header (keeps ordering explicit; show cos + score for troubleshooting).
         if src == "ltm":
             chunk_index = md.get("chunk_index") if isinstance(md, dict) else None
-            header = (
-                f"Snippet {idx+1} (source=ltm, cos={cos:.4f}, score={score01:.4f}, file={md.get('filename')}, page={md.get('page_number')}, chunk_index={chunk_index}{extra_header})\n"
-            )
+            header = f"Snippet {idx+1} (source=ltm, cos={cos:.4f}, score={score01:.4f}, file={md.get('filename')}, page={md.get('page_number')}, chunk_index={chunk_index}{extra_header})\n"
         else:
             chunk_index = md.get("chunk_index") if isinstance(md, dict) else None
             header = f"Snippet {idx+1} (source=daily, cos={cos:.4f}, score={score01:.4f}, route={md.get('route')}, chunk_index={chunk_index}{extra_header})\n"
@@ -1660,7 +1763,9 @@ def merge_daily_and_main(
     )
     # Retrieval via canonical entry point (raw candidates; no thresholding/boosting here).
     sources = ["ltm"] + (["daily"] if bool(daily_enabled) else [])
-    cands = canonical_retrieve_candidates(project_id, query, sources=sources, per_source_k_override=per_source_k)
+    cands = canonical_retrieve_candidates(
+        project_id, query, sources=sources, per_source_k_override=per_source_k
+    )
     # Global ordering by raw similarity score (stable; ties preserve pre-sort order).
     ordered = order_candidates_by_similarity_score(list(cands or []))
 
@@ -1688,14 +1793,24 @@ def merge_daily_and_main(
         )
     except Exception as exc:
         # Best-effort: never block retrieval/prompt assembly.
-        logger.warning("RAG: failed trimming adjacent overlap project=%s detail=%s", project_id, exc, exc_info=True)
+        logger.warning(
+            "RAG: failed trimming adjacent overlap project=%s detail=%s",
+            project_id,
+            exc,
+            exc_info=True,
+        )
 
     # Snippet-group collapse (one entry per adjacent same-document run).
     try:
         kept_candidates = collapse_snippet_groups(kept_candidates or [])
     except Exception as exc:
         # Best-effort: never block retrieval/prompt assembly.
-        logger.warning("RAG: failed collapsing snippet groups project=%s detail=%s", project_id, exc, exc_info=True)
+        logger.warning(
+            "RAG: failed collapsing snippet groups project=%s detail=%s",
+            project_id,
+            exc,
+            exc_info=True,
+        )
 
     # Debug dumps (human-readable .txt) for ordering and selection.
     _write_retrieval_debug_artifacts(
@@ -1807,5 +1922,3 @@ def _snippet_header_metadata_fields(metadata: Dict[str, Any]) -> List[Tuple[str,
 
 
 # Legacy FAISS sidecar namespace map support removed; namespaces are embedded during indexing.
-
-

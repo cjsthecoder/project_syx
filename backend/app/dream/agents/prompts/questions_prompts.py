@@ -4,12 +4,15 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Prompt builders for the Dream cycle Questions agent.
 
 Provides local and remote single-question answering prompts that ground answers
 in retrieved memory and, for remote prompts, additional research context.
 """
+
+
 def build_answer_question_prompt_local(question: str, topic: str, local_context: str) -> str:
     """Build the single-question answering prompt grounded in local retrieval context only.
 
@@ -55,7 +58,9 @@ Return only the JSON object.
 """
 
 
-def build_answer_question_prompt_remote(question: str, topic: str, local_context: str, remote_context: str) -> str:
+def build_answer_question_prompt_remote(
+    question: str, topic: str, local_context: str, remote_context: str
+) -> str:
     """Build the single-question answering prompt grounded in local and remote research context.
 
     Args:
@@ -104,6 +109,3 @@ Answer requirements:
 
 Return only the JSON object.
 """
-
-
-

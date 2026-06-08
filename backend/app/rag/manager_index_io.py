@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Long-term memory FAISS index I/O and adjacency helpers.
 
@@ -283,5 +284,7 @@ def write_ltm_manifest_and_adjacency(
         )
         return True
     except Exception as exc:
-        logger.warning("RAG: failed writing manifest/adjacency project=%s detail=%s", project_id, exc)
+        logger.warning(
+            "RAG: failed writing manifest/adjacency project=%s detail=%s", project_id, exc
+        )
         return False

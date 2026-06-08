@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for Syx memory artifact rendering and parsing.
 
@@ -125,7 +126,10 @@ def test_rendered_entries_have_blank_line_between_begin_markers():
 
     normalized = ensure_blank_line_before_begin_markers(first.rstrip() + "\n" + second)
 
-    assert f"<!-- end syx:memory_id={first_id} -->\n\n<!-- begin syx:memory_id={second_id} -->" in normalized
+    assert (
+        f"<!-- end syx:memory_id={first_id} -->\n\n<!-- begin syx:memory_id={second_id} -->"
+        in normalized
+    )
 
 
 def test_snake_case_value_normalizes_human_labels():

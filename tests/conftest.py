@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Shared pytest fixtures for the Syx backend test suite.
 
@@ -21,7 +22,6 @@ os.environ.setdefault("LOGS_DIR", os.path.join(_REPO_ROOT, "runtime", "logs", "t
 os.environ.setdefault("LOG_FILE_PREFIX", "test_")
 
 import pytest
-
 from app.core.config import get_settings
 
 
@@ -87,10 +87,9 @@ def db(tmp_path, monkeypatch):
     module attribute redirects every DB consumer at once. Tables are created
     from the already-registered SQLModel metadata.
     """
-    from sqlmodel import SQLModel, create_engine
-
-    from app.core import database
     from app.core import db_models  # noqa: F401 — ensure tables are registered
+    from app.core import database
+    from sqlmodel import SQLModel, create_engine
 
     db_file = tmp_path / "test.db"
     engine = create_engine(

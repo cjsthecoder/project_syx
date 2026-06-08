@@ -4,16 +4,17 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Sleep-cycle lock and in-process state management.
 
 This module tracks whether a sleep cycle is active and manages the on-disk sleep
 lock file, including engaging, releasing, restoring from disk, and clearing stale locks.
 """
+import logging
 import os
 import time
 from typing import Optional
-import logging
 
 from .config import get_settings
 
@@ -115,4 +116,3 @@ def clear_stale_lock(max_age_seconds: int = 2 * 60 * 60) -> bool:
     except OSError as exc:
         logger.warning("state.clear_stale_lock failed lock_path=%s detail=%s", _LOCK_PATH, exc)
     return False
-

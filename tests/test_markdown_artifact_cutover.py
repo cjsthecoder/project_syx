@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for the daily memory store markdown cutover.
 
@@ -12,8 +13,8 @@ entries (rather than legacy ``daily.txt``), preserves ``created_at``
 timestamps and memory ids in metadata, and that backfill from metadata
 ignores legacy text artifacts.
 """
-import json
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -65,8 +66,12 @@ def _load_daily_store(monkeypatch):
     debug_utils_module.write_debug_file = lambda *_args, **_kwargs: None  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.utils.debug_utils", debug_utils_module)
 
-    syx_module_path = Path(__file__).resolve().parents[1] / "backend" / "app" / "rag" / "syx_memory_artifact.py"
-    syx_spec = importlib.util.spec_from_file_location("app.rag.syx_memory_artifact", syx_module_path)
+    syx_module_path = (
+        Path(__file__).resolve().parents[1] / "backend" / "app" / "rag" / "syx_memory_artifact.py"
+    )
+    syx_spec = importlib.util.spec_from_file_location(
+        "app.rag.syx_memory_artifact", syx_module_path
+    )
     assert syx_spec is not None
     syx_module = importlib.util.module_from_spec(syx_spec)
     monkeypatch.setitem(sys.modules, "app.rag.syx_memory_artifact", syx_module)
@@ -85,7 +90,9 @@ def _load_daily_store(monkeypatch):
 
 def test_append_pair_writes_daily_md_not_daily_txt(tmp_path, monkeypatch):
     daily_store = _load_daily_store(monkeypatch)
-    monkeypatch.setattr(daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path)))
+    monkeypatch.setattr(
+        daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
     monkeypatch.setattr(daily_store, "get_active_embedding_model", lambda: "test-embedding")
 
     project_id = "project-1"
@@ -117,7 +124,9 @@ def test_append_pair_writes_daily_md_not_daily_txt(tmp_path, monkeypatch):
 
 def test_append_pair_preserves_created_at_for_daily_md_and_metadata(tmp_path, monkeypatch):
     daily_store = _load_daily_store(monkeypatch)
-    monkeypatch.setattr(daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path)))
+    monkeypatch.setattr(
+        daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
     monkeypatch.setattr(daily_store, "get_active_embedding_model", lambda: "test-embedding")
 
     project_id = "project-created-at"
@@ -146,7 +155,9 @@ def test_append_pair_preserves_created_at_for_daily_md_and_metadata(tmp_path, mo
 
 def test_backfill_daily_md_from_meta_ignores_legacy_txt(tmp_path, monkeypatch):
     daily_store = _load_daily_store(monkeypatch)
-    monkeypatch.setattr(daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path)))
+    monkeypatch.setattr(
+        daily_store, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
 
     project_id = "project-2"
     project_dir = tmp_path / project_id

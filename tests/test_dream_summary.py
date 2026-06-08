@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for dream/sleep summary formatting.
 
@@ -39,8 +40,14 @@ def test_format_latest_sleep_summary_appends_research_block():
         [
             {
                 "research": [
-                    {"research_topic": "What memory architecture best supports long-term useful recall?", "research_summary": "x"},
-                    {"research_topic": "How should memory evolve over time?", "research_summary": "y"},
+                    {
+                        "research_topic": "What memory architecture best supports long-term useful recall?",
+                        "research_summary": "x",
+                    },
+                    {
+                        "research_topic": "How should memory evolve over time?",
+                        "research_summary": "y",
+                    },
                 ]
             }
         ],

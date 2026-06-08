@@ -4,23 +4,22 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Alembic migration environment for the Syx backend.
 
 Configures offline and online migration runs against the application's SQLModel
 metadata and database engine.
 """
-from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
-from alembic import context
-
 import os
 import sys
-sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/..')
+
+from alembic import context
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
 from app.core.database import get_engine
 from app.core.db_models import SQLModel
-
 
 config = context.config
 
@@ -32,7 +31,10 @@ target_metadata = SQLModel.metadata
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url, target_metadata=target_metadata, literal_binds=True, dialect_opts={"paramstyle": "named"}
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
     )
 
     with context.begin_transaction():
@@ -53,5 +55,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-
-

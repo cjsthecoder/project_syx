@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Unit tests for helpers extracted from ``_sleep_cycle_worker``.
 
@@ -16,13 +17,12 @@ from types import SimpleNamespace
 
 import app.sleep.cycle as cycle
 from app.sleep.cycle import (
-    _SleepCycleStats,
     _build_pair_tags_block,
     _flush_project_pairs,
     _public_tags_meta,
+    _SleepCycleStats,
     _summary_content_only,
 )
-
 
 # --- _public_tags_meta --------------------------------------------------------
 
@@ -132,9 +132,13 @@ def _patch_flush_env(monkeypatch, msgs, *, append_ok=True):
     monkeypatch.setattr(cycle, "get_session", lambda: session)
     monkeypatch.setattr(cycle, "count_tokens", lambda *_a, **_k: 5)
     monkeypatch.setattr(
-        cycle, "_prune_assistant_for_tagger", lambda *, project_id, assistant_text, settings: assistant_text
+        cycle,
+        "_prune_assistant_for_tagger",
+        lambda *, project_id, assistant_text, settings: assistant_text,
     )
-    monkeypatch.setattr(cycle, "tag_pair_tagger", lambda *a, **k: {"topics": "t", "intent": "i", "type": "n"})
+    monkeypatch.setattr(
+        cycle, "tag_pair_tagger", lambda *a, **k: {"topics": "t", "intent": "i", "type": "n"}
+    )
     appended = []
 
     def _fake_append_pair(pid, pair_text, *a, **k):

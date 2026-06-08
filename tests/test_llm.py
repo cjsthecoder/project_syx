@@ -4,17 +4,19 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Tests for LLM integration.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from app.core.llm_service import (
     LLMProvider,
-    get_llm_provider,
     generate_chat_response,
     generate_text_response,
+    get_llm_provider,
     reset_llm_provider,
 )
 from app.llm_model.base import LLMResponse, LLMUsage
@@ -30,8 +32,9 @@ def mock_openai_key():
     so the tests are hermetic regardless of whether a key is configured.
     """
     reset_llm_provider()
-    with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-123"}), patch(
-        "app.core.llm_service.validate_openai_key", return_value=True
+    with (
+        patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-123"}),
+        patch("app.core.llm_service.validate_openai_key", return_value=True),
     ):
         yield
     reset_llm_provider()
@@ -66,10 +69,10 @@ def test_generate_response(mock_get_client, mock_openai_key):
         ),
     )
     mock_get_client.return_value = mock_client
-    
+
     # Test response generation
     result = generate_chat_response("Hello, world!")
-    
+
     assert result["success"] is True
     assert "Hello! How can I help you?" in result["response"]
     assert result["tokens_used"] == 25
@@ -90,15 +93,12 @@ def test_generate_response_with_history(mock_get_client, mock_openai_key):
         ),
     )
     mock_get_client.return_value = mock_client
-    
+
     # Test with conversation history
-    history = [
-        {"role": "user", "content": "Hello"},
-        {"role": "assistant", "content": "Hi there!"}
-    ]
-    
+    history = [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there!"}]
+
     result = generate_chat_response("What did I say before?", history)
-    
+
     assert result["success"] is True
     assert "I remember our previous conversation!" in result["response"]
 
@@ -109,9 +109,9 @@ def test_llm_error_handling(mock_get_client, mock_openai_key):
     mock_client = MagicMock()
     mock_client.generate_chat.side_effect = Exception("API Error")
     mock_get_client.return_value = mock_client
-    
+
     result = generate_chat_response("Hello")
-    
+
     assert result["success"] is False
     assert "error" in result
     assert "API Error" in result["response"]

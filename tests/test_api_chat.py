@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Contract tests for the chat API router.
 
@@ -15,11 +16,10 @@ patched so health behavior is deterministic and offline.
 from types import SimpleNamespace
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from app.api import chat as chat_module
 from app.core.config import get_settings
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture
@@ -137,9 +137,7 @@ class FakeMemoryManager:
         forget=False,
         skip_tagger=False,
     ):
-        self.calls.append(
-            ("assistant", project_id, message, namespace, forget, skip_tagger)
-        )
+        self.calls.append(("assistant", project_id, message, namespace, forget, skip_tagger))
 
 
 class FakeInstrumentation:
@@ -245,6 +243,7 @@ def test_chat_stats_shape(client):
 # /chat (non-streaming) orchestration
 # ---------------------------------------------------------------------------
 
+
 def test_chat_happy_path_returns_response_and_persists(client, chat_env, monkeypatch):
     monkeypatch.setattr(
         chat_module,
@@ -334,6 +333,7 @@ def test_chat_llm_failure_returns_500(client, chat_env, monkeypatch):
 # ---------------------------------------------------------------------------
 # /chat/stream orchestration
 # ---------------------------------------------------------------------------
+
 
 class _FakeUsage:
     def __init__(self):

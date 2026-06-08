@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Memory management for Syx AGI Chatbot Framework.
 
@@ -11,26 +12,27 @@ Implements per-project working memory deques mirrored to DB `ChatMessage`.
 System (RAG) messages are not stored. Provides last_context_tokens per project for stats.
 """
 
+import json
 import logging
 import os
-import json
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Optional, List, Dict, Any, Deque, Tuple
-from datetime import datetime, timedelta, timezone
 from collections import deque
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Deque, Dict, List, Optional
 
 from filelock import FileLock
 from sqlmodel import select
-from .database import get_session
-from .db_models import ChatMessage, Project
-from .config import get_response_pruning_stage_config, get_settings
+
 from ..pruning.light_response_pruner import Pruner, PrunerConfig, PruneResult
 from ..rag.daily_store import append_pair
+from ..tagging.tagger import tag_pair
+from ..utils.debug_utils import write_debug_file
 from ..utils.logging import get_namespace
 from ..utils.tokens import count_tokens
-from ..utils.debug_utils import write_debug_file
-from ..tagging.tagger import tag_pair
+from .config import get_response_pruning_stage_config, get_settings
+from .database import get_session
+from .db_models import ChatMessage, Project
 
 logger = logging.getLogger(__name__)
 
@@ -397,8 +399,12 @@ class MemoryManager:
                         }
                         f.write(json.dumps(payload, ensure_ascii=False) + "\n")
         except Exception as e:
-            logger.warning("[QUESTIONS][ARTIFACT] Failed writing open_questions.jsonl project=%s: %s", project_id, e)
-    
+            logger.warning(
+                "[QUESTIONS][ARTIFACT] Failed writing open_questions.jsonl project=%s: %s",
+                project_id,
+                e,
+            )
+
     def _ensure_loaded(self, project_id: str) -> None:
         """Lazily hydrate the project's working-memory deque from the DB.
 
@@ -422,26 +428,30 @@ class MemoryManager:
                     .where(ChatMessage.project_id == project_id)
                     .order_by(ChatMessage.created_at.desc())
                 ).all()
-                rows = rows[: maxlen]
+                rows = rows[:maxlen]
                 for r in reversed(rows):
-                    dq.append({
-                        "id": r.id,
-                        "role": r.role,
-                        "content": r.content,
-                        "created_at": r.created_at,
-                        "forget": getattr(r, 'forget', False),
-                        "namespace": getattr(r, 'namespace', None),
-                        "keep": getattr(r, 'keep', False),
-                        "tags_meta_json": getattr(r, "tags_meta_json", None),
-                        "semantic_handle": getattr(r, "semantic_handle", None),
-                    })
+                    dq.append(
+                        {
+                            "id": r.id,
+                            "role": r.role,
+                            "content": r.content,
+                            "created_at": r.created_at,
+                            "forget": getattr(r, "forget", False),
+                            "namespace": getattr(r, "namespace", None),
+                            "keep": getattr(r, "keep", False),
+                            "tags_meta_json": getattr(r, "tags_meta_json", None),
+                            "semantic_handle": getattr(r, "semantic_handle", None),
+                        }
+                    )
         except Exception as e:
             logger.error(f"Failed to load history for {project_id}: {e}")
         # Cleanup unpaired trailing user and orphan leading assistant per current spec.
         self._cleanup_unpaired_edges(project_id, dq)
         self.project_deques[project_id] = dq
 
-    def get_project_history(self, project_id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    def get_project_history(
+        self, project_id: str, limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
         """Return the project's working-memory messages, optionally tail-limited.
 
         Args:
@@ -475,12 +485,14 @@ class MemoryManager:
             session.add(msg)
             session.commit()
             session.refresh(msg)
-        self.project_deques[project_id].append({
-            "id": msg.id,
-            "role": "user",
-            "content": content,
-            "created_at": now,
-        })
+        self.project_deques[project_id].append(
+            {
+                "id": msg.id,
+                "role": "user",
+                "content": content,
+                "created_at": now,
+            }
+        )
         self.prune_to_limit(project_id)
 
     def append_assistant_message(
@@ -535,24 +547,28 @@ class MemoryManager:
             tags_meta_json=tag_result.tags_meta_json,
             semantic_handle=tag_result.semantic_handle,
         )
-        self.project_deques[project_id].append({
-            "id": msg_id,
-            "role": "assistant",
-            "content": content,
-            "created_at": now,
-            "forget": bool(forget),
-            "namespace": ns,
-            "keep": False,
-            "tags_meta_json": tag_result.tags_meta_json,
-            "semantic_handle": tag_result.semantic_handle,
-            "pruned_content": tag_result.pruned_assistant_text,
-        })
+        self.project_deques[project_id].append(
+            {
+                "id": msg_id,
+                "role": "assistant",
+                "content": content,
+                "created_at": now,
+                "forget": bool(forget),
+                "namespace": ns,
+                "keep": False,
+                "tags_meta_json": tag_result.tags_meta_json,
+                "semantic_handle": tag_result.semantic_handle,
+                "pruned_content": tag_result.pruned_assistant_text,
+            }
+        )
         self._append_open_questions_artifact(
             project_id=project_id,
             assistant_message_id=(int(msg_id) if isinstance(msg_id, int) else None),
             user_message_id=source_user_message_id,
             namespace=ns,
-            semantic_handle=tag_result.semantic_handle if isinstance(tag_result.semantic_handle, str) else None,
+            semantic_handle=(
+                tag_result.semantic_handle if isinstance(tag_result.semantic_handle, str) else None
+            ),
             questions=tag_result.question_candidates,
         )
         self.prune_to_limit(project_id)
@@ -644,7 +660,9 @@ class MemoryManager:
                         # Private rolloff-only field: daily/LTM should carry pruned assistant text.
                         tags_meta["_pruned_assistant_text"] = result.pruned_assistant_text
                     result.tags_meta = tags_meta
-                    result.question_candidates = self._normalize_question_candidates(tagged.get("questions"))
+                    result.question_candidates = self._normalize_question_candidates(
+                        tagged.get("questions")
+                    )
                     result.semantic_handle = tags_meta.get("semantic_handle", None)
                     try:
                         result.tags_meta_json = json.dumps(tags_meta, ensure_ascii=False)
@@ -750,7 +768,7 @@ class MemoryManager:
         i = 0
         n = len(dq)
         while i + 1 < n:
-            if dq[i].get("role") == "user" and dq[i+1].get("role") == "assistant":
+            if dq[i].get("role") == "user" and dq[i + 1].get("role") == "assistant":
                 count += 1
                 i += 2
             else:
@@ -811,11 +829,15 @@ class MemoryManager:
             user_msg: Evicted user message dict.
             asst_msg: Evicted assistant message dict (source of metadata).
         """
-        user_text = user_msg.get('content') or ''
+        user_text = user_msg.get("content") or ""
         # Append to daily if enabled and not forgotten; on any error we still drop per spec
         try:
             if bool(asst_msg.get("forget")):
-                logger.info("[FORGET] Skipped pair (forget flag set) user_id=%s assistant_id=%s", str(user_msg.get("id")), str(asst_msg.get("id")))
+                logger.info(
+                    "[FORGET] Skipped pair (forget flag set) user_id=%s assistant_id=%s",
+                    str(user_msg.get("id")),
+                    str(asst_msg.get("id")),
+                )
             elif self._is_daily_enabled(project_id):
                 ns = (asst_msg.get("namespace") or get_namespace() or "other").lower()
                 keep = bool(asst_msg.get("keep"))
@@ -838,9 +860,11 @@ class MemoryManager:
                 asst_text = (
                     pruned_from_deque
                     if isinstance(pruned_from_deque, str) and pruned_from_deque.strip()
-                    else pruned_from_meta
-                    if isinstance(pruned_from_meta, str) and pruned_from_meta.strip()
-                    else asst_msg.get("content") or ""
+                    else (
+                        pruned_from_meta
+                        if isinstance(pruned_from_meta, str) and pruned_from_meta.strip()
+                        else asst_msg.get("content") or ""
+                    )
                 )
                 pair_text = f"User: {user_text}\nAssistant: {asst_text}"
                 tokens = int(count_tokens(pair_text))
@@ -861,7 +885,9 @@ class MemoryManager:
                         semantic_handle = tags_meta.get("semantic_handle", None)
                         lines = [f"#topics: {topics}", f"#intent: {intent}", f"#type: {tag_type}"]
                         if semantic_handle is not None:
-                            lines.append(f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}")
+                            lines.append(
+                                f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}"
+                            )
                         tags_block = "\n".join(lines) + "\n"
                     except Exception:
                         tags_block = ""
@@ -882,7 +908,9 @@ class MemoryManager:
                     },
                 )
             else:
-                logger.info("[DailyRAG] Skipping daily append (disabled for project=%s)", project_id)
+                logger.info(
+                    "[DailyRAG] Skipping daily append (disabled for project=%s)", project_id
+                )
         except Exception as e:
             logger.error(f"DailyRAG rolloff append failed: {e}")
 
@@ -950,7 +978,9 @@ class MemoryManager:
                     return True
                 return bool(p.daily_rag_enabled)
         except Exception as e:
-            logger.warning("Failed to read project daily flag for %s: %s; defaulting to True", project_id, e)
+            logger.warning(
+                "Failed to read project daily flag for %s: %s; defaulting to True", project_id, e
+            )
             return True
 
     def get_active_pair_count(self, project_id: str) -> int:
@@ -986,11 +1016,9 @@ class MemoryManager:
             recorded.
         """
         return int(self.last_context_tokens_per_project.get(project_id, 0))
-    
+
     def get_conversation_history(
-        self,
-        conversation_id: str,
-        limit: Optional[int] = None
+        self, conversation_id: str, limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """Return an empty list. Deprecated: project-scoped history is used.
 
@@ -1003,60 +1031,57 @@ class MemoryManager:
         """
         # Deprecated (project-scoped history is used instead).
         return []
-    
+
     def search_memory(
-        self, 
-        query: str, 
-        conversation_id: Optional[str] = None,
-        limit: int = 5
+        self, query: str, conversation_id: Optional[str] = None, limit: int = 5
     ) -> List[Dict[str, Any]]:
         """
         Search through stored memories (RAG functionality).
-        
+
         Args:
             query: Search query
             conversation_id: Optional conversation to search within
             limit: Maximum number of results
-            
+
         Returns:
             List of relevant memories
         """
         # TODO: Implement FAISS-based search.
         logger.info(f"Memory search requested: '{query}' (stub - not yet implemented)")
-        
-        return [{
-            "content": f"Memory search for '{query}' not yet implemented",
-            "relevance_score": 0.0,
-            "source": "stub",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }]
-    
+
+        return [
+            {
+                "content": f"Memory search for '{query}' not yet implemented",
+                "relevance_score": 0.0,
+                "source": "stub",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        ]
+
     def cleanup_old_memories(
-        self, 
-        retention_days: int = 30,
-        conversation_id: Optional[str] = None
+        self, retention_days: int = 30, conversation_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Clean up old memories (memory pruning).
-        
+
         Args:
             retention_days: Number of days to retain memories
             conversation_id: Optional specific conversation to clean
-            
+
         Returns:
             Cleanup statistics
         """
         # TODO: Implement memory pruning.
         logger.info("Memory cleanup requested (stub - not yet implemented)")
-        
+
         return {
             "items_cleaned": 0,
             "memory_usage_before": "0MB",
             "memory_usage_after": "0MB",
             "retention_days": retention_days,
-            "status": "stub_mode"
+            "status": "stub_mode",
         }
-    
+
     def get_memory_stats(self) -> Dict[str, Any]:
         """Get memory usage statistics.
 
@@ -1073,8 +1098,8 @@ class MemoryManager:
             "features_available": {
                 "rag_search": False,
                 "memory_pruning": False,
-                "conversation_storage": True
-            }
+                "conversation_storage": True,
+            },
         }
 
 
@@ -1096,11 +1121,9 @@ def get_memory_manager() -> MemoryManager:
 
 # Convenience functions
 
+
 def store_conversation(
-    conversation_id: str, 
-    message: str, 
-    response: str, 
-    metadata: Optional[Dict[str, Any]] = None
+    conversation_id: str, message: str, response: str, metadata: Optional[Dict[str, Any]] = None
 ) -> bool:
     """Store a conversation message.
 
@@ -1142,8 +1165,7 @@ def get_last_context_tokens(project_id: str) -> int:
 
 
 def search_conversation_memory(
-    query: str, 
-    conversation_id: Optional[str] = None
+    query: str, conversation_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """Search conversation memory.
 
@@ -1156,5 +1178,3 @@ def search_conversation_memory(
     """
     manager = get_memory_manager()
     return manager.search_memory(query, conversation_id)
-
-

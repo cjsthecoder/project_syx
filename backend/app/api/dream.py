@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Dream status API endpoint for the Syx AGI Chatbot Framework.
 
@@ -12,7 +13,7 @@ regardless of the dream feature flag.
 """
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from ..core.config import get_settings
+
 from ..utils.logging import RequestLogger
 
 router = APIRouter()
@@ -34,5 +35,3 @@ async def dream_status() -> JSONResponse:
         return JSONResponse(status_code=200, content={"has_dreams": False, "count": 0})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
-
-

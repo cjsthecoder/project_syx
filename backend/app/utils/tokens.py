@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Shared tokenization helpers for best-effort counting and trimming.
 """
@@ -153,9 +154,7 @@ def count_message_content_tokens(
     """
     try:
         text = "\n".join(
-            str((m.get("content") or ""))
-            for m in (messages or [])
-            if isinstance(m, dict)
+            str((m.get("content") or "")) for m in (messages or []) if isinstance(m, dict)
         )
     except (AttributeError, TypeError, ValueError):
         return 0

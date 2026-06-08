@@ -4,6 +4,7 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 OpenAI embedding provider implementation.
 """
@@ -87,7 +88,9 @@ class OpenAIEmbeddingProvider:
                 if retry_after is not None:
                     return float(retry_after)
         except (TypeError, ValueError) as header_exc:
-            logger.debug("embedding provider retry-after header parse skipped detail=%s", header_exc)
+            logger.debug(
+                "embedding provider retry-after header parse skipped detail=%s", header_exc
+            )
         msg = str(exc or "")
         m = re.search(r"try again in\s*([0-9]+(?:\.[0-9]+)?)s", msg, flags=re.IGNORECASE)
         if not m:
@@ -204,7 +207,6 @@ class OpenAIEmbeddingProvider:
         Raises:
             RuntimeError: If the request still fails after exhausting all retries.
         """
-        settings = get_settings()
         use_model = model or get_active_embedding_model()
         clean = [t if isinstance(t, str) else "" for t in (texts or [])]
         if not clean:

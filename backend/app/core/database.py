@@ -4,16 +4,17 @@ SPDX-License-Identifier: MIT
 This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
+
 """
 Database setup for Syx (SQLModel + SQLite).
 """
 
-import os
 import logging
+import os
 from contextlib import contextmanager
 from typing import Iterator
 
-from sqlmodel import SQLModel, Session, create_engine
+from sqlmodel import Session, SQLModel, create_engine
 
 from .config import get_settings
 
@@ -57,8 +58,9 @@ engine = get_engine()
 def _run_migrations() -> None:
     """Programmatically run Alembic upgrade head."""
     try:
-        from alembic.config import Config
         from alembic import command
+        from alembic.config import Config
+
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # backend/app
         alembic_ini = os.path.join(base_dir, "..", "alembic.ini")
         cfg = Config(alembic_ini)
@@ -69,6 +71,7 @@ def _run_migrations() -> None:
         logger.warning("database._run_migrations failed; falling back to create_all detail=%s", exc)
         # Fallback to create_all in dev if migrations cannot run
         from . import db_models  # noqa: F401 ensure models are imported
+
         SQLModel.metadata.create_all(engine)
 
 
@@ -86,5 +89,3 @@ def get_session() -> Iterator[Session]:
     """
     with Session(engine) as session:
         yield session
-
-

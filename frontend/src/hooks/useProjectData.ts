@@ -25,6 +25,14 @@ type UseProjectDataArgs = {
   onError: (message: string) => void
 }
 
+/**
+ * Centralize project-scoped data and actions for the chat app.
+ *
+ * Loads projects, files, stats, info, dream summaries, personality, and the user
+ * profile, and returns loaders plus CRUD/mutation actions. Mutations surface
+ * failures via `onError`; loaders fail soft to empty state. Stats are only
+ * fetched when `showDebugValues` is enabled.
+ */
 export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs) {
   const [projects, setProjects] = useState<Project[]>([])
   const [projectId, setProjectId] = useState<string>('')
@@ -116,6 +124,11 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     }
   }, [])
 
+  /**
+   * Load chats, files, stats, info, and dream summary for a project in parallel.
+   *
+   * Deduplicates concurrent refreshes for the same project via an in-flight set.
+   */
   const refreshProjectData = useCallback(
     async (pid: string, loadChats: (projectId: string) => Promise<void>) => {
       if (!pid) return
@@ -134,6 +147,11 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     [loadDreamSummary, loadFiles, loadProjectInfo, loadStats],
   )
 
+  /**
+   * Query sleep status; if sleeping, record the start time and open the sleep dialog.
+   *
+   * @returns True when the system is currently sleeping.
+   */
   const checkSleeping = useCallback(async (): Promise<boolean> => {
     try {
       const r = await fetch('/sleep/status')
@@ -150,6 +168,7 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     return false
   }, [])
 
+  /** Create a project from a non-empty name, then reload the project list. */
   const createProject = useCallback(
     async (name: string) => {
       if (!name.trim()) return
@@ -163,6 +182,7 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     [loadProjects, onError],
   )
 
+  /** Rename the current project, then refresh the project list and info. */
   const renameProject = useCallback(
     async (name: string) => {
       if (!name.trim() || !projectId) return
@@ -177,6 +197,7 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     [loadProjectInfo, loadProjects, onError, projectId],
   )
 
+  /** Delete the current project, then reload the project list. */
   const deleteProject = useCallback(async () => {
     if (!projectId) return
     try {
@@ -187,6 +208,10 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     }
   }, [loadProjects, onError, projectId])
 
+  /**
+   * Upload selected files to the current project as multipart form data, then
+   * refresh the file list and stats. The backend rebuilds the RAG index.
+   */
   const uploadFiles = useCallback(
     async (selected: FileList) => {
       if (!projectId || !selected || selected.length === 0) return
@@ -204,6 +229,7 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     [loadFiles, loadStats, onError, projectId],
   )
 
+  /** Delete a file from the current project, then refresh the file list and stats. */
   const deleteFile = useCallback(
     async (fileId: number) => {
       if (!projectId) return
@@ -243,6 +269,7 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     [onError],
   )
 
+  /** Persist the system prompt and personality settings, then refresh project info. */
   const savePersonality = useCallback(async () => {
     if (!projectId) return
     try {
@@ -279,6 +306,10 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     [onError],
   )
 
+  /**
+   * Persist the edited USER_PROFILE.txt for the current project, then refresh
+   * stats. The backend rewrites the file and rebuilds the RAG index.
+   */
   const saveUserProfile = useCallback(async () => {
     if (!projectId) return
     setSavingUserProfile(true)
@@ -296,6 +327,7 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     }
   }, [loadStats, onError, projectId, userProfile])
 
+  /** Persist per-item keep/remember review decisions for the project's dream items. */
   const saveDreamItems = useCallback(async () => {
     if (!projectId || dreamItems.length === 0) return
     setSavingDream(true)

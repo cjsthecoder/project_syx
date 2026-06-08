@@ -14,6 +14,13 @@
  */
 import { RequestError, readJsonSafe, throwRequestError } from '@/pages/app/request'
 
+/**
+ * Send a JSON request to the backend and return the parsed body.
+ *
+ * Defaults the content-type to JSON and merges caller `options`.
+ *
+ * @throws {RequestError} When the response is not OK, or the body is missing/not valid JSON.
+ */
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },

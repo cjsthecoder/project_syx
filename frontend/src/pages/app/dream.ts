@@ -40,6 +40,12 @@ type DreamPayload = {
   items?: unknown
 }
 
+/**
+ * Coerce raw dream-item payloads into typed items.
+ *
+ * Drops entries lacking both origin and assistant text, type-guards every field,
+ * and defaults the `keep`/`remember` review flags to false.
+ */
 function _normalizeDreamItems(items: DreamItemPayload[]): DreamItem[] {
   return items
     .filter((it) => it && (it.origin_text || it.assistant_response))
@@ -60,6 +66,12 @@ function _normalizeDreamItems(items: DreamItemPayload[]): DreamItem[] {
     }))
 }
 
+/**
+ * Normalize an untyped dream payload into render-ready view state.
+ *
+ * Trims the project summary and only reports `hasDreamItems` when a non-empty
+ * summary and at least one item are both present.
+ */
 export function toDreamViewState(dream: unknown): DreamViewState {
   const payload = (dream && typeof dream === 'object' ? dream : {}) as DreamPayload
   const summary = payload.project_summary

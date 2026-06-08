@@ -32,6 +32,10 @@ import { DreamAnalysisDialog } from '@/components/app-dialogs/DreamAnalysisDialo
 // Survives component remounts in the same page session.
 const bootstrappedProjects = new Set<string>()
 
+/**
+ * Render the Syx chat application page, wiring the project-data and chat-stream
+ * hooks to the message UI and the project/personality/profile/dream dialogs.
+ */
 export default function App() {
   // Opt-in: unset or non-truthy strings keep the stats bar hidden (matches Makefile default false).
   const showDebugValues = ['true', '1', 'yes', 'on'].includes(

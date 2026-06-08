@@ -27,6 +27,12 @@ type UseChatStreamArgs = {
   onAfterStream?: (projectId: string) => Promise<void>
 }
 
+/**
+ * Manage chat message state and streamed assistant responses for a project.
+ *
+ * Returns the message list and input state plus `send` (streams `/chat/stream`)
+ * and `loadChats` (loads persisted history). Errors are surfaced via `onError`.
+ */
 export function useChatStream({
   projectId,
   model,
@@ -46,6 +52,7 @@ export function useChatStream({
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading])
 
+  /** Load persisted chat history for a project, resetting to empty on failure. */
   const loadChats = useCallback(async (pid: string) => {
     try {
       const data = await api<{
@@ -65,6 +72,13 @@ export function useChatStream({
     }
   }, [])
 
+  /**
+   * Send the current input and stream the assistant reply into the message list.
+   *
+   * Optimistically appends the user message, aborts early when the system is
+   * sleeping (HTTP 423 or a sleep error), incrementally appends decoded chunks,
+   * and flags completion on the `::event: done` sentinel.
+   */
   const send = useCallback(async () => {
     if (!canSend) return
     onBeforeSend?.()

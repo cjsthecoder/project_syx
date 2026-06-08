@@ -13,6 +13,7 @@
  * text/JSON, extracting error messages from varied payload shapes, and throwing
  * a normalized error for failed responses.
  */
+/** Error thrown for failed HTTP responses, carrying the status code and parsed body. */
 export class RequestError extends Error {
   status: number
   body: unknown
@@ -25,6 +26,7 @@ export class RequestError extends Error {
   }
 }
 
+/** Read a response body as text, returning an empty string if reading throws. */
 export async function readTextSafe(res: Response): Promise<string> {
   try {
     return await res.text()
@@ -33,6 +35,12 @@ export async function readTextSafe(res: Response): Promise<string> {
   }
 }
 
+/**
+ * Derive a human-readable message from an error payload of unknown shape.
+ *
+ * Accepts a plain string or an object, checking `detail`, then `error`, then
+ * `message`, and returns `fallback` when none are usable.
+ */
 export function extractErrorMessage(payload: unknown, fallback = 'Request failed'): string {
   if (!payload) return fallback
   if (typeof payload === 'string') return payload || fallback
@@ -46,6 +54,7 @@ export function extractErrorMessage(payload: unknown, fallback = 'Request failed
   return fallback
 }
 
+/** Read a response body and JSON-parse it, falling back to raw text, or null when empty. */
 export async function parseResponseBody(res: Response): Promise<unknown> {
   const raw = await readTextSafe(res)
   if (!raw) return null
@@ -56,12 +65,19 @@ export async function parseResponseBody(res: Response): Promise<unknown> {
   }
 }
 
+/**
+ * Throw a normalized {@link RequestError} for a failed response, deriving the
+ * message from the parsed body.
+ *
+ * @throws {RequestError} Always.
+ */
 export async function throwRequestError(res: Response): Promise<never> {
   const body = await parseResponseBody(res)
   const message = extractErrorMessage(body, `HTTP ${res.status}`)
   throw new RequestError(message, res.status, body)
 }
 
+/** Parse a response body as a JSON object, returning null when it is empty or not an object. */
 export async function readJsonSafe<T>(res: Response): Promise<T | null> {
   const body = await parseResponseBody(res)
   if (body && typeof body === 'object') {

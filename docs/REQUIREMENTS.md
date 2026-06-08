@@ -3152,7 +3152,7 @@ It assumes that the Dream pipeline (FR-4.1.x–4.4) has produced a `memory/{proj
    - Implementation note: this MAY be exposed via a backend endpoint such as:
      - `GET /projects/{project_id}/dream` → `{ "project_id": "...", "dream": { ... } }` or `{ "project_id": "...", "dream": null }`
      - The endpoint SHOULD read `memory/{project_id}/dream.json` and parse it as JSON, performing basic schema validation (e.g., top-level object, optional `date`, `project_summary` string, `items` list of objects).
-     - When `dream.json` is absent but `latest_sleep_summary.txt` is present (see FR-4.5.3 Auto-Accept + Cleanup), the endpoint SHOULD return a summary-only payload with `items=[]` so the Project Summary card remains visible while Analyze Dreams remains hidden.
+     - When `dream.json` is absent but `latest_sleep_summary.md` is present (see FR-4.5.3 Auto-Accept + Cleanup), the endpoint SHOULD return a summary-only payload with `items=[]` so the Project Summary card remains visible while Analyze Dreams remains hidden.
 2. If a usable Dream summary string is available (from `dream.json.project_summary` or the summary-only fallback), the GUI MUST render a **Project Summary card** in the main chat window:
    - It MUST be visually distinct and **NOT** part of the normal chat `messages` list (i.e., it is not a user/assistant bubble and will not be rolled off as a chat message).
    - It MUST appear **above** the first chat pair in the scrollable chat area.
@@ -3274,7 +3274,7 @@ Populate the Dream analysis modal with dream entries from `dream.json`, rendered
   - Tagger failure is non-fatal; persist the item without tags, matching manual Dream submission behavior.
   - Auto-accepted items MUST use `keep=false` even though manual Dream submission currently persists remembered items with `keep=true`.
   - Append accepted items to `dream_summary.txt` using the same Dream memory block format so the same Sleep cycle can fold them into `uploads/dream/dream_{cycle_ts}.txt`; research-backed responses MUST include pruned research blocks without adding a synthetic research-overview sentence.
-  - Before deleting `dream.json`, preserve its `project_summary` in `memory/{project}/latest_sleep_summary.txt` when present.
+  - Before deleting `dream.json`, preserve its `project_summary` in `memory/{project}/latest_sleep_summary.md` when present.
     - When accepted Dream items contain research entries, the preserved summary MUST append a `[RESEARCH]` block containing deduplicated `research_topic` values in first-seen order.
     - Formatting:
       ```
@@ -3288,7 +3288,7 @@ Populate the Dream analysis modal with dream entries from `dream.json`, rendered
   - If all processable items succeed, delete `dream.json`.
   - If filtering leaves zero processable items, log at DEBUG level and delete `dream.json`.
 - UI fallback:
-  - When `dream.json` is absent but `latest_sleep_summary.txt` exists, `GET /projects/{project_id}/dream` SHALL return a summary-only Dream payload with an empty `items` array so the Project Summary card remains visible while Analyze Dreams remains hidden.
+  - When `dream.json` is absent but `latest_sleep_summary.md` exists, `GET /projects/{project_id}/dream` SHALL return a summary-only Dream payload with an empty `items` array so the Project Summary card remains visible while Analyze Dreams remains hidden.
 - Failure cleanup:
   - If any processable item fails to persist or post-processing fails, log a WARNING and rename `dream.json` beside the original file as `bad_dream_<timestamp>.json`.
   - Do not silently swallow auto-accept failures; Sleep may continue with partial status.

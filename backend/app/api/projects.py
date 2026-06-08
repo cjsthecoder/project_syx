@@ -101,7 +101,7 @@ def _validate_dream_payload(data: Any) -> Optional[dict]:
 def _read_latest_sleep_summary(project_id: str) -> Optional[dict]:
     """Return the project's latest sleep summary as a dream-shaped dict, or None.
 
-    Reads ``latest_sleep_summary.txt`` and wraps its text as
+    Reads ``latest_sleep_summary.md`` and wraps its text as
     ``{"project_summary": ..., "items": []}``.
 
     Args:
@@ -111,7 +111,7 @@ def _read_latest_sleep_summary(project_id: str) -> Optional[dict]:
         A dream-shaped dict wrapping the summary text, or ``None`` when the
         file is missing, empty, or unreadable.
     """
-    summary_path = os.path.join(get_settings().memory_root, project_id, "latest_sleep_summary.txt")
+    summary_path = os.path.join(get_settings().memory_root, project_id, "latest_sleep_summary.md")
     try:
         if not os.path.isfile(summary_path):
             return None

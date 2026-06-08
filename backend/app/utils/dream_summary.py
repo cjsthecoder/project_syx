@@ -78,7 +78,7 @@ def write_latest_sleep_summary(
     project_summary: Optional[str],
     accepted_items: Iterable[Dict[str, Any]],
 ) -> None:
-    """Write the latest dream summary card to ``latest_sleep_summary.txt``.
+    """Write the latest dream summary card to ``latest_sleep_summary.md``.
 
     No-ops when the project summary is missing or blank. Write failures are
     logged as warnings and suppressed so summary persistence is best-effort.
@@ -91,7 +91,7 @@ def write_latest_sleep_summary(
     """
     if not isinstance(project_summary, str) or not project_summary.strip():
         return
-    summary_path = os.path.join(base_dir, "latest_sleep_summary.txt")
+    summary_path = os.path.join(base_dir, "latest_sleep_summary.md")
     body = format_latest_sleep_summary(project_summary, accepted_items).strip()
     try:
         with open(summary_path, "w", encoding="utf-8", newline="\n") as f:

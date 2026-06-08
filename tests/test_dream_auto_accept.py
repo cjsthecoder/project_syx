@@ -104,7 +104,7 @@ def _load_auto_accept_module(monkeypatch, *, append_ok=True, tagger_raises=False
         body = str(project_summary).strip()
         if topics:
             body += "\n\n[RESEARCH]\n" + "\n\n".join(topics)
-        Path(base_dir, "latest_sleep_summary.txt").write_text(body + "\n", encoding="utf-8")
+        Path(base_dir, "latest_sleep_summary.md").write_text(body + "\n", encoding="utf-8")
 
     dream_summary_module.write_latest_sleep_summary = write_latest_sleep_summary  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.utils.dream_summary", dream_summary_module)
@@ -165,7 +165,7 @@ def test_auto_accept_processes_dream_json_with_keep_false(tmp_path, monkeypatch)
     assert result.filtered_remote_without_research == 1
     assert result.deleted_dream is True
     assert not dream_path.exists()
-    assert (project_dir / "latest_sleep_summary.txt").read_text(encoding="utf-8").strip() == (
+    assert (project_dir / "latest_sleep_summary.md").read_text(encoding="utf-8").strip() == (
         "Latest project summary\n\n[RESEARCH]\nTopic: topic\n\nTopic: second topic"
     )
     assert len(calls["append"]) == 3

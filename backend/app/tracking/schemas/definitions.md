@@ -848,27 +848,6 @@ Required top-level:
 - How computed: Loaded route policy.
 - Invariants / tolerance: Non-negative.
 
-#### `config_snapshot.deprecated_or_ignored.rag_score_threshold`
-- Type and units: float
-- Exact meaning: Legacy threshold preserved for visibility but not enforced in current route-selection flow.
-- Where measured: Startup snapshot.
-- How computed: From config passthrough.
-- Invariants / tolerance: Informational (non-enforced section).
-
-#### `config_snapshot.deprecated_or_ignored.daily_rag_score_threshold`
-- Type and units: float
-- Exact meaning: Legacy daily threshold preserved for visibility but not enforced in current route-selection flow.
-- Where measured: Startup snapshot.
-- How computed: From config passthrough.
-- Invariants / tolerance: Informational (non-enforced section).
-
-#### `config_snapshot.deprecated_or_ignored.note`
-- Type and units: string
-- Exact meaning: Human note explaining non-enforced/deprecated config scope.
-- Where measured: Startup snapshot.
-- How computed: Config snapshot note text.
-- Invariants / tolerance: Informational.
-
 #### `config_snapshot.maintenance.sleep_enabled`
 - Type and units: boolean
 - Exact meaning: Whether sleep maintenance is enabled.

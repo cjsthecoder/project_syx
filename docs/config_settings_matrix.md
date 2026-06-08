@@ -39,9 +39,7 @@ The following generated `.env` defaults were aligned to `config.py` defaults:
 - `MAX_EMBED_TOKENS_PER_REQUEST=250000`
 - `RAG_EMBED_REBUILD_WORKERS=1`
 - `BASE_TOP_K=5`
-- `RAG_SCORE_THRESHOLD=0.75`
 - `CHAT_HISTORY_LIMIT_PAIRS=10`
-- `DAILY_RAG_SCORE_THRESHOLD=0.70`
 - `DEFAULT_SYSTEM_PROMPT_PATH=backend/app/config/defaults/system_prompt.txt`
 - `DEFAULT_PERSONALITY_PROMPT_PATH=backend/app/config/defaults/personality.json`
 - `FORCE_RAG_REBUILD_ON_STARTUP=false`

@@ -144,7 +144,6 @@ class Settings(BaseSettings):
     # Retrieval-stage limits are controlled by BASE_TOP_K + RETRIEVAL_MULTIPLIER (not route config).
     base_top_k: int = Field(default=6, gt=0, description="Base retrieval top-K (used to derive per-source K)")
     retrieval_multiplier: float = Field(default=2.0, gt=0.0, description="Per-source K multiplier (PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER))")
-    rag_score_threshold: float = Field(default=0.50, ge=0.0, le=1.0, description="Cosine similarity threshold (0..1) — currently not enforced by retrieval selection")
     agent_memory_max_entry_chars: int = Field(
         default=25_000,
         gt=0,
@@ -156,7 +155,6 @@ class Settings(BaseSettings):
 
     # Daily RAG bridge controls (global defaults)
     chat_history_limit_pairs: int = Field(default=3, gt=0, description="Number of recent prompt/response pairs kept in working memory")
-    daily_rag_score_threshold: float = Field(default=0.40, ge=0.0, le=1.0, description="Similarity threshold for daily results — currently not enforced by retrieval selection")
 
     # Builder and reranking
     builder_model: str = Field(default="gpt-5-mini", description="LLM used for query builder/router")

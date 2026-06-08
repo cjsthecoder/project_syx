@@ -61,7 +61,7 @@ Or add it to your `.env` file alongside other settings (generate with `make setu
 - EMBEDDING_MODEL (used by openai provider)
 - SENTENCE_TRANSFORMERS_MODEL_ID (used by sentence_transformers provider; default `BAAI/bge-m3`)
 - CHUNK_SIZE (default 800), CHUNK_OVERLAP (default 100)
-- RAG_ON_CHAT, BASE_TOP_K (default 5), RETRIEVAL_MULTIPLIER, RAG_SCORE_THRESHOLD (default 0.75), DAILY_RAG_SCORE_THRESHOLD (default 0.70)
+- RAG_ON_CHAT, BASE_TOP_K (default 5), RETRIEVAL_MULTIPLIER
 - AVAILABLE_MODELS (optional JSON array)
 
 ## Docker (Ubuntu, Python 3.13.3)

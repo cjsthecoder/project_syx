@@ -153,11 +153,6 @@ def _build_run_config(settings, route_policy, git_commit: str, git_dirty: bool) 
                 "chunk_overlap": int(s.chunk_overlap),
             },
             "route_policy": route_policy_snapshot,
-            "deprecated_or_ignored": {
-                "rag_score_threshold": float(s.rag_score_threshold),
-                "daily_rag_score_threshold": float(s.daily_rag_score_threshold),
-                "note": "not enforced by current retrieval selection pipeline",
-            },
             "maintenance": {
                 "sleep_enabled": True,
                 "enable_scheduler": bool(s.enable_scheduler),

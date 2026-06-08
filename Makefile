@@ -352,18 +352,12 @@ setup-env:
 		echo "RETRIEVAL_MULTIPLIER=2.0"; \
 		echo "# PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)"; \
 		echo ""; \
-		echo "RAG_SCORE_THRESHOLD=0.50"; \
-		echo "# Cosine similarity threshold (0..1) to include snippet"; \
-		echo ""; \
 		echo "AGENT_MEMORY_MAX_ENTRY_CHARS=25000"; \
 		echo "# Max serialized agent memory snippet size for full-entry expansion"; \
 		echo ""; \
 		echo "# === Daily Memory + Daily RAG ==="; \
 		echo "CHAT_HISTORY_LIMIT_PAIRS=3"; \
 		echo "# Number of prompt/response pairs kept in working memory"; \
-		echo ""; \
-		echo "DAILY_RAG_SCORE_THRESHOLD=0.40"; \
-		echo "# Similarity threshold for daily results"; \
 		echo ""; \
 		echo "# === Query Builder + Reranking ==="; \
 		echo "BUILDER_MODEL=gpt-5-mini"; \

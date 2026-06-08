@@ -31,8 +31,6 @@ def _fake_settings():
         embedding_model="embed-model",
         chunk_size=1000,
         chunk_overlap=100,
-        rag_score_threshold=0.2,
-        daily_rag_score_threshold=0.3,
         enable_scheduler=True,
         sleep_cycle_hour=3,
         sleep_cycle_minute=30,

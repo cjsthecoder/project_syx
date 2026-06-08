@@ -662,7 +662,7 @@ A single retrieval function is responsible for all RAG memory queries. It accept
 - `ltm` includes all content embedded in the project's main FAISS index regardless of origin (uploads, sleep summaries, dream artifacts, etc.).
 
 Behavior and boundaries (this stage):
-- No namespace boosts, route-based `rag_k`, source branching, deduplication, or prompt injection are performed.
+- No namespace boosts, source branching, deduplication, or prompt injection are performed.
 - Per-route score gating (`min_score`) is not applied here; it is enforced in FR-2.3-3.3 after global ordering (FR-2.3-3.2).
 - An empty result from one source MUST NOT block other sources.
 - If querying a source fails, that source degrades to an empty candidate list for the current request (no in-request retry). Rebuild/repair is owned by the source subsystem and runs best-effort asynchronously.

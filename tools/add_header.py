@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Copyright (c) 2025-2026 Syx Project Contributors
-
 SPDX-License-Identifier: MIT
 
 This file is part of the Syx project. See the LICENSE file in the project
@@ -29,8 +27,6 @@ def _has_header_marker(text: str) -> bool:
 
 HEADER_TEXT_LINES = [
     '"""',
-    "Copyright (c) 2025-2026 Syx Project Contributors",
-    "",
     "SPDX-License-Identifier: MIT",
     "",
     "This file is part of the Syx project. See the LICENSE file in the project",
@@ -39,12 +35,13 @@ HEADER_TEXT_LINES = [
     "",
 ]
 HEADER_TEXT = "\n".join(HEADER_TEXT_LINES)
-HEADER_BODY_LINES = set(HEADER_TEXT_LINES[1:7])
+# Inner body lines (between the triple quotes), used to strip lingering header
+# lines from a following module docstring. Slicing off the opening quote and the
+# trailing quote/blank keeps this correct regardless of header length.
+HEADER_BODY_LINES = set(HEADER_TEXT_LINES[1:-2])
 
 HEADER_TSJS_LINES = [
     "/**",
-    " * Copyright (c) 2025-2026 Syx Project Contributors",
-    " *",
     " * SPDX-License-Identifier: MIT",
     " *",
     " * This file is part of the Syx project. See the LICENSE file in the project",

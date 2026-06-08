@@ -92,7 +92,7 @@ def _get_user_profile(project_id: str) -> str:
         )
         return summary_text
 
-    # 2) Fall back to RAG lookup (e.g., DEFAULT_RAG.txt via User Profile Codex)
+    # 2) Fall back to RAG lookup (e.g., USER_PROFILE.txt via User Profile Codex)
     up = retrieve_dream_context(
         project_id=project_id,
         query="User Profile Codex",

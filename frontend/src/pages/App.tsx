@@ -25,6 +25,7 @@ import { useChatStream } from '@/hooks/useChatStream'
 import { SleepDialog } from '@/components/app-dialogs/SleepDialog'
 import { CreateProjectDialog } from '@/components/app-dialogs/CreateProjectDialog'
 import { PersonalityDialog } from '@/components/app-dialogs/PersonalityDialog'
+import { UserProfileDialog } from '@/components/app-dialogs/UserProfileDialog'
 import { ManageProjectDialog } from '@/components/app-dialogs/ManageProjectDialog'
 import { DreamAnalysisDialog } from '@/components/app-dialogs/DreamAnalysisDialog'
 
@@ -83,6 +84,11 @@ export default function App() {
     deleteFile,
     loadPersonality,
     savePersonality,
+    userProfile,
+    setUserProfile,
+    savingUserProfile,
+    loadUserProfile,
+    saveUserProfile,
     saveDreamItems,
   } = useProjectData({
     showDebugValues,
@@ -104,6 +110,7 @@ export default function App() {
   const [renameProjectName, setRenameProjectName] = useState('')
   const [showDreamModal, setShowDreamModal] = useState(false)
   const [showPersonalityModal, setShowPersonalityModal] = useState(false)
+  const [showUserProfileModal, setShowUserProfileModal] = useState(false)
   const streamHandlersRef = useRef<{
     loadStats: (pid: string) => Promise<void>
     loadChats: (pid: string) => Promise<void>
@@ -472,6 +479,22 @@ export default function App() {
         onDomainFocusChange={setDomainFocus}
       />
 
+      <UserProfileDialog
+        open={showUserProfileModal}
+        content={userProfile}
+        saving={savingUserProfile}
+        onClose={() => {
+          setShowUserProfileModal(false)
+          setTimeout(() => setShowManageModal(true), 0)
+        }}
+        onSave={async () => {
+          await saveUserProfile()
+          setShowUserProfileModal(false)
+          setTimeout(() => setShowManageModal(true), 0)
+        }}
+        onContentChange={setUserProfile}
+      />
+
       <ManageProjectDialog
         open={showManageModal}
         projectId={projectId}
@@ -500,6 +523,13 @@ export default function App() {
           }
           setShowManageModal(false)
           setTimeout(() => setShowPersonalityModal(true), 0)
+        }}
+        onOpenUserProfile={async () => {
+          if (projectId) {
+            await loadUserProfile(projectId)
+          }
+          setShowManageModal(false)
+          setTimeout(() => setShowUserProfileModal(true), 0)
         }}
         onToggleDailyHistory={async (next) => {
           if (!projectId) return

@@ -1,0 +1,29 @@
+# User Profile
+
+This file seeds each new project with baseline information about you so the
+assistant has useful context from the very first message. It is copied into the
+project's uploads/ folder on creation and indexed into retrieval (RAG).
+
+Replace the placeholder text below with your own details. You can edit, expand,
+or delete any section. Keep it factual and concise — this content is retrieved
+and shown to the model as context.
+
+## About Me
+Add a short summary of who you are: name (or how you'd like to be addressed),
+role, location/time zone, and what you're generally trying to accomplish.
+
+## Background / Resume
+Summarize your experience: current and past roles, key skills, technologies,
+education, and notable accomplishments. Bullet points are fine.
+
+## Current Projects
+List the projects you're actively working on, their goals, and their status.
+Include anything the assistant should keep in mind when helping with them.
+
+## Interests
+List topics, domains, and hobbies you care about. This helps the assistant
+tailor examples, suggestions, and tone.
+
+## Preferences
+Note any working preferences: preferred languages/frameworks, writing style,
+level of detail, formatting conventions, or things to avoid.

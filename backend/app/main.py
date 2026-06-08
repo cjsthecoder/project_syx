@@ -206,7 +206,7 @@ async def lifespan(app: FastAPI):
         init_from_disk()
     except Exception as e:
         logger.warning("[SLEEP] Failed to init lock from disk: %s", e, exc_info=True)
-    # Seed DEFAULT_RAG for Main if present and missing
+    # Seed USER_PROFILE.txt for Main if present and missing
     try:
         from sqlmodel import select
         with get_session() as session:
@@ -215,19 +215,19 @@ async def lifespan(app: FastAPI):
             pid = row.id
             uploads_dir = os.path.join(settings.memory_root, pid, "uploads")
             os.makedirs(uploads_dir, exist_ok=True)
-            default_src = os.path.abspath(os.path.join(os.path.dirname(__file__), "config", "defaults", "DEFAULT_RAG.txt"))
-            default_dst = os.path.join(uploads_dir, "DEFAULT_RAG.txt")
+            default_src = os.path.abspath(os.path.join(os.path.dirname(__file__), "config", "defaults", "USER_PROFILE.txt"))
+            default_dst = os.path.join(uploads_dir, "USER_PROFILE.txt")
             if os.path.isfile(default_src):
                 if not os.path.exists(default_dst):
                     shutil.copy(default_src, default_dst)
-                    logger.info("[INIT] Added default RAG file to %s", default_dst)
+                    logger.info("[INIT] Added user profile file to %s", default_dst)
                     try:
                         rebuild_faiss_index(pid)
-                        logger.info("[INIT] RAG rebuilt for project %s (includes DEFAULT_RAG.txt)", pid)
+                        logger.info("[INIT] RAG rebuilt for project %s (includes USER_PROFILE.txt)", pid)
                     except Exception as re:
                         logger.warning("[INIT] RAG rebuild failed for project %s: %s", pid, re)
             else:
-                logger.warning("[WARN] DEFAULT_RAG.txt not found; Main created without baseline knowledge.")
+                logger.warning("[WARN] USER_PROFILE.txt not found; Main created without baseline knowledge.")
     except Exception as e:
         logger.warning("[INIT] Main seed failed: %s", e, exc_info=True)
     # Optional startup sweep to rebuild all project RAG indexes from uploads.

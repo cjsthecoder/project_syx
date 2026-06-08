@@ -32,6 +32,7 @@ type ManageProjectDialogProps = {
   onDeleteFile: (id: number) => void
   onUploadFiles: (files: FileList) => Promise<void>
   onOpenPersonality: () => void
+  onOpenUserProfile: () => void
   onToggleDailyHistory: (next: boolean) => Promise<void>
   onDragOver: DragEventHandler<HTMLDivElement>
   onDragLeave: () => void
@@ -52,6 +53,7 @@ export function ManageProjectDialog({
   onDeleteFile,
   onUploadFiles,
   onOpenPersonality,
+  onOpenUserProfile,
   onToggleDailyHistory,
   onDragOver,
   onDragLeave,
@@ -73,12 +75,18 @@ export function ManageProjectDialog({
           {projectInfo?.system && <div className="text-amber-600">System project</div>}
         </div>
 
-        <div className="flex items-center justify-start">
+        <div className="flex items-center justify-start gap-2">
           <Button
             className="bg-black !text-white hover:bg-gray-900 border-transparent dark:!bg-black dark:!text-white dark:hover:!bg-gray-900"
             onClick={onOpenPersonality}
           >
             Personality
+          </Button>
+          <Button
+            className="bg-black !text-white hover:bg-gray-900 border-transparent dark:!bg-black dark:!text-white dark:hover:!bg-gray-900"
+            onClick={onOpenUserProfile}
+          >
+            User Profile
           </Button>
         </div>
 

@@ -9,9 +9,10 @@
 /**
  * React hook centralizing all project-scoped data and actions.
  *
- * Loads and manages projects, files, stats, project info, dream summaries, and
- * personality settings, and exposes CRUD operations for projects, file uploads,
- * personality saves, dream-item persistence, and sleep-status checks.
+ * Loads and manages projects, files, stats, project info, dream summaries,
+ * personality settings, and the user profile, and exposes CRUD operations for
+ * projects, file uploads, personality/profile saves, dream-item persistence,
+ * and sleep-status checks.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/pages/app/api'
@@ -44,6 +45,9 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
   const [formatPref, setFormatPref] = useState<'markdown' | 'plain' | 'html'>('markdown')
   const [creativity, setCreativity] = useState(0.4)
   const [domainFocus, setDomainFocus] = useState('')
+
+  const [userProfile, setUserProfile] = useState('')
+  const [savingUserProfile, setSavingUserProfile] = useState(false)
 
   const [dragOver, setDragOver] = useState(false)
   const refreshInFlightRef = useRef<Set<string>>(new Set())
@@ -261,6 +265,37 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     }
   }, [creativity, domainFocus, formatPref, loadProjectInfo, onError, projectId, systemPrompt, tone, verbosity])
 
+  const loadUserProfile = useCallback(
+    async (pid: string) => {
+      if (!pid) return
+      try {
+        const data = await api<{ project_id: string; content: string; exists: boolean }>(`/projects/${pid}/user_profile`)
+        setUserProfile(data.content || '')
+      } catch (e: unknown) {
+        onError(e instanceof Error ? e.message : 'Failed to load user profile')
+        setUserProfile('')
+      }
+    },
+    [onError],
+  )
+
+  const saveUserProfile = useCallback(async () => {
+    if (!projectId) return
+    setSavingUserProfile(true)
+    try {
+      await api(`/projects/${projectId}/user_profile`, { method: 'PUT', body: JSON.stringify({ content: userProfile }) })
+      try {
+        await loadStats(projectId)
+      } catch (e) {
+        console.info('post-save stats refresh failed', e)
+      }
+    } catch (e: unknown) {
+      onError(e instanceof Error ? e.message : 'Failed to save user profile')
+    } finally {
+      setSavingUserProfile(false)
+    }
+  }, [loadStats, onError, projectId, userProfile])
+
   const saveDreamItems = useCallback(async () => {
     if (!projectId || dreamItems.length === 0) return
     setSavingDream(true)
@@ -355,6 +390,11 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
     deleteFile,
     loadPersonality,
     savePersonality,
+    userProfile,
+    setUserProfile,
+    savingUserProfile,
+    loadUserProfile,
+    saveUserProfile,
     saveDreamItems,
   }
 }

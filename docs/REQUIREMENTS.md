@@ -1401,19 +1401,22 @@ Add a second toggle next to the existing Forget control to carry a “keep” fl
 - No blocking issues or schema changes introduced.
 
 
-## Version 2.8 — Default Global RAG File
+## Version 2.8 — User Profile Baseline File
 
 ### Purpose
-Ensure every new project starts with a consistent baseline of Syx system knowledge, even if the user never uploads any files.  
-This version simplifies the earlier design by copying a shared **DEFAULT_RAG.txt** into each project’s uploads directory on creation and triggering a RAG rebuild automatically.
+Ensure every new project starts with a consistent baseline of information about the user, even if the user never uploads any files.  
+A generic, non-personal **USER_PROFILE.txt** template ships with the repository and is copied into each project’s uploads directory on creation, triggering a RAG rebuild automatically so the content is available to retrieval from the first message.
+
+> Naming history: this file was previously named `DEFAULT_RAG.txt`. That name was opaque (it described the mechanism — RAG — rather than the content), and the original file shipped with private user content. It is now `USER_PROFILE.txt`, ships as a generic template, and is safe to commit to a public repository.
 
 ### Functional Requirements
 
-#### FR-2.8.1 — Default RAG Source File
-- Shared baseline file path:
+#### FR-2.8.1 — User Profile Template File
+- Shared template path:
   ```
-  backend/app/config/defaults/DEFAULT_RAG.txt
+  backend/app/config/defaults/USER_PROFILE.txt
   ```
+- Contains generic placeholder guidance only (about, background/resume, current projects, interests, preferences) — no real user data.
 
 #### FR-2.8.2 — Project Initialization Behavior
 During project creation:
@@ -1421,44 +1424,55 @@ During project creation:
    ```
    memory/{project}/uploads/
    ```
-2. Copy the default baseline file:
+2. Copy the template into the new project’s uploads directory:
    ```python
-   shutil.copy("backend/app/config/defaults/DEFAULT_RAG.txt",
-               f"memory/{project}/uploads/DEFAULT_RAG.txt")
+   shutil.copy("backend/app/config/defaults/USER_PROFILE.txt",
+               f"memory/{project}/uploads/USER_PROFILE.txt")
    ```
-3. Log initialization:
+3. If the destination already exists, skip the copy (do not overwrite user edits).
+4. Log initialization:
    ```
-   [INIT] Added default RAG file to memory/{project}/uploads/
+   [INIT] Added user profile file to memory/{project}/uploads/
    ```
 
 #### FR-2.8.3 — Automatic RAG Rebuild
-After copying the default file:
-- Automatically trigger a RAG rebuild (or “embed all uploads” process) to ensure the default file is indexed immediately, even if the user never uploads additional content.
-- Example:
-  ```python
-  rebuild_rag(project_id)
-  ```
+After copying the template:
+- Automatically trigger a RAG rebuild to ensure the profile is indexed immediately, even if the user never uploads additional content.
 - Log confirmation:
   ```
-  [INIT] RAG rebuilt for project main (includes DEFAULT_RAG.txt)
+  [INIT] RAG rebuilt for project main (includes USER_PROFILE.txt)
   ```
 
-#### FR-2.8.4 — Maintenance and Visibility
-- The default file appears in the project’s **uploads directory** and can be viewed, edited, or replaced like any user file.
-- If the project is rebuilt or reindexed, the default file is re-embedded automatically.
-- No special handling (e.g., `system=true`) is required — the file name identifies it as part of the baseline.
-- Missing default file:
+#### FR-2.8.4 — Main Project Startup Seed
+- On startup, the system project (“Main”) is seeded with `USER_PROFILE.txt` when the template is present and the file is missing from its uploads directory, followed by a RAG rebuild.
+
+#### FR-2.8.5 — In-GUI Editing
+- The profile is editable from the web GUI via a dedicated “User Profile” editor (a focused editor like the Personality dialog), not the generic file list.
+- Backend endpoints (path-based on `memory/{project}/uploads/USER_PROFILE.txt`):
+  - `GET /projects/{project_id}/user_profile` → `{ content, exists, filename }`.
+  - `PUT /projects/{project_id}/user_profile` with `{ content }` → writes the file, enforces the per-file upload size limit, then rebuilds the RAG index.
+- The profile is treated as a special project file (like `personality.json` / the system prompt) and is therefore not listed among generic uploads.
+
+#### FR-2.8.6 — Maintenance and Visibility
+- The profile can be viewed, edited, or replaced; it re-embeds on rebuild.
+- Missing template:
   - Log a warning but do **not** block project creation.
   ```
-  [WARN] DEFAULT_RAG.txt not found; project created without baseline knowledge.
+  [WARN] USER_PROFILE.txt not found; project created without baseline knowledge.
   ```
 
+### Non-Goals
+- No change to RAG ingestion, chunking, or retrieval mechanics.
+- No automatic population of real user data; the template stays generic.
+
 ### Acceptance Criteria
-- Each new project automatically includes `DEFAULT_RAG.txt` in `uploads/`.
-- RAG rebuild runs immediately after creation, ensuring the default file is embedded.
-- Default file visible in the uploads list and re-embeds on rebuild.
-- Logs confirm default file copy and rebuild actions.
-- Missing default file logs a warning but does not cause failure.
+- A generic `USER_PROFILE.txt` template exists under `backend/app/config/defaults/`.
+- Each new project automatically includes `USER_PROFILE.txt` in `uploads/`, and an existing file is not overwritten.
+- RAG rebuild runs immediately after creation, ensuring the profile is embedded.
+- The Main project is seeded on startup when the file is absent.
+- The profile is editable in the web GUI; saving rewrites the file and rebuilds the project RAG index.
+- Missing template logs a warning but does not cause failure.
+- No references to `DEFAULT_RAG.txt` remain in runtime code paths.
 
 **End of Version 2.x Series — Ready for 3.0 Sleep Cycle.**
 

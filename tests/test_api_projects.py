@@ -59,6 +59,47 @@ def test_create_project(client):
     assert "Research" in body["project_names"].values()
 
 
+def test_create_seeds_user_profile_into_uploads(client, temp_memory_root):
+    resp = client.post("/projects", json={"project_name": "Seeded"})
+    assert resp.status_code == 200
+    pid = resp.json()["current_project"]
+
+    profile_path = temp_memory_root / pid / "uploads" / "USER_PROFILE.txt"
+    assert profile_path.is_file()
+    assert "User Profile" in profile_path.read_text(encoding="utf-8")
+
+
+def test_user_profile_get_missing_is_empty(client, db):
+    pid = _make_project(db, name="Profile")
+    resp = client.get(f"/projects/{pid}/user_profile")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["exists"] is False
+    assert body["content"] == ""
+    assert body["filename"] == "USER_PROFILE.txt"
+
+
+def test_user_profile_put_then_get_roundtrip(client, db, temp_memory_root):
+    pid = _make_project(db, name="Profile")
+    text = "# User Profile\n\n## About Me\nTest user.\n"
+    put = client.put(f"/projects/{pid}/user_profile", json={"content": text})
+    assert put.status_code == 200
+    assert put.json()["rebuild_status"] == "completed"
+
+    saved = (temp_memory_root / pid / "uploads" / "USER_PROFILE.txt").read_text(encoding="utf-8")
+    assert saved == text
+
+    got = client.get(f"/projects/{pid}/user_profile")
+    assert got.json()["content"] == text
+    assert got.json()["exists"] is True
+
+
+def test_user_profile_put_requires_content_string(client, db):
+    pid = _make_project(db, name="Profile")
+    resp = client.put(f"/projects/{pid}/user_profile", json={})
+    assert resp.status_code == 400
+
+
 def test_create_duplicate_name_conflicts(client):
     client.post("/projects", json={"project_name": "Dup"})
     resp = client.post("/projects", json={"project_name": "dup"})  # case-insensitive

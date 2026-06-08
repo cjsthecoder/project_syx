@@ -660,27 +660,27 @@ async def create_or_switch_project(request: ProjectRequest) -> JSONResponse:
                     logger.warning("[PROJECT] Failed to seed defaults for project %s: %s", obj.id, e, exc_info=True)
                 _current_project = obj.id
                 message = f"Created and switched to new project '{obj.name}'"
-                # Seed DEFAULT_RAG.txt and rebuild RAG
+                # Seed USER_PROFILE.txt baseline and rebuild RAG
                 try:
                     uploads_dir = os.path.join(get_settings().memory_root, obj.id, "uploads")
                     os.makedirs(uploads_dir, exist_ok=True)
-                    default_src = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "defaults", "DEFAULT_RAG.txt"))
-                    default_dst = os.path.join(uploads_dir, "DEFAULT_RAG.txt")
+                    default_src = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "defaults", "USER_PROFILE.txt"))
+                    default_dst = os.path.join(uploads_dir, "USER_PROFILE.txt")
                     if os.path.isfile(default_src):
                         if os.path.exists(default_dst):
-                            logger.warning("[INIT] DEFAULT_RAG.txt already exists for project %s; skipping copy", obj.id)
+                            logger.warning("[INIT] USER_PROFILE.txt already exists for project %s; skipping copy", obj.id)
                         else:
                             shutil.copy(default_src, default_dst)
-                            logger.info("[INIT] Added default RAG file to %s", default_dst)
+                            logger.info("[INIT] Added user profile file to %s", default_dst)
                     else:
-                        logger.warning("[WARN] DEFAULT_RAG.txt not found; project %s created without baseline knowledge.", obj.id)
+                        logger.warning("[WARN] USER_PROFILE.txt not found; project %s created without baseline knowledge.", obj.id)
                     try:
                         rebuild_faiss_index(obj.id)
-                        logger.info("[INIT] RAG rebuilt for project %s (includes DEFAULT_RAG.txt when present)", obj.id)
+                        logger.info("[INIT] RAG rebuilt for project %s (includes USER_PROFILE.txt when present)", obj.id)
                     except Exception as re:
                         logger.warning("[INIT] RAG rebuild failed for project %s: %s", obj.id, re)
                 except Exception as se:
-                    logger.warning("[INIT] Failed seeding default RAG for project %s: %s", obj.id, se)
+                    logger.warning("[INIT] Failed seeding user profile for project %s: %s", obj.id, se)
         with get_session() as session:
             rows = session.exec(select(Project)).all()
             available_projects = [p.id for p in rows]
@@ -1019,6 +1019,72 @@ async def patch_project_personality(project_id: str, payload: dict) -> JSONRespo
     except Exception as e:
         logger.error(f"Failed to save personality for project {project_id}: {e}")
         return JSONResponse(status_code=500, content={"error": "Failed to save personality"})
+
+
+USER_PROFILE_FILENAME = "USER_PROFILE.txt"
+
+
+def _user_profile_path(project_id: str) -> str:
+    return os.path.join(get_settings().memory_root, project_id, "uploads", USER_PROFILE_FILENAME)
+
+
+@router.get("/projects/{project_id}/user_profile")
+async def get_project_user_profile(project_id: str) -> JSONResponse:
+    """Return the project's USER_PROFILE.txt baseline content for editing."""
+    path = _user_profile_path(project_id)
+    exists = os.path.isfile(path)
+    content = ""
+    if exists:
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                content = fh.read()
+        except OSError as exc:
+            logger.warning("[PROJECT] user_profile read failed project_id=%s path=%s detail=%s", project_id, path, exc)
+            return JSONResponse(status_code=500, content={"error": "Failed to read user profile"})
+    return JSONResponse(status_code=200, content={
+        "project_id": project_id,
+        "filename": USER_PROFILE_FILENAME,
+        "content": content,
+        "exists": exists,
+    })
+
+
+@router.put("/projects/{project_id}/user_profile")
+async def put_project_user_profile(project_id: str, payload: dict) -> JSONResponse:
+    """Replace USER_PROFILE.txt content, then rebuild the project RAG index."""
+    content = (payload or {}).get("content")
+    if not isinstance(content, str):
+        return JSONResponse(status_code=400, content={"error": "Missing 'content' string"})
+
+    settings = get_settings()
+    max_bytes = int(settings.max_upload_mb * 1024 * 1024)
+    if len(content.encode("utf-8")) > max_bytes:
+        return JSONResponse(status_code=400, content={"error": f"User profile exceeds max size {settings.max_upload_mb}MB"})
+
+    uploads_dir = os.path.join(settings.memory_root, project_id, "uploads")
+    os.makedirs(uploads_dir, exist_ok=True)
+    path = os.path.join(uploads_dir, USER_PROFILE_FILENAME)
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+    except OSError as exc:
+        logger.warning("[PROJECT] user_profile write failed project_id=%s path=%s detail=%s", project_id, path, exc)
+        return JSONResponse(status_code=500, content={"error": "Failed to save user profile"})
+
+    token_count = int(count_tokens(content))
+    try:
+        rebuild_faiss_index(project_id)
+        rebuild_status = "completed"
+    except Exception as exc:
+        logger.warning("[PROJECT] user_profile RAG rebuild failed project_id=%s detail=%s", project_id, exc)
+        rebuild_status = "failed"
+
+    return JSONResponse(status_code=200, content={
+        "project_id": project_id,
+        "filename": USER_PROFILE_FILENAME,
+        "token_count": token_count,
+        "rebuild_status": rebuild_status,
+    })
 
 
 @router.put("/projects/{project_id}/system_prompt")

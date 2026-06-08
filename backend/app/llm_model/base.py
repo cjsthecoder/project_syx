@@ -49,7 +49,17 @@ class LLMChatClient(Protocol):
         temperature: Optional[float] = None,
         max_completion_tokens: Optional[int] = None,
     ) -> LLMResponse:
-        """Generate a single chat completion and return it as an ``LLMResponse``."""
+        """Generate a single chat completion and return it as an ``LLMResponse``.
+
+        Args:
+            messages: Chat messages in role/content form.
+            model: Optional model override; defaults to the backend's default.
+            temperature: Optional sampling temperature.
+            max_completion_tokens: Optional cap on generated tokens.
+
+        Returns:
+            An ``LLMResponse`` with the completion text, model, and token usage.
+        """
         ...
 
     def stream_chat(
@@ -64,6 +74,15 @@ class LLMChatClient(Protocol):
 
         Each yielded tuple carries either a text chunk (with ``None`` usage) or
         a final usage payload (with an empty text chunk).
+
+        Args:
+            messages: Chat messages in role/content form.
+            model: Optional model override; defaults to the backend's default.
+            temperature: Optional sampling temperature.
+            max_completion_tokens: Optional cap on generated tokens.
+
+        Yields:
+            Tuples of a text delta and an optional usage payload.
         """
         ...
 
@@ -87,5 +106,18 @@ class LLMResponsesClient(Protocol):
 
         Supports optional reasoning effort, strict JSON-object output, and tool
         definitions, returning the result as an ``LLMResponse``.
+
+        Args:
+            model: Optional model override; defaults to the backend's default.
+            system_prompt: Optional system instructions.
+            user_prompt: User prompt text.
+            max_output_tokens: Optional cap on generated tokens.
+            reasoning_effort: Optional reasoning effort hint (e.g., "low").
+            require_json_object: When True, request a strict JSON-object response.
+            tools: Optional tool definitions to expose to the model.
+            temperature: Optional sampling temperature.
+
+        Returns:
+            An ``LLMResponse`` with the output text, model, and token usage.
         """
         ...

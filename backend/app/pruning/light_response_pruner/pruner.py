@@ -56,6 +56,19 @@ class PrunerConfig:
     ) -> None:
         """Validate and store pruning configuration.
 
+        Args:
+            max_response_size: Maximum input length, in characters, accepted by
+                ``prune``; larger inputs are rejected. Must be > 0.
+            max_front_units: Maximum number of leading sentences that front
+                trimming may remove. Must be > 0.
+            similarity_threshold: Fuzzy-match score (0-100) at or above which a
+                sentence is treated as a near-duplicate.
+            whitespace_mode: Whitespace handling strategy; one of "off",
+                "compact_prose", or "preserve_code".
+            response_pruning: Optional per-stage enable flags overriding the
+                defaults; unknown keys are rejected. When None, all stages are
+                enabled.
+
         Raises:
             PrunerConfigError: If any value has the wrong type or is outside its
                 allowed range, or if ``response_pruning`` has unsupported keys.
@@ -108,6 +121,13 @@ class Pruner:
     """
 
     def __init__(self, *, rules: PruneRules, config: PrunerConfig | None = None) -> None:
+        """Initialize the pruner and precompute normalized prefix tables.
+
+        Args:
+            rules: Validated front/end prefix rules driving prefix matching.
+            config: Optional runtime configuration; a default ``PrunerConfig``
+                is used when omitted.
+        """
         self.rules = rules
         self.config = config or PrunerConfig()
         self._front_prefixes = _normalized_front_prefixes(rules)
@@ -288,6 +308,19 @@ class Pruner:
         )
 
     def _prune_front(self, text: str) -> "_FrontPruneState":
+        """Trim matching leading sentences from the front of ``text``.
+
+        Iterates leading sentences up to ``max_front_units``, removing each one
+        whose normalized prefix matches a configured front prefix. Stops early
+        when removal would empty the remaining text, flagging the safety guard.
+
+        Args:
+            text: Working response text to trim from the front.
+
+        Returns:
+            A ``_FrontPruneState`` capturing the remaining text, consumed
+            offset, matched prefixes, count removed, and the safety flag.
+        """
         working_text = text
         original_offset = 0
         matched_prefixes: list[str] = []
@@ -322,6 +355,21 @@ class Pruner:
         )
 
     def _prune_end(self, text: str, *, original_offset: int) -> "_EndPruneState":
+        """Trim a trailing paragraph whose prefix matches a configured end rule.
+
+        Considers only the last two paragraphs, skipping those inside fenced
+        code or beginning with structured content. Removal is blocked (and the
+        safety flag set) when it would empty the remaining text.
+
+        Args:
+            text: Working response text to trim from the end.
+            original_offset: Offset of ``text`` within the original response,
+                used to report removed spans in original coordinates.
+
+        Returns:
+            An ``_EndPruneState`` capturing the remaining text, matched
+            prefixes, removed span (or None), and the safety flag.
+        """
         candidate_spans = paragraph_spans(text)[-2:]
         for span in candidate_spans:
             if span_starts_inside_fenced_code_block(text, span):
@@ -381,6 +429,8 @@ def prune_response(
 
 
 class _FrontPruneState:
+    """Internal result of a front-trimming pass."""
+
     def __init__(
         self,
         *,
@@ -398,6 +448,8 @@ class _FrontPruneState:
 
 
 class _EndPruneState:
+    """Internal result of an end-trimming pass."""
+
     def __init__(
         self,
         *,
@@ -413,6 +465,15 @@ class _EndPruneState:
 
 
 def _normalized_front_prefixes(rules: PruneRules) -> list[tuple[str, str]]:
+    """Pair each front prefix with its normalized comparison form.
+
+    Args:
+        rules: Rules whose front section supplies the prefixes.
+
+    Returns:
+        ``(original, normalized)`` pairs, or an empty list when no front section
+        is configured.
+    """
     if rules.front is None:
         return []
 
@@ -420,6 +481,15 @@ def _normalized_front_prefixes(rules: PruneRules) -> list[tuple[str, str]]:
 
 
 def _normalized_end_prefixes(rules: PruneRules) -> list[tuple[str, str]]:
+    """Pair each end prefix with its normalized comparison form.
+
+    Args:
+        rules: Rules whose end section supplies the prefixes.
+
+    Returns:
+        ``(original, normalized)`` pairs, or an empty list when no end section
+        is configured.
+    """
     if rules.end is None:
         return []
 
@@ -427,6 +497,15 @@ def _normalized_end_prefixes(rules: PruneRules) -> list[tuple[str, str]]:
 
 
 def _matching_prefix(text: str, prefixes: list[tuple[str, str]]) -> str | None:
+    """Return the first original prefix whose normalized form starts ``text``.
+
+    Args:
+        text: Candidate text to test (normalized internally before matching).
+        prefixes: ``(original, normalized)`` prefix pairs to test in order.
+
+    Returns:
+        The matching original prefix, or None when none match.
+    """
     normalized_text = normalize_for_prefix_match(text)
 
     for original_prefix, normalized_prefix in prefixes:
@@ -441,6 +520,19 @@ def _normalize_response_pruning_config(
     *,
     defaults: dict[str, bool],
 ) -> dict[str, bool]:
+    """Merge user response-pruning flags onto the defaults, validating them.
+
+    Args:
+        response_pruning: Per-stage enable flags supplied by the caller.
+        defaults: Full set of supported flags with their default values.
+
+    Returns:
+        A new dict of defaults overlaid with the provided flag values.
+
+    Raises:
+        PrunerConfigError: If unsupported keys are present or any value is not a
+            boolean.
+    """
     supported_keys = set(defaults)
     unknown_keys = set(response_pruning) - supported_keys
     if unknown_keys:

@@ -27,17 +27,30 @@ _LOCK_PATH = os.path.join(get_settings().lock_dir, "sleep.lock")
 
 
 def lock_path() -> str:
-    """Return the absolute path of the on-disk sleep lock file."""
+    """Return the absolute path of the on-disk sleep lock file.
+
+    Returns:
+        The configured sleep lock file path.
+    """
     return _LOCK_PATH
 
 
 def is_sleeping() -> bool:
-    """Return whether a sleep cycle is currently active in this process."""
+    """Return whether a sleep cycle is currently active in this process.
+
+    Returns:
+        True while a sleep cycle is engaged; False otherwise.
+    """
     return _sleeping
 
 
 def since() -> Optional[float]:
-    """Return the epoch start time of the active sleep cycle, or None."""
+    """Return the epoch start time of the active sleep cycle, or None.
+
+    Returns:
+        The Unix timestamp when the current sleep cycle began, or None when not
+        sleeping.
+    """
     return _since_ts
 
 
@@ -45,6 +58,9 @@ def set_sleeping(on: bool) -> None:
     """Toggle in-process sleep state, tracking the start timestamp.
 
     Transitions are idempotent: redundant calls do not reset ``since()``.
+
+    Args:
+        on: True to engage the sleeping state, False to clear it.
     """
     global _sleeping, _since_ts
     if on and not _sleeping:
@@ -80,9 +96,14 @@ def init_from_disk() -> None:
 
 
 def clear_stale_lock(max_age_seconds: int = 2 * 60 * 60) -> bool:
-    """
-    Remove a stale lock file if it's older than max_age_seconds.
-    Returns True if a stale lock was cleared.
+    """Remove a stale lock file if it's older than ``max_age_seconds``.
+
+    Args:
+        max_age_seconds: Maximum lock-file age before it is considered stale;
+            defaults to two hours.
+
+    Returns:
+        True if a stale lock was found and cleared; False otherwise.
     """
     try:
         if os.path.exists(_LOCK_PATH):

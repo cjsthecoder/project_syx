@@ -43,7 +43,12 @@ _TURN_SEQ = 0
 _TURN_SEQ_LOCK = threading.Lock()
 
 def _next_turn_id() -> int:
-    """Return the next monotonic turn id, incrementing a shared counter under a lock."""
+    """Return the next monotonic turn id, incrementing a shared counter under a lock.
+
+    Returns:
+        The next strictly increasing turn id, unique per process across
+        concurrent callers.
+    """
     global _TURN_SEQ
     with _TURN_SEQ_LOCK:
         _TURN_SEQ += 1
@@ -51,11 +56,26 @@ def _next_turn_id() -> int:
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest) -> ChatResponse:
-    """
-    Main chat endpoint for user-AI conversation.
-    
-    This endpoint handles the core chat functionality using the shared LLM factory.
-    It supports conversation history and project context (stubbed).
+    """Main chat endpoint for user-AI conversation.
+
+    Handles the core (non-streaming) chat flow using the shared LLM factory:
+    builds conversation history and prompts, computes RAG context, enforces the
+    model whitelist, generates the response, persists the user/assistant pair to
+    project memory, updates context-token stats, and records turn-level
+    instrumentation.
+
+    Args:
+        request: Chat request carrying the user message, optional project and
+            conversation ids, and an optional model override.
+
+    Returns:
+        The assistant reply along with the conversation id, resolved model, and
+        token usage.
+
+    Raises:
+        HTTPException: 500 on internal errors, or an LLM-specific error mapped
+            by ``handle_llm_error`` when the failure originates from the LLM
+            provider.
     """
     try:
         t0 = time.time()
@@ -330,9 +350,22 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
 
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
-    """
-    Streaming chat endpoint.
-    Streams model tokens to the client as they arrive.
+    """Streaming chat endpoint that streams model tokens as they arrive.
+
+    Builds prompts and RAG context like the non-streaming path, persists the
+    user message immediately, then returns a streaming response that yields
+    tokens incrementally and terminates with a ``::event: done`` marker. The
+    assistant message is persisted and turn instrumentation finalized once the
+    stream completes. Falls back to a simulated character-by-character stream
+    when streaming is disabled in settings.
+
+    Args:
+        request: Chat request carrying the user message, optional project and
+            conversation ids, and an optional model override.
+
+    Returns:
+        A ``StreamingResponse`` emitting plain-text token chunks on success, or
+        a 500 ``JSONResponse`` describing the error.
     """
     settings = get_settings()
     instr = get_instrumentation()
@@ -631,7 +664,13 @@ async def chat_stream(request: ChatRequest):
 
 @router.get("/chat/health")
 async def chat_health() -> JSONResponse:
-    """Health check for chat functionality."""
+    """Health check for chat functionality.
+
+    Returns:
+        A 200 ``JSONResponse`` reporting healthy status and the active model
+        when the LLM is reachable; a 503 ``JSONResponse`` describing the
+        failure otherwise.
+    """
     try:
         # Check LLM health
         llm_health = get_llm_health()
@@ -671,7 +710,12 @@ async def chat_health() -> JSONResponse:
 
 @router.get("/chat/stats")
 async def chat_stats() -> JSONResponse:
-    """Get chat statistics."""
+    """Get chat statistics.
+
+    Returns:
+        A 200 ``JSONResponse`` with conversation/message counts, the active
+        memory mode, and available features; a 500 ``JSONResponse`` on failure.
+    """
     try:
         memory_manager = get_memory_manager()
         stats = memory_manager.get_memory_stats()

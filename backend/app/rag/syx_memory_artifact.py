@@ -62,12 +62,28 @@ class SyxParseResult:
 
 
 def normalize_lf(text: str) -> str:
-    """Normalize CRLF/CR line endings to LF."""
+    """Normalize CRLF/CR line endings to LF.
+
+    Args:
+        text: Input text; None is coerced to an empty string.
+
+    Returns:
+        The text with all ``\\r\\n`` and ``\\r`` sequences replaced by ``\\n``.
+    """
     return str(text or "").replace("\r\n", "\n").replace("\r", "\n")
 
 
 def local_timestamp_from_iso(created_at_iso_utc: Optional[str]) -> str:
-    """Return the Syx local timestamp format: MM-DD-YYYY_HH:MM:SS."""
+    """Convert an ISO/UTC timestamp into the Syx local ``MM-DD-YYYY_HH:MM:SS`` format.
+
+    Args:
+        created_at_iso_utc: ISO-8601 timestamp (``Z``-suffixed UTC or offset-aware
+            accepted); None/empty falls back to the current local time.
+
+    Returns:
+        The localized timestamp string; on parse failure the original raw value
+        is returned unchanged.
+    """
     if not created_at_iso_utc:
         return time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())
     raw = str(created_at_iso_utc).strip()
@@ -84,7 +100,15 @@ def local_timestamp_from_iso(created_at_iso_utc: Optional[str]) -> str:
 
 
 def compact_timestamp_for_memory_id(timestamp: str) -> str:
-    """Convert supported Syx timestamps into YYYYMMDD_HHMMSS."""
+    """Convert supported Syx timestamps into a compact ``YYYYMMDD_HHMMSS`` token.
+
+    Args:
+        timestamp: A Syx local/slash timestamp, ISO string, or ``Z``-suffixed UTC.
+
+    Returns:
+        The compact timestamp used in memory ids; falls back to the current local
+        time when ``timestamp`` cannot be parsed.
+    """
     raw = str(timestamp or "").strip()
     for fmt in ("%m-%d-%Y_%H:%M:%S", "%m/%d/%Y %H:%M:%S"):
         try:
@@ -103,7 +127,15 @@ def compact_timestamp_for_memory_id(timestamp: str) -> str:
 
 
 def memory_date_from_local_timestamp(timestamp: Optional[str] = None) -> str:
-    """Derive an ``MM-DD-YYYY`` memory date from a Syx timestamp (today's date on failure)."""
+    """Derive an ``MM-DD-YYYY`` memory date from a Syx timestamp.
+
+    Args:
+        timestamp: A Syx local/slash timestamp; None/empty or unparseable input
+            falls back to today's local date.
+
+    Returns:
+        The memory date in ``MM-DD-YYYY`` format.
+    """
     raw = str(timestamp or "").strip()
     for fmt in ("%m-%d-%Y_%H:%M:%S", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y"):
         try:
@@ -114,7 +146,15 @@ def memory_date_from_local_timestamp(timestamp: Optional[str] = None) -> str:
 
 
 def slash_date_to_memory_date(date_text: str) -> str:
-    """Convert an ``MM/DD/YYYY`` date into the ``MM-DD-YYYY`` memory-date format."""
+    """Convert an ``MM/DD/YYYY`` date into the ``MM-DD-YYYY`` memory-date format.
+
+    Args:
+        date_text: A slash-delimited date string.
+
+    Returns:
+        The dash-delimited memory date; on parse failure, the input with slashes
+        naively replaced by dashes.
+    """
     try:
         return datetime.strptime(str(date_text).strip(), "%m/%d/%Y").strftime("%m-%d-%Y")
     except ValueError:
@@ -122,7 +162,17 @@ def slash_date_to_memory_date(date_text: str) -> str:
 
 
 def render_artifact_header(*, artifact_type: str, project_id: str, memory_date: str) -> str:
-    """Render the YAML front-matter header block for a Syx memory artifact."""
+    """Render the YAML front-matter header block for a Syx memory artifact.
+
+    Args:
+        artifact_type: Artifact kind (e.g. ``daily_memory``); also titled for the
+            ``# <Title>`` heading.
+        project_id: Owning project id recorded in the front matter.
+        memory_date: Memory date in ``MM-DD-YYYY`` format.
+
+    Returns:
+        The front-matter header plus title heading, terminated with a blank line.
+    """
     title = str(artifact_type).replace("_", " ").title()
     return (
         "---\n"
@@ -146,6 +196,16 @@ def ensure_artifact_header(
 
     Strips legacy memory wrappers and returns the text unchanged when it already
     carries a versioned front-matter header; otherwise prepends a fresh header.
+
+    Args:
+        text: Artifact body to normalize and inspect.
+        artifact_type: Artifact kind used when a new header must be rendered.
+        project_id: Owning project id used when a new header must be rendered.
+        memory_date: Memory date used when a new header must be rendered.
+
+    Returns:
+        The normalized text guaranteed to start with a versioned front-matter
+        header.
     """
     normalized = normalize_lf(text).lstrip()
     normalized = LEGACY_MEMORY_WRAPPER_RE.sub("", normalized).lstrip()
@@ -169,6 +229,16 @@ def normalize_legacy_artifact_wrappers(
 
     Resolves the memory date from the explicit argument, then the legacy wrapper,
     then falls back to today's date.
+
+    Args:
+        text: Artifact body that may contain legacy wrappers.
+        artifact_type: Artifact kind used when rendering the replacement header.
+        project_id: Owning project id used when rendering the replacement header.
+        memory_date: Explicit memory date; when None it is derived from the legacy
+            wrapper date or today's date.
+
+    Returns:
+        The text with a current front-matter header in place of any legacy wrapper.
     """
     normalized = normalize_lf(text)
     match = LEGACY_MEMORY_WRAPPER_RE.search(normalized)
@@ -182,7 +252,14 @@ def normalize_legacy_artifact_wrappers(
 
 
 def ensure_blank_line_before_begin_markers(text: str) -> str:
-    """Insert a blank line before any begin marker that is not already preceded by one."""
+    """Insert a blank line before any begin marker not already preceded by one.
+
+    Args:
+        text: Artifact body containing ``<!-- begin syx:memory_id= -->`` markers.
+
+    Returns:
+        The normalized text with a blank line separating consecutive entries.
+    """
     normalized = normalize_lf(text)
     return BEGIN_MARKER_RE.sub(r"\n\1", normalized)
 
@@ -192,6 +269,13 @@ def _canonical_hash_payload(values: Dict[str, Any]) -> str:
 
     Skips None values and joins list values with newlines so that memory-id
     digests are reproducible regardless of input dict ordering.
+
+    Args:
+        values: Field name to value mapping forming the hash payload.
+
+    Returns:
+        A newline-joined ``key=value`` string with keys sorted and line endings
+        normalized.
     """
     parts: List[str] = []
     for key in sorted(values.keys()):
@@ -226,6 +310,24 @@ def generate_memory_id(
     The digest is derived from a canonical payload that varies by entry type:
     dream outputs hash dream-specific fields while other entries hash the
     user/assistant text. Identical inputs always yield the same id.
+
+    Args:
+        project_id: Owning project id, always part of the payload.
+        timestamp: Source timestamp; compacted into the id prefix and hashed.
+        source: Origin of the entry (e.g. ``chat``).
+        entry_type: Entry kind; ``dream_output`` selects the dream payload shape.
+        user_text: User message text hashed for non-dream entries.
+        assistant_text: Assistant message text hashed for non-dream entries.
+        route: Optional route name included when present.
+        semantic_handle: Optional semantic handle included when present.
+        dream_output_type: Dream subtype hashed for dream outputs.
+        accepted_item_id: Accepted item id hashed for dream outputs.
+        origin_memory_ids: Source memory ids hashed for dream outputs (empties
+            dropped).
+        dream_content: Dream body text hashed for dream outputs.
+
+    Returns:
+        A deterministic id of the form ``mem_<YYYYMMDD_HHMMSS>_<8-hex-digest>``.
     """
     payload: Dict[str, Any] = {
         "project_id": project_id,
@@ -257,7 +359,13 @@ def generate_memory_id(
 def split_pair_text(pair_text: str) -> Tuple[str, str]:
     """Split combined ``User:/Assistant:`` pair text into (user, assistant) parts.
 
-    Returns an empty user part when no ``Assistant:`` delimiter is present.
+    Args:
+        pair_text: Combined pair text; line endings are normalized first.
+
+    Returns:
+        A ``(user_text, assistant_text)`` tuple. When no ``\\nAssistant:``
+        delimiter is present, the user part is empty and the whole text is treated
+        as the assistant part.
     """
     text = normalize_lf(pair_text)
     if "\nAssistant:" in text:
@@ -271,6 +379,12 @@ def topics_to_list(value: Any) -> List[str]:
 
     Accepts an existing list or a scalar, splitting scalars on common tagger
     separators (``,`` and ``;``) and dropping empties.
+
+    Args:
+        value: Topics as a list, scalar string, or None.
+
+    Returns:
+        A list of trimmed, non-empty topic strings; empty for None/blank input.
     """
     if value is None:
         return []
@@ -284,7 +398,14 @@ def topics_to_list(value: Any) -> List[str]:
 
 
 def snake_case_value(value: Any) -> str:
-    """Normalize an arbitrary value into a lowercase snake_case token."""
+    """Normalize an arbitrary value into a lowercase snake_case token.
+
+    Args:
+        value: Any value; stringified and stripped of non-alphanumerics.
+
+    Returns:
+        The snake_case token, or an empty string when the input is empty/None.
+    """
     raw = str(value or "").strip()
     if not raw:
         return ""
@@ -294,7 +415,14 @@ def snake_case_value(value: Any) -> str:
 
 
 def entry_type_label(entry_type: Any) -> str:
-    """Render an entry_type as a human-readable Title Case label."""
+    """Render an entry_type as a human-readable Title Case label.
+
+    Args:
+        entry_type: Entry type token; empty/None defaults to ``memory_entry``.
+
+    Returns:
+        The label with underscores replaced by spaces and title-cased.
+    """
     raw = str(entry_type or "memory_entry").strip()
     if not raw:
         raw = "memory_entry"
@@ -302,7 +430,14 @@ def entry_type_label(entry_type: Any) -> str:
 
 
 def entry_heading(metadata: Dict[str, Any]) -> str:
-    """Build the ``## <label>[: <semantic_handle>]`` heading for an entry."""
+    """Build the ``## <label>[: <semantic_handle>]`` heading for an entry.
+
+    Args:
+        metadata: Entry metadata read for ``entry_type`` and ``semantic_handle``.
+
+    Returns:
+        A markdown heading, suffixing the semantic handle when one is present.
+    """
     label = entry_type_label(metadata.get("entry_type"))
     semantic_handle = str(metadata.get("semantic_handle") or "").strip()
     if semantic_handle:
@@ -314,6 +449,12 @@ def render_yaml_block(metadata: Dict[str, Any]) -> str:
     """Render entry metadata as the fenced ``### Syx Metadata`` YAML block.
 
     Skips None values and renders booleans lowercased and lists as YAML sequences.
+
+    Args:
+        metadata: Entry metadata to serialize; insertion order is preserved.
+
+    Returns:
+        The ``### Syx Metadata`` section including the fenced YAML block.
     """
     lines: List[str] = ["### Syx Metadata", "", "```yaml"]
     for key, value in metadata.items():
@@ -345,6 +486,19 @@ def render_memory_entry(
     Wraps the heading, metadata YAML, and content in begin/end markers. When
     ``body_text`` is given it is used as the body; otherwise the user and
     assistant messages are rendered as separate sections.
+
+    Args:
+        memory_id: Stable id emitted in the begin/end boundary markers.
+        metadata: Entry metadata rendered as the YAML block and heading.
+        user_text: User message rendered when ``body_text`` is not supplied.
+        assistant_text: Assistant message rendered when ``body_text`` is not
+            supplied.
+        body_text: Pre-rendered body; when provided it replaces the separate
+            user/assistant sections.
+
+    Returns:
+        The full entry block (markers, heading, metadata, content) terminated
+        with trailing newlines.
     """
     parts = [
         f"<!-- begin syx:memory_id={memory_id} -->",
@@ -370,6 +524,15 @@ def render_memory_entry(
 
 
 def _parse_scalar(value: str) -> Any:
+    """Coerce a YAML scalar string into a bool or trimmed string.
+
+    Args:
+        value: Raw scalar text from a metadata line.
+
+    Returns:
+        ``True``/``False`` for case-insensitive boolean literals, otherwise the
+        stripped string.
+    """
     raw = value.strip()
     if raw.lower() == "true":
         return True
@@ -382,6 +545,9 @@ def parse_yaml_metadata_with_warnings(entry_text: str) -> Tuple[Dict[str, Any], 
     """Parse the ``### Syx Metadata`` YAML block from an entry body.
 
     Supports scalar values and simple ``- item`` lists under a bare key.
+
+    Args:
+        entry_text: Entry body text containing the metadata block.
 
     Returns:
         A tuple of (parsed metadata, warnings). Warnings flag malformed fences
@@ -426,13 +592,27 @@ def parse_yaml_metadata_with_warnings(entry_text: str) -> Tuple[Dict[str, Any], 
 
 
 def parse_yaml_metadata(entry_text: str) -> Dict[str, Any]:
-    """Parse the entry's Syx metadata block, discarding any warnings."""
+    """Parse the entry's Syx metadata block, discarding any warnings.
+
+    Args:
+        entry_text: Entry body text containing the metadata block.
+
+    Returns:
+        The parsed metadata dict (empty when no block is found).
+    """
     metadata, _warnings = parse_yaml_metadata_with_warnings(entry_text)
     return metadata
 
 
 def legacy_semantic_handle(entry_text: str) -> Optional[str]:
-    """Extract a legacy ``#semantic_handle:`` value from entry text, if present."""
+    """Extract a legacy ``#semantic_handle:`` value from entry text, if present.
+
+    Args:
+        entry_text: Entry body text to scan for the legacy directive.
+
+    Returns:
+        The trimmed handle value, or None when absent or empty.
+    """
     match = LEGACY_SEMANTIC_HANDLE_RE.search(normalize_lf(entry_text))
     if not match:
         return None
@@ -446,6 +626,13 @@ def ensure_entry_headings(text: str) -> str:
     Reparses the text and, for each entry whose first lines have no heading,
     synthesizes one from its metadata (recovering a legacy semantic handle when
     available). Text outside bounded entries is preserved verbatim.
+
+    Args:
+        text: Artifact body containing zero or more bounded entries.
+
+    Returns:
+        The text with synthesized headings inserted where missing; unchanged when
+        no bounded entries are found.
     """
     normalized = normalize_lf(text)
     parsed = parse_syx_entries(normalized)
@@ -480,6 +667,11 @@ def parse_syx_entries(text: str, *, artifact_path: Optional[str] = None) -> SyxP
     and collecting structural warnings (invalid, mismatched, duplicate, or
     unterminated markers). When provided, ``artifact_path`` is recorded on each
     entry's metadata as a default ``artifact_path``.
+
+    Args:
+        text: Artifact body to scan for bounded Syx entries.
+        artifact_path: Optional source path stored as a default on each entry's
+            metadata for downstream attribution.
 
     Returns:
         A SyxParseResult with parsed entries, occupied ranges, and warnings.
@@ -570,6 +762,9 @@ def parse_syx_entries(text: str, *, artifact_path: Optional[str] = None) -> SyxP
 def validate_syx_boundaries(text: str) -> Tuple[bool, List[str]]:
     """Validate Syx boundary markers in ``text``.
 
+    Args:
+        text: Artifact body to validate.
+
     Returns:
         A tuple of (is_valid, warnings) where ``is_valid`` is True only when
         parsing produced no warnings.
@@ -579,7 +774,16 @@ def validate_syx_boundaries(text: str) -> Tuple[bool, List[str]]:
 
 
 def replace_current_scope_for_ltm(text: str) -> str:
-    """Rewrite bounded entries to current_scope: ltm for per-cycle LTM artifacts."""
+    """Rewrite bounded entries' ``current_scope`` to ``ltm`` for LTM artifacts.
+
+    Args:
+        text: Artifact body whose bounded entries should be rescoped.
+
+    Returns:
+        The text with each entry's ``current_scope`` line set to ``ltm``;
+        unchanged when no bounded entries are present. Content outside entries is
+        preserved verbatim.
+    """
     normalized = normalize_lf(text)
     result = parse_syx_entries(normalized)
     if not result.entries:
@@ -601,6 +805,14 @@ def unbounded_regions(text: str, occupied_ranges: List[Tuple[int, int]]) -> List
 
     Used to recover content that is not enclosed by Syx boundary markers. Ranges
     are sorted and merged; only regions with non-whitespace content are returned.
+
+    Args:
+        text: Artifact body to scan; line endings are normalized first.
+        occupied_ranges: ``(start_offset, end_offset)`` spans already claimed by
+            bounded entries.
+
+    Returns:
+        The list of unclaimed, non-whitespace text regions in document order.
     """
     normalized = normalize_lf(text)
     if not occupied_ranges:

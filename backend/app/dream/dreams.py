@@ -37,6 +37,17 @@ def _dream_file_timestamp() -> str:
 
 
 def _normalize_text_key(text: str) -> str:
+    """Normalize text into a comparison key for fuzzy question matching.
+
+    Lowercases, strips quotes, and collapses non-alphanumeric runs to single
+    spaces so equivalent phrasings produce identical keys.
+
+    Args:
+        text: Raw text to normalize; falsy values yield an empty key.
+
+    Returns:
+        Normalized key string.
+    """
     lowered = str(text or "").strip().lower()
     lowered = re.sub(r"['\"`“”’]", "", lowered)
     lowered = re.sub(r"[^a-z0-9]+", " ", lowered)
@@ -48,6 +59,15 @@ def _question_key_equivalent(a: str, b: str) -> bool:
 
     Treats normalized strings as equivalent when they match exactly or when one
     sufficiently long phrasing contains the other.
+
+    Args:
+        a: First question string to compare.
+        b: Second question string to compare.
+
+    Returns:
+        True when the normalized strings match exactly or one contains the other
+        (with the container at least 24 characters long); False otherwise,
+        including when either normalized key is empty.
     """
     ak = _normalize_text_key(a)
     bk = _normalize_text_key(b)
@@ -64,6 +84,15 @@ def _question_key_equivalent(a: str, b: str) -> bool:
 
 
 def _read_json_file_safe(path: str) -> Any:
+    """Read and parse a JSON file, returning ``None`` on any failure.
+
+    Args:
+        path: Filesystem path to the JSON file.
+
+    Returns:
+        Parsed JSON value, or ``None`` when the file is missing or unreadable/
+        unparseable.
+    """
     try:
         if not os.path.isfile(path):
             return None
@@ -80,6 +109,14 @@ def _write_dreaming_debug_txt(
     suffix: str,
     sections: List[Tuple[str, str]],
 ) -> None:
+    """Write a titled, multi-section Dream debug artifact under ``dreaming/``.
+
+    Args:
+        project_id: Project whose debug folder receives the artifact.
+        debug_ts: Filesystem-safe timestamp used in the artifact filename and header.
+        suffix: Filename suffix identifying the debug stage (e.g. ``questions_out``).
+        sections: Ordered ``(title, content)`` pairs rendered as labeled blocks.
+    """
     body_lines: List[str] = [
         f"# timestamp: {debug_ts}",
         f"# project_id: {project_id}",
@@ -93,7 +130,16 @@ def _write_dreaming_debug_txt(
 
 
 def _build_research_plan_rows(idea_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Flatten idea items into one debug row per recommended research topic."""
+    """Flatten idea items into one debug row per recommended research topic.
+
+    Args:
+        idea_data: Idea Agent output; non-dict input or missing ``items`` yields
+            no rows.
+
+    Returns:
+        List of rows, each carrying ``item_id``, ``origin_text``, ``theme``, and a
+        single ``research_topic`` extracted from ``metadata.recommended_research``.
+    """
     rows: List[Dict[str, Any]] = []
     items = idea_data.get("items") if isinstance(idea_data, dict) else []
     if not isinstance(items, list):
@@ -120,7 +166,16 @@ def _build_research_plan_rows(idea_data: Dict[str, Any]) -> List[Dict[str, Any]]
 
 
 def _extract_question_resolution_rows(questions_data: Dict[str, Any]) -> List[Dict[str, str]]:
-    """Extract (question, resolution) rows, keeping only recognized resolutions."""
+    """Extract (question, resolution) rows, keeping only recognized resolutions.
+
+    Args:
+        questions_data: Questions Agent output; non-dict input or a missing/invalid
+            ``questions`` list yields no rows.
+
+    Returns:
+        List of ``{"question", "resolution"}`` rows where resolution is one of
+        ``ignore``, ``answer_local``, or ``answer_remote``.
+    """
     rows: List[Dict[str, str]] = []
     question_rows = questions_data.get("questions") if isinstance(questions_data, dict) else []
     if not isinstance(question_rows, list):
@@ -142,9 +197,19 @@ def _attach_source_resolution_to_items(
     idea_data: Dict[str, Any],
     questions_data: Dict[str, Any],
 ) -> Dict[str, int]:
-    """
-    Attach source_resolution to Dream items when they can be mapped to question rows.
-    This value is used downstream to drive persistence/formatting behavior.
+    """Attach ``source_resolution`` to idea items mapped to known question rows.
+
+    Mutates matching items in ``idea_data`` in place by setting their
+    ``source_resolution`` field; this value drives downstream persistence and
+    formatting behavior. Matching is exact by normalized key first, then falls
+    back to fuzzy containment.
+
+    Args:
+        idea_data: Idea Agent output whose ``items`` are annotated in place.
+        questions_data: Questions Agent output supplying question/resolution rows.
+
+    Returns:
+        Stats dict with ``total_items`` and ``resolved_items`` counts.
     """
     items = idea_data.get("items") if isinstance(idea_data, dict) else []
     if not isinstance(items, list):
@@ -183,9 +248,18 @@ def _filter_idea_items_to_known_questions(
     idea_data: Dict[str, Any],
     questions_data: Dict[str, Any],
 ) -> Dict[str, int]:
-    """
-    Keep Idea items only when they map to a known consolidated question row.
-    This prevents Idea output drift from introducing unrelated open questions.
+    """Keep idea items only when they map to a known consolidated question row.
+
+    Filters ``idea_data["items"]`` in place, preventing Idea output drift from
+    introducing unrelated open questions. When no question rows exist, all items
+    are dropped.
+
+    Args:
+        idea_data: Idea Agent output whose ``items`` list is filtered in place.
+        questions_data: Questions Agent output supplying the allowed question rows.
+
+    Returns:
+        Stats dict with ``before``, ``after``, and ``dropped`` item counts.
     """
     items = idea_data.get("items") if isinstance(idea_data, dict) else []
     if not isinstance(items, list):
@@ -222,6 +296,11 @@ def _build_synthetic_open_question_item(question_obj: Dict[str, Any], idx: int) 
     Args:
         question_obj: Source question row carrying question/topic/answer fields.
         idx: One-based index used to make the synthetic item id unique.
+
+    Returns:
+        An idea/research-schema-compatible item dict with ``source_resolution``
+        set to ``answer_remote`` and the question text seeded as a recommended
+        research topic.
     """
     q_text = str(question_obj.get("question", "") or "").strip()
     topic = str(question_obj.get("topic", "") or "").strip()
@@ -250,9 +329,22 @@ def _bridge_remote_questions_into_ideas(
     ideas: Dict[str, Any],
     questions_data: Dict[str, Any],
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """
-    Ensure remote-backed question outputs are represented in idea_data so Research Agent
-    can persist them into dream.json under item-level `research`.
+    """Ensure remote-backed question outputs are represented as idea items.
+
+    For each question flagged ``used_remote_research``, either annotates a matching
+    existing item (setting ``source_resolution`` and seeding recommended research)
+    or injects a synthetic item, mutating ``ideas["items"]`` in place so the
+    Research Agent can persist them into ``dream.json`` under item-level
+    ``research``.
+
+    Args:
+        ideas: Idea Agent output whose ``items`` list is mutated in place.
+        questions_data: Questions Agent output supplying remote-research questions.
+
+    Returns:
+        Tuple of ``(ideas, stats)`` where ``stats`` reports ``remote_questions``,
+        ``matched_items``, ``injected_items``, ``seeded_research_topics``, and the
+        per-question ``decisions`` log.
     """
     items = ideas.get("items")
     if not isinstance(items, list):
@@ -354,8 +446,14 @@ def _bridge_remote_questions_into_ideas(
 
 
 def _cleanup_question_artifacts(project_id: str) -> None:
-    """
-    Remove consumed question artifacts after a successful Dream run.
+    """Remove consumed question artifacts after a successful Dream run.
+
+    Deletes the consolidated and raw open-question files so they are not
+    re-answered on the next cycle; individual deletion failures are logged and
+    do not raise.
+
+    Args:
+        project_id: Project whose question artifacts should be removed.
     """
     base_dir = os.path.join(get_settings().memory_root, project_id)
     paths = [
@@ -378,11 +476,18 @@ def _cleanup_question_artifacts(project_id: str) -> None:
 
 
 def write_dream_output(project_id: str, dream_data: dict, project_summary_text: str) -> None:
-    """
-    Write the final dream.json file for a project.
+    """Write the final ``dream.json`` file for a project.
 
-    This function performs no reasoning; it only serializes the Dream data structure
-    returned by the Research Agent along with the project summary text.
+    Performs no reasoning; serializes the Research Agent's Dream data along with
+    the project summary, normalizing dates and ``origin_text`` capitalization and
+    merging any previously pending items. All errors are logged and suppressed so
+    the Dream cycle is never aborted by a write failure.
+
+    Args:
+        project_id: Project whose ``dream.json`` is written.
+        dream_data: Research Agent output mutated in place with ``project_summary``,
+            ``date``, and merged ``items`` before serialization.
+        project_summary_text: Project summary stored at the top level of the file.
     """
     try:
         def _capitalize_first_letter(text: str) -> str:

@@ -46,13 +46,36 @@ from .manager_index_io import (
 logger = logging.getLogger(__name__)
 
 def is_rate_limit_error_message(err: Exception) -> bool:
-    """Return True when an exception message looks like a provider rate-limit error."""
+    """Return True when an exception message looks like a provider rate-limit error.
+
+    Args:
+        err: Exception whose stringified message is inspected.
+
+    Returns:
+        True when the message matches common rate-limit signatures (e.g.
+        ``rate limit``, ``too many requests``, ``429``).
+    """
     msg = str(err or "").lower()
     return ("rate limit" in msg) or ("too many requests" in msg) or ("429" in msg) or ("rate_limit_exceeded" in msg)
 
 
 def read_file_text(path: str, *, artifact_path: str | None = None) -> List[Tuple[str, dict]]:
-    """Return list of (text, metadata) chunks at file-level (before splitting)."""
+    """Read a supported file into file-level ``(text, metadata)`` regions.
+
+    For ``.txt``/``.md`` files, parses bounded Syx entries: each well-formed entry
+    becomes its own region carrying adjacency identity (``doc_id``/
+    ``source_document_id``) keyed by memory id. Malformed boundary markers fall
+    back to whole-file indexing, and unsupported extensions yield no regions.
+    Splitting into chunks happens downstream.
+
+    Args:
+        path: Filesystem path to the uploaded file.
+        artifact_path: Stable relative document id used to namespace per-entry
+            ``doc_id``/``source_document_id``; defaults to the basename.
+
+    Returns:
+        A list of ``(text, metadata)`` tuples; empty for unsupported file types.
+    """
     name = os.path.basename(path)
     _, ext = os.path.splitext(name)
     ext = ext.lower()
@@ -90,17 +113,40 @@ def read_file_text(path: str, *, artifact_path: str | None = None) -> List[Tuple
 
 
 def count_tokens(text: str) -> int:
-    """Return the model token count for ``text``."""
+    """Return the model token count for ``text``.
+
+    Args:
+        text: Text to measure.
+
+    Returns:
+        The token count as an integer.
+    """
     return int(_count_tokens(text))
 
 
 def trim_to_tokens(text: str, max_tokens: int) -> str:
-    """Return ``text`` truncated to at most ``max_tokens`` tokens."""
+    """Return ``text`` truncated to at most ``max_tokens`` tokens.
+
+    Args:
+        text: Text to truncate.
+        max_tokens: Maximum number of tokens to retain.
+
+    Returns:
+        The (possibly truncated) text.
+    """
     return _trim_to_tokens(text, max_tokens)
 
 
 def ltm_docstore_item_id(metadata: dict) -> str:
-    """Build the stable docstore key ``{doc_id}::chunk={chunk_seq}`` for a chunk."""
+    """Build the stable docstore key ``{doc_id}::chunk={chunk_seq}`` for a chunk.
+
+    Args:
+        metadata: Chunk metadata providing ``doc_id`` and ``chunk_seq`` (missing
+            values default to empty/0).
+
+    Returns:
+        The docstore item id string.
+    """
     did = str((metadata or {}).get("doc_id") or "")
     seq = int((metadata or {}).get("chunk_seq") or 0)
     return f"{did}::chunk={seq}"
@@ -114,8 +160,18 @@ def rebuild_faiss_index(project_id: str) -> str:
     index-to-id map, manifest, and adjacency sidecar. Also backfills per-file
     token/page counts and embedding status in the database.
 
+    Args:
+        project_id: Project whose index is rebuilt from its uploads directory.
+
     Returns:
-        The absolute path to the project's FAISS directory.
+        The absolute path to the project's FAISS directory. When there are no
+        chunks (or no resulting vectors), the directory is returned without a
+        persisted index.
+
+    Raises:
+        RuntimeError: If batch metadata is missing, an embedding batch fails, a
+            batch result is missing, or the embedding dimensionality changes
+            mid-build.
     """
     settings = get_settings()
     active_embedding_model = get_active_embedding_model()
@@ -226,6 +282,18 @@ def rebuild_faiss_index(project_id: str) -> str:
         batch_metas: List[dict],
         est_tokens: int,
     ) -> Dict[str, Any]:
+        """Embed one prepared batch and package the result for the index build.
+
+        Args:
+            batch_id: 1-based batch ordinal used to reassemble results in order.
+            batch_texts: Chunk texts to embed.
+            batch_metas: Per-chunk metadata aligned with ``batch_texts``.
+            est_tokens: Estimated token count for the batch (telemetry only).
+
+        Returns:
+            A payload dict with the batch id, texts, metas, estimated tokens,
+            resulting vectors, and elapsed seconds.
+        """
         t0 = time.monotonic()
         res = llm.embed(list(batch_texts), model=active_embedding_model)
         dt = time.monotonic() - t0

@@ -28,6 +28,17 @@ logger = logging.getLogger(__name__)
 
 
 def _empty_result(*, route: str, per_source_k: int = 0, max_keep: int = 0, daily_enabled: bool = False) -> Dict[str, Any]:
+    """Build a zeroed retrieval result dict used as a no-hit/failure fallback.
+
+    Args:
+        route: Resolved synthetic route label recorded on the result.
+        per_source_k: Per-source retrieval count to record (default 0).
+        max_keep: Maximum candidates to keep, to record (default 0).
+        daily_enabled: Whether daily memory was enabled for the request.
+
+    Returns:
+        Result dict with empty texts and all hit/candidate counters set to zero.
+    """
     return {
         "context_text": "",
         "tokens_used": 0,
@@ -48,7 +59,14 @@ def _empty_result(*, route: str, per_source_k: int = 0, max_keep: int = 0, daily
 
 
 def _daily_enabled(project_id: str) -> bool:
-    """Return the project's daily-RAG flag, defaulting to True when lookup fails."""
+    """Return the project's daily-RAG flag, defaulting to True when lookup fails.
+
+    Args:
+        project_id: Project whose ``daily_rag_enabled`` flag is read.
+
+    Returns:
+        The stored flag, or True when the project is missing or the lookup errors.
+    """
     try:
         with get_session() as session:
             project = session.exec(select(Project).where(Project.id == project_id)).first()
@@ -66,12 +84,25 @@ def retrieve_dream_context(
     route: str = "EXPLORATORY",
     include_daily: bool = True,
 ) -> Dict[str, Any]:
-    """
-    Dream-specific retrieval adapter.
+    """Retrieve dream context via the route-policy-driven daily/main memory merge.
 
     Dream agents do not run the chat builder during sleep, so callers provide a
     deterministic synthetic route. Retrieval still goes through the same
-    route-policy-driven merge/selection/expansion path used by chat.
+    route-policy-driven merge/selection/expansion path used by chat. Failures are
+    logged and degrade to an empty result rather than raising.
+
+    Args:
+        project_id: Project whose memory is searched.
+        query: Retrieval query text.
+        route: Synthetic route name selecting the retrieval policy; blank/None
+            resolves to ``OTHER``.
+        include_daily: When False, daily memory is excluded regardless of the
+            project's daily-RAG flag.
+
+    Returns:
+        Normalized retrieval result dict including ``context_text`` plus route,
+        ``per_source_k``, ``max_keep``, and ``daily_enabled`` metadata; an empty
+        result when the policy yields no budget or retrieval fails.
     """
     resolved_route = (route or "OTHER").strip().upper() or "OTHER"
     try:

@@ -34,12 +34,16 @@ def _today_mmddyyyy() -> str:
 
 
 def _normalize_recommended_research(value: Any) -> List[Any] | None:
-    """
-    Normalize recommended_research to the expected shape.
+    """Normalize ``recommended_research`` to the expected list shape.
+
+    Args:
+        value: Raw ``recommended_research`` field of any type.
 
     Returns:
-        - list value (possibly wrapped/normalized) on success
-        - None if the field is considered unusable and the item should be skipped
+        A list value (possibly wrapped/normalized) on success, or ``None`` when
+        the field is considered unusable and the item should be skipped. Empty-ish
+        values normalize to an empty list; non-list scalars are wrapped in a
+        one-element list.
     """
     # Missing handling is done by caller (skip item).
     # If already a list, use as-is.

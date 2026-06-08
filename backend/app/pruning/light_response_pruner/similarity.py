@@ -29,6 +29,8 @@ _DOTTED_IDENTIFIER_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za
 
 @dataclass(frozen=True)
 class SentenceSpan:
+    """A sentence's start/end offsets within the source text and its raw text."""
+
     start: int
     end: int
     text: str
@@ -93,6 +95,21 @@ def _prune_similar_prose(
     kept_normalized_sentences: list[str],
     threshold: int,
 ) -> str:
+    """Drop near-duplicate sentences from a prose segment.
+
+    Each non-protected, non-empty sentence is compared against the running list
+    of kept sentences; survivors are appended to ``kept_normalized_sentences``
+    so subsequent segments dedupe against them too. The list is mutated in place.
+
+    Args:
+        text: Prose segment (no fenced code) to deduplicate.
+        kept_normalized_sentences: Normalized sentences kept so far; updated in
+            place with newly kept sentences.
+        threshold: Minimum fuzzy similarity score (0-100) to treat as duplicate.
+
+    Returns:
+        The prose with near-duplicate sentences removed.
+    """
     if not text:
         return ""
 
@@ -130,6 +147,17 @@ def _prune_similar_prose(
 
 
 def _sentence_spans(text: str) -> list[SentenceSpan]:
+    """Split ``text`` into sentence spans on terminal punctuation.
+
+    Sentences end at ``.``, ``!``, or ``?`` followed by whitespace or
+    end-of-text; each span's ``end`` includes trailing whitespace.
+
+    Args:
+        text: Prose text to split.
+
+    Returns:
+        Ordered list of non-empty sentence spans.
+    """
     spans: list[SentenceSpan] = []
     start = _first_non_whitespace_index(text)
     if start is None:
@@ -155,6 +183,16 @@ def _is_duplicate_sentence(
     kept_normalized_sentences: list[str],
     threshold: int,
 ) -> bool:
+    """Return True if a sentence fuzzily matches any already-kept sentence.
+
+    Args:
+        normalized_sentence: Normalized candidate sentence.
+        kept_normalized_sentences: Normalized sentences already retained.
+        threshold: Minimum token-set ratio (0-100) to count as a duplicate.
+
+    Returns:
+        True when at least one kept sentence scores at or above ``threshold``.
+    """
     for kept_sentence in kept_normalized_sentences:
         if fuzz.token_set_ratio(normalized_sentence, kept_sentence) >= threshold:
             return True
@@ -163,6 +201,18 @@ def _is_duplicate_sentence(
 
 
 def _is_protected_sentence(sentence: str) -> bool:
+    """Return True if a sentence must never be pruned as a duplicate.
+
+    Protects sentences that carry data-bearing content (digits, requirement
+    ids, function calls, snake_case, or dotted identifiers) where fuzzy matching
+    could discard meaningful distinctions.
+
+    Args:
+        sentence: Raw (un-normalized) sentence text.
+
+    Returns:
+        True when the sentence contains protected content.
+    """
     return (
         any(character.isdigit() for character in sentence)
         or _REQUIREMENT_ID_RE.search(sentence) is not None
@@ -173,6 +223,15 @@ def _is_protected_sentence(sentence: str) -> bool:
 
 
 def _first_non_whitespace_index(text: str) -> int | None:
+    """Return the index of the first non-whitespace character, or None if blank.
+
+    Args:
+        text: Text to scan.
+
+    Returns:
+        The zero-based index of the first non-whitespace character, or None when
+        the text is empty or all whitespace.
+    """
     for index, character in enumerate(text):
         if not character.isspace():
             return index
@@ -181,6 +240,16 @@ def _first_non_whitespace_index(text: str) -> int | None:
 
 
 def _consume_sentence_trailing_whitespace(text: str, start: int) -> int:
+    """Return the index past trailing whitespace following a sentence.
+
+    Args:
+        text: Text being scanned.
+        start: Index immediately after the sentence's terminal punctuation.
+
+    Returns:
+        The index of the next non-whitespace character, or ``len(text)`` if none
+        remain.
+    """
     cursor = start
     while cursor < len(text) and text[cursor].isspace():
         cursor += 1

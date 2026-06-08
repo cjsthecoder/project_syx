@@ -22,6 +22,17 @@ logger = logging.getLogger(__name__)
 
 
 def _as_mapping(value: Any) -> Dict[str, Any]:
+    """Coerce an SDK envelope or dict into a plain dict.
+
+    Tolerates SDK objects by falling back to ``model_dump`` when ``value`` is
+    not already a dict.
+
+    Args:
+        value: A dict or a Pydantic-style SDK object.
+
+    Returns:
+        The mapping form of ``value``, or an empty dict if it cannot be coerced.
+    """
     if isinstance(value, dict):
         return value
     try:
@@ -36,6 +47,15 @@ def _as_mapping(value: Any) -> Dict[str, Any]:
 
 
 def _coerce_int(value: Any, default: int = 0) -> int:
+    """Best-effort conversion of a value to ``int``.
+
+    Args:
+        value: Value to convert; falsy values become ``0``.
+        default: Fallback returned when conversion fails.
+
+    Returns:
+        The integer value, or ``default`` if ``value`` cannot be converted.
+    """
     try:
         return int(value or 0)
     except (TypeError, ValueError):
@@ -43,6 +63,18 @@ def _coerce_int(value: Any, default: int = 0) -> int:
 
 
 def _extract_text_parts(value: Any) -> str:
+    """Flatten an OpenAI content value into a single text string.
+
+    Handles the several shapes content can take across SDK versions: a bare
+    string, a list of strings, or a list of content parts (dicts/objects with a
+    ``text`` field or ``output_text`` type).
+
+    Args:
+        value: Raw content value from a chat or responses payload.
+
+    Returns:
+        The concatenated text, or an empty string when no text is present.
+    """
     if isinstance(value, str):
         return value
     if isinstance(value, list):
@@ -70,6 +102,19 @@ def _extract_text_parts(value: Any) -> str:
 
 
 def _safe_usage_from_chat(usage: Any) -> LLMUsage:
+    """Normalize a Chat Completions usage object into ``LLMUsage``.
+
+    Reads prompt/completion/total token counts, tolerating both legacy
+    (``prompt_tokens``/``completion_tokens``) and newer
+    (``input_tokens``/``output_tokens``) field names.
+
+    Args:
+        usage: Raw usage object or mapping from the chat response.
+
+    Returns:
+        An ``LLMUsage`` with reported counts; on parse failure, zeroed counts
+        with ``usage_is_estimate=True``.
+    """
     try:
         usage_map = _as_mapping(usage)
         prompt = _coerce_int(getattr(usage, "prompt_tokens", None), _coerce_int(usage_map.get("prompt_tokens", 0)))
@@ -106,6 +151,18 @@ def _safe_usage_from_chat(usage: Any) -> LLMUsage:
 
 
 def _safe_usage_from_responses(usage: Any) -> LLMUsage:
+    """Normalize a Responses-API usage object into ``LLMUsage``.
+
+    Reads input/output/total token counts and preserves available detail fields
+    (e.g., reasoning/cached token breakdowns) in ``extra_usage``.
+
+    Args:
+        usage: Raw usage object or mapping from the responses payload.
+
+    Returns:
+        An ``LLMUsage`` with reported counts and optional extra usage detail;
+        on parse failure, zeroed counts with ``usage_is_estimate=True``.
+    """
     try:
         usage_map = _as_mapping(usage)
         prompt = _coerce_int(getattr(usage, "input_tokens", None), _coerce_int(usage_map.get("input_tokens", 0)))
@@ -142,6 +199,19 @@ def _safe_usage_from_responses(usage: Any) -> LLMUsage:
 
 
 def _responses_output_text(resp: Any) -> str:
+    """Extract the assistant text from a Responses-API result.
+
+    Prefers the convenience ``output_text`` attribute and falls back to walking
+    the structured ``output`` items, collecting ``output_text`` content parts
+    from ``message`` items.
+
+    Args:
+        resp: Raw response object or mapping from the Responses API.
+
+    Returns:
+        The concatenated, stripped output text, or an empty string when none is
+        found.
+    """
     try:
         output_text = getattr(resp, "output_text", None)
         parsed = _extract_text_parts(output_text)

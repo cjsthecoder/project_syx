@@ -199,6 +199,21 @@ def _build_response(
     model: Optional[str],
     snippets: List[AgentMemorySnippet],
 ) -> AgentMemorySearchResponse:
+    """Assemble the structured search response and derived snippet counts.
+
+    Args:
+        project_name: Resolved project name echoed back to the caller.
+        project_id: Identifier of the searched project.
+        query: Search query text echoed back to the caller.
+        category: Normalized retrieval route used for the search.
+        model: Optional model identifier echoed back to the caller.
+        snippets: Snippets to include, already expanded and ordered.
+
+    Returns:
+        A populated ``AgentMemorySearchResponse`` whose ``bounded_result_count``
+        and ``unbounded_result_count`` are derived from each snippet's
+        ``result_mode``.
+    """
     bounded = sum(1 for snip in snippets if snip.result_mode == "bounded_entry")
     unbounded = int(len(snippets) - bounded)
     return AgentMemorySearchResponse(
@@ -215,6 +230,15 @@ def _build_response(
 
 
 def _daily_enabled(project_id: str) -> bool:
+    """Report whether the daily RAG layer is enabled for a project.
+
+    Args:
+        project_id: Project whose daily-RAG flag is read.
+
+    Returns:
+        The project's ``daily_rag_enabled`` flag, defaulting to ``True`` when
+        the project is missing or the lookup fails.
+    """
     try:
         with get_session() as session:
             project = session.get(Project, project_id)
@@ -230,6 +254,16 @@ def _daily_enabled(project_id: str) -> bool:
 
 
 def _entry_expansion_summary(response_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Summarize entry-expansion outcomes across a response's snippets.
+
+    Args:
+        response_payload: Serialized response body whose ``snippets`` list is
+            inspected for entry-expansion status, method, and truncation fields.
+
+    Returns:
+        A diagnostics dict with per-status and per-method counts, the number of
+        bounded and truncated snippets, and the collected ``memory_id`` values.
+    """
     snippets = response_payload.get("snippets")
     if not isinstance(snippets, list):
         snippets = []

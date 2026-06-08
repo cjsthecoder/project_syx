@@ -43,12 +43,27 @@ metadata in your response unless the user explicitly asks for them.
 
 
 def estimate_tokens(text: str) -> int:
-    """Best-effort token estimate for debug headers."""
+    """Best-effort token estimate for debug headers.
+
+    Args:
+        text: Text to count tokens for; ``None`` is treated as empty.
+
+    Returns:
+        Estimated token count for the text.
+    """
     return int(count_tokens(text or ""))
 
 
 def estimate_message_tokens(messages: list) -> int:
-    """Best-effort token estimate over structured message list."""
+    """Best-effort token estimate over a structured message list.
+
+    Args:
+        messages: List of role/content message dicts; ``None`` is treated as
+            empty.
+
+    Returns:
+        Estimated token count across the messages' content.
+    """
     return int(count_message_content_tokens(messages or []))
 
 
@@ -63,9 +78,24 @@ def dump_prompt_debug(
     model: Optional[str],
     msgs: Optional[list] = None,
 ) -> None:
-    """
-    Write a prompt debug snapshot to memory/{project_id}/debug/prompts/.
-    Safe/no-op when project_id is missing or debug files are disabled.
+    """Write a prompt debug snapshot to ``memory/{project_id}/debug/prompts/``.
+
+    Assembles the full prompt (system, assistant hint, RAG context,
+    conversation history, and user prompt) with a metadata header into a
+    timestamped file. Safe/no-op when ``project_id`` is missing or debug files
+    are disabled.
+
+    Args:
+        project_id: Project whose debug directory receives the snapshot;
+            ``None`` makes the call a no-op.
+        base_system_prompt: Base system prompt text.
+        assistant_hint: Assistant personality/preferences hint text.
+        rag_system_prompt: Injected RAG context text, if any.
+        conversation_history: Prior turns as role/content message dicts.
+        user_prompt: Current user message.
+        model: Resolved model id, recorded in the header.
+        msgs: Reserved for future exact-payload debug variants; currently
+            unused.
     """
     if not project_id:
         return

@@ -41,7 +41,14 @@ logger = logging.getLogger(__name__)
 
 
 def _origin_memory_ids(item: Dict[str, Any]) -> List[str]:
-    """Collect de-duplicated origin/memory ids from an item and its metadata."""
+    """Collect de-duplicated origin/memory ids from an item and its metadata.
+
+    Args:
+        item: Dream item whose top-level and ``metadata`` id fields are scanned.
+
+    Returns:
+        Ordered, de-duplicated list of non-empty origin/memory id strings.
+    """
     values: List[str] = []
     for key in ("origin_memory_id", "memory_id"):
         val = item.get(key)
@@ -69,6 +76,22 @@ def _dream_markdown_block(
     user_text: str,
     assistant_text: str,
 ) -> str:
+    """Render a single Dream memory entry as a markdown block with metadata.
+
+    Args:
+        memory_id: Stable identifier recorded in the entry metadata.
+        timestamp: Local timestamp string for the entry.
+        route: Retrieval route label stored in metadata.
+        keep: Whether the entry is flagged as kept memory.
+        tags_meta: Optional tagger output supplying topics and semantic handle;
+            non-dict values are treated as empty.
+        item: Source Dream item contributing id/type/origin metadata.
+        user_text: User-side text of the persisted pair.
+        assistant_text: Assistant-side text of the persisted pair.
+
+    Returns:
+        Rendered markdown memory entry string.
+    """
     tags = tags_meta if isinstance(tags_meta, dict) else {}
     metadata: Dict[str, Any] = {
         "memory_id": memory_id,
@@ -118,6 +141,15 @@ class DreamAutoAcceptResult:
 
 
 def _normalize_resolution(value: Any) -> str:
+    """Normalize a resolution value to a recognized token or empty string.
+
+    Args:
+        value: Raw resolution value of any type.
+
+    Returns:
+        One of ``ignore``, ``answer_local``, ``answer_remote``, or ``""`` when the
+        value is unrecognized.
+    """
     res = str(value or "").strip().lower()
     if res in {"ignore", "answer_local", "answer_remote"}:
         return res
@@ -125,7 +157,15 @@ def _normalize_resolution(value: Any) -> str:
 
 
 def _valid_research_entries(item: Dict[str, Any]) -> List[Dict[str, str]]:
-    """Return research entries that have both a non-empty topic and summary."""
+    """Return research entries that have both a non-empty topic and summary.
+
+    Args:
+        item: Dream item whose ``research`` list is filtered.
+
+    Returns:
+        List of ``{"research_topic", "research_summary"}`` dicts; entries missing
+        either field are dropped.
+    """
     out: List[Dict[str, str]] = []
     research_list = item.get("research") if isinstance(item.get("research"), list) else []
     for r in research_list:
@@ -144,9 +184,12 @@ def _filter_remote_without_research_with_rows(
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Split items into kept and dropped, removing answer_remote items lacking research.
 
+    Args:
+        items: Dream items to partition; non-dict entries are skipped.
+
     Returns:
-        Tuple of (kept_items, dropped_rows) where dropped_rows describe each
-        answer_remote item discarded for having no valid research entries.
+        Tuple of ``(kept_items, dropped_rows)`` where ``dropped_rows`` describe each
+        ``answer_remote`` item discarded for having no valid research entries.
     """
     kept: List[Dict[str, Any]] = []
     dropped_rows: List[Dict[str, Any]] = []
@@ -174,6 +217,14 @@ def _filter_remote_without_research_with_rows(
 
 
 def _bad_dream_path(base_dir: str) -> str:
+    """Build a unique timestamped path for quarantining a failed ``dream.json``.
+
+    Args:
+        base_dir: Project memory directory where the bad file is placed.
+
+    Returns:
+        A non-colliding ``bad_dream_*.json`` path within ``base_dir``.
+    """
     ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     candidate = os.path.join(base_dir, f"bad_dream_{ts}.json")
     if not os.path.exists(candidate):
@@ -182,6 +233,15 @@ def _bad_dream_path(base_dir: str) -> str:
 
 
 def _rename_bad_dream(project_id: str, dream_path: str) -> Optional[str]:
+    """Quarantine a failed ``dream.json`` by renaming it aside.
+
+    Args:
+        project_id: Project owning the dream file (used for logging).
+        dream_path: Path to the ``dream.json`` to move aside.
+
+    Returns:
+        The new quarantine path on success, or ``None`` when the rename fails.
+    """
     bad_path = _bad_dream_path(os.path.dirname(dream_path))
     try:
         os.replace(dream_path, bad_path)
@@ -203,6 +263,15 @@ def _rename_bad_dream(project_id: str, dream_path: str) -> Optional[str]:
 
 
 def _delete_dream_file(project_id: str, dream_path: str) -> bool:
+    """Delete the project's ``dream.json`` after successful processing.
+
+    Args:
+        project_id: Project owning the dream file (used for logging).
+        dream_path: Path to the ``dream.json`` to remove.
+
+    Returns:
+        True when the file is absent or removed; False when deletion fails.
+    """
     try:
         if os.path.isfile(dream_path):
             os.remove(dream_path)
@@ -219,6 +288,15 @@ def _delete_dream_file(project_id: str, dream_path: str) -> bool:
 
 
 def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
+    """Render tagger metadata into a ``#topics/#intent/#type`` header block.
+
+    Args:
+        tags_meta: Tagger output dict; non-dict values yield an empty block.
+
+    Returns:
+        A trailing-newline-terminated tag block, or an empty string when no usable
+        tags are present or formatting fails.
+    """
     if not isinstance(tags_meta, dict):
         return ""
     try:
@@ -238,8 +316,15 @@ def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
 def _memory_pairs_for_item(item: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Expand an item into the user/assistant memory pairs to persist.
 
-    answer_remote items yield one pair per valid research entry; other items
-    yield a single pair from origin_text and assistant_response.
+    ``answer_remote`` items yield one pair per valid research entry; other items
+    yield a single pair from ``origin_text`` and ``assistant_response``.
+
+    Args:
+        item: Dream item to expand into persistable memory pairs.
+
+    Returns:
+        List of ``{"item", "user_text", "assistant_text"}`` dicts ready for
+        tagging and persistence.
     """
     resolution = _normalize_resolution(item.get("source_resolution"))
     if resolution == "answer_remote":
@@ -264,11 +349,21 @@ def _memory_pairs_for_item(item: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def auto_accept_dreams(project_id: str) -> DreamAutoAcceptResult:
-    """
-    Process every pending dream.json item as remembered Dream memory during Sleep.
+    """Process every pending ``dream.json`` item as remembered Dream memory during Sleep.
 
-    This mirrors the manual Dream Remember persistence path, except auto-accepted
-    entries are stored with keep=False and the helper runs independently of the UI.
+    Mirrors the manual Dream Remember persistence path, except auto-accepted
+    entries are stored with ``keep=False`` and the helper runs independently of
+    the UI. Each processable item is expanded into memory pairs, tagged, appended
+    to the daily store and the dream summary markdown, and the daily cache is
+    rebuilt. A malformed or unprocessable ``dream.json`` is quarantined; a clean
+    run deletes it. Errors are accumulated on the result rather than raised.
+
+    Args:
+        project_id: Project whose pending ``dream.json`` is processed.
+
+    Returns:
+        A :class:`DreamAutoAcceptResult` with processed/accepted/failed counts,
+        filtering stats, and any quarantine path or error messages.
     """
     result = DreamAutoAcceptResult()
     base_dir = os.path.join(get_settings().memory_root, project_id)

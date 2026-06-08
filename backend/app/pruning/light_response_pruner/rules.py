@@ -148,6 +148,17 @@ def export_rules_schema() -> dict[str, Any]:
 
 
 def _normalize_sources(sources: RuleSources) -> list[RuleSource]:
+    """Wrap a single source in a list and validate that the sequence is non-empty.
+
+    Args:
+        sources: A single rule source or a sequence of them.
+
+    Returns:
+        A list of one or more rule sources.
+
+    Raises:
+        RuleConfigError: If a sequence is provided but contains no sources.
+    """
     if isinstance(sources, (PruneRules, Mapping, str, Path)):
         return [sources]
 
@@ -159,6 +170,15 @@ def _normalize_sources(sources: RuleSources) -> list[RuleSource]:
 
 
 def _coerce_rule_source(source: RuleSource, *, strip_comment_keys: bool = False) -> PruneRules:
+    """Coerce a single rule source into a validated PruneRules.
+
+    Args:
+        source: A PruneRules, a mapping, or a path to a JSON rule file.
+        strip_comment_keys: When True, drop "_comment" keys from file sources.
+
+    Returns:
+        The validated PruneRules for the source.
+    """
     if isinstance(source, PruneRules):
         return source
 
@@ -169,6 +189,17 @@ def _coerce_rule_source(source: RuleSource, *, strip_comment_keys: bool = False)
 
 
 def _merge_front_sections(sections: Sequence[FrontRuleSection]) -> FrontRuleSection | None:
+    """Union the prefixes of front sections sharing a single cut mode.
+
+    Args:
+        sections: Front sections to merge, in priority order.
+
+    Returns:
+        A merged FrontRuleSection, or None when no sections are given.
+
+    Raises:
+        RuleConfigError: If the sections disagree on ``cut_mode``.
+    """
     if not sections:
         return None
 
@@ -181,6 +212,17 @@ def _merge_front_sections(sections: Sequence[FrontRuleSection]) -> FrontRuleSect
 
 
 def _merge_end_sections(sections: Sequence[EndRuleSection]) -> EndRuleSection | None:
+    """Union the prefixes of end sections sharing a single cut mode.
+
+    Args:
+        sections: End sections to merge, in priority order.
+
+    Returns:
+        A merged EndRuleSection, or None when no sections are given.
+
+    Raises:
+        RuleConfigError: If the sections disagree on ``cut_mode``.
+    """
     if not sections:
         return None
 
@@ -193,6 +235,14 @@ def _merge_end_sections(sections: Sequence[EndRuleSection]) -> EndRuleSection | 
 
 
 def _merge_prefix_lists(prefix_lists: Iterable[Sequence[str]]) -> list[str]:
+    """Concatenate prefix lists into one, dropping duplicates and keeping order.
+
+    Args:
+        prefix_lists: Prefix lists to combine, in priority order.
+
+    Returns:
+        The deduplicated, first-seen-order list of prefixes.
+    """
     seen: set[str] = set()
     merged: list[str] = []
 
@@ -208,6 +258,15 @@ def _merge_prefix_lists(prefix_lists: Iterable[Sequence[str]]) -> list[str]:
 
 
 def _strip_comment_keys(value: Any) -> Any:
+    """Recursively remove "_comment"-prefixed keys from mappings.
+
+    Args:
+        value: A mapping, list, or scalar from parsed rule JSON.
+
+    Returns:
+        The value with comment keys removed from any nested mappings; scalars
+        are returned unchanged.
+    """
     if isinstance(value, Mapping):
         return {
             key: _strip_comment_keys(child_value)

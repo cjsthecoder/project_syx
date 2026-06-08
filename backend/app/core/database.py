@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 
 
 def _ensure_dir(path: str) -> None:
+    """Create the parent directory of a file path if it does not exist.
+
+    Args:
+        path: Filesystem path whose containing directory should be ensured.
+    """
     directory = os.path.dirname(path)
     if directory and not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)

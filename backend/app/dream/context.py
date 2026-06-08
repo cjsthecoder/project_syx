@@ -33,10 +33,26 @@ _CONTEXT_CACHE: Dict[str, str] = {}
 
 
 def _count_tokens(text: str) -> int:
+    """Count tokens in ``text``, treating ``None`` as empty.
+
+    Args:
+        text: Text to measure; falsy values are counted as zero tokens.
+
+    Returns:
+        Token count as an integer.
+    """
     return int(count_tokens(text or ""))
 
 
 def _read_file_safe(path: str) -> str:
+    """Read a UTF-8 file, returning empty string on any I/O failure.
+
+    Args:
+        path: Filesystem path to read.
+
+    Returns:
+        File contents, or an empty string when the file is missing or unreadable.
+    """
     try:
         if os.path.isfile(path):
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
@@ -78,9 +94,16 @@ def _strip_open_questions_section(text: str) -> str:
 
 
 def _get_user_profile(project_id: str) -> str:
-    """
-    Retrieve user profile from summary file (if present) or RAG/fallback file.
-    Returns text or '(empty)' if not found.
+    """Retrieve the user profile for a project from summary, RAG, or fallback file.
+
+    Prefers a precomputed ``user_profile_summary.txt``, then falls back to a RAG
+    lookup, then to a local ``default_profile.txt`` file.
+
+    Args:
+        project_id: Project whose user profile should be loaded.
+
+    Returns:
+        Profile text, or ``"(empty)"`` when no profile source yields content.
     """
     # 1) Prefer a precomputed user_profile_summary.txt if it exists
     summary_path = os.path.join(get_settings().memory_root, project_id, "user_profile_summary.txt")
@@ -112,9 +135,13 @@ def _get_user_profile(project_id: str) -> str:
 
 
 def _get_project_system_prompt(project_id: str) -> str:
-    """
-    Retrieve project system prompt from RAG or fallback file.
-    Returns text or '(empty)' if not found.
+    """Retrieve the project system prompt from RAG or a fallback file.
+
+    Args:
+        project_id: Project whose system prompt should be loaded.
+
+    Returns:
+        System prompt text, or ``"(empty)"`` when neither source yields content.
     """
     sp = retrieve_dream_context(
         project_id=project_id,
@@ -133,9 +160,17 @@ def _get_project_system_prompt(project_id: str) -> str:
 
 
 def _get_project_context_summary(project_id: str) -> str:
-    """
-    Generate project context summary via RAG + LLM summarization.
-    Returns text or '(empty)' if generation fails.
+    """Generate the project context summary by summarizing the latest sleep summary.
+
+    Reads ``sleep_summary.md`` as the sole source, builds a summarization prompt,
+    and calls the Dream LLM. LLM failures degrade to a placeholder answer rather
+    than raising.
+
+    Args:
+        project_id: Project whose sleep summary should be summarized.
+
+    Returns:
+        Generated summary text, or ``"(empty)"`` when the result is blank.
     """
     settings = get_settings()
     # Always use the latest sleep summary as source; skip RAG retrieval
@@ -182,12 +217,18 @@ def _get_project_context_summary(project_id: str) -> str:
 
 
 def _format_question_answers(questions_data: Dict[str, Any]) -> str:
-    """
-    Render question/answer pairs from the in-memory questions_data dict
-    into a simple, human-friendly text block.
+    """Render question/answer pairs into a human-friendly text block.
 
-    Expected shape:
+    Expected shape::
+
         {"questions": [ { "question": "...", "topic": "...", "answer": "..." }, ... ]}
+
+    Args:
+        questions_data: In-memory questions structure produced by the Questions
+            Agent; non-dict values and malformed entries are treated as empty.
+
+    Returns:
+        Formatted Q/A text block, or ``"(empty)"`` when no usable entries exist.
     """
     if not isinstance(questions_data, dict):
         logger.warning("questions_data missing or invalid; treating as empty.")
@@ -223,9 +264,16 @@ def _format_question_answers(questions_data: Dict[str, Any]) -> str:
 
 
 def _get_daily_memory(project_id: str) -> str:
-    """
-    Load daily memory from sleep_summary.md with [Open Questions] section stripped.
-    Returns text or '(empty)' if missing or empty.
+    """Load daily memory from ``sleep_summary.md`` with the [Open Questions] section stripped.
+
+    The [Open Questions] block is removed to avoid duplicating questions already
+    represented in ``questions_data``.
+
+    Args:
+        project_id: Project whose sleep summary provides daily memory.
+
+    Returns:
+        Daily memory text, or ``"(empty)"`` when the summary is missing or blank.
     """
     summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.md")
     daily_text = _read_file_safe(summary_path)
@@ -243,11 +291,17 @@ def _get_daily_memory(project_id: str) -> str:
 
 
 def _extract_rag_topics(project_id: str) -> List[str]:
-    """
-    Extract topic queries from sleep_summary.md per 4.1.3.2.
+    """Extract topic queries from ``sleep_summary.md`` per 4.1.3.2.
+
+    Parses ``=== TOPIC: ... ===`` section titles and their immediate ``#topics:``
+    lines into query strings used for RAG enrichment.
+
+    Args:
+        project_id: Project whose sleep summary is scanned for topics.
 
     Returns:
-        Ordered, deduplicated list of topic queries (section titles + individual topics).
+        Ordered, deduplicated list of topic queries (section titles + individual
+        topics); empty when the summary is missing or has no topics.
     """
     summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.md")
     text = _read_file_safe(summary_path)
@@ -300,11 +354,14 @@ def _extract_rag_topics(project_id: str) -> List[str]:
 
 
 def _build_project_rag_context(project_id: str) -> str:
-    """
-    Build the PROJECT RAG CONTEXT section by querying RAG per extracted topic.
+    """Build the PROJECT RAG CONTEXT section by querying RAG per extracted topic.
+
+    Args:
+        project_id: Project whose extracted topics drive RAG retrieval.
 
     Returns:
-        Section string starting with '=== PROJECT RAG CONTEXT ===' (may be minimal/empty).
+        Section string starting with ``'=== PROJECT RAG CONTEXT ==='``; may be
+        header-only when no topics or retrieval hits are found.
     """
     topic_list = _extract_rag_topics(project_id)
 
@@ -374,13 +431,22 @@ def _build_project_rag_context(project_id: str) -> str:
 
 
 def build_dream_context(project_id: str, questions_data: Dict[str, Any]) -> tuple[str, str]:
-    """
-    Build the Dream Context Block in this exact order with headers:
-    USER PROFILE → PROJECT SYSTEM PROMPT → PROJECT CONTEXT SUMMARY → QUESTION ANSWERS → DAILY MEMORY → PROJECT RAG CONTEXT
-    Falls back per 4.1.3.1/4.1.3.2 and logs per-section token counts.
+    """Build the Dream Context Block in a fixed section order.
+
+    Sections are assembled with headers in this order: USER PROFILE → PROJECT
+    SYSTEM PROMPT → PROJECT CONTEXT SUMMARY → QUESTION ANSWERS → DAILY MEMORY →
+    PROJECT RAG CONTEXT. Per 4.1.3.1/4.1.3.2 each section applies its own
+    fallback, and per-section token counts are logged. Any failure during full
+    assembly degrades to a minimal DAILY-MEMORY-only block rather than raising.
+
+    Args:
+        project_id: Project whose memory sources are assembled into context.
+        questions_data: Questions Agent output rendered into the QUESTION
+            ANSWERS section.
 
     Returns:
-        (context_block, project_summary_text)
+        Tuple of ``(context_block, project_summary_text)`` where
+        ``project_summary_text`` is ``"(empty)"`` when the fallback path is used.
     """
     logger.info("[DREAM][CONTEXT] Building context for project=%s", project_id)
 

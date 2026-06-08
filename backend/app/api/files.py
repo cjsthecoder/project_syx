@@ -33,7 +33,18 @@ def _bytes_to_mb(n: int) -> float:
 
 
 def _compute_file_stats(path: str) -> tuple[int, int]:
-    """Return (page_count, token_count) for file at path."""
+    """Return ``(page_count, token_count)`` for the file at ``path``.
+
+    Reads the file via the RAG text extractor, tracking the maximum page
+    number seen and accumulating token counts across extracted segments.
+
+    Args:
+        path: Absolute path to the uploaded file to inspect.
+
+    Returns:
+        Tuple of ``(page_count, token_count)``; ``page_count`` is at least 1,
+        and both default toward 1/0 when extraction fails.
+    """
     page_count = 1
     total_tokens = 0
     try:
@@ -190,7 +201,16 @@ async def upload_files(project_id: str, files: List[UploadFile] = File(...)) -> 
 
 @router.get("/projects/{project_id}/files")
 async def list_files(project_id: str) -> JSONResponse:
-    """List uploaded files for a project (DB view)."""
+    """List uploaded files for a project (DB view).
+
+    Args:
+        project_id: Project whose file rows to list.
+
+    Returns:
+        JSON with the project's files (id, filename, size, upload time,
+        embedding status, page/token counts) plus aggregate ``storage_bytes``
+        and ``token_count`` totals.
+    """
     from sqlmodel import select
     with get_session() as session:
         rows = session.exec(select(FileRow).where(FileRow.project_id == project_id)).all()
@@ -218,7 +238,20 @@ async def list_files(project_id: str) -> JSONResponse:
 
 @router.delete("/projects/{project_id}/files/{file_id}")
 async def delete_file(project_id: str, file_id: int) -> JSONResponse:
-    """Delete a file from DB and disk; rebuild FAISS index."""
+    """Delete a file from the DB and disk, then rebuild the FAISS index.
+
+    Args:
+        project_id: Project that owns the file.
+        file_id: Identifier of the ``File`` row to delete.
+
+    Returns:
+        JSON with the project id, index rebuild status, and rebuilt index
+        directory (``None`` when the rebuild fails).
+
+    Raises:
+        HTTPException: 404 if the file does not exist or does not belong to the
+            given project.
+    """
     upload_root = os.path.join(get_settings().memory_root, project_id, "uploads")
     from sqlmodel import select
     with get_session() as session:

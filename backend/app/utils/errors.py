@@ -28,6 +28,16 @@ class SyxError(Exception):
         error_code: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None
     ):
+        """Initialize the error with a message and optional structured metadata.
+
+        Args:
+            message: Human-readable description of the failure.
+            error_code: Stable machine-readable code identifying the failure
+                category; used to look up canonical messages and shape API
+                responses.
+            details: Arbitrary structured context about the error; defaults to
+                an empty dict when omitted.
+        """
         self.message = message
         self.error_code = error_code
         self.details = details or {}
@@ -155,7 +165,14 @@ def handle_llm_error(error: Exception) -> HTTPException:
 
 
 def handle_validation_error(error: Exception) -> HTTPException:
-    """Handle validation errors."""
+    """Map a request validation error to a 422 HTTPException.
+
+    Args:
+        error: The validation-related exception that occurred.
+
+    Returns:
+        An HTTPException carrying the ``VALIDATION_ERROR`` code and a 422 status.
+    """
     return create_error_response(
         error,
         error_code="VALIDATION_ERROR",
@@ -164,7 +181,14 @@ def handle_validation_error(error: Exception) -> HTTPException:
 
 
 def handle_memory_error(error: Exception) -> HTTPException:
-    """Handle memory-related errors."""
+    """Map a memory storage error to a 507 HTTPException.
+
+    Args:
+        error: The memory-related exception that occurred.
+
+    Returns:
+        An HTTPException carrying the ``MEMORY_FULL`` code and a 507 status.
+    """
     return create_error_response(
         error,
         error_code="MEMORY_FULL",
@@ -173,7 +197,14 @@ def handle_memory_error(error: Exception) -> HTTPException:
 
 
 def handle_rag_error(error: Exception) -> HTTPException:
-    """Handle RAG-related errors."""
+    """Map a RAG search/index error to a 503 HTTPException.
+
+    Args:
+        error: The RAG-related exception that occurred.
+
+    Returns:
+        An HTTPException carrying the ``RAG_SEARCH_ERROR`` code and a 503 status.
+    """
     return create_error_response(
         error,
         error_code="RAG_SEARCH_ERROR",
@@ -182,7 +213,14 @@ def handle_rag_error(error: Exception) -> HTTPException:
 
 
 def handle_project_error(error: Exception) -> HTTPException:
-    """Handle project-related errors."""
+    """Map a project lookup error to a 404 HTTPException.
+
+    Args:
+        error: The project-related exception that occurred.
+
+    Returns:
+        An HTTPException carrying the ``PROJECT_NOT_FOUND`` code and a 404 status.
+    """
     return create_error_response(
         error,
         error_code="PROJECT_NOT_FOUND",
@@ -191,7 +229,15 @@ def handle_project_error(error: Exception) -> HTTPException:
 
 
 def get_error_message(error_code: str) -> str:
-    """Get a human-readable error message for an error code."""
+    """Get a human-readable error message for an error code.
+
+    Args:
+        error_code: A key from ``ERROR_CODES`` identifying the failure.
+
+    Returns:
+        The canonical message for the code, or a generic fallback message when
+        the code is unknown.
+    """
     return ERROR_CODES.get(error_code, "An unknown error occurred")
 
 
@@ -200,7 +246,15 @@ def log_error_context(
     context: Dict[str, Any],
     logger_name: str = "errors"
 ) -> None:
-    """Log error with additional context."""
+    """Log an error together with extra structured context and a traceback.
+
+    Args:
+        error: The exception to log; its type and message are recorded.
+        context: Additional key/value fields merged into the log record's
+            ``extra`` for downstream filtering and debugging.
+        logger_name: Retained for call-site clarity; the shared application
+            logger is used regardless of this value.
+    """
     context_logger = get_logger()  # Use single shared logger
     context_logger.error(
         f"Error occurred: {str(error)}",

@@ -42,14 +42,26 @@ def run_research_agent(
     project_summary_text: str,
     debug_ts: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    Run the Research Agent for a project.
+    """Run the Research Agent for a project.
 
-    This function:
-      - Iterates Idea Agent entries and their recommended_research topics.
-      - Builds a research prompt for each topic.
-      - Invokes the Dream LLM with the same configuration used by fetch_remote_research.
-      - Parses plain-text results into Research Entry dicts and appends them under "research".
+    Iterates Idea Agent entries and their ``recommended_research`` topics, builds a
+    per-topic research prompt grounded in project and local-memory context, invokes
+    the Dream LLM, and parses plain-text results into Research Entry dicts appended
+    under each entry's ``research`` key. Only ``answer_remote`` entries are eligible
+    for enrichment; entries are mutated in place. Per-topic retrieval/LLM failures
+    are logged and skipped; entries that produce no research are flagged with
+    ``research_failed``.
+
+    Args:
+        project_id: Project whose entries are researched.
+        idea_data: Idea Agent output; its ``items`` are enriched in place.
+        project_summary_text: Project summary used to ground each research prompt.
+        debug_ts: Optional timestamp; when provided, a per-cycle research-prompts
+            debug artifact is written under ``dreaming/``.
+
+    Returns:
+        Dict of shape ``{"date": "MM/DD/YYYY", "items": [...]}`` with research
+        attached; ``items`` is empty when the input items are not a list.
     """
     settings = get_settings()
     logger.info("[DREAM][RESEARCH] Start project=%s", project_id)

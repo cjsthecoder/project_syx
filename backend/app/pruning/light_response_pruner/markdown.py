@@ -84,6 +84,17 @@ def strip_markdown_markup(text: str) -> str:
 
 
 def _strip_markdown_prose(text: str) -> str:
+    """Remove markdown markup from a prose segment (no code blocks).
+
+    Applies, in order, horizontal-rule, heading, blockquote, list-marker,
+    image, link, inline-code, strong, strikethrough, and emphasis passes.
+
+    Args:
+        text: Prose text known to contain no fenced code.
+
+    Returns:
+        The text with markdown formatting removed.
+    """
     stripped = _HORIZONTAL_RULE_RE.sub("", text)
     stripped = _ATX_HEADING_RE.sub(lambda match: match.group("indent"), stripped)
     stripped = _BLOCKQUOTE_RE.sub(lambda match: match.group("indent"), stripped)
@@ -98,6 +109,17 @@ def _strip_markdown_prose(text: str) -> str:
 
 
 def _strip_line_markers_with_protection(text: str) -> str:
+    """Strip bullet and ordered-list markers, preserving requirement/Q&A lines.
+
+    Lines matching the numbered requirement/question pattern are left intact so
+    structured requirement text keeps its numbering.
+
+    Args:
+        text: Prose text whose line-leading list markers should be removed.
+
+    Returns:
+        The text with unprotected list markers replaced by their indentation.
+    """
     lines = text.splitlines(keepends=True)
     processed_lines: list[str] = []
 

@@ -98,9 +98,19 @@ class _BuilderPromptDumper:
         data: Optional[Dict[str, Any]],
         model: Optional[str],
     ) -> None:
-        """
-        Write a builder debug snapshot to memory/{project_id}/debug/prompts/.
-        Uses the same timestamp format as the chat prompt dump.
+        """Write a builder debug snapshot to memory/{project_id}/debug/prompts/.
+
+        Uses the same timestamp format as the chat prompt dump. No-op when
+        ``project_id`` is empty.
+
+        Args:
+            project_id: Project the snapshot belongs to.
+            user_text: Raw user text passed into ``build_query``.
+            system_prompt: System prompt sent to the classifier.
+            user_prompt: Composed user prompt sent to the classifier.
+            raw_response: Raw classifier response text.
+            data: Parsed classifier JSON, or None when parsing failed.
+            model: Classifier model name, included in the header when present.
         """
         if not project_id:
             return
@@ -135,6 +145,16 @@ _PROMPT_DUMPER = _BuilderPromptDumper()
 
 
 def _cache_key(project_id: str, history_summary: str, user_text: str) -> str:
+    """Compute a stable cache key for a builder request.
+
+    Args:
+        project_id: Project scope for the request.
+        history_summary: Summary of recent history used as routing context.
+        user_text: Raw user message being routed.
+
+    Returns:
+        A hex SHA-256 digest combining the three inputs.
+    """
     from hashlib import sha256
     h = sha256()
     h.update(project_id.encode("utf-8", errors="ignore"))
@@ -146,7 +166,15 @@ def _cache_key(project_id: str, history_summary: str, user_text: str) -> str:
 
 
 def _filter_route_only(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Return a minimal, route-only dict from a parsed classifier response."""
+    """Return a minimal, route-only dict from a parsed classifier response.
+
+    Args:
+        data: Parsed classifier response that may contain a ``route`` field.
+
+    Returns:
+        A dict ``{"route": <ROUTE>}`` with the route upper-cased and coerced to
+        ``OTHER`` when missing or not in the allowed set.
+    """
     try:
         route = (data.get("route") or "").strip()
     except Exception:
@@ -159,9 +187,14 @@ def _filter_route_only(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _slice_first_json(text: str) -> str:
-    """
-    Extract the first balanced JSON object from text, respecting quoted strings.
-    If no complete object is found, return the original text unchanged.
+    """Extract the first balanced JSON object from text, respecting quoted strings.
+
+    Args:
+        text: Raw text that may contain a JSON object plus surrounding prose.
+
+    Returns:
+        The substring spanning the first balanced ``{...}`` object, or the
+        original text unchanged when no complete object is found.
     """
     if not text:
         return text
@@ -205,8 +238,7 @@ def _slice_first_json(text: str) -> str:
 
 
 def format_contextual_turn(user_text: str, tags_meta_json: str) -> str:
-    """
-    Canonical contextual query string builder.
+    """Canonical contextual query string builder.
 
     Rules:
     - Start with the raw user prompt only.
@@ -216,6 +248,15 @@ def format_contextual_turn(user_text: str, tags_meta_json: str) -> str:
     Output format:
       <user_prompt> Context: <semantic_handle>. Intent: <intent>. Type: <type>
     (each segment is conditional; final punctuation matches the template above)
+
+    Args:
+        user_text: Raw user prompt forming the base of the string.
+        tags_meta_json: JSON string of tagger metadata supplying optional
+            ``semantic_handle``, ``intent``, and ``type`` fields; invalid or
+            empty input contributes no appended segments.
+
+    Returns:
+        The composed contextual query string.
     """
     base = (user_text or "").strip()
     out = base
@@ -240,7 +281,21 @@ def format_contextual_turn(user_text: str, tags_meta_json: str) -> str:
 
 
 def build_query(project_id: str, history_summary: str, user_text: str) -> Optional[Dict[str, Any]]:
-    """Invoke classifier LLM and return parsed JSON or None on failure."""
+    """Invoke classifier LLM and return parsed JSON or None on failure.
+
+    Results are served from a short-lived in-memory cache when
+    ``BUILDER_CACHE`` is enabled.
+
+    Args:
+        project_id: Project scope used for caching, instrumentation, and debug
+            dumps.
+        history_summary: Recent-history summary used as routing context.
+        user_text: Raw user message to classify.
+
+    Returns:
+        A route-only dict (``{"route": <ROUTE>}``) on success, or None when the
+        classifier call fails or returns unparseable/invalid output.
+    """
     settings = get_settings()
     if settings.builder_cache:
         key = _cache_key(project_id, history_summary, user_text)

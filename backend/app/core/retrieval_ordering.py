@@ -16,12 +16,19 @@ from typing import Any, Dict, List
 
 
 def order_candidates_by_similarity_score(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Deterministic candidate ordering by similarity score.
+    """Deterministic candidate ordering by similarity score.
 
     - Sort descending by candidate["score"] (raw cosine similarity 0.0–1.0).
     - Use stable sorting (ties preserve original input order).
     - Do not round/normalize scores here (sort on full-precision floats).
+
+    Args:
+        candidates: Candidate dicts, each expected to carry a numeric
+            ``score``; a missing or falsy score is treated as 0.0.
+
+    Returns:
+        A new list ordered by descending score (stable on ties), or an empty
+        list when no candidates are given.
     """
     if not candidates:
         return []

@@ -57,7 +57,16 @@ _LTM_REBUILD_LOCK = threading.Lock()
 
 
 def _schedule_ltm_rebuild(project_id: str, reason: str) -> None:
-    """Best-effort background rebuild (no in-request retry)."""
+    """Schedule a best-effort background rebuild of a project's LTM index.
+
+    De-duplicated per project so a rebuild already in flight is not started again;
+    the current request never retries. Scheduling and rebuild failures are logged
+    at warning level.
+
+    Args:
+        project_id: Project whose FAISS index should be rebuilt off-thread.
+        reason: Short reason recorded in logs for diagnostics.
+    """
     try:
         with _LTM_REBUILD_LOCK:
             if project_id in _LTM_REBUILDING:
@@ -105,6 +114,15 @@ class LTMIndex:
         built_at: Optional[str],
         schema_version: Optional[str],
     ):
+        """Wrap a loaded FAISS index with its id mapping and docstore.
+
+        Args:
+            index: The raw FAISS ``IndexFlatIP`` over unit-normalized vectors.
+            index_to_id: Row-ordered list mapping FAISS rows to item ids.
+            docstore: Map of item_id to ``{text, metadata}`` entries.
+            built_at: Optional manifest build timestamp for diagnostics.
+            schema_version: Optional manifest schema version for diagnostics.
+        """
         self.index = index
         self.index_to_id = index_to_id
         self.docstore = docstore
@@ -126,7 +144,15 @@ class LTMIndex:
         )
 
     def get_by_id(self, item_id: str) -> Optional[VectorEntry]:
-        """Return the stored entry for an item_id, or None if absent/malformed."""
+        """Return the stored entry for an item_id, or None if absent/malformed.
+
+        Args:
+            item_id: Docstore key to look up.
+
+        Returns:
+            The ``VectorEntry`` (text + metadata), or None when the id is unknown
+            or the stored shape is malformed.
+        """
         try:
             entry = self.docstore.get(str(item_id))
             if not isinstance(entry, dict):
@@ -167,7 +193,19 @@ class LTMIndex:
 
 
 def load_faiss_index(project_id: str) -> Optional[LTMIndex]:
-    """Load raw FAISS index + docstore for project if exists and non-empty."""
+    """Load a project's persisted FAISS index, docstore, and id map.
+
+    Validates the adjacency sidecar against the manifest and current chunking
+    settings, scheduling a background rebuild (best-effort) when adjacency is
+    expected but missing/invalid or chunk params changed since build.
+
+    Args:
+        project_id: Project whose persisted index is loaded.
+
+    Returns:
+        An ``LTMIndex`` when a non-empty, well-formed index exists; None when the
+        directory/files are missing, the index is empty, or loading fails.
+    """
     settings = get_settings()
     faiss_dir = os.path.join(get_settings().memory_root, project_id, "faiss")
     if not os.path.isdir(faiss_dir):
@@ -245,11 +283,20 @@ def ltm_lookup_adjacent_docstore_ids(
     doc_id: str,
     chunk_seq: int,
 ) -> Dict[str, Optional[str]]:
-    """
-    Deterministic neighbor lookup for LTM chunks.
+    """Look up the deterministic neighbors of an LTM chunk via the adjacency sidecar.
 
-    Returns dict with keys: prev_docstore_id, next_docstore_id.
-    If adjacency is unavailable (legacy index, missing/corrupt sidecar), returns None values.
+    Schedules a background rebuild when adjacency is expected but the sidecar is
+    missing/invalid or malformed.
+
+    Args:
+        project_id: Project whose adjacency sidecar is consulted.
+        doc_id: Source document id whose ordered chunk list is indexed.
+        chunk_seq: 0-based position of the central chunk within the document.
+
+    Returns:
+        A dict with ``prev_docstore_id`` and ``next_docstore_id``; both are None
+        when adjacency is unavailable (legacy index, missing/corrupt sidecar) or
+        the neighbor falls outside the document range.
     """
     faiss_dir = os.path.join(get_settings().memory_root, project_id, "faiss")
     manifest = _safe_load_json(os.path.join(faiss_dir, _LTM_MANIFEST_NAME))
@@ -285,9 +332,15 @@ def ltm_lookup_adjacent_docstore_ids(
 
 
 def ltm_fetch_chunk_by_docstore_id(project_id: str, docstore_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Fetch a stored LTM chunk by docstore_id.
-    Returns {text, metadata} or None on failure.
+    """Fetch a stored LTM chunk by its docstore id.
+
+    Args:
+        project_id: Project whose index is loaded.
+        docstore_id: Docstore key of the chunk to fetch.
+
+    Returns:
+        A ``{text, metadata}`` dict, or None when the index/entry is missing or
+        malformed.
     """
     vs = load_faiss_index(project_id)
     if not vs:
@@ -309,6 +362,12 @@ def _ltm_candidate_metadata(md: Dict[str, Any]) -> Dict[str, Any]:
     Normalizes adjacency identity (``source_document_id``/``chunk_index``) from
     legacy fallbacks and retains the downstream/telemetry fields used during
     selection and prompt assembly. Missing fields are preserved as None.
+
+    Args:
+        md: Raw chunk metadata from the docstore.
+
+    Returns:
+        A new metadata dict with the canonical candidate fields populated.
     """
     source_document_id = md.get("source_document_id") or md.get("doc_id")
     chunk_index = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunk_seq")
@@ -355,15 +414,25 @@ def canonical_retrieve_candidates(
     sources: Optional[List[str]] = None,
     per_source_k_override: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
-    """
-    Canonical retrieval entry point.
+    """Retrieve raw candidate chunks across the requested sources.
 
-    - Computes the query embedding exactly once and reuses it across all sources queried.
-    - No thresholding, no boosting, and no route-based eligibility pruning occurs here.
-    Scores are normalized to cosine similarity in [0.0, 1.0].
+    Computes the query embedding exactly once and reuses it across all queried
+    sources. No thresholding, boosting, or route-based eligibility pruning occurs
+    here; scores are cosine similarity mapped to [0.0, 1.0]. On error querying a
+    source, a best-effort rebuild/repair is triggered (where applicable) and that
+    source contributes no candidates for the current request (no retry).
 
-    On error querying a source, trigger best-effort rebuild/repair (where applicable)
-    and return an empty candidate set for that source for the current request (no retry).
+    Args:
+        project_id: Project to retrieve from.
+        query: Natural-language query; embedded once and shared.
+        sources: Source names to query (subset of ``daily``/``ltm``); defaults to
+            both.
+        per_source_k_override: Per-source K to use instead of the computed
+            default; a value <= 0 skips retrieval entirely.
+
+    Returns:
+        A flat list of candidate dicts, each with ``source``, ``text``, ``score``,
+        and ``metadata``. Empty when K <= 0 or the query cannot be embedded.
     """
     settings = get_settings()
     per_source_k = (
@@ -542,7 +611,17 @@ def retrieve_context(
     query: str,
     score_threshold: float,
 ) -> Dict[str, Any]:
-    """Retrieve top-k snippets and assemble a single Context: block string.
+    """Retrieve top-k LTM snippets and assemble a single Context: block string.
+
+    Orders LTM candidates by raw similarity, applies the cosine threshold, and
+    builds a ``Context:`` block. When nothing passes the threshold, the
+    best-scoring snippet is included as a labeled fallback.
+
+    Args:
+        project_id: Project to retrieve from.
+        query: Natural-language query.
+        score_threshold: Minimum cosine score for a snippet to be selected; below
+            this, only the fallback snippet (if any) is returned.
 
     Returns dict with keys:
       - context_text: combined context block prefixed with "Context:"
@@ -673,6 +752,28 @@ def merge_daily_and_main(
     - skip candidates whose score is not greater than route min_score
     - retain the first MAX_KEEP passing candidates
     - no reordering, boosting, or dedupe occurs here
+
+    After selection the kept candidates undergo route-tiered adjacency expansion,
+    chunk-identity dedupe, source-document ordering, overlap trimming, and
+    snippet-group collapse before the prompt ``Context:`` block is assembled.
+
+    Args:
+        project_id: Project to retrieve from.
+        query: Natural-language query.
+        daily_enabled: Whether to include the Daily source alongside LTM.
+        max_keep: Base cap on selected candidates (may grow via the adjacent
+            same-document bonus).
+        route: Route name used to resolve ``min_score`` and expansion limits;
+            defaults to ``OTHER``.
+        per_source_k_override: Per-source K to use instead of the computed
+            default; a value <= 0 (or ``max_keep`` <= 0) returns an empty result.
+
+    Returns:
+        A dict with the assembled ``context_text``, ``tokens_used``, per-source
+        text lists (``daily_texts``/``main_texts``), hit counts/averages, and
+        selection/expansion telemetry counters (e.g. ``ordered_candidates``,
+        ``selected_candidates``, ``kept_candidates``,
+        ``expanded_unique_chunks_after_merge``, ``min_score``).
     """
     settings = get_settings()
     per_source_k = (
@@ -817,7 +918,19 @@ def merge_daily_and_main(
         daily_src = None
 
     def _tier_counts(i: int, k: int) -> tuple[int, int]:
-        # Tiering by candidate rank (K is actual runtime len(kept_candidates)).
+        """Compute the before/after expansion budget for a candidate by rank tier.
+
+        Splits the kept candidates into thirds: the top tier gets the full
+        ``max_before``/``max_after`` budget, the middle tier half (rounded up),
+        and the bottom tier at most one neighbor on each side.
+
+        Args:
+            i: 0-based rank of the candidate within the kept list.
+            k: Total number of kept candidates.
+
+        Returns:
+            A ``(before_n, after_n)`` neighbor budget; ``(0, 0)`` when ``k <= 0``.
+        """
         if k <= 0:
             return 0, 0
         import math
@@ -831,15 +944,21 @@ def merge_daily_and_main(
         return min(1, int(max_before)), min(1, int(max_after))
 
     def _materialize_candidate_chunks(i: int, k: int, c: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Structured expansion materialization.
+        """Materialize a candidate's expansion window as ordered chunk objects.
 
-        Returns ordered chunk objects in before…central…after order, with fields:
-          - source_document_id
-          - chunk_index
-          - text
+        Expands within the same source document only, honoring the route-tiered
+        neighbor budget and source-specific adjacency (LTM sidecar or Daily
+        sequence map). Degrades to central-only when identity/adjacency is
+        unavailable. This stage does not dedupe or mutate chunk text.
 
-        This stage does not dedupe or mutate chunk text.
+        Args:
+            i: 0-based rank of the candidate within the kept list (drives tiering).
+            k: Total number of kept candidates.
+            c: The candidate dict (``text``/``source``/``metadata``).
+
+        Returns:
+            Ordered chunk dicts in before…central…after order, each with
+            ``source_document_id``, ``chunk_index``, and ``text``.
         """
         txt0 = (c.get("text") or "") if isinstance(c, dict) else ""
         src0 = (c.get("source") or "") if isinstance(c, dict) else ""
@@ -1082,6 +1201,15 @@ def merge_daily_and_main(
             qprev = (query or "")[:240].replace("\n", " ")
 
             def _fmt_list(title: str, items: List[Dict[str, Any]]) -> str:
+                """Render a titled, header-prefixed candidate/chunk listing for debug dumps.
+
+                Args:
+                    title: Section title shown in the dump banner.
+                    items: Candidate/chunk dicts to enumerate.
+
+                Returns:
+                    The formatted multi-line debug text.
+                """
                 lines = [
                     f"# timestamp: {ts}",
                     f"# project_id: {project_id}",
@@ -1108,9 +1236,17 @@ def merge_daily_and_main(
                 return "\n".join(lines)
 
             def _fmt_expansion_plan(items: List[Dict[str, Any]]) -> str:
-                """
-                Human-readable expansion plan dump:
-                shows per-candidate requested ranges and which neighbors were materialized.
+                """Render a per-candidate expansion plan for debug dumps.
+
+                Shows each candidate's requested neighbor range and which
+                neighbors could actually be materialized from the LTM index or
+                Daily source.
+
+                Args:
+                    items: Selected candidate dicts to plan expansion for.
+
+                Returns:
+                    The formatted multi-line debug text.
                 """
                 k_actual = int(len(items or []))
                 lines = [
@@ -1202,7 +1338,15 @@ def merge_daily_and_main(
                 return "\n".join(lines)
 
             def _fmt_deduped_chunks_with_audit(items: List[Dict[str, Any]]) -> str:
-                """Chunk list plus audit summary and duplicate_events (same file)."""
+                """Render the deduped chunk listing plus the dedupe audit summary.
+
+                Args:
+                    items: Final deduped chunk dicts to enumerate.
+
+                Returns:
+                    The chunk listing followed by an audit section with the
+                    input/kept/skipped/preserved counts and duplicate events.
+                """
                 chunk_section = _fmt_list("DEDUPED_CHUNKS", items)
                 audit_lines = [
                     "",
@@ -1353,9 +1497,13 @@ def merge_daily_and_main(
 def _snippet_header_metadata_fields(metadata: Dict[str, Any]) -> List[Tuple[str, str]]:
     """Select and sanitize identity metadata for inclusion in snippet headers.
 
-    Returns ordered (key, value) pairs for present fields, with newlines and
-    commas stripped/escaped so the values are safe to render inside a single-line
-    header. Absent or empty fields are omitted.
+    Args:
+        metadata: Candidate metadata to extract identity fields from.
+
+    Returns:
+        Ordered ``(key, value)`` pairs for present fields, with newlines removed
+        and commas replaced by semicolons so values are safe inside a single-line
+        header. Absent or empty fields are omitted.
     """
     keys = (
         "memory_id",

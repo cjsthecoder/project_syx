@@ -26,6 +26,14 @@ def estimate_tokens(text: str, *, model_name: Optional[str] = None) -> int:
     - This is an estimate used only for batching; exact provider-side tokenization
       can differ slightly. Callers should leave headroom (e.g., 250k vs 300k cap).
     - If tiktoken isn't installed, falls back to a word-count approximation.
+
+    Args:
+        text: Text whose token count is being estimated; ``None`` counts as empty.
+        model_name: Optional model id used to select the tokenizer; influences
+            the estimate only when tiktoken is available.
+
+    Returns:
+        Estimated token count for ``text``.
     """
     return int(count_tokens(text or "", model_name=model_name))
 
@@ -40,7 +48,26 @@ def iter_token_batches(
     """Yield (batch_texts, batch_metas, est_tokens) under a token budget.
 
     This is intended for embeddings calls where the provider enforces a maximum
-    total tokens per request across the entire input array.
+    total tokens per request across the entire input array. Items are packed
+    greedily; an item that would push the running total over the budget starts a
+    new batch (an oversized single item is still emitted on its own).
+
+    Args:
+        texts: Ordered input strings to pack into batches.
+        metadatas: Optional per-text metadata, aligned by index with ``texts``.
+            When provided, each metadata dict is defensively copied into the
+            corresponding batch.
+        max_tokens_per_batch: Maximum estimated tokens allowed per emitted batch.
+        model_name: Optional model id forwarded to the token estimator.
+
+    Yields:
+        Tuples of ``(batch_texts, batch_metas, est_tokens)`` where ``batch_metas``
+        is ``None`` unless ``metadatas`` was supplied, and ``est_tokens`` is the
+        estimated token total for the batch.
+
+    Raises:
+        ValueError: If ``max_tokens_per_batch`` is not positive, or if
+            ``metadatas`` is provided with a length different from ``texts``.
     """
     max_tok = int(max_tokens_per_batch)
     if max_tok <= 0:

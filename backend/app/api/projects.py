@@ -73,6 +73,13 @@ def _origin_memory_ids(item: Dict[str, Any]) -> List[str]:
 
     Gathers ids from the item's top-level keys and nested ``metadata`` block
     (single and list forms), preserving first-seen order.
+
+    Args:
+        item: Dream item dict that may carry origin ids at the top level or
+            under ``metadata``.
+
+    Returns:
+        Origin memory ids in first-seen order with duplicates removed.
     """
     values: List[str] = []
     for key in ("origin_memory_id", "memory_id"):
@@ -106,6 +113,20 @@ def _dream_markdown_block(
     Assembles entry metadata (memory id, dream provenance, route, topics,
     semantic handle) and delegates to ``render_memory_entry`` to produce the
     persisted block.
+
+    Args:
+        memory_id: Stable identifier for the memory entry.
+        timestamp: Human-readable creation timestamp for the entry.
+        route: Routing namespace recorded in the entry metadata.
+        keep: Whether the entry is flagged to be retained.
+        tags_meta: Optional tagger output supplying topics and semantic handle.
+        item: Source dream item providing provenance fields (id, origin type,
+            origin memory ids).
+        user_text: User-side text for the rendered pair.
+        assistant_text: Assistant-side text for the rendered pair.
+
+    Returns:
+        The rendered memory-artifact markdown block.
     """
     tags = tags_meta if isinstance(tags_meta, dict) else {}
     metadata: Dict[str, Any] = {
@@ -143,7 +164,15 @@ def _dream_markdown_block(
 
 
 def _validate_dream_payload(data: Any) -> Optional[dict]:
-    """Light validation of dream.json structure."""
+    """Light validation of dream.json structure.
+
+    Args:
+        data: Parsed dream.json content to validate.
+
+    Returns:
+        A normalized dict with ``project_summary`` and ``items`` keys, or
+        ``None`` when the payload is not a dict or has wrong-typed fields.
+    """
     if not isinstance(data, dict):
         return None
     summary = data.get("project_summary")
@@ -162,8 +191,14 @@ def _read_latest_sleep_summary(project_id: str) -> Optional[dict]:
     """Return the project's latest sleep summary as a dream-shaped dict, or None.
 
     Reads ``latest_sleep_summary.txt`` and wraps its text as
-    ``{"project_summary": ..., "items": []}``; returns ``None`` when the file
-    is missing, empty, or unreadable.
+    ``{"project_summary": ..., "items": []}``.
+
+    Args:
+        project_id: Project whose latest sleep summary is read.
+
+    Returns:
+        A dream-shaped dict wrapping the summary text, or ``None`` when the
+        file is missing, empty, or unreadable.
     """
     summary_path = os.path.join(get_settings().memory_root, project_id, "latest_sleep_summary.txt")
     try:
@@ -188,8 +223,13 @@ def _read_latest_sleep_summary(project_id: str) -> Optional[dict]:
 def _read_pending_dream_project_summary(project_id: str, dream_path: str) -> Optional[str]:
     """Return the ``project_summary`` string from a pending dream.json, or None.
 
-    Returns ``None`` when the file is missing, malformed, or lacks a non-empty
-    string summary.
+    Args:
+        project_id: Project the dream file belongs to (used for logging).
+        dream_path: Filesystem path to the pending ``dream.json``.
+
+    Returns:
+        The non-empty ``project_summary`` string, or ``None`` when the file is
+        missing, malformed, or lacks a usable summary.
     """
     try:
         if not os.path.isfile(dream_path):
@@ -216,6 +256,12 @@ def _normalize_resolution(value: Any) -> str:
 
     Recognizes ``ignore``, ``answer_local``, and ``answer_remote``; any other
     value yields ``""``.
+
+    Args:
+        value: Raw source-resolution value (any type) to normalize.
+
+    Returns:
+        The lowercased recognized resolution, or ``""`` when unrecognized.
     """
     res = str(value or "").strip().lower()
     if res in {"ignore", "answer_local", "answer_remote"}:
@@ -224,7 +270,15 @@ def _normalize_resolution(value: Any) -> str:
 
 
 def _valid_research_entries(item: Dict[str, Any]) -> List[Dict[str, str]]:
-    """Return the item's research entries that have both a topic and a summary."""
+    """Return the item's research entries that have both a topic and a summary.
+
+    Args:
+        item: Dream item whose ``research`` list is filtered.
+
+    Returns:
+        Entries with non-empty ``research_topic`` and ``research_summary``,
+        each normalized to those two string keys.
+    """
     out: List[Dict[str, str]] = []
     research_list = item.get("research") if isinstance(item.get("research"), list) else []
     for r in research_list:
@@ -244,6 +298,13 @@ def _dream_memory_pairs_for_item(item: Dict[str, Any]) -> List[Dict[str, Any]]:
     For ``answer_remote`` items, emits one pair per valid research entry
     (topic as user text, summary as assistant text). Otherwise emits a single
     pair from the item's origin text and assistant response.
+
+    Args:
+        item: Dream item to expand into persistable pairs.
+
+    Returns:
+        A list of pair dicts, each with ``item``, ``user_text``, and
+        ``assistant_text`` keys.
     """
     resolution = _normalize_resolution(item.get("source_resolution"))
     if resolution == "answer_remote":
@@ -270,6 +331,9 @@ def _dream_memory_pairs_for_item(item: Dict[str, Any]) -> List[Dict[str, Any]]:
 def _filter_remote_without_research(items: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
     """Drop ``answer_remote`` items that lack valid research entries.
 
+    Args:
+        items: Dream items to filter.
+
     Returns:
         Tuple of ``(kept_items, dropped_count)``.
     """
@@ -295,8 +359,12 @@ def _filter_remote_without_research_with_rows(
     returns detailed rows describing each dropped item for the persist-filter
     report.
 
+    Args:
+        items: Dream items to filter.
+
     Returns:
-        Tuple of ``(kept_items, dropped_rows)``.
+        Tuple of ``(kept_items, dropped_rows)``, where each dropped row records
+        the item id, origin text, resolution, research count, and drop reason.
     """
     kept: List[Dict[str, Any]] = []
     dropped_rows: List[Dict[str, Any]] = []
@@ -334,6 +402,12 @@ def _write_persist_filter_report(
     Records the remembered-item count, per-item drop decisions, and the
     kept/dropped totals to the project's ``dreaming/persist_filter_report.txt``
     debug file.
+
+    Args:
+        project_id: Project whose debug directory receives the report.
+        total_remembered: Count of items the user marked to remember.
+        kept_after_filter: Count of items remaining after filtering.
+        dropped_rows: Per-item records describing each dropped item.
     """
     ts = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
     body = (
@@ -399,7 +473,20 @@ async def get_projects() -> JSONResponse:
 
 @router.get("/projects/{project_id}/dream")
 async def get_project_dream(project_id: str) -> JSONResponse:
-    """Return dream.json content for a project, if present and well-formed."""
+    """Return dream.json content for a project, if present and well-formed.
+
+    Falls back to the latest sleep summary when ``dream.json`` is missing,
+    empty, malformed, or fails validation, and filters out ``answer_remote``
+    items that lack research.
+
+    Args:
+        project_id: Project whose dream content to read.
+
+    Returns:
+        A 200 ``JSONResponse`` with the project id and the validated ``dream``
+        payload (or the sleep-summary fallback); a 500 ``JSONResponse`` on
+        read failure.
+    """
     request_logger.log_request(endpoint="/projects/{project_id}/dream", method="GET", user_id=project_id)
     dream_path = os.path.join(get_settings().memory_root, project_id, "dream.json")
     try:
@@ -432,9 +519,23 @@ async def get_project_dream(project_id: str) -> JSONResponse:
 
 @router.post("/projects/{project_id}/dream/keep")
 async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResponse:
-    """
-    Persist kept dream items by tagging and appending to daily RAG, appending to dream_summary.md,
-    and deleting dream.json on full success.
+    """Persist kept dream items into project memory.
+
+    Tags each remembered item (expanding remote research into per-topic pairs),
+    appends the pairs to daily RAG and bounded ``dream_summary.md`` blocks,
+    rebuilds the daily cache once, and deletes ``dream.json`` only on full
+    success. Remote items without valid research are filtered out and reported.
+
+    Args:
+        project_id: Project to persist kept items into.
+        payload: Request body with an ``items`` list; only entries flagged
+            ``remember`` are tagged and persisted.
+
+    Returns:
+        A ``JSONResponse`` summarizing counts (processed, kept, failed),
+        whether ``dream.json`` was deleted, the number of remote items filtered,
+        and any errors. Status is 200 on success, 400 when ``items`` is not a
+        list, and 500 when failures occur.
     """
     try:
         items = payload.get("items", [])
@@ -793,6 +894,11 @@ async def rename_project(project_id: str, request: ProjectRequest) -> JSONRespon
     At least one of ``project_name`` or ``daily_rag_enabled`` must be present.
     System projects cannot be modified.
 
+    Args:
+        project_id: Project to update.
+        request: Update payload carrying an optional new ``project_name`` and/or
+            ``daily_rag_enabled`` toggle.
+
     Returns:
         JSON with the updated ``name`` and ``daily_rag_enabled`` values.
 
@@ -839,6 +945,9 @@ async def delete_project(project_id: str) -> JSONResponse:
     drops the project's in-memory deque and context-token cache, and resets
     the current-project pointer to "Main" (or another project) if it pointed
     at the deleted one. System projects cannot be deleted.
+
+    Args:
+        project_id: Project to delete.
 
     Returns:
         JSON confirming deletion and the resulting ``current_project``.
@@ -912,7 +1021,21 @@ async def delete_project(project_id: str) -> JSONResponse:
 
 @router.get("/projects/{project_id}/stats")
 async def project_stats(project_id: str) -> JSONResponse:
-    """Return storage_bytes, index_size_bytes, tokens_indexed, context_tokens, file_count."""
+    """Return aggregate storage and memory statistics for a project.
+
+    Warms the daily in-memory cache, then computes storage and indexed-token
+    totals from the DB, FAISS index size on disk, working-memory context
+    tokens (recomputed and cached when missing), daily-store stats, and the
+    active pair count.
+
+    Args:
+        project_id: Project to report statistics for.
+
+    Returns:
+        A 200 ``JSONResponse`` with ``storage_bytes``, ``index_size_bytes``,
+        ``tokens_indexed``, ``context_tokens``, ``file_count``, daily-store
+        metrics, and ``active_pairs``.
+    """
     # Lazily warm Daily in-memory cache on first project-scoped request.
     try:
         start_daily_cache_rebuild(project_id, reason="project_stats")
@@ -980,6 +1103,9 @@ async def project_stats(project_id: str) -> JSONResponse:
 async def get_project_detail(project_id: str) -> JSONResponse:
     """Return a single project's metadata.
 
+    Args:
+        project_id: Project to look up.
+
     Returns:
         JSON with the project's id, name, description, timestamps, system
         flag, and daily-RAG setting.
@@ -1012,7 +1138,16 @@ async def get_project_detail(project_id: str) -> JSONResponse:
 
 @router.get("/projects/{project_id}/chats")
 async def get_project_chats(project_id: str) -> JSONResponse:
-    """Return the most recent N messages for the project in chronological order."""
+    """Return the most recent N messages for the project in chronological order.
+
+    Args:
+        project_id: Project whose chat history to return.
+
+    Returns:
+        A 200 ``JSONResponse`` with the project id and normalized messages
+        (id, role, content, ISO ``created_at``, and assistant-only
+        ``forget``/``keep`` flags); a 500 ``JSONResponse`` on failure.
+    """
     try:
         mm = get_memory_manager()
         messages = mm.get_project_history(project_id)
@@ -1039,7 +1174,22 @@ async def get_project_chats(project_id: str) -> JSONResponse:
 
 @router.patch("/projects/{project_id}/chats/{assistant_msg_id}")
 async def set_chat_forget(project_id: str, assistant_msg_id: int, payload: dict) -> JSONResponse:
-    """Set the forget and/or keep flags for an assistant message (pair-level control)."""
+    """Set the forget and/or keep flags for an assistant message (pair-level control).
+
+    Updates both the persisted ``ChatMessage`` row and the in-memory deque
+    entry when present.
+
+    Args:
+        project_id: Project that owns the message.
+        assistant_msg_id: Identifier of the assistant ``ChatMessage`` to update.
+        payload: Body carrying optional ``forget`` and/or ``keep`` booleans; at
+            least one must be present.
+
+    Returns:
+        A 200 ``JSONResponse`` echoing the updated flags; 400 when no updatable
+        fields are present; 404 when the assistant message is not found; 500 on
+        unexpected failure.
+    """
     try:
         forget_val_present = "forget" in (payload or {})
         keep_val_present = "keep" in (payload or {})
@@ -1092,7 +1242,15 @@ async def set_chat_forget(project_id: str, assistant_msg_id: int, payload: dict)
 
 @router.get("/projects/{project_id}/personality")
 async def get_project_personality(project_id: str) -> JSONResponse:
-    """Return the project's personality JSON and current system prompt."""
+    """Return the project's personality JSON and current system prompt.
+
+    Args:
+        project_id: Project whose personality and system prompt to load.
+
+    Returns:
+        A 200 ``JSONResponse`` with the personality dict, system prompt text,
+        and its UTF-8 byte length; a 500 ``JSONResponse`` on failure.
+    """
     try:
         p = load_project_personality(project_id)
         sp = load_project_system_prompt(project_id)
@@ -1120,7 +1278,18 @@ async def get_project_personality(project_id: str) -> JSONResponse:
 
 @router.patch("/projects/{project_id}/personality")
 async def patch_project_personality(project_id: str, payload: dict) -> JSONResponse:
-    """Update the project's personality JSON. Normalizes and persists immediately."""
+    """Update the project's personality JSON, normalizing and persisting immediately.
+
+    Merges the payload into the current personality before saving.
+
+    Args:
+        project_id: Project whose personality to update.
+        payload: Partial personality fields to merge over the current values.
+
+    Returns:
+        A 200 ``JSONResponse`` with the saved personality; 400 when validation
+        rejects a value; 500 on save failure.
+    """
     try:
         current = load_project_personality(project_id)
         current.update(payload or {})
@@ -1145,7 +1314,16 @@ def _user_profile_path(project_id: str) -> str:
 
 @router.get("/projects/{project_id}/user_profile")
 async def get_project_user_profile(project_id: str) -> JSONResponse:
-    """Return the project's USER_PROFILE.txt baseline content for editing."""
+    """Return the project's USER_PROFILE.txt baseline content for editing.
+
+    Args:
+        project_id: Project whose user-profile file to read.
+
+    Returns:
+        A 200 ``JSONResponse`` with the filename, file content (empty when
+        absent), and an ``exists`` flag; a 500 ``JSONResponse`` when the file
+        exists but cannot be read.
+    """
     path = _user_profile_path(project_id)
     exists = os.path.isfile(path)
     content = ""
@@ -1166,7 +1344,17 @@ async def get_project_user_profile(project_id: str) -> JSONResponse:
 
 @router.put("/projects/{project_id}/user_profile")
 async def put_project_user_profile(project_id: str, payload: dict) -> JSONResponse:
-    """Replace USER_PROFILE.txt content, then rebuild the project RAG index."""
+    """Replace USER_PROFILE.txt content, then rebuild the project RAG index.
+
+    Args:
+        project_id: Project whose user-profile file to write.
+        payload: Body with a ``content`` string holding the new profile text.
+
+    Returns:
+        A 200 ``JSONResponse`` with the filename, token count, and index
+        rebuild status; 400 when ``content`` is missing or exceeds the max
+        upload size; 500 when the file cannot be written.
+    """
     content = (payload or {}).get("content")
     if not isinstance(content, str):
         return JSONResponse(status_code=400, content={"error": "Missing 'content' string"})
@@ -1204,7 +1392,16 @@ async def put_project_user_profile(project_id: str, payload: dict) -> JSONRespon
 
 @router.put("/projects/{project_id}/system_prompt")
 async def put_project_system_prompt(project_id: str, payload: dict) -> JSONResponse:
-    """Replace the project's system prompt text with provided content."""
+    """Replace the project's system prompt text with provided content.
+
+    Args:
+        project_id: Project whose system prompt to update.
+        payload: Body with a ``content`` string holding the new prompt text.
+
+    Returns:
+        A 200 ``JSONResponse`` with the saved content and its UTF-8 byte
+        length; 400 when validation rejects the content; 500 on save failure.
+    """
     try:
         content = str((payload or {}).get("content", ""))
         save_project_system_prompt(project_id, content)

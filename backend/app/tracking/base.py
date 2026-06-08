@@ -37,23 +37,52 @@ class Instrumentation(Protocol):
     """Common interface used by application code."""
 
     def start_run(self, config: Optional[dict] = None) -> str:
-        """Begin a run and return its run id."""
+        """Begin a run and return its run id.
+
+        Args:
+            config: Optional configuration snapshot to record for the run.
+
+        Returns:
+            The new run id, or an empty string when a run cannot be started.
+        """
         ...
 
     def end_run(self, summary: Optional[dict] = None) -> None:
-        """Finalize the active run with an optional summary."""
+        """Finalize the active run with an optional summary.
+
+        Args:
+            summary: Optional run-level summary to persist.
+        """
         ...
 
     def start_turn(self, turn_id: int, user_meta: Optional[dict] = None) -> None:
-        """Mark the start of a conversation turn."""
+        """Mark the start of a conversation turn.
+
+        Args:
+            turn_id: Monotonically increasing turn identifier.
+            user_meta: Optional per-turn metadata (e.g. ``project_id``).
+        """
         ...
 
     def end_turn(self, output_meta: Optional[dict] = None) -> None:
-        """Mark the end of the active turn and persist its rollup."""
+        """Mark the end of the active turn and persist its rollup.
+
+        Args:
+            output_meta: Optional per-turn outputs merged into the turn rollup.
+        """
         ...
 
     def start_invocation(self, purpose: str, model: str, meta: Optional[dict] = None) -> str:
-        """Begin a model invocation and return its invocation id."""
+        """Begin a model invocation and return its invocation id.
+
+        Args:
+            purpose: Invocation purpose (e.g. ``main`` or a mini purpose).
+            model: Model identifier being invoked.
+            meta: Optional invocation metadata (e.g. ``streaming``).
+
+        Returns:
+            The new invocation id, or an empty string when no run is active.
+        """
         ...
 
     def end_invocation(
@@ -62,11 +91,22 @@ class Instrumentation(Protocol):
         usage: Optional[dict] = None,
         timing: Optional[dict] = None,
     ) -> None:
-        """Finalize an invocation with usage and timing data."""
+        """Finalize an invocation with usage and timing data.
+
+        Args:
+            invocation_id: Id returned by :meth:`start_invocation`.
+            usage: Optional reported token usage and source metadata.
+            timing: Optional latency timing (e.g. ``ttlt_ms``, ``ttfb_ms``).
+        """
         ...
 
     def record_stage(self, name: str, data: dict) -> None:
-        """Record a named pipeline stage for the active turn."""
+        """Record a named pipeline stage for the active turn.
+
+        Args:
+            name: Stage name.
+            data: Stage payload to persist.
+        """
         ...
 
 

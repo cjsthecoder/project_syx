@@ -36,11 +36,29 @@ EXPECTED_ROUTES = ("CHITCHAT", "DIRECT", "PROCEDURAL", "EXPLORATORY", "SYNTHESIS
 
 
 def _policy_path() -> str:
+    """Return the absolute path to ``route_policy.json``.
+
+    Returns:
+        The resolved path to the route policy file under ``backend/app/config``.
+    """
     base_dir = os.path.join(os.path.dirname(__file__), "..", "config")
     return os.path.abspath(os.path.join(base_dir, "route_policy.json"))
 
 
 def _coerce_float(v: Any, *, field: str, route: str) -> float:
+    """Coerce a policy value to float, raising a contextual error on failure.
+
+    Args:
+        v: Raw value to coerce.
+        field: Field name used in the error message.
+        route: Route name used in the error message.
+
+    Returns:
+        The value converted to float.
+
+    Raises:
+        ValueError: If the value cannot be parsed as a float.
+    """
     try:
         return float(v)
     except Exception as e:
@@ -51,6 +69,14 @@ def _coerce_int(v: Any, *, field: str, route: str) -> int:
     """Coerce a value to int, accepting integral floats/strings only.
 
     Bools and fractional values are rejected.
+
+    Args:
+        v: Raw value to coerce.
+        field: Field name used in the error message.
+        route: Route name used in the error message.
+
+    Returns:
+        The value converted to an exact integer.
 
     Raises:
         ValueError: If the value cannot be represented as an exact integer.
@@ -71,9 +97,16 @@ def _coerce_int(v: Any, *, field: str, route: str) -> int:
 
 
 def load_and_validate_route_policy() -> Dict[str, RoutePolicy]:
-    """
-    Load backend/app/config/route_policy.json and validate expected routes.
-    Raises ValueError/FileNotFoundError on invalid/missing policy (fail-fast).
+    """Load backend/app/config/route_policy.json and validate expected routes.
+
+    Returns:
+        A mapping from each expected route name to its validated
+        ``RoutePolicy``.
+
+    Raises:
+        FileNotFoundError: If the route policy file is missing.
+        ValueError: If the file is not a JSON object, a route block is
+            missing/invalid, or any numeric field is malformed or out of range.
     """
     path = _policy_path()
     if not os.path.isfile(path):
@@ -125,7 +158,15 @@ _POLICY: Dict[str, RoutePolicy] = load_and_validate_route_policy()
 
 
 def get_route_policy(route: str) -> RoutePolicy:
-    """Return policy for route; unknown routes fall back to OTHER (stable compat)."""
+    """Return policy for route; unknown routes fall back to OTHER (stable compat).
+
+    Args:
+        route: Route name to look up; matched case-insensitively after trim.
+
+    Returns:
+        The matching ``RoutePolicy``, or the ``OTHER`` policy for unknown
+        routes.
+    """
     r = (route or "").strip().upper()
     if r in _POLICY:
         return _POLICY[r]

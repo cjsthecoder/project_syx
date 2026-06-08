@@ -57,7 +57,13 @@ class CustomFormatter(logging.Formatter):  # pylint: disable=R0903
             }
 
     def _supports_colors(self):
-        """Check if the terminal supports ANSI color codes."""
+        """Check if the terminal supports ANSI color codes.
+
+        Returns:
+            True when stdout is an interactive TTY with a known color-capable
+            terminal type, or a Windows console with ANSI processing enabled;
+            otherwise False.
+        """
         # Check if we're in a terminal
         if not hasattr(sys.stdout, 'isatty') or not sys.stdout.isatty():
             return False
@@ -78,6 +84,15 @@ class CustomFormatter(logging.Formatter):  # pylint: disable=R0903
         return False
 
     def format(self, record):
+        """Render a log record using the level-specific (optionally colored) format.
+
+        Args:
+            record: The log record to format.
+
+        Returns:
+            The formatted log line, with ANSI color codes applied when the
+            terminal supports them.
+        """
         log_fmt = self.formats.get(record.levelno, self.formats[logging.INFO])
         formatter = logging.Formatter(log_fmt, datefmt='%Y-%m-%d %H:%M:%S')
         return formatter.format(record)
@@ -183,7 +198,12 @@ _ns_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("namespace"
 
 
 def set_message_id(message_id: str | None) -> None:
-    """Bind the per-request message correlation id for the current context."""
+    """Bind the per-request message correlation id for the current context.
+
+    Args:
+        message_id: Correlation id to associate with the current execution
+            context, or None to leave it unset.
+    """
     _message_id_var.set(message_id)
 
 
@@ -198,7 +218,12 @@ def clear_message_id() -> None:
 
 
 def set_route(route: str | None) -> None:
-    """Bind the active route label for the current context."""
+    """Bind the active route label for the current context.
+
+    Args:
+        route: Route label to associate with the current execution context, or
+            None to leave it unset.
+    """
     _route_var.set(route)
 
 
@@ -213,7 +238,12 @@ def clear_route() -> None:
 
 
 def set_namespace(namespace: str | None) -> None:
-    """Bind the active namespace for the current context."""
+    """Bind the active namespace for the current context.
+
+    Args:
+        namespace: Namespace to associate with the current execution context,
+            or None to leave it unset.
+    """
     _ns_var.set(namespace)
 
 
@@ -228,7 +258,15 @@ def clear_namespace() -> None:
 
 
 def get_logger(name: str = None) -> logging.Logger:
-    """Get the main application logger."""
+    """Get the main application logger.
+
+    Args:
+        name: Accepted for call-site compatibility; ignored so all callers share
+            the single ``"syx"`` logger.
+
+    Returns:
+        The shared application logger instance.
+    """
     return logging.getLogger("syx")
 
 
@@ -236,6 +274,12 @@ class RequestLogger:
     """Request logging utility for API endpoints."""
     
     def __init__(self, logger_name: str = "api"):
+        """Initialize the request logger.
+
+        Args:
+            logger_name: Retained for call-site clarity; the shared application
+                logger is used regardless of this value.
+        """
         self.logger = get_logger()  # Use single shared logger
     
     def log_request(
@@ -245,7 +289,14 @@ class RequestLogger:
         user_id: Optional[str] = None,
         **kwargs
     ) -> None:
-        """Log an incoming request."""
+        """Log an incoming request at INFO level.
+
+        Args:
+            endpoint: The request path or endpoint name.
+            method: The HTTP method (e.g. "GET", "POST").
+            user_id: Identifier of the requesting user, if known.
+            **kwargs: Additional contextual fields (currently unused).
+        """
         self.logger.info(
             f"Request: {method} {endpoint}",
             extra={
@@ -264,7 +315,15 @@ class RequestLogger:
         user_id: Optional[str] = None,
         **kwargs
     ) -> None:
-        """Log a response."""
+        """Log a completed response at DEBUG level.
+
+        Args:
+            endpoint: The request path or endpoint name.
+            status_code: HTTP status code returned to the client.
+            response_time: Wall-clock duration of the request, in seconds.
+            user_id: Identifier of the requesting user, if known.
+            **kwargs: Additional contextual fields (currently unused).
+        """
         self.logger.debug(
             f"Response: {endpoint} -> {status_code} ({response_time:.3f}s)",
             extra={
@@ -283,7 +342,14 @@ class RequestLogger:
         user_id: Optional[str] = None,
         **kwargs
     ) -> None:
-        """Log an error."""
+        """Log an endpoint error at ERROR level with a traceback.
+
+        Args:
+            endpoint: The request path or endpoint name where the error arose.
+            error: The exception that occurred; its type and message are recorded.
+            user_id: Identifier of the requesting user, if known.
+            **kwargs: Additional contextual fields (currently unused).
+        """
         self.logger.error(
             f"Error in {endpoint}: {str(error)}",
             extra={
@@ -309,7 +375,13 @@ class LLMLogger:
         message_length: int, 
         conversation_id: Optional[str] = None
     ) -> None:
-        """Log an LLM request."""
+        """Log an outbound LLM request at INFO level.
+
+        Args:
+            model: Name of the model being called.
+            message_length: Length of the prompt/message, in characters.
+            conversation_id: Identifier of the associated conversation, if any.
+        """
         self.logger.info(
             f"LLM Request: {model} (message: {message_length} chars)",
             extra={
@@ -327,7 +399,14 @@ class LLMLogger:
         tokens_used: Optional[int] = None,
         conversation_id: Optional[str] = None
     ) -> None:
-        """Log an LLM response."""
+        """Log an LLM response at INFO level.
+
+        Args:
+            model: Name of the model that produced the response.
+            response_length: Length of the response text, in characters.
+            tokens_used: Total tokens consumed by the call, if reported.
+            conversation_id: Identifier of the associated conversation, if any.
+        """
         self.logger.info(
             f"LLM Response: {model} (response: {response_length} chars, tokens: {tokens_used})",
             extra={
@@ -345,7 +424,14 @@ class LLMLogger:
         error: Exception, 
         conversation_id: Optional[str] = None
     ) -> None:
-        """Log an LLM error."""
+        """Log an LLM call failure at ERROR level with a traceback.
+
+        Args:
+            model: Name of the model that failed.
+            error: The exception raised by the LLM call; its type and message
+                are recorded.
+            conversation_id: Identifier of the associated conversation, if any.
+        """
         self.logger.error(
             f"LLM Error: {model} - {str(error)}",
             extra={

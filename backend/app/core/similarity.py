@@ -13,12 +13,18 @@ This module converts L2 distances returned by FAISS retrieval into approximate
 cosine similarities in [0.0, 1.0], handling both distance and squared-distance inputs.
 """
 def cosine_from_l2_distance(dist: float) -> float:
-    """
-    Convert an L2 distance returned by FAISS retrieval
-    into an approximate cosine similarity in [0.0, 1.0] under unit-normalized embeddings.
+    """Convert a FAISS L2 distance into an approximate cosine similarity.
 
-    Note: some integrations may return squared L2 distance vs L2 distance.
-    To be robust, compute both interpretations and take the higher cosine within bounds.
+    The result lies in [0.0, 1.0] assuming unit-normalized embeddings. Some
+    integrations return squared L2 distance rather than L2 distance, so both
+    interpretations are computed and the higher in-bounds cosine is returned.
+
+    Args:
+        dist: L2 (or squared L2) distance from FAISS; non-numeric or negative
+            values yield 0.0.
+
+    Returns:
+        The approximate cosine similarity in [0.0, 1.0].
     """
     try:
         d = float(dist)

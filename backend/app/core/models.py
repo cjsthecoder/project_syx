@@ -22,7 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 def utc_now() -> datetime:
-    """Return the current time as a timezone-aware UTC datetime."""
+    """Return the current time as a timezone-aware UTC datetime.
+
+    Returns:
+        The current moment with UTC tzinfo attached, used as the default for
+        response/error timestamp fields.
+    """
     return datetime.now(timezone.utc)
 
 

@@ -62,7 +62,12 @@ class AgentMemorySearchResponse(BaseModel):
     snippets: List[AgentMemorySnippet] = Field(default_factory=list)
 
     def to_response_dict(self) -> Dict[str, Any]:
-        """Serialize to a JSON-ready dict, omitting null fields and unset model."""
+        """Serialize to a JSON-ready dict, omitting null fields and unset model.
+
+        Returns:
+            The response as a dict with ``None`` fields excluded; the ``model``
+            key is also dropped when no model was supplied.
+        """
         data = self.model_dump(exclude_none=True)
         if self.model is None:
             data.pop("model", None)

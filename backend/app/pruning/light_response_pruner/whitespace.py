@@ -68,6 +68,15 @@ def compact_whitespace(text: str) -> str:
 
 
 def _normalize_prose_line(line: str) -> str | None:
+    """Collapse internal spaces and trim a single prose line.
+
+    Args:
+        line: One source line, possibly retaining its trailing line break.
+
+    Returns:
+        The normalized line (preserving a trailing newline when the input had
+        one), or None when the line is blank after trimming.
+    """
     has_linebreak = line.endswith(("\r\n", "\n", "\r"))
     without_linebreak = line.rstrip("\r\n")
     without_trailing = without_linebreak.rstrip(" \t")

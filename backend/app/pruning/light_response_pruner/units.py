@@ -18,6 +18,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class TextSpan:
+    """A span of text with its start/end offsets and trimmed content."""
+
     start: int
     end: int
     text: str
@@ -98,6 +100,12 @@ def starts_with_structured_content(text: str) -> bool:
 
     Detects fenced code, headings, blockquotes, bullet lists, and ordered list
     markers so such content can be protected from end-trimming.
+
+    Args:
+        text: Paragraph text to inspect (leading whitespace is ignored).
+
+    Returns:
+        True if the text starts with a recognized structural marker.
     """
     stripped = text.lstrip()
     return (
@@ -109,11 +117,28 @@ def starts_with_structured_content(text: str) -> bool:
 
 
 def span_starts_inside_fenced_code_block(text: str, span: TextSpan) -> bool:
-    """Return True if ``span`` begins inside a fenced code block of ``text``."""
+    """Return True if ``span`` begins inside a fenced code block of ``text``.
+
+    Args:
+        text: The full text containing the span.
+        span: The span whose start position is tested.
+
+    Returns:
+        True if an odd number of code fences precede the span's start.
+    """
     return _is_inside_fenced_code_block(text, span.start)
 
 
 def _first_non_whitespace_index(text: str) -> int | None:
+    """Return the index of the first non-whitespace character, or None if blank.
+
+    Args:
+        text: Text to scan.
+
+    Returns:
+        The zero-based index of the first non-whitespace character, or None when
+        the text is empty or all whitespace.
+    """
     for index, character in enumerate(text):
         if not character.isspace():
             return index
@@ -122,6 +147,17 @@ def _first_non_whitespace_index(text: str) -> int | None:
 
 
 def _last_non_whitespace_end(text: str, start: int, end: int) -> int:
+    """Return the exclusive end index after trailing whitespace in a slice.
+
+    Args:
+        text: Text being scanned.
+        start: Lower bound (inclusive) below which scanning stops.
+        end: Exclusive end of the slice to trim back from.
+
+    Returns:
+        The index just past the last non-whitespace character within
+        ``[start, end)``.
+    """
     cursor = end
     while cursor > start and text[cursor - 1].isspace():
         cursor -= 1
@@ -130,6 +166,16 @@ def _last_non_whitespace_end(text: str, start: int, end: int) -> int:
 
 
 def _consume_following_whitespace(text: str, start: int) -> int:
+    """Return the index of the first non-whitespace character at or after ``start``.
+
+    Args:
+        text: Text being scanned.
+        start: Index to begin scanning from.
+
+    Returns:
+        The index of the next non-whitespace character, or ``len(text)`` if none
+        remain.
+    """
     cursor = start
     while cursor < len(text) and text[cursor].isspace():
         cursor += 1
@@ -138,6 +184,16 @@ def _consume_following_whitespace(text: str, start: int) -> int:
 
 
 def _next_blank_line_index(text: str, start: int) -> int | None:
+    """Find the newline that precedes the next blank line at or after ``start``.
+
+    Args:
+        text: Text being scanned.
+        start: Index to begin scanning from.
+
+    Returns:
+        The index of the newline immediately before the next blank line, or None
+        when no blank-line separator remains.
+    """
     cursor = start
     while cursor < len(text):
         newline_index = text.find("\n", cursor)
@@ -158,6 +214,15 @@ def _next_blank_line_index(text: str, start: int) -> int | None:
 
 
 def _consume_blank_line_separator(text: str, start: int) -> int:
+    """Skip the whitespace making up a blank-line separator.
+
+    Args:
+        text: Text being scanned.
+        start: Index of the separator's leading newline.
+
+    Returns:
+        The index of the first character of the next paragraph.
+    """
     cursor = start
     while cursor < len(text) and text[cursor].isspace():
         cursor += 1
@@ -166,6 +231,15 @@ def _consume_blank_line_separator(text: str, start: int) -> int:
 
 
 def _is_inside_fenced_code_block(text: str, index: int) -> bool:
+    """Return True if ``index`` falls inside an open fenced code block.
+
+    Args:
+        text: Text being scanned.
+        index: Position whose enclosure is tested.
+
+    Returns:
+        True when an odd number of code fences appear before ``index``.
+    """
     in_fence = False
 
     for line in text[:index].splitlines(keepends=True):
@@ -177,6 +251,14 @@ def _is_inside_fenced_code_block(text: str, index: int) -> bool:
 
 
 def _starts_with_ordered_list_marker(text: str) -> bool:
+    """Return True if ``text`` begins with an ordered list marker (e.g. "1.").
+
+    Args:
+        text: Text to inspect, expected to be left-stripped.
+
+    Returns:
+        True when one or more leading digits are immediately followed by a dot.
+    """
     number = ""
     for character in text:
         if character.isdigit():

@@ -54,7 +54,14 @@ from ..utils.debug_utils import write_debug_file
 from .questions_consolidation import consolidate_open_questions_artifact
 from .worker import start_sleep_cycle_runner
 def _nl(s: str) -> str:
-    """Normalize line endings to LF to avoid mixed terminators."""
+    """Normalize line endings to LF to avoid mixed terminators.
+
+    Args:
+        s: Text whose CRLF/CR line endings are converted to LF.
+
+    Returns:
+        Text with all line endings normalized to ``\\n``.
+    """
     return s.replace("\r\n", "\n").replace("\r", "\n")
 
 
@@ -555,11 +562,21 @@ def start_sleep_cycle_async() -> bool:
 
 @router.post("/sleep_cycle", response_model=SleepCycleResponse)
 async def sleep_cycle_endpoint(request: SleepCycleRequest) -> SleepCycleResponse:
-    """
-    Trigger memory pruning and sleep cycle.
-    
-    This endpoint is stubbed for future scheduled cleanup implementation.
-    Currently returns placeholder responses.
+    """Trigger memory pruning and the sleep cycle.
+
+    This endpoint is stubbed for a future scheduled-cleanup implementation and
+    currently returns placeholder cleanup statistics.
+
+    Args:
+        request: Sleep cycle request carrying the target ``project_id`` and the
+            ``force_cleanup`` flag.
+
+    Returns:
+        A :class:`SleepCycleResponse` describing the (stubbed) cleanup outcome.
+
+    Raises:
+        HTTPException: Propagated from ``handle_memory_error`` when the underlying
+            cleanup operation fails.
     """
     try:
         # Log the request
@@ -620,7 +637,12 @@ async def sleep_cycle_endpoint(request: SleepCycleRequest) -> SleepCycleResponse
 
 @router.get("/sleep/status")
 async def sleep_status() -> JSONResponse:
-    """Report whether a sleep cycle is active, its start time, and the lock path."""
+    """Report whether a sleep cycle is active, its start time, and the lock path.
+
+    Returns:
+        A JSON response with ``sleeping``, ``since`` (UTC ISO timestamp or null),
+        and ``lock_path``; a 500 response with an ``error`` field on failure.
+    """
     try:
         return JSONResponse(status_code=200, content={
             "sleeping": bool(is_sleeping()),
@@ -633,7 +655,13 @@ async def sleep_status() -> JSONResponse:
 
 @router.post("/sleep/start")
 async def sleep_start() -> JSONResponse:
-    """Start the sleep cycle in the background; returns immediately."""
+    """Start the sleep cycle in the background; returns immediately.
+
+    Returns:
+        A 200 JSON response when the cycle is started, a 423 response when the
+        system is already sleeping, or a 500 response with an ``error`` field on
+        failure.
+    """
     try:
         request_logger.log_request(endpoint="/sleep/start", method="POST")
         if is_sleeping():
@@ -648,7 +676,12 @@ async def sleep_start() -> JSONResponse:
 
 @router.post("/sleep/unlock")
 async def sleep_force_unlock() -> JSONResponse:
-    """Force release the global sleep lock."""
+    """Force release the global sleep lock.
+
+    Returns:
+        A 200 JSON response on success, or a 500 response with an ``error`` field
+        on failure.
+    """
     try:
         release_lock()
         return JSONResponse(status_code=200, content={"status": "unlocked"})
@@ -657,7 +690,12 @@ async def sleep_force_unlock() -> JSONResponse:
 
 @router.get("/sleep_cycle/status")
 async def sleep_cycle_status() -> JSONResponse:
-    """Get sleep cycle status and statistics."""
+    """Get sleep cycle status and statistics.
+
+    Returns:
+        A 200 JSON response with stub status and memory statistics, or a 500
+        response with ``error`` details on failure.
+    """
     try:
         memory_manager = get_memory_manager()
         stats = memory_manager.get_memory_stats()
@@ -699,6 +737,10 @@ async def manual_cleanup(
         
     Returns:
         Cleanup results
+
+    Raises:
+        HTTPException: Propagated from ``handle_memory_error`` when the cleanup
+            operation fails.
     """
     try:
         # Log the request
@@ -740,7 +782,12 @@ async def manual_cleanup(
 
 @router.get("/sleep_cycle/schedule")
 async def get_cleanup_schedule() -> JSONResponse:
-    """Get cleanup schedule information (stubbed)."""
+    """Get cleanup schedule information (stubbed).
+
+    Returns:
+        A 200 JSON response with the stubbed schedule, or a 500 response with
+        ``error`` details on failure.
+    """
     try:
         return JSONResponse(
             status_code=200,
@@ -774,7 +821,20 @@ async def set_cleanup_schedule(
     time: str = "02:00",
     retention_days: int = 30
 ) -> JSONResponse:
-    """Set cleanup schedule (stubbed)."""
+    """Set the cleanup schedule (stubbed).
+
+    Args:
+        enabled: Whether scheduled cleanup should be enabled.
+        frequency: Cleanup cadence (e.g. ``daily``).
+        time: Time-of-day to run cleanup, as ``HH:MM``.
+        retention_days: Number of days of memory to retain.
+
+    Returns:
+        A 200 JSON response echoing the requested (stubbed) schedule.
+
+    Raises:
+        HTTPException: Propagated from ``handle_memory_error`` when handling fails.
+    """
     try:
         # Log the request
         request_logger.log_request(
@@ -811,7 +871,12 @@ async def set_cleanup_schedule(
 
 @router.get("/sleep_cycle/health")
 async def sleep_cycle_health() -> JSONResponse:
-    """Health check for sleep cycle functionality."""
+    """Health check for sleep cycle functionality.
+
+    Returns:
+        A 200 JSON response with memory mode/features when healthy, or a 503
+        response with an ``error`` field when the check fails.
+    """
     try:
         memory_manager = get_memory_manager()
         stats = memory_manager.get_memory_stats()

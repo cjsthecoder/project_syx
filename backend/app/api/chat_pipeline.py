@@ -42,6 +42,12 @@ class ChatPipeline:
     """
 
     def __init__(self, settings) -> None:
+        """Initialize the pipeline with runtime settings.
+
+        Args:
+            settings: Application settings object providing RAG, retrieval,
+                model, and logging configuration used throughout the pipeline.
+        """
         self.settings = settings
 
     def build_conversation_history(self, project_id: Optional[str]) -> Optional[list[dict]]:
@@ -114,8 +120,16 @@ class ChatPipeline:
         """Return a short context summary for the query builder.
 
         Prefers the most recent assistant tag metadata; falls back to the
-        project's stored semantic handle. Returns an empty string when no
-        summary is available.
+        project's stored semantic handle.
+
+        Args:
+            project_id: Project used for the semantic-handle fallback.
+            conversation_history: Prior turns scanned for the latest assistant
+                tag metadata.
+
+        Returns:
+            A summary string for the builder, or an empty string when no
+            summary is available.
         """
         try:
             direct_summary = self._latest_assistant_tags_meta(conversation_history)
@@ -127,7 +141,16 @@ class ChatPipeline:
             return ""
 
     def _latest_assistant_tags_meta(self, conversation_history: Optional[list[dict]]) -> str:
-        """Return the most recent assistant message's tag metadata JSON (capped at 2000 chars)."""
+        """Return the most recent assistant message's tag metadata JSON (capped at 2000 chars).
+
+        Args:
+            conversation_history: Prior turns scanned newest-first for an
+                assistant message carrying ``tags_meta_json``.
+
+        Returns:
+            The latest assistant tag metadata JSON string truncated to 2000
+            characters, or an empty string when none is found.
+        """
         if not conversation_history:
             return ""
         for msg in reversed(conversation_history):
@@ -139,7 +162,17 @@ class ChatPipeline:
         return ""
 
     def _project_semantic_handle_summary(self, project_id: Optional[str]) -> str:
-        """Return the project's stored semantic handle as a JSON summary string (capped at 2000 chars)."""
+        """Return the project's stored semantic handle as a JSON summary string (capped at 2000 chars).
+
+        Args:
+            project_id: Project whose ``last_semantic_handle`` is looked up;
+                ``None`` yields an empty string.
+
+        Returns:
+            A ``{"semantic_handle": ...}`` JSON string truncated to 2000
+            characters, or an empty string when unavailable or on lookup
+            failure.
+        """
         if not project_id:
             return ""
         try:
@@ -162,6 +195,10 @@ class ChatPipeline:
         Locates the latest assistant turn and its preceding user turn, then
         renders them together with the assistant's routing/tag metadata
         (route, keep, topics, intent, type, semantic handle).
+
+        Args:
+            conversation_history: Prior turns to scan for the latest complete
+                user/assistant pair.
 
         Returns:
             The formatted pair text, or ``None`` when a complete pair cannot
@@ -221,7 +258,15 @@ class ChatPipeline:
             return None
 
     def _daily_enabled(self, project_id: str) -> bool:
-        """Return whether daily RAG is enabled for the project (defaults to True on lookup failure)."""
+        """Return whether daily RAG is enabled for the project (defaults to True on lookup failure).
+
+        Args:
+            project_id: Project whose ``daily_rag_enabled`` flag is read.
+
+        Returns:
+            The project's daily-RAG setting, or ``True`` when the project is
+            missing or the lookup fails.
+        """
         try:
             with get_session() as session:
                 p = session.get(Project, project_id)
@@ -401,7 +446,15 @@ class ChatPipeline:
     def apply_rag_guidance(self, base_system_prompt: Optional[str], rag_system_prompt: Optional[str]) -> Optional[str]:
         """Append RAG usage guidance to the base system prompt when RAG context is present.
 
-        Returns the base prompt unchanged when there is no RAG context.
+        Args:
+            base_system_prompt: Base system prompt to augment; may be ``None``.
+            rag_system_prompt: Injected RAG context; when falsy, no guidance is
+                appended.
+
+        Returns:
+            The base prompt with RAG guidance appended, the guidance alone when
+            there is no base prompt, or the base prompt unchanged when there is
+            no RAG context.
         """
         if not rag_system_prompt:
             return base_system_prompt
@@ -444,6 +497,17 @@ class ChatPipeline:
         turns, and the current user message, then records prompt-assembly
         token estimates to instrumentation.
 
+        Args:
+            base_system_prompt: Base system prompt; included as a system
+                message when present.
+            assistant_hint: Personality/preferences hint; included as an
+                assistant message when present.
+            rag_system_prompt: Injected RAG context; included as a system
+                message when present.
+            conversation_history: Prior turns appended as user/assistant
+                messages.
+            user_message: Current user message appended last.
+
         Returns:
             The list of role/content message dicts for the provider call.
         """
@@ -484,7 +548,12 @@ class ChatPipeline:
         return msgs
 
     def persist_user(self, project_id: Optional[str], message: str) -> None:
-        """Append the user message to project working memory (no-op without a project)."""
+        """Append the user message to project working memory (no-op without a project).
+
+        Args:
+            project_id: Project to persist into; ``None`` is a no-op.
+            message: User message text to append.
+        """
         if not project_id:
             return
         try:

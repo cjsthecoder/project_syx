@@ -325,6 +325,16 @@ async def sleep_guard(request: Request, call_next):
 
     GET requests and a small recovery allowlist (sleep unlock, agent memory
     search) are always permitted so the system can be inspected and recovered.
+    A failure to read the sleep state is logged and treated as not-sleeping so
+    the request proceeds.
+
+    Args:
+        request: The incoming HTTP request.
+        call_next: The downstream ASGI handler invoked when the request is
+            allowed through.
+
+    Returns:
+        A 423 ``JSONResponse`` when blocked, otherwise the downstream response.
     """
     try:
         method = request.method.upper()
@@ -369,7 +379,12 @@ if os.path.exists(static_dir):
 # Health check endpoints
 @app.get("/")
 async def root():
-    """Root endpoint - serves React app or API info."""
+    """Serve the built React app, or API info when no build is present.
+
+    Returns:
+        A ``FileResponse`` for the SPA ``index.html`` when the static build
+        exists; otherwise a JSON dict describing the API and build instructions.
+    """
     # Check if static files exist (React build)
     static_dir = os.path.join(os.path.dirname(__file__), "static")
     index_file = os.path.join(static_dir, "index.html")
@@ -387,7 +402,13 @@ async def root():
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Detailed health check with dependency status."""
+    """Report service health and downstream dependency status.
+
+    Returns:
+        A ``HealthResponse`` whose status is ``healthy`` when the API key is
+        configured, ``degraded`` when it is missing, or ``unhealthy`` when the
+        check itself raises.
+    """
     try:
         # Check OpenAI API key
         api_key_status = "configured" if validate_openai_key() else "missing"
@@ -416,7 +437,19 @@ async def health_check():
 # Catch-all route for React Router (SPA support)
 @app.get("/{full_path:path}")
 async def serve_react_app(full_path: str):
-    """Serve React app for all non-API routes."""
+    """Serve the React SPA for all non-API routes (client-side routing support).
+
+    Args:
+        full_path: The unmatched request path captured by the catch-all route.
+
+    Returns:
+        A ``FileResponse`` for the SPA ``index.html`` when the build exists,
+        otherwise a JSON dict explaining that the frontend is not built.
+
+    Raises:
+        HTTPException: 404 when the path targets an API/docs route, so FastAPI's
+            own handlers take precedence.
+    """
     static_dir = os.path.join(os.path.dirname(__file__), "static")
     index_file = os.path.join(static_dir, "index.html")
     
@@ -459,11 +492,26 @@ if __name__ == "__main__":
         """File-like adapter that forwards stdout/stderr writes to the logger."""
 
         def __init__(self, logger, level):
+            """Configure the adapter to forward writes to a logger at one level.
+
+            Args:
+                logger: Logger that received writes are forwarded to.
+                level: Logging level used for forwarded lines.
+            """
             self.logger = logger
             self.level = level
             self.buffer = ""
 
         def write(self, text):
+            """Forward a non-empty stdout/stderr write to the configured logger.
+
+            Blank writes are dropped, and sentence-transformers/tqdm weight-loading
+            progress is suppressed except for the completed line (demoted to INFO)
+            so genuine warnings/errors retain their severity.
+
+            Args:
+                text: The text chunk written to the redirected stream.
+            """
             line = (text or "").strip()
             if not line:
                 return

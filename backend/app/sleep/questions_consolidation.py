@@ -26,6 +26,18 @@ logger = logging.getLogger(__name__)
 
 
 def _normalize_question_key(question: str, topic: str) -> str:
+    """Build a stable dedupe key from a question and its topic.
+
+    Both fields are lowercased, stripped of quotes, and collapsed on
+    non-alphanumeric runs so equivalent phrasings produce identical keys.
+
+    Args:
+        question: Question text contributing the primary key component.
+        topic: Topic label contributing the secondary key component.
+
+    Returns:
+        Combined key of the form ``"<norm question>||<norm topic>"``.
+    """
     def _norm(text: str) -> str:
         lowered = str(text or "").strip().lower()
         lowered = re.sub(r"['\"`“”’]", "", lowered)
@@ -36,13 +48,23 @@ def _normalize_question_key(question: str, topic: str) -> str:
 
 
 def consolidate_open_questions_artifact(project_id: str) -> Dict[str, Any]:
-    """
-    Deterministically consolidate open_questions.jsonl into canonical unresolved questions.
+    """Deterministically consolidate ``open_questions.jsonl`` into canonical unresolved questions.
 
     Consolidation rules:
-    - Stable dedupe key: normalized(question) + normalized(topic)
-    - Collision policy: keep latest record by (ts, line_no)
-    - Status resolution: drop records where final resolution == "ignore"
+        - Stable dedupe key: ``normalized(question) + normalized(topic)``.
+        - Collision policy: keep the latest record by ``(ts, line_no)``.
+        - Status resolution: drop records whose final resolution is ``ignore``.
+
+    The consolidated artifact is written to ``open_questions_consolidated.json``
+    under a file lock. A missing source file or read failure produces (and writes)
+    an empty consolidation; write failures are logged rather than raised.
+
+    Args:
+        project_id: Project whose open-question log is consolidated.
+
+    Returns:
+        Dict of shape ``{"questions": [...]}`` containing the kept, sorted,
+        canonical question rows.
     """
     base_dir = os.path.join(get_settings().memory_root, project_id)
     src_path = os.path.join(base_dir, "open_questions.jsonl")

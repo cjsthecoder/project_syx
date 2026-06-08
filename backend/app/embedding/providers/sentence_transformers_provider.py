@@ -40,7 +40,19 @@ class SentenceTransformersEmbeddingProvider:
         self._get_model(get_active_embedding_model())
 
     def _get_model(self, model_id: Optional[str] = None) -> SentenceTransformer:
-        """Return a cached model for ``model_id``, loading it on first use."""
+        """Return a cached model for ``model_id``, loading it on first use.
+
+        Loading is a side effect: the first request for a given id constructs a
+        ``SentenceTransformer`` (which may download weights) and stores it in the
+        per-instance cache.
+
+        Args:
+            model_id: Model identifier to load; falls back to the active
+                embedding model when omitted or blank.
+
+        Returns:
+            The cached (or newly loaded) model for the resolved id.
+        """
         use_model = str(model_id or get_active_embedding_model()).strip()
         cached = self._model_cache.get(use_model)
         if cached is not None:
@@ -102,6 +114,17 @@ class SentenceTransformersEmbeddingProvider:
             ) from exc
 
     def embed_query(self, text: str, *, model: Optional[str] = None) -> List[float]:
-        """Embed a single query string and return its vector (empty if none)."""
+        """Embed a single query string and return its vector (empty if none).
+
+        Runs local inference via :meth:`embed`.
+
+        Args:
+            text: Query string to embed; ``None`` is treated as empty.
+            model: Optional model override; defaults to the active embedding model.
+
+        Returns:
+            The normalized embedding vector for ``text``, or an empty list when
+            no vector is produced.
+        """
         res = self.embed([text or ""], model=model)
         return res.vectors[0] if res.vectors else []

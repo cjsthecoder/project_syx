@@ -19,7 +19,12 @@ from sqlmodel import SQLModel, Field
 
 
 def utc_now() -> datetime:
-    """Return the current time as a timezone-aware UTC datetime."""
+    """Return the current time as a timezone-aware UTC datetime.
+
+    Returns:
+        The current moment with UTC tzinfo attached, used as the default for
+        created/updated timestamp columns.
+    """
     return datetime.now(timezone.utc)
 
 

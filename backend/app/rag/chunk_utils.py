@@ -16,7 +16,19 @@ from typing import Any, Dict, List
 
 
 def split_text_simple(text: str, *, chunk_size: int, chunk_overlap: int) -> List[str]:
-    """Deterministic character splitter."""
+    """Split text into fixed-size character windows with deterministic overlap.
+
+    Args:
+        text: Source text to split; None is treated as empty.
+        chunk_size: Window width in characters. A non-positive value yields no
+            chunks.
+        chunk_overlap: Number of characters each window shares with the previous
+            one; clamped to ``chunk_size - 1`` and floored at 0.
+
+    Returns:
+        The ordered list of non-blank character chunks. Whitespace-only windows
+        are dropped.
+    """
     t = text or ""
     if int(chunk_size) <= 0:
         return []
@@ -39,13 +51,19 @@ def trim_adjacent_chunk_overlap(
     chunks: List[Dict[str, Any]],
     chunk_overlap: int,
 ) -> None:
-    """
-    Adjacent chunk overlap trimming.
+    """Trim duplicated overlap text between adjacent same-document chunks in place.
 
-    In-place: for each consecutive pair (A, B) with the same valid source_document_id,
-    find the longest exact overlap of A's suffix and B's prefix (capped by chunk_overlap)
-    and remove that prefix from B. Skips sparse/legacy chunks (missing or invalid
-    source_document_id). Never empties B; if full overlap would empty B, leave B unchanged.
+    For each consecutive pair (A, B) with the same valid ``source_document_id``,
+    finds the longest exact overlap of A's suffix and B's prefix (capped by
+    ``chunk_overlap``) and removes that prefix from B. Sparse/legacy chunks
+    (missing or invalid ``source_document_id``) are skipped. B is never emptied;
+    if the full overlap would empty B, B is left unchanged.
+
+    Args:
+        chunks: Ordered candidate chunk dicts, each with ``text`` and ``metadata``;
+            mutated in place.
+        chunk_overlap: Maximum number of overlapping characters to consider when
+            matching a suffix/prefix pair. Non-positive values disable trimming.
     """
     if not chunks or chunk_overlap <= 0:
         return
@@ -76,14 +94,20 @@ def trim_adjacent_chunk_overlap(
 
 
 def collapse_snippet_groups(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Snippet-group collapse.
+    """Collapse adjacent same-document chunk runs into one snippet per group.
 
-    Groups adjacent chunks that share the same (source_document_id, source)
-    into one entry per group. Each group entry has: source, score from first chunk;
-    text = direct concatenation of chunk texts; metadata from first chunk, with
-    chunk_index as "first..last" when the group has more than one chunk.
-    Sparse/legacy chunks (invalid or missing source_document_id) do not merge.
+    Groups consecutive chunks that share the same ``(source_document_id, source)``
+    and form a contiguous ``chunk_index`` run into a single entry. Each group entry
+    carries the ``source`` and ``score`` of its first chunk, ``text`` formed by
+    direct concatenation of member texts, and metadata copied from the first chunk
+    with ``chunk_index`` rewritten as ``"first..last"`` for multi-chunk groups.
+    Sparse/legacy chunks (invalid or missing ``source_document_id``) never merge.
+
+    Args:
+        chunks: Ordered candidate chunk dicts to collapse.
+
+    Returns:
+        A new list of collapsed snippet entries, preserving input order.
     """
     if not chunks:
         return []

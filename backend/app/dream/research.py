@@ -32,9 +32,17 @@ def trim_to_tokens(text: str, max_tokens: int) -> str:
 
 
 def fetch_remote_research(query: str) -> str:
-    """
-    Fetch remote research via OpenAI web_search tool using the Responses API.
-    Returns text blob (may be long); caller will cap tokens.
+    """Fetch remote research via the OpenAI web_search tool using the Responses API.
+
+    Best-effort: LLM/tool failures are logged and return an empty string rather
+    than raising.
+
+    Args:
+        query: Research subject; embedded into the web-research instruction prompt.
+
+    Returns:
+        Research text blob (may be long; caller is responsible for capping
+        tokens), or an empty string on failure.
     """
     settings = get_settings()
     try:

@@ -26,6 +26,12 @@ WhitespaceMode = Literal["off", "compact_prose", "preserve_code"]
 def _dedupe_prefixes(prefixes: list[str]) -> list[str]:
     """Strip and de-duplicate prefixes, preserving order.
 
+    Args:
+        prefixes: Raw prefix strings to clean.
+
+    Returns:
+        Stripped prefixes with duplicates removed, in first-seen order.
+
     Raises:
         ValueError: If any prefix is blank after stripping.
     """
@@ -47,6 +53,8 @@ def _dedupe_prefixes(prefixes: list[str]) -> list[str]:
 
 
 class FrontRuleSection(BaseModel):
+    """Rules for trimming matching sentences from the front of a response."""
+
     model_config = ConfigDict(extra="forbid")
 
     prefix: list[str] = Field(min_length=1)
@@ -55,11 +63,20 @@ class FrontRuleSection(BaseModel):
     @field_validator("prefix")
     @classmethod
     def validate_prefixes(cls, value: list[str]) -> list[str]:
-        """Strip and de-duplicate the configured front prefixes."""
+        """Strip and de-duplicate the configured front prefixes.
+
+        Args:
+            value: Raw prefix list supplied during validation.
+
+        Returns:
+            The cleaned, de-duplicated prefix list.
+        """
         return _dedupe_prefixes(value)
 
 
 class EndRuleSection(BaseModel):
+    """Rules for trimming a matching trailing paragraph from a response."""
+
     model_config = ConfigDict(extra="forbid")
 
     prefix: list[str] = Field(min_length=1)
@@ -68,11 +85,20 @@ class EndRuleSection(BaseModel):
     @field_validator("prefix")
     @classmethod
     def validate_prefixes(cls, value: list[str]) -> list[str]:
-        """Strip and de-duplicate the configured end prefixes."""
+        """Strip and de-duplicate the configured end prefixes.
+
+        Args:
+            value: Raw prefix list supplied during validation.
+
+        Returns:
+            The cleaned, de-duplicated prefix list.
+        """
         return _dedupe_prefixes(value)
 
 
 class PruneRules(BaseModel):
+    """Top-level pruning rule set with optional front and end sections."""
+
     model_config = ConfigDict(extra="forbid")
 
     front: FrontRuleSection | None = None
@@ -81,6 +107,9 @@ class PruneRules(BaseModel):
     @model_validator(mode="after")
     def require_one_section(self) -> "PruneRules":
         """Enforce that at least one of ``front`` or ``end`` is configured.
+
+        Returns:
+            The validated model instance.
 
         Raises:
             ValueError: If both sections are absent.
@@ -92,6 +121,8 @@ class PruneRules(BaseModel):
 
 
 class PruneResult(BaseModel):
+    """Structured outcome of a prune operation, including what changed."""
+
     model_config = ConfigDict(extra="forbid")
 
     original_text: str

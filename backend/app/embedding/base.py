@@ -48,5 +48,14 @@ class EmbeddingClient(Protocol):
         ...
 
     def embed_query(self, text: str, *, model: Optional[str] = None) -> List[float]:
-        """Embed a single query string and return its vector."""
+        """Embed a single query string and return its vector.
+
+        Args:
+            text: Query string to embed.
+            model: Optional model override; falls back to the active model.
+
+        Returns:
+            The embedding vector for ``text``, or an empty list when no vector
+            is produced.
+        """
         ...

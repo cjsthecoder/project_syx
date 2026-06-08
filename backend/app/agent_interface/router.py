@@ -157,6 +157,14 @@ async def agent_memory_search(payload: Dict[str, Any]) -> JSONResponse:
 
 
 def _optional_str(value: Any) -> Optional[str]:
+    """Coerce a raw request value into a trimmed optional string.
+
+    Args:
+        value: Arbitrary value taken from the request payload.
+
+    Returns:
+        The stripped string, or ``None`` when the value is ``None`` or blank.
+    """
     if value is None:
         return None
     text = str(value).strip()

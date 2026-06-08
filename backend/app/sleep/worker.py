@@ -25,9 +25,16 @@ _runner_thread: Optional[threading.Thread] = None
 
 
 def start_sleep_cycle_runner(worker: Callable[[], None]) -> bool:
-    """
-    Start a sleep cycle worker thread if not already sleeping.
-    Returns True if started.
+    """Start a sleep cycle worker thread if not already sleeping.
+
+    Guards against concurrent runs via an in-process lock plus the global
+    sleeping flag; the worker runs on a daemon thread.
+
+    Args:
+        worker: Zero-argument callable executed on the background thread.
+
+    Returns:
+        True when a new thread was started, False when a cycle is already running.
     """
     if is_sleeping():
         logger.info("[SLEEP] Already running, skipping.")

@@ -288,8 +288,16 @@ class Settings(BaseSettings):
     )
     @classmethod
     def _coerce_tagger_numeric_to_int(cls, value):
-        """
-        Accept numeric env values such as "62.5" and coerce to int.
+        """Accept numeric env values such as "62.5" and coerce to int.
+
+        Args:
+            value: Raw setting value from the environment, which may arrive as a
+                bool, int, float, or string.
+
+        Returns:
+            The value coerced to int when it is numeric (truncating any
+            fractional part); otherwise the original value unchanged so normal
+            validation can report the error.
         """
         if isinstance(value, bool):
             return int(value)
@@ -312,6 +320,12 @@ class Settings(BaseSettings):
     def _validate_response_pruning_whitespace_mode(cls, value: str) -> str:
         """Validate whitespace mode against the supported set.
 
+        Args:
+            value: Configured whitespace mode to validate.
+
+        Returns:
+            The trimmed, validated whitespace mode.
+
         Raises:
             ValueError: If the value is not one of off, compact_prose, or
                 preserve_code.
@@ -329,12 +343,22 @@ settings = Settings()
 
 
 def get_settings() -> Settings:
-    """Get application settings."""
+    """Get application settings.
+
+    Returns:
+        The process-wide ``Settings`` singleton loaded from environment.
+    """
     return settings
 
 
 def get_response_pruning_stage_config() -> dict[str, bool]:
-    """Return stage toggles in the shape expected by PrunerConfig."""
+    """Return stage toggles in the shape expected by PrunerConfig.
+
+    Returns:
+        A mapping of each response-pruning stage name to its enabled flag
+        (``enabled``, ``front_enabled``, ``end_enabled``, ``markdown_enabled``,
+        ``whitespace_enabled``, ``similarity_enabled``).
+    """
     return {
         "enabled": bool(settings.response_pruning_enabled),
         "front_enabled": bool(settings.response_pruning_front_enabled),
@@ -346,9 +370,16 @@ def get_response_pruning_stage_config() -> dict[str, bool]:
 
 
 def compute_per_source_k(base_top_k: int, retrieval_multiplier: float) -> int:
-    """
-    Compute per-source K as:
-      PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)
+    """Compute per-source K as ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER).
+
+    Args:
+        base_top_k: Base retrieval top-K used to derive the per-source count.
+        retrieval_multiplier: Per-source multiplier applied to ``base_top_k``.
+
+    Returns:
+        The per-source K, clamped to be non-negative. Returns 0 to represent
+        "skip retrieval" (e.g., a multiplier or base of 0); falls back to
+        ``base_top_k`` when the multiplier cannot be interpreted as a float.
     """
     try:
         k = int(math.ceil(float(base_top_k) * float(retrieval_multiplier)))
@@ -365,12 +396,22 @@ def compute_per_source_k(base_top_k: int, retrieval_multiplier: float) -> int:
 
 
 def validate_openai_key() -> bool:
-    """Validate that OpenAI API key is set and not empty."""
+    """Validate that OpenAI API key is set and not empty.
+
+    Returns:
+        True if a non-empty key that is not the documented placeholder is
+        configured; False otherwise.
+    """
     return bool(settings.openai_api_key and settings.openai_api_key != "your-openai-api-key-here")
 
 
 def get_model_config() -> dict:
-    """Get model configuration for main runtime LLM client."""
+    """Get model configuration for main runtime LLM client.
+
+    Returns:
+        A dict with ``model_name``, ``temperature``, and ``max_tokens`` for the
+        primary chat model.
+    """
     return {
         "model_name": settings.model_name,
         "temperature": settings.model_temperature,
@@ -379,11 +420,12 @@ def get_model_config() -> dict:
 
 
 def get_active_embedding_model() -> str:
-    """
-    Resolve active embedding model name by provider.
+    """Resolve active embedding model name by provider.
 
-    - openai -> EMBEDDING_MODEL
-    - sentence_transformers -> SENTENCE_TRANSFORMERS_MODEL_ID
+    Returns:
+        The configured embedding model id for the active provider:
+        ``EMBEDDING_MODEL`` for ``openai`` and
+        ``SENTENCE_TRANSFORMERS_MODEL_ID`` for ``sentence_transformers``.
     """
     provider = str(settings.embedding_provider or "openai").strip().lower()
     if provider == "sentence_transformers":

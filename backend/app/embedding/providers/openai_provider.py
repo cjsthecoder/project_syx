@@ -44,6 +44,15 @@ class OpenAIEmbeddingProvider:
 
     @staticmethod
     def _is_rate_limit_error(exc: Exception) -> bool:
+        """Report whether an exception represents provider rate limiting.
+
+        Args:
+            exc: Exception raised by the OpenAI SDK call.
+
+        Returns:
+            True if the error looks like an HTTP 429 / rate-limit condition,
+            based on the status code or message text.
+        """
         try:
             status_code = getattr(exc, "status_code", None)
             if int(status_code or 0) == 429:
@@ -55,6 +64,18 @@ class OpenAIEmbeddingProvider:
 
     @staticmethod
     def _extract_retry_after_seconds(exc: Exception) -> Optional[float]:
+        """Extract the provider's suggested retry delay from an error.
+
+        Looks first at a ``retry-after`` response header and falls back to
+        parsing a "try again in Ns" hint from the message text.
+
+        Args:
+            exc: Exception raised by the OpenAI SDK call.
+
+        Returns:
+            The suggested wait in seconds, or ``None`` if no hint is present or
+            it cannot be parsed.
+        """
         try:
             response = getattr(exc, "response", None)
             headers = getattr(response, "headers", None)
@@ -79,6 +100,14 @@ class OpenAIEmbeddingProvider:
 
     @staticmethod
     def _is_timeout_error(exc: Exception) -> bool:
+        """Report whether an exception represents a request timeout.
+
+        Args:
+            exc: Exception raised by the OpenAI SDK call.
+
+        Returns:
+            True if the error message indicates a timeout.
+        """
         msg = str(exc or "").lower()
         return ("timed out" in msg) or ("timeout" in msg)
 
@@ -208,6 +237,17 @@ class OpenAIEmbeddingProvider:
         )
 
     def embed_query(self, text: str, *, model: Optional[str] = None) -> List[float]:
-        """Embed a single query string and return its vector (empty if none)."""
+        """Embed a single query string and return its vector (empty if none).
+
+        Issues a network request via :meth:`embed`.
+
+        Args:
+            text: Query string to embed; ``None`` is treated as empty.
+            model: Optional model override; defaults to the active embedding model.
+
+        Returns:
+            The embedding vector for ``text``, or an empty list when no vector
+            is produced.
+        """
         res = self.embed([text or ""], model=model)
         return res.vectors[0] if res.vectors else []

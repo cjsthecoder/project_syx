@@ -58,18 +58,41 @@ class VectorIndex(Protocol):
     """Shared contract for all vector sources."""
 
     def size(self) -> int:
-        """Number of vectors indexed."""
+        """Return the number of vectors currently indexed.
+
+        Returns:
+            Count of stored vectors.
+        """
 
     def search_by_vector(self, qvec_norm: np.ndarray, *, k: int) -> List[VectorHit]:
-        """
-        Search by a unit-normalized query vector (shape: (dim,), float32).
+        """Search by a unit-normalized query vector.
 
-        Returns hits with both raw inner-product and mapped [0,1] score.
+        Args:
+            qvec_norm: Unit-normalized query vector with shape ``(dim,)`` and
+                dtype ``float32``; normalization is required for the cosine
+                inner-product scoring to be valid.
+            k: Maximum number of nearest neighbors to return.
+
+        Returns:
+            Up to ``k`` hits, each carrying the raw cosine inner-product and the
+            mapped ``[0, 1]`` score, ordered most-similar first.
         """
 
     def get_by_id(self, item_id: str) -> Optional[VectorEntry]:
-        """Fetch a stored entry by stable item id."""
+        """Fetch a stored entry by stable item id.
+
+        Args:
+            item_id: Stable identifier of the stored entry.
+
+        Returns:
+            The matching ``VectorEntry``, or ``None`` if no entry has that id.
+        """
 
     def info(self) -> VectorIndexInfo:
-        """Debug/telemetry snapshot."""
+        """Return a debug/telemetry snapshot describing this index.
+
+        Returns:
+            A ``VectorIndexInfo`` describing the index kind, dimensionality, and
+            scoring mode.
+        """
 

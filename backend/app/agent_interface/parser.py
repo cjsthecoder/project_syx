@@ -63,6 +63,13 @@ def _split_snippet_parts(body: str) -> List[str]:
     Only header lines that follow a ``---`` delimiter (or start the body) are
     treated as snippet boundaries, so ``Snippet N`` text appearing inside a
     snippet's own content is not mistaken for a new block.
+
+    Args:
+        body: Context body with the ``Context:`` prefix already stripped.
+
+    Returns:
+        Per-snippet text blocks in document order; an empty list when no
+        snippet boundaries are found.
     """
     lines = str(body or "").splitlines()
     starts = [
@@ -86,6 +93,13 @@ def _is_context_delimited_snippet_start(lines: List[str], idx: int) -> bool:
 
     A header qualifies when it is the first content line or the previous
     non-blank line is the ``---`` block delimiter.
+
+    Args:
+        lines: All context body lines.
+        idx: Index of the candidate header line within ``lines``.
+
+    Returns:
+        ``True`` when the header at ``idx`` begins a new snippet block.
     """
     if idx <= 0:
         return True
@@ -102,6 +116,13 @@ def render_prompt_text_from_snippets(snippets: List[AgentMemorySnippet]) -> str:
 
     Inverse of :func:`parse_prompt_context_to_snippets`; returns an empty
     string when there are no snippets.
+
+    Args:
+        snippets: Snippets to serialize back into prompt-shaped context.
+
+    Returns:
+        The rendered context string, or an empty string when ``snippets`` is
+        empty.
     """
     pieces: List[str] = []
     for snippet in snippets or []:
@@ -111,6 +132,15 @@ def render_prompt_text_from_snippets(snippets: List[AgentMemorySnippet]) -> str:
 
 
 def _strip_context_prefix(text: str) -> str:
+    """Strip the leading ``Context:`` block delimiter from retrieval text.
+
+    Args:
+        text: Raw, already-trimmed context string.
+
+    Returns:
+        The text with a leading ``Context:\\n---\\n`` (LF or CRLF) prefix
+        removed; the input unchanged when no such prefix is present.
+    """
     if text.startswith("Context:\n---\n"):
         return text[len("Context:\n---\n") :].strip()
     if text.startswith("Context:\r\n---\r\n"):
@@ -124,6 +154,9 @@ def _parse_part(part: str) -> Optional[AgentMemorySnippet]:
     Merges metadata from the header line and the first embedded YAML block,
     preferring YAML values. Presence of ``memory_id`` marks the snippet as a
     ``bounded_entry``; otherwise it is an ``unbounded_chunk_group``.
+
+    Args:
+        part: Text of a single snippet block, header line first.
 
     Returns:
         The parsed snippet, or ``None`` when the block has no valid header.
@@ -178,6 +211,15 @@ def _parse_part(part: str) -> Optional[AgentMemorySnippet]:
 
 
 def _parse_header_meta(raw: str) -> Dict[str, str]:
+    """Parse a header's comma-separated ``key=value`` metadata segment.
+
+    Args:
+        raw: The metadata text captured from inside the header parentheses.
+
+    Returns:
+        A mapping of trimmed keys to trimmed values; pieces without ``=`` are
+        ignored.
+    """
     out: Dict[str, str] = {}
     for piece in str(raw or "").split(","):
         if "=" not in piece:
@@ -188,6 +230,15 @@ def _parse_header_meta(raw: str) -> Dict[str, str]:
 
 
 def _parse_first_yaml_block(text: str) -> Dict[str, Any]:
+    """Parse the first fenced ```yaml`` block found in snippet body text.
+
+    Args:
+        text: Snippet body that may contain a fenced YAML metadata block.
+
+    Returns:
+        The parsed key/value mapping, or an empty dict when no YAML block is
+        present.
+    """
     match = _YAML_RE.search(text or "")
     if not match:
         return {}
@@ -200,6 +251,13 @@ def _parse_simple_yaml(raw: str) -> Dict[str, Any]:
     Intentionally avoids a full YAML dependency: only flat ``key: value`` pairs
     and indented block lists are supported, with scalar coercion via
     :func:`_clean_scalar`.
+
+    Args:
+        raw: The YAML block body (without the fence markers).
+
+    Returns:
+        A mapping of keys to coerced scalar values or lists; comments and blank
+        lines are skipped.
     """
     out: Dict[str, Any] = {}
     current_list_key: Optional[str] = None
@@ -227,6 +285,17 @@ def _parse_simple_yaml(raw: str) -> Dict[str, Any]:
 
 
 def _clean_scalar(value: str) -> Any:
+    """Coerce a raw YAML scalar token into a typed Python value.
+
+    Strips matching quotes and recognizes ``null``/``true``/``false``, inline
+    ``[...]`` lists, and integers; everything else is returned as a string.
+
+    Args:
+        value: Raw scalar text to coerce.
+
+    Returns:
+        The coerced value: ``None``, ``bool``, ``int``, ``list``, or ``str``.
+    """
     v = value.strip()
     if not v:
         return ""
@@ -257,6 +326,13 @@ def _parse_chunk_index(value: Optional[str]) -> tuple[Optional[int], Optional[in
 
     Accepts a single index (``5``) or a ``start..end`` range; returns all-None
     when the value is missing or unparseable.
+
+    Args:
+        value: Raw ``chunk_index`` token from header metadata.
+
+    Returns:
+        A ``(start, end, range_string)`` tuple. For a single index, start and
+        end are equal; all three are ``None`` when the value cannot be parsed.
     """
     if not value:
         return None, None, None
@@ -282,6 +358,15 @@ def _source_document_id(
 
     Prefers an explicit id; otherwise composes ``{artifact_path}::memory_id=...``
     when both parts are present, else returns ``None``.
+
+    Args:
+        explicit: An already-resolved source document id, if available.
+        artifact_path: Uploaded artifact path used to synthesize an id.
+        memory_id: Memory entry id used to synthesize an id.
+
+    Returns:
+        The resolved or synthesized source document id, or ``None`` when none
+        can be formed.
     """
     if explicit:
         return explicit
@@ -291,6 +376,17 @@ def _source_document_id(
 
 
 def _topics(value: Any) -> Optional[List[str]]:
+    """Normalize a topics value into a clean list of non-empty strings.
+
+    Accepts a list or a single string (comma-splitting when commas are
+    present).
+
+    Args:
+        value: Raw topics value from header or YAML metadata.
+
+    Returns:
+        A list of trimmed topic strings, or ``None`` when no topics remain.
+    """
     if isinstance(value, list):
         vals = [str(v).strip() for v in value if str(v or "").strip()]
         return vals or None
@@ -303,6 +399,15 @@ def _topics(value: Any) -> Optional[List[str]]:
 
 
 def _parse_page(value: Any) -> Any:
+    """Normalize a page value, coercing numeric strings and literal ``none``.
+
+    Args:
+        value: Raw page value from header metadata.
+
+    Returns:
+        ``None`` for missing/``none`` values, an ``int`` for numeric strings,
+        or the original value otherwise.
+    """
     if value is None:
         return None
     if isinstance(value, str):
@@ -315,6 +420,15 @@ def _parse_page(value: Any) -> Any:
 
 
 def _none_if_literal_none(value: Optional[str]) -> Optional[str]:
+    """Treat the literal string ``"none"`` as an absent value.
+
+    Args:
+        value: Candidate string that may carry the literal token ``none``.
+
+    Returns:
+        ``None`` when the value is ``None`` or case-insensitively ``"none"``;
+        otherwise the original value.
+    """
     if value is None:
         return None
     if value.strip().lower() == "none":
@@ -323,6 +437,14 @@ def _none_if_literal_none(value: Optional[str]) -> Optional[str]:
 
 
 def _as_str(value: Any) -> Optional[str]:
+    """Coerce a value to a trimmed string, mapping blanks to ``None``.
+
+    Args:
+        value: Value to stringify.
+
+    Returns:
+        The stripped string, or ``None`` when the input is ``None`` or blank.
+    """
     if value is None:
         return None
     text = str(value).strip()
@@ -330,6 +452,15 @@ def _as_str(value: Any) -> Optional[str]:
 
 
 def _as_float(value: Any) -> Optional[float]:
+    """Coerce a value to ``float``, returning ``None`` on failure.
+
+    Args:
+        value: Value to convert.
+
+    Returns:
+        The parsed float, or ``None`` when the value is ``None`` or not
+        numeric.
+    """
     if value is None:
         return None
     try:
@@ -339,6 +470,15 @@ def _as_float(value: Any) -> Optional[float]:
 
 
 def _as_int(value: Any) -> Optional[int]:
+    """Coerce a value to ``int``, returning ``None`` on failure.
+
+    Args:
+        value: Value to convert.
+
+    Returns:
+        The parsed integer, or ``None`` when the value is ``None`` or not an
+        integer.
+    """
     if value is None:
         return None
     try:
@@ -348,6 +488,18 @@ def _as_int(value: Any) -> Optional[int]:
 
 
 def _render_header(snippet: AgentMemorySnippet) -> str:
+    """Render a snippet's metadata into a prompt-shaped header line.
+
+    Reconstructs the ``chunk_index`` token from the snippet's range or
+    start/end fields, and omits ``file``/``page`` for ``daily`` snippets.
+
+    Args:
+        snippet: Snippet whose metadata is rendered.
+
+    Returns:
+        A ``Snippet N (...)`` header line matching the parser's expected
+        format.
+    """
     chunk = snippet.chunk_index_range
     if not chunk and snippet.chunk_index_start is not None and snippet.chunk_index_end is not None:
         if snippet.chunk_index_start == snippet.chunk_index_end:

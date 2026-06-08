@@ -65,6 +65,12 @@ class RealInstrumentation:
 
     @staticmethod
     def _turn_state_defaults() -> Dict[str, Any]:
+        """Return the initial per-turn rollup state.
+
+        Returns:
+            A fresh dict of zeroed token/latency counters and default route and
+            RAG flags used to accumulate a turn's metrics.
+        """
         return {
             "prompt_system_tokens_est": 0,
             "prompt_history_tokens_est": 0,
@@ -96,6 +102,16 @@ class RealInstrumentation:
 
     @staticmethod
     def _as_int(v: Any, default: Optional[int] = 0) -> Optional[int]:
+        """Coerce a value to ``int``, falling back to a default on failure.
+
+        Args:
+            v: Value to convert.
+            default: Fallback returned when ``v`` is ``None`` or not coercible;
+                when ``default`` is itself ``None``, ``None`` is returned.
+
+        Returns:
+            The parsed integer, or the (possibly ``None``) default.
+        """
         try:
             if v is None:
                 return int(default) if default is not None else None
@@ -105,6 +121,15 @@ class RealInstrumentation:
 
     @staticmethod
     def _to_non_negative_int_or_none(value: Any) -> Optional[int]:
+        """Coerce a value to a non-negative ``int`` or ``None``.
+
+        Args:
+            value: Value to convert (typically a millisecond duration).
+
+        Returns:
+            The integer when it is non-negative; ``None`` when the value is
+            missing, negative, or not coercible.
+        """
         try:
             if value is None:
                 return None
@@ -125,6 +150,19 @@ class RealInstrumentation:
         message: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        """Build a structured schema-error record for diagnostics.
+
+        Args:
+            code: Machine-readable error code (e.g. ``type_mismatch``).
+            field: Name of the offending field.
+            expected: Expected type, value, or enum for the field.
+            actual: Actual value observed for the field.
+            message: Optional human-readable clarification.
+            details: Optional extra context, included only when non-empty.
+
+        Returns:
+            A dict describing the schema violation.
+        """
         payload: Dict[str, Any] = {
             "code": str(code),
             "field": str(field),
@@ -139,6 +177,17 @@ class RealInstrumentation:
 
     @staticmethod
     def _epoch_ms_from_iso(value: Any) -> Optional[int]:
+        """Convert an ISO-8601 timestamp string to epoch milliseconds.
+
+        Accepts a trailing ``Z`` as UTC.
+
+        Args:
+            value: Candidate ISO-8601 timestamp string.
+
+        Returns:
+            Epoch milliseconds, or ``None`` when the value is not a parseable
+            timestamp string.
+        """
         if not isinstance(value, str):
             return None
         raw = value.strip()
@@ -152,11 +201,24 @@ class RealInstrumentation:
 
     @staticmethod
     def _resolve_repo_root() -> str:
+        """Resolve the repository root relative to this module's location.
+
+        Returns:
+            The absolute path to the repository root.
+        """
         # .../backend/app/core/tracking/instrumentation.py -> repo root
         return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
     @classmethod
     def _detect_git_metadata(cls) -> Dict[str, Any]:
+        """Detect the current git commit and working-tree dirtiness.
+
+        Best-effort: shells out to ``git`` and degrades gracefully, logging a
+        warning on failure.
+
+        Returns:
+            A dict with ``git_commit`` (or ``"unknown"``) and ``git_dirty``.
+        """
         repo_root = cls._resolve_repo_root()
         git_commit = "unknown"
         git_dirty = False
@@ -187,6 +249,18 @@ class RealInstrumentation:
 
     @classmethod
     def _normalize_config_snapshot(cls, cfg_snapshot: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize a config snapshot into the canonical run.json shape.
+
+        Reconciles legacy/alias prompt-budgeting keys, derives the
+        ``prompt_budgeting_known`` flag, ensures a ``maintenance`` block, and
+        backfills git metadata when absent.
+
+        Args:
+            cfg_snapshot: Raw config snapshot captured at run start.
+
+        Returns:
+            A normalized copy safe to persist as the immutable startup snapshot.
+        """
         out = dict(cfg_snapshot or {})
         prompt_budgeting = out.get("prompt_budgeting")
         if isinstance(prompt_budgeting, dict):
@@ -245,12 +319,26 @@ class RealInstrumentation:
         os.makedirs(self.runs_dir, exist_ok=True)
 
     def _new_run_id(self) -> str:
+        """Generate a unique run id from a timestamp and optional override.
+
+        Returns:
+            ``{override}_{timestamp}`` when a run-id override is set, otherwise
+            ``run_{timestamp}_{random8}``.
+        """
         ts = local_timestamp_compact()
         if self.run_id_override:
             return f"{self.run_id_override}_{ts}"
         return f"run_{ts}_{uuid.uuid4().hex[:8]}"
 
     def _append_jsonl(self, name: str, payload: Dict[str, Any]) -> None:
+        """Append one JSON record as a line to a file in the run directory.
+
+        No-op when no run directory has been created.
+
+        Args:
+            name: File name within the run directory (e.g. ``turns.jsonl``).
+            payload: JSON-serializable record to append.
+        """
         if not self.run_dir:
             return
         path = os.path.join(self.run_dir, name)
@@ -266,6 +354,19 @@ class RealInstrumentation:
 
     @staticmethod
     def _snapshot_project_personality(project_id: str) -> Dict[str, Any]:
+        """Capture a hashed snapshot of a project's personality config.
+
+        Best-effort: degrades to an ``unavailable`` snapshot and logs a warning
+        when the personality cannot be loaded.
+
+        Args:
+            project_id: Project whose personality is captured.
+
+        Returns:
+            A dict with the canonical personality, its SHA-256 digest, capture
+            timestamp, and source (``project_file``, ``default_fallback``, or
+            ``unavailable``).
+        """
         pid = str(project_id or "").strip()
         out: Dict[str, Any] = {
             "as_run_personality": None,
@@ -296,6 +397,16 @@ class RealInstrumentation:
         return out
 
     def _observe_project_for_run(self, user_meta: Optional[dict]) -> None:
+        """Record the turn's project into the run's ``project_observed`` block.
+
+        Tracks the set of projects seen, captures the personality for the first
+        project, and flags multi-project runs. Persists ``run.json`` only when
+        the observed state changes.
+
+        Args:
+            user_meta: Turn metadata expected to carry a ``project_id``; ignored
+                when absent or not a dict.
+        """
         if not isinstance(user_meta, dict):
             return
         project_id_raw = user_meta.get("project_id")
@@ -333,6 +444,18 @@ class RealInstrumentation:
         turn_payload: Dict[str, Any],
         output_meta: Dict[str, Any],
     ) -> None:
+        """Emit a per-turn benchmark result record (5.11) to the run directory.
+
+        No-op when no run is active. Marks the record ``partial`` and lists
+        missing fields when required prompt/response/token/latency data is
+        absent.
+
+        Args:
+            turn_id: Turn whose result is recorded.
+            turn_payload: Finalized end-of-turn rollup payload.
+            output_meta: Per-turn outputs supplying prompt/response text and the
+                model id.
+        """
         # 5.11 benchmark artifact emission when instrumentation is enabled.
         if not self.run_id or not self.run_dir:
             return
@@ -1155,7 +1278,23 @@ def get_instrumentation() -> Instrumentation:
 
 
 def init_instrumentation(settings: Any, *, has_lifespan_hook: bool = False) -> Instrumentation:
-    """Initialize global instrumentation singleton from app settings."""
+    """Initialize global instrumentation singleton from app settings.
+
+    Installs a :class:`NoopInstrumentation` when instrumentation is disabled,
+    otherwise a :class:`RealInstrumentation` configured from settings. When no
+    lifecycle hook is available, registers an ``atexit`` fallback to flush the
+    run exactly once.
+
+    Args:
+        settings: Application settings object read via ``getattr`` for
+            instrumentation flags, mode, runs directory, run-id override, and
+            prompt tolerance values.
+        has_lifespan_hook: Whether the caller manages run shutdown via a
+            lifespan hook; when ``False`` an ``atexit`` flush is registered.
+
+    Returns:
+        The active process-wide instrumentation singleton.
+    """
     global _INSTRUMENTATION, _REGISTERED_ATEXIT
     with _INIT_LOCK:
         enabled = bool(getattr(settings, "instrumentation_enabled", False))

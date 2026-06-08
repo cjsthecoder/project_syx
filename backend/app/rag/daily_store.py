@@ -42,6 +42,15 @@ from .syx_memory_artifact import (
 logger = logging.getLogger(__name__)
 
 def _normalize_rows(v: np.ndarray) -> np.ndarray:
+    """Unit-normalize each row of a matrix, treating zero rows as unit-norm.
+
+    Args:
+        v: 2-D array of row vectors; cast to float32.
+
+    Returns:
+        A float32 array with each row divided by its L2 norm (zero-norm rows use
+        a divisor of 1.0). Empty input is returned as-is.
+    """
     if v.size == 0:
         return v.astype("float32")
     v = v.astype("float32")
@@ -61,6 +70,11 @@ class DailyVectorIndex:
     """
 
     def __init__(self, *, dim: int) -> None:
+        """Initialize an empty cosine (IndexFlatIP) index.
+
+        Args:
+            dim: Embedding dimensionality; vectors added later must match it.
+        """
         self.index: faiss.IndexFlatIP = faiss.IndexFlatIP(int(dim))
         self.index_to_id: List[str] = []
         self.docstore: Dict[str, Dict[str, Any]] = {}
@@ -75,7 +89,15 @@ class DailyVectorIndex:
         return VectorIndexInfo(index_kind="daily", dim=int(self._dim), score_mode="cosine_ip_mapped_01")
 
     def get_by_id(self, item_id: str) -> Optional[VectorEntry]:
-        """Return the stored entry for an item_id, or None if absent/malformed."""
+        """Return the stored entry for an item_id, or None if absent/malformed.
+
+        Args:
+            item_id: Docstore key to look up.
+
+        Returns:
+            The ``VectorEntry`` (text + metadata), or None when the id is unknown
+            or the stored shape is malformed.
+        """
         try:
             entry = self.docstore.get(str(item_id))
             if not isinstance(entry, dict):
@@ -88,6 +110,12 @@ class DailyVectorIndex:
 
     def add(self, *, item_id: str, vector: List[float], text: str, metadata: Dict[str, Any]) -> None:
         """Add a single entry, unit-normalizing its vector before insertion.
+
+        Args:
+            item_id: Docstore key for the entry.
+            vector: Raw embedding; normalized before being added to FAISS.
+            text: Source text stored alongside the vector.
+            metadata: Arbitrary metadata stored with the entry.
 
         Raises:
             RuntimeError: If the vector dimension does not match the index.
@@ -103,6 +131,13 @@ class DailyVectorIndex:
         self, *, item_ids: List[str], vectors: List[List[float]], texts: List[str], metadatas: List[dict]
     ) -> None:
         """Add a batch of entries, unit-normalizing their vectors before insertion.
+
+        Args:
+            item_ids: Docstore keys, aligned positionally with the other lists.
+            vectors: Raw embeddings; normalized before being added to FAISS. An
+                empty list is a no-op.
+            texts: Source texts aligned with ``item_ids``.
+            metadatas: Per-entry metadata aligned with ``item_ids``.
 
         Raises:
             RuntimeError: If the vector dimension does not match the index.
@@ -120,8 +155,14 @@ class DailyVectorIndex:
     def search_by_vector(self, qvec_norm: np.ndarray, *, k: int) -> List[VectorHit]:
         """Search for the top-k nearest entries to a unit-normalized query vector.
 
-        Returns hits ordered by FAISS, each carrying the raw inner product and a
-        cosine-to-[0,1] mapped score. Returns an empty list for an empty index.
+        Args:
+            qvec_norm: Unit-normalized query embedding.
+            k: Maximum number of hits to return.
+
+        Returns:
+            Hits ordered by FAISS, each carrying the raw inner product and a
+            cosine-to-[0,1] mapped score. Returns an empty list for an empty
+            index.
         """
         if int(self.index.ntotal) <= 0:
             return []
@@ -150,11 +191,18 @@ _BEGIN_DAILY_PAIR = "=== BEGIN DAILY PAIR ==="
 _END_DAILY_PAIR = "=== END DAILY PAIR ==="
 
 def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
-    """
-    Format tag metadata lines for inclusion in daily.md.
+    """Format tag metadata lines for inclusion in daily.md.
 
-    Uses the same 3-line convention as the roll-off tagger output.
-    Returns a string that already ends with a newline (or "" if no tags).
+    Uses the same 3-line convention as the roll-off tagger output. Formatting
+    failures are logged at warning level and degrade to an empty string.
+
+    Args:
+        tags_meta: Tagger metadata with ``topics``/``intent``/``type`` and an
+            optional ``semantic_handle``; falsy values yield no lines.
+
+    Returns:
+        The newline-terminated tag block, or an empty string when there are no
+        tags or formatting fails.
     """
     if not tags_meta:
         return ""
@@ -174,11 +222,28 @@ def _format_tags_block(tags_meta: Optional[Dict[str, Any]]) -> str:
 
 
 def _entry_tags_meta(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Return an entry's ``tags_meta`` dict, or an empty dict when absent/invalid.
+
+    Args:
+        entry: A daily entry record.
+
+    Returns:
+        The ``tags_meta`` mapping, or ``{}`` when it is missing or not a dict.
+    """
     tags_meta = entry.get("tags_meta")
     return tags_meta if isinstance(tags_meta, dict) else {}
 
 
 def _semantic_handle(tags_meta: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Extract a non-empty ``semantic_handle`` from tagger metadata.
+
+    Args:
+        tags_meta: Tagger metadata mapping, or None.
+
+    Returns:
+        The trimmed semantic handle, or None when absent, blank, or the input is
+        not a dict.
+    """
     if not isinstance(tags_meta, dict):
         return None
     value = tags_meta.get("semantic_handle")
@@ -190,6 +255,14 @@ def _render_markdown_entry(entry: Dict[str, Any], *, user_text: str, assistant_t
 
     Derives scope/source defaults from ``entry_type`` and only emits optional
     tag/dream fields when present, then delegates to ``render_memory_entry``.
+
+    Args:
+        entry: Daily entry record supplying ids, scopes, route, and tags.
+        user_text: User message text rendered into the block.
+        assistant_text: Assistant message text rendered into the block.
+
+    Returns:
+        The rendered bounded memory-entry markdown block.
     """
     tags_meta = _entry_tags_meta(entry)
     entry_type = str(entry.get("entry_type", "chat_pair") or "chat_pair")
@@ -233,7 +306,15 @@ def _project_daily_paths(project_id: str) -> Tuple[str, str, str]:
     """Resolve the (daily.json, daily.lock, daily.md) paths for a project.
 
     Creates the project and state directories and migrates a legacy top-level
-    ``daily.lock`` into the ``state/`` directory when present.
+    ``daily.lock`` into the ``state/`` directory when present (migration failures
+    are logged at warning level).
+
+    Args:
+        project_id: Project whose memory directory paths are resolved.
+
+    Returns:
+        A ``(meta_path, lock_path, md_path)`` tuple for daily.json, the lock file,
+        and daily.md respectively.
     """
     base_dir = os.path.join(get_settings().memory_root, project_id)
     os.makedirs(base_dir, exist_ok=True)
@@ -278,11 +359,19 @@ class DailySource:
 
 
 def get_daily_source(project_id: str) -> Optional[DailySource]:
-    """
-    Provide a safe Daily vectorstore handle + authoritative metadata.
+    """Provide a safe Daily vectorstore handle plus authoritative metadata.
 
-    - Daily lifecycle (warm/rebuild/mismatch) remains owned by daily_store.py.
-    - Canonical retrieval owns embedding + per-source K + search loop + shaping.
+    Daily lifecycle (warm/rebuild/model-mismatch) remains owned by this module;
+    canonical retrieval owns embedding, per-source K, the search loop, and result
+    shaping. A cold or stale cache triggers a background rebuild and yields None
+    for the current request (no in-request retry).
+
+    Args:
+        project_id: Project whose Daily source is requested.
+
+    Returns:
+        A ``DailySource`` when a warm, model-matched, non-empty cache exists;
+        otherwise None.
     """
     settings = get_settings()
     # Warm lazily on first use for a project (non-blocking; return None for this request).
@@ -308,11 +397,15 @@ def get_daily_source(project_id: str) -> Optional[DailySource]:
 
 
 def daily_lookup_adjacent_entry_ids(project_id: str, *, day_sequence: int) -> Dict[str, Optional[str]]:
-    """
-    Deterministic neighbor lookup for Daily entries.
+    """Look up the deterministic neighbors of a Daily entry by day sequence.
 
-    Returns dict with keys: prev_entry_id, next_entry_id.
-    If cache is cold/unavailable, returns None values (no expansion).
+    Args:
+        project_id: Project whose Daily adjacency map is consulted.
+        day_sequence: 1-based sequence number of the central entry.
+
+    Returns:
+        A dict with ``prev_entry_id`` and ``next_entry_id``; both are None when
+        the cache is cold/unavailable or the sequence is invalid (no expansion).
     """
     ds = get_daily_source(project_id)
     if ds is None:
@@ -330,7 +423,15 @@ def daily_lookup_adjacent_entry_ids(project_id: str, *, day_sequence: int) -> Di
 
 
 def notify_daily_search_failure(project_id: str, reason: str) -> None:
-    """Source-owned rebuild trigger for canonical to call on Daily search failure."""
+    """Schedule a Daily cache rebuild after a canonical search failure.
+
+    This is the source-owned rebuild trigger canonical retrieval calls when a
+    Daily search raises; scheduling failures are logged at warning level.
+
+    Args:
+        project_id: Project whose Daily cache should be rebuilt.
+        reason: Short rebuild reason recorded for diagnostics.
+    """
     try:
         start_daily_cache_rebuild(project_id, reason=reason)
     except Exception as exc:
@@ -348,6 +449,12 @@ def _get_project_lock(project_id: str) -> threading.RLock:
 
     Re-entrant so that ``ensure_daily_cache`` can call ``rebuild_daily_cache``
     while already holding the lock.
+
+    Args:
+        project_id: Project whose lock is requested.
+
+    Returns:
+        The shared ``threading.RLock`` for the project.
     """
     with _CACHE_LOCK:
         lock = _PROJECT_LOCKS.get(project_id)
@@ -359,14 +466,26 @@ def _get_project_lock(project_id: str) -> threading.RLock:
 
 
 def clear_daily_cache(project_id: str) -> None:
-    """Drop the in-memory Daily cache for a project (no disk changes)."""
+    """Drop the in-memory Daily cache for a project (no disk changes).
+
+    Args:
+        project_id: Project whose cache entry and warming flag are removed.
+    """
     with _CACHE_LOCK:
         _CACHE.pop(project_id, None)
         _WARMING.discard(project_id)
 
 
 def start_daily_cache_rebuild(project_id: str, reason: str) -> None:
-    """Kick off a background rebuild of the in-memory cache (non-blocking)."""
+    """Kick off a background rebuild of the in-memory cache (non-blocking).
+
+    De-duplicated per project via a warming set, so a rebuild already in flight is
+    not started again.
+
+    Args:
+        project_id: Project whose cache should be rebuilt off-thread.
+        reason: Short rebuild reason propagated to ``rebuild_daily_cache``.
+    """
     with _CACHE_LOCK:
         if project_id in _WARMING:
             return
@@ -384,6 +503,14 @@ def start_daily_cache_rebuild(project_id: str, reason: str) -> None:
 
 
 def _recorded_models(entries: List[Dict[str, Any]]) -> Set[str]:
+    """Collect the distinct ``embedding_model`` values recorded across entries.
+
+    Args:
+        entries: Daily metadata records.
+
+    Returns:
+        The set of non-empty embedding model names found.
+    """
     models: Set[str] = set()
     for e in entries:
         m = e.get("embedding_model")
@@ -393,6 +520,15 @@ def _recorded_models(entries: List[Dict[str, Any]]) -> Set[str]:
 
 
 def _load_metadata(meta_path: str) -> List[Dict[str, Any]]:
+    """Load the daily.json metadata list, degrading to empty on error.
+
+    Args:
+        meta_path: Path to the project's daily.json file.
+
+    Returns:
+        The parsed list of entry dicts, or an empty list when the file is missing
+        or cannot be read/decoded (failures are logged at error level).
+    """
     if not os.path.isfile(meta_path):
         return []
     try:
@@ -404,6 +540,13 @@ def _load_metadata(meta_path: str) -> List[Dict[str, Any]]:
 
 
 def _save_metadata(meta_path: str, entries: List[Dict[str, Any]]) -> None:
+    """Persist the daily.json metadata list atomically.
+
+    Args:
+        meta_path: Destination daily.json path; a sibling ``.tmp`` is written then
+            renamed into place.
+        entries: Entry dicts to serialize.
+    """
     tmp_path = meta_path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(entries, f)
@@ -411,7 +554,15 @@ def _save_metadata(meta_path: str, entries: List[Dict[str, Any]]) -> None:
 
 
 def reset_daily(project_id: str) -> None:
-    """Delete a project's daily.json and clear its in-memory cache."""
+    """Delete a project's daily.json and clear its in-memory cache.
+
+    Holds the daily file lock while removing daily.json (removal failures are
+    logged at warning level), then drops the in-memory cache. daily.md is left
+    untouched.
+
+    Args:
+        project_id: Project whose Daily metadata and cache are reset.
+    """
     meta_path, lock_path, _txt_path = _project_daily_paths(project_id)
     with FileLock(lock_path):
         for p in (meta_path,):
@@ -425,7 +576,21 @@ def reset_daily(project_id: str) -> None:
 
 
 def rebuild_daily_cache(project_id: str, reason: str) -> bool:
-    """Force rebuild of the in-memory cache from daily.json (updating metadata as required)."""
+    """Force a rebuild of the in-memory Daily cache from daily.json.
+
+    Clears the existing cache, reconciles each entry's ``embedding_model`` to the
+    active model (rewriting daily.json when stale), re-embeds every entry in token
+    batches, and repopulates the vector index plus the metadata/adjacency maps.
+    A human-readable debug report is written best-effort.
+
+    Args:
+        project_id: Project whose cache is rebuilt.
+        reason: Short reason recorded in logs and the debug report.
+
+    Returns:
+        True when the cache (possibly empty) is rebuilt; False when an unexpected
+        error aborts the rebuild (the cache is dropped in that case).
+    """
     settings = get_settings()
     runtime_model = get_active_embedding_model()
     meta_path, lock_path, _txt_path = _project_daily_paths(project_id)
@@ -578,7 +743,19 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
 
 
 def ensure_daily_cache(project_id: str, reason: str = "warm") -> bool:
-    """Ensure a project's in-memory cache exists and matches daily.json + EMBEDDING_MODEL."""
+    """Ensure a project's in-memory cache exists and matches daily.json + model.
+
+    Fast-paths when the cache is already on the active embedding model and
+    daily.json agrees; otherwise rebuilds.
+
+    Args:
+        project_id: Project whose cache is validated/ensured.
+        reason: Short reason forwarded to a rebuild when one is required.
+
+    Returns:
+        True when the cache is present and consistent (or successfully rebuilt);
+        False when a rebuild fails.
+    """
     settings = get_settings()
     runtime_model = get_active_embedding_model()
     meta_path, lock_path, _txt_path = _project_daily_paths(project_id)
@@ -624,9 +801,41 @@ def append_pair(
     dream_output_type: Optional[str] = None,
     origin_memory_ids: Optional[List[str]] = None,
 ) -> bool:
-    """Append a single embedded pair to the daily index and metadata.
-    Note: We don't persist raw FAISS here; we only track metadata and rely on embeddings at retrieval-time for simplicity.
-    When update_cache is False, only daily.json (and optionally daily.md) are updated; caller is responsible for rebuilding the in-memory RAG once (e.g. dream batch).
+    """Append a single embedded pair to the Daily index and metadata.
+
+    Persists the entry to daily.json (and optionally daily.md) under the file
+    lock, then incrementally updates the in-memory cache. Raw FAISS is never
+    persisted here; vectors are rebuilt from daily.json at retrieval time. When
+    ``update_cache`` is False, only the on-disk artifacts are written and the
+    caller is responsible for rebuilding the in-memory cache once (e.g. a dream
+    batch).
+
+    Args:
+        project_id: Owning project id.
+        pair_text: Combined ``User:/Assistant:`` text stored as the entry body.
+        user_msg_id: Source user message id recorded in ``pair_ids``.
+        assistant_msg_id: Source assistant message id recorded in ``pair_ids``.
+        tokens: Token count attributed to the pair.
+        namespace: Route/namespace label; lowercased, defaults to ``other``.
+        keep: Whether the entry is pinned (exempt from pruning).
+        embed_override: Alternate text to embed instead of ``pair_text``.
+        tags_meta: Optional tagger metadata (topics/intent/type/semantic_handle).
+        write_daily_md: When True, also append a human-readable daily.md block.
+        update_cache: When False, skip the in-memory cache update.
+        created_at_iso_utc: Creation timestamp; defaults to now (UTC).
+        memory_id: Explicit memory id; generated deterministically when omitted.
+        entry_type: Entry kind (e.g. ``chat_pair`` or ``dream_output``).
+        source: Origin label for the entry.
+        source_agent: Producing agent label.
+        source_scope: Source scope; defaults by entry type when omitted.
+        current_scope: Current scope; defaults by entry type when omitted.
+        accepted_item_id: Accepted item id for dream outputs.
+        dream_output_type: Dream subtype, snake-cased when stored.
+        origin_memory_ids: Source memory ids for dream outputs.
+
+    Returns:
+        True on success. False when the cache update could not complete and a
+        background rebuild was scheduled instead (the disk write still succeeded).
     """
     settings = get_settings()
     meta_path, lock_path, md_path = _project_daily_paths(project_id)
@@ -805,10 +1014,24 @@ def append_pair_text_only(
     keep: bool,
     tags_meta: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """
-    Append a single pair to daily.md only (no FAISS, no daily.json).
-    Used by Sleep flush to move active DB pairs into daily text at start of cycle.
-    When tags_meta is provided, writes #topics, #intent, #type, #semantic_handle (same format as roll-off).
+    """Append a single pair to daily.md only (no FAISS, no daily.json).
+
+    Used by the Sleep flush to move active DB pairs into daily text at the start
+    of a cycle. Failures are logged at error level and reported via the return
+    value rather than raised.
+
+    Args:
+        project_id: Owning project id.
+        user_text: User message text.
+        assistant_text: Assistant message text.
+        created_at_iso_utc: Creation timestamp; defaults to now (UTC).
+        namespace: Route/namespace label; lowercased, defaults to ``other``.
+        keep: Whether the pair is marked as pinned in the rendered block.
+        tags_meta: Optional tagger metadata; when present, writes the
+            ``#topics``/``#intent``/``#type``/``#semantic_handle`` lines.
+
+    Returns:
+        True when the block is appended; False on write failure.
     """
     _meta_path, lock_path, md_path = _project_daily_paths(project_id)
     ns = (namespace or "other").lower()
@@ -860,7 +1083,16 @@ def append_pair_text_only(
 
 
 def daily_stats(project_id: str) -> Dict[str, int]:
-    """Return daily index size, indexed token count, and vector count for a project."""
+    """Return Daily index size, indexed token count, and vector count.
+
+    Args:
+        project_id: Project whose Daily metadata is measured.
+
+    Returns:
+        A dict with ``daily_index_size_bytes`` (metadata file/serialized size),
+        ``daily_tokens_indexed`` (summed entry tokens), and ``daily_vector_count``
+        (number of entries).
+    """
     meta_path, lock_path, _txt_path = _project_daily_paths(project_id)
     with FileLock(lock_path):
         entries = _load_metadata(meta_path)
@@ -889,7 +1121,19 @@ def daily_stats(project_id: str) -> Dict[str, int]:
 
 
 def backfill_daily_md_from_meta(project_id: str) -> bool:
-    """If daily.json exists and daily.md is missing, write out text blocks for all entries (canonical format)."""
+    """Recreate a missing daily.md from daily.json in the canonical format.
+
+    No-ops when daily.md already exists or daily.json has no entries. Backfills
+    missing per-entry fields (timestamp, scopes, route, memory_id, etc.) and
+    persists those updates back to daily.json when any were synthesized.
+
+    Args:
+        project_id: Project whose daily.md is regenerated.
+
+    Returns:
+        True when daily.md is written; False when skipped (already present or no
+        entries) or the backfill fails.
+    """
     meta_path, lock_path, md_path = _project_daily_paths(project_id)
     if os.path.isfile(md_path):
         return False

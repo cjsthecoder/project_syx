@@ -37,19 +37,47 @@ _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "..", "..", ".."))
 
 
 def _project_dir(project_id: str) -> str:
+    """Return the per-project memory directory path.
+
+    Args:
+        project_id: Project whose memory directory to resolve.
+
+    Returns:
+        The directory path under the configured memory root.
+    """
     return os.path.join(get_settings().memory_root, project_id)
 
 
 def _project_prompt_path(project_id: str) -> str:
+    """Return the path to a project's ``system_prompt.txt`` file.
+
+    Args:
+        project_id: Project whose prompt path to resolve.
+
+    Returns:
+        The absolute/relative path to the project's system prompt file.
+    """
     return os.path.join(_project_dir(project_id), "system_prompt.txt")
 
 
 def _project_personality_path(project_id: str) -> str:
+    """Return the path to a project's ``personality.json`` file.
+
+    Args:
+        project_id: Project whose personality path to resolve.
+
+    Returns:
+        The path to the project's personality JSON file.
+    """
     return os.path.join(_project_dir(project_id), "personality.json")
 
 
 def ensure_directories(path: str) -> None:
-    """Create ``path`` (and parents) if absent; log and continue on failure."""
+    """Create ``path`` (and parents) if absent; log and continue on failure.
+
+    Args:
+        path: Directory path to create recursively.
+    """
     try:
         os.makedirs(path, exist_ok=True)
     except OSError as exc:
@@ -123,6 +151,9 @@ def seed_project_defaults(project_id: str) -> None:
     """Create per-project prompt/personality files if missing, using defaults.
 
     Called on project creation and during startup backfill.
+
+    Args:
+        project_id: Project whose default files should be seeded.
     """
     ensure_directories(_project_dir(project_id))
     prompt_path = _project_prompt_path(project_id)
@@ -162,6 +193,11 @@ def backfill_all_projects() -> None:
 def _validate_sizes(prompt_text: Optional[str], personality_json: Optional[Dict[str, Any]]) -> None:
     """Enforce configured byte-size caps on prompt and personality payloads.
 
+    Args:
+        prompt_text: System prompt text to size-check, or None to skip.
+        personality_json: Personality mapping to size-check (serialized to
+            JSON for measurement), or None to skip.
+
     Raises:
         ValueError: If the UTF-8 size of either payload exceeds its limit.
     """
@@ -180,6 +216,13 @@ def _normalize_personality(p: Dict[str, Any]) -> Dict[str, Any]:
 
     Applies defaults for tone/verbosity/format, clamps creativity to [0.0, 1.0],
     and ensures ``domain_focus`` is a list.
+
+    Args:
+        p: Raw personality mapping, possibly partial or malformed.
+
+    Returns:
+        A normalized dict with ``tone``, ``verbosity``, ``format``,
+        ``creativity``, and ``domain_focus`` keys.
     """
     tone = str(p.get("tone", "")).strip().lower() or "analytical"
     verbosity = str(p.get("verbosity", "")).strip().lower() or "concise"
@@ -208,6 +251,12 @@ def load_project_system_prompt(project_id: str) -> str:
 
     Falls back to the default prompt when the project file is missing, empty,
     or fails to load.
+
+    Args:
+        project_id: Project whose system prompt to load.
+
+    Returns:
+        The project's system prompt text, or the default prompt on fallback.
     """
     cached = _PROMPT_CACHE.get(project_id)
     if cached is not None:
@@ -247,6 +296,12 @@ def load_project_personality(project_id: str) -> Dict[str, Any]:
 
     Falls back to the normalized default personality when the project file is
     missing or invalid.
+
+    Args:
+        project_id: Project whose personality to load.
+
+    Returns:
+        The normalized personality dict for the project.
     """
     cached = _PERSONALITY_CACHE.get(project_id)
     if cached is not None:
@@ -277,6 +332,10 @@ def load_project_personality(project_id: str) -> Dict[str, Any]:
 def save_project_system_prompt(project_id: str, content: str) -> None:
     """Persist the project's system prompt and invalidate its cache entry.
 
+    Args:
+        project_id: Project whose system prompt to save.
+        content: System prompt text to write.
+
     Raises:
         ValueError: If ``content`` exceeds the configured size limit.
     """
@@ -295,6 +354,10 @@ def save_project_system_prompt(project_id: str, content: str) -> None:
 
 def save_project_personality(project_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize, persist, and cache-invalidate the project's personality.
+
+    Args:
+        project_id: Project whose personality to save.
+        payload: Raw personality mapping to normalize and persist.
 
     Returns:
         The normalized personality that was written to disk.

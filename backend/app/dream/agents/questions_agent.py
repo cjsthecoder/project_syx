@@ -34,8 +34,17 @@ logger = logging.getLogger(__name__)
 
 
 def _load_consolidated_questions(project_id: str) -> Dict[str, Any]:
-    """
-    Load deterministic open-question consolidation artifact from sleep.
+    """Load the deterministic open-question consolidation artifact written by sleep.
+
+    Read failures and malformed shapes are logged/normalized to an empty set
+    rather than raising.
+
+    Args:
+        project_id: Project whose ``open_questions_consolidated.json`` is loaded.
+
+    Returns:
+        Dict of shape ``{"questions": [...]}``; the list is empty when the
+        artifact is missing or invalid.
     """
     path = os.path.join(get_settings().memory_root, project_id, "open_questions_consolidated.json")
     if not os.path.isfile(path):
@@ -55,9 +64,23 @@ def _load_consolidated_questions(project_id: str) -> Dict[str, Any]:
 
 
 def _run_open_question_pipeline(project_id: str, question: str, topic: str, resolution: str) -> Dict[str, Any]:
-    """
-    Process a single open question per 4.1.2.
-    Returns dict with keys: question, topic, resolution, answer, used_remote_research.
+    """Process a single open question per 4.1.2.
+
+    Retrieves local RAG context, optionally augments with remote research when the
+    resolution is ``answer_remote`` and remote research is enabled, calls the Dream
+    LLM, and parses the strict-JSON answer. Retrieval and LLM failures degrade to
+    empty context / a placeholder answer rather than raising.
+
+    Args:
+        project_id: Project whose memory is searched and logged.
+        question: The open question text to answer.
+        topic: Topic label associated with the question.
+        resolution: Desired resolution mode (e.g. ``answer_local``,
+            ``answer_remote``); case-insensitive.
+
+    Returns:
+        Dict with keys ``question``, ``topic``, ``resolution``, ``answer``, and
+        ``used_remote_research``.
     """
     settings = get_settings()
     used_remote = False

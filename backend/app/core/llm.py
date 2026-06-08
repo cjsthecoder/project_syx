@@ -25,6 +25,14 @@ logger = logging.getLogger(__name__)
 
 
 def _estimate_tokens(text: str) -> int:
+    """Estimate the token count of a text fragment.
+
+    Args:
+        text: Text to measure; treated as empty when falsy.
+
+    Returns:
+        The estimated number of tokens.
+    """
     return int(count_tokens(text or ""))
 
 
@@ -41,6 +49,18 @@ def _build_messages(
     Order is base system prompt, assistant hint, RAG system prompt, prior
     conversation history (roles other than user/assistant/system are dropped),
     and finally the current user message.
+
+    Args:
+        message: Current user message placed last in the sequence.
+        conversation_history: Prior turns to include; entries whose role is not
+            user/assistant/system are skipped.
+        base_system_prompt: Base system instructions prepended first.
+        assistant_hint: Optional assistant-role priming message.
+        rag_system_prompt: Optional retrieval context injected as a system
+            message after the assistant hint.
+
+    Returns:
+        The ordered list of role/content message dicts ready for the LLM client.
     """
     messages: List[Dict[str, str]] = []
     if base_system_prompt:
@@ -209,7 +229,12 @@ class LLMProvider:
             }
 
     def get_model_info(self) -> Dict[str, Any]:
-        """Return the active model configuration and API-key readiness."""
+        """Return the active model configuration and API-key readiness.
+
+        Returns:
+            A dict with ``model_name``, ``temperature``, ``max_tokens``, and an
+            ``api_key_configured`` boolean.
+        """
         return {
             "model_name": self.settings.model_name,
             "temperature": self.settings.model_temperature,
@@ -218,7 +243,13 @@ class LLMProvider:
         }
 
     def health_check(self) -> Dict[str, str]:
-        """Probe the LLM with a tiny request and report health status."""
+        """Probe the LLM with a tiny request and report health status.
+
+        Returns:
+            A dict with ``status`` set to ``healthy`` (plus ``model``) on a
+            successful probe, or ``unhealthy`` (plus ``error``) when the probe
+            returns nothing or raises.
+        """
         try:
             test = get_llm_client().generate_chat(
                 messages=[{"role": "user", "content": "Hello"}],
@@ -237,7 +268,11 @@ _llm_provider: Optional[LLMProvider] = None
 
 
 def get_llm_provider() -> LLMProvider:
-    """Return the process-wide ``LLMProvider``, creating it on first use."""
+    """Return the process-wide ``LLMProvider``, creating it on first use.
+
+    Returns:
+        The cached ``LLMProvider`` singleton.
+    """
     global _llm_provider
     if _llm_provider is None:
         _llm_provider = LLMProvider()
@@ -261,6 +296,17 @@ def generate_chat_response(
     instrument: bool = True,
 ) -> Dict[str, Any]:
     """Generate a chat completion via the shared ``LLMProvider``.
+
+    Args:
+        message: The current user message.
+        conversation_history: Prior turns to include before the user message.
+        base_system_prompt: Base system instructions.
+        assistant_hint: Optional assistant-role priming message.
+        rag_system_prompt: Optional retrieval context injected as a system
+            message.
+        override_model: Model name overriding the configured default.
+        temperature_override: Temperature overriding the configured default.
+        instrument: Whether to record instrumentation for this call.
 
     Returns:
         The provider result dict (see ``LLMProvider.generate_response``).
@@ -291,7 +337,27 @@ def generate_text_response(
     purpose: str = "main",
     instrument: bool = True,
 ) -> LLMResponse:
-    """Generate a non-chat text response through the shared LLM factory."""
+    """Generate a non-chat text response through the shared LLM factory.
+
+    Args:
+        user_prompt: Primary user prompt text.
+        system_prompt: Optional system instructions.
+        override_model: Model name overriding the configured default.
+        temperature_override: Temperature overriding the provider default.
+        max_output_tokens: Maximum output tokens for the completion.
+        reasoning_effort: Optional reasoning-effort hint passed to the client.
+        require_json_object: Whether to constrain output to a JSON object.
+        tools: Optional tool/function definitions made available to the model.
+        purpose: Instrumentation purpose label for this invocation.
+        instrument: Whether to record instrumentation for this call.
+
+    Returns:
+        The raw ``LLMResponse`` from the factory client.
+
+    Raises:
+        Exception: Re-raised from the underlying client after instrumentation is
+            finalized and the failure is logged.
+    """
     settings = get_settings()
     invocation_id = ""
     invoke_start = time.perf_counter()
@@ -376,5 +442,9 @@ def generate_text_response(
 
 
 def get_llm_health() -> Dict[str, str]:
-    """Return the health status of the shared ``LLMProvider``."""
+    """Return the health status of the shared ``LLMProvider``.
+
+    Returns:
+        The health-status dict from ``LLMProvider.health_check``.
+    """
     return get_llm_provider().health_check()

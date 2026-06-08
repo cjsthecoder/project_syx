@@ -29,6 +29,8 @@ TRUNCATION_NOTICE = (
 
 @dataclass(frozen=True)
 class _ExpansionResult:
+    """Outcome of expanding a single bounded snippet to its full entry text."""
+
     text: str
     status: str
     method: str
@@ -42,7 +44,24 @@ def expand_agent_memory_snippets(
     snippets: List[AgentMemorySnippet],
     max_serialized_chars: Optional[int] = None,
 ) -> List[AgentMemorySnippet]:
-    """Expand bounded snippets to full Syx entries while preserving A.4 ordering."""
+    """Expand bounded snippets to full Syx entries while preserving A.4 ordering.
+
+    Non-bounded snippets are passed through marked ``not_applicable``. Bounded
+    snippets are expanded in place (text and ``entry_expansion_*`` fields set)
+    and deduplicated by ``memory_id``, keeping the first occurrence. Oversized
+    expansions are truncated to honor the serialized size limit.
+
+    Args:
+        project_id: Project whose memory artifacts/docstore are read.
+        snippets: Parsed snippets to expand, in A.4 retrieval order.
+        max_serialized_chars: Optional override for the maximum serialized
+            snippet size; falls back to ``AGENT_MEMORY_MAX_ENTRY_CHARS`` (and to
+            ``25000`` when that setting is invalid).
+
+    Returns:
+        The expanded snippets in their original order, with duplicates by
+        ``memory_id`` removed.
+    """
     try:
         configured_limit = int(max_serialized_chars or get_settings().agent_memory_max_entry_chars)
     except (TypeError, ValueError) as exc:
@@ -88,6 +107,16 @@ def _expand_one(*, project_id: str, snippet: AgentMemorySnippet) -> _ExpansionRe
     boundary, docstore reconstruction, and finally the original snippet text.
     Path mismatches and failures are surfaced via the result's warning/error
     fields rather than raised.
+
+    Args:
+        project_id: Project whose uploads/docstore are searched.
+        snippet: Bounded snippet to expand; its paths and ``memory_id`` drive
+            the lookup strategy.
+
+    Returns:
+        An ``_ExpansionResult`` whose ``status`` reflects the strategy used
+        (``expanded``, ``fallback``, or ``failed``) and whose ``method`` names
+        the source; the ``error``/``warning`` fields carry non-fatal detail.
     """
     artifact_path = _clean_upload_relative_path(
         snippet.artifact_path,
@@ -183,6 +212,12 @@ def _extract_from_artifact(
     Reads the artifact (rejecting paths that escape the uploads directory),
     parses Syx entries, and returns the entry matching ``memory_id``.
 
+    Args:
+        project_id: Project whose uploads directory roots the lookup.
+        upload_relative_path: Artifact path relative to the uploads directory.
+        memory_id: Memory entry id to locate within the parsed artifact.
+        snippet_number: Snippet ordinal, used only for log context.
+
     Returns:
         A ``(text, error)`` tuple. On success ``text`` is the entry text and
         ``error`` is ``None``; on failure ``text`` is ``None`` and ``error`` is
@@ -248,6 +283,14 @@ def _reconstruct_from_docstore(*, project_id: str, source_document_id: Optional[
     Collects all LTM docstore chunks tagged with ``source_document_id`` and
     joins them in chunk-index order. Returns an empty string when the docstore
     is unavailable or has no matching chunks.
+
+    Args:
+        project_id: Project whose LTM docstore is read.
+        source_document_id: Document id whose chunks are reassembled.
+
+    Returns:
+        The reassembled entry text, or an empty string when the id is missing,
+        the docstore is unavailable, or no chunks match.
     """
     if not source_document_id:
         return ""
@@ -311,6 +354,16 @@ def _truncate_text_to_fit(
 
     Accounts for the full serialized snippet size (not just text length) since
     other fields contribute to the JSON payload.
+
+    Args:
+        snippet: Snippet mutated during the search; its ``text`` and
+            ``entry_expansion_returned_chars`` are left set to the best fit.
+        original_text: Full untruncated entry text to take a prefix from.
+        max_chars: Maximum allowed serialized snippet size in characters.
+
+    Returns:
+        The longest truncated text (prefix plus truncation notice) whose
+        serialized snippet stays within ``max_chars``.
     """
     low = 0
     high = len(original_text)
@@ -329,17 +382,43 @@ def _truncate_text_to_fit(
 
 
 def _build_truncated_text(original_text: str, *, prefix_chars: int) -> str:
+    """Build a truncated entry text: a normalized prefix plus a notice.
+
+    Args:
+        original_text: Full entry text to truncate.
+        prefix_chars: Number of leading characters to keep before the notice;
+            clamped to be non-negative.
+
+    Returns:
+        The trimmed prefix followed by :data:`TRUNCATION_NOTICE`.
+    """
     normalized = normalize_lf(original_text)
     prefix = normalized[: max(0, int(prefix_chars))].rstrip()
     return f"{prefix}\n\n{TRUNCATION_NOTICE}".strip()
 
 
 def _serialized_snippet_chars(snippet: AgentMemorySnippet) -> int:
+    """Measure a snippet's serialized JSON size used for the size guard.
+
+    Args:
+        snippet: Snippet to serialize (null fields excluded).
+
+    Returns:
+        The character length of the deterministic JSON serialization.
+    """
     payload = snippet.model_dump(exclude_none=True)
     return len(json.dumps(payload, ensure_ascii=False, sort_keys=True))
 
 
 def _path_from_source_document_id(source_document_id: Optional[str]) -> Optional[str]:
+    """Extract the artifact path portion of a composite source document id.
+
+    Args:
+        source_document_id: Id that may carry a ``::memory_id=`` suffix.
+
+    Returns:
+        The leading path component, or ``None`` when the id is empty.
+    """
     if not source_document_id:
         return None
     return str(source_document_id).split("::memory_id=", 1)[0].strip() or None
@@ -358,6 +437,17 @@ def _clean_upload_relative_path(
     Returns the forward-slash-normalized path, or ``None`` (with a warning) for
     empty, absolute, or ``..``-containing values that could escape the uploads
     directory.
+
+    Args:
+        value: Raw upload-relative path to validate.
+        project_id: Project id, used only for log context.
+        memory_id: Memory entry id, used only for log context.
+        snippet_number: Snippet ordinal, used only for log context.
+        field: Source field name (e.g. ``artifact_path``) for log context.
+
+    Returns:
+        The normalized forward-slash path, or ``None`` when the value is empty
+        or fails the traversal safety check.
     """
     raw = str(value or "").strip()
     if not raw:
@@ -377,10 +467,28 @@ def _clean_upload_relative_path(
 
 
 def _uploads_dir(project_id: str) -> str:
+    """Return the absolute uploads directory path for a project.
+
+    Args:
+        project_id: Project whose uploads directory is resolved.
+
+    Returns:
+        The absolute path to the project's ``uploads`` directory.
+    """
     return os.path.abspath(os.path.join(get_settings().memory_root, project_id, "uploads"))
 
 
 def _is_within(path: str, base: str) -> bool:
+    """Report whether a path resolves inside a base directory.
+
+    Args:
+        path: Candidate path to test.
+        base: Directory that ``path`` must stay within.
+
+    Returns:
+        ``True`` when ``path`` is contained in ``base``; ``False`` on mismatch
+        or when the paths are not comparable (e.g. different drives).
+    """
     try:
         return os.path.commonpath([os.path.abspath(path), os.path.abspath(base)]) == os.path.abspath(base)
     except ValueError:

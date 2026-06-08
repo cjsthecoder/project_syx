@@ -137,7 +137,19 @@ Rules:
 
 
 def _slice_first_json(text: str) -> str:
-    """Best-effort extraction of the first balanced JSON object from text."""
+    """Best-effort extraction of the first balanced JSON object from text.
+
+    Scans for the first top-level ``{`` and returns the substring through its
+    matching ``}``, tracking string literals and escapes so braces inside
+    strings are ignored.
+
+    Args:
+        text: Raw model output that may wrap a JSON object in extra prose.
+
+    Returns:
+        The first balanced ``{...}`` slice, or the original ``text`` unchanged
+        if no balanced object is found.
+    """
     if not text:
         return text
     in_string = False
@@ -178,6 +190,19 @@ def _slice_first_json(text: str) -> str:
 
 
 def _safe_percent(value: Any, default: int, name: str) -> int:
+    """Validate a configured percentage, falling back when out of bounds.
+
+    Logs a warning and returns ``default`` when ``value`` is non-numeric or
+    falls outside the accepted 10-90 range.
+
+    Args:
+        value: Raw configured value to coerce to a percent.
+        default: Fallback percent used when validation fails.
+        name: Setting name used only for log context.
+
+    Returns:
+        The validated percent in [10, 90], or ``default``.
+    """
     try:
         coerced = int(float(value))
     except Exception:
@@ -190,6 +215,19 @@ def _safe_percent(value: Any, default: int, name: str) -> int:
 
 
 def _safe_min_len(value: Any, default: int, name: str) -> int:
+    """Validate a configured minimum length, falling back when invalid.
+
+    Logs a warning and returns ``default`` when ``value`` is non-numeric or not
+    positive.
+
+    Args:
+        value: Raw configured value to coerce to a length.
+        default: Fallback length used when validation fails.
+        name: Setting name used only for log context.
+
+    Returns:
+        The validated positive length, or ``default``.
+    """
     try:
         coerced = int(float(value))
     except Exception:
@@ -202,8 +240,20 @@ def _safe_min_len(value: Any, default: int, name: str) -> int:
 
 
 def _middle_cut_assistant_text(text: str, cut_percent: int, min_length_for_chop: int) -> str:
-    """
-    Remove a percentage from the center while preserving at least 100 chars on both ends.
+    """Remove a percentage from the center while preserving both ends.
+
+    Used to shrink long assistant responses before tagging while keeping the
+    opening and closing context. Text at or below ``min_length_for_chop`` is
+    returned unchanged, and at least 100 characters are preserved on each side.
+
+    Args:
+        text: Assistant text to condense; ``None`` is treated as empty.
+        cut_percent: Approximate share of the middle (as a percent) to remove.
+        min_length_for_chop: Minimum length below which no trimming occurs.
+
+    Returns:
+        The trimmed text with an elision marker inserted, or the original text
+        when trimming is not warranted.
     """
     raw = str(text or "")
     n = len(raw)
@@ -227,6 +277,15 @@ def _middle_cut_assistant_text(text: str, cut_percent: int, min_length_for_chop:
 
 
 def _extract_prev_tag_value(text: str, key: str) -> str:
+    """Read a single ``#key: value`` tag line from stored previous-turn text.
+
+    Args:
+        text: Stored previous-pair text containing ``#key: value`` lines.
+        key: Tag name to look up (without the leading ``#`` or trailing ``:``).
+
+    Returns:
+        The stripped value for ``key``, or an empty string if not present.
+    """
     import re
 
     m = re.search(rf"(?m)^#{re.escape(key)}:\s*(.*)$", text or "")
@@ -234,8 +293,23 @@ def _extract_prev_tag_value(text: str, key: str) -> str:
 
 
 def _build_previous_turn_block(previous_pair_text: Optional[str], prev_cut_percent: int, min_length_for_chop: int) -> str:
-    """
-    Build canonical PREVIOUS TURN block from stored previous_pair_text.
+    """Build the canonical PREVIOUS TURN block from stored pair text.
+
+    Parses prior tags (route, keep, topics, intent, type, semantic_handle) and
+    the prior user/assistant messages out of ``previous_pair_text``, condenses
+    the prior assistant message, and formats them into the structured block the
+    tagger prompt expects.
+
+    Args:
+        previous_pair_text: Stored text of the prior turn; ``None`` yields an
+            empty/placeholder block.
+        prev_cut_percent: Middle-cut percent applied to the prior assistant text.
+        min_length_for_chop: Minimum length below which the prior assistant text
+            is left untrimmed.
+
+    Returns:
+        The formatted PREVIOUS TURN block, using ``(none)`` placeholders for any
+        missing sections.
     """
     import re
 

@@ -23,7 +23,13 @@ request_logger = RequestLogger("dream")
 
 @router.get("/dream/status")
 async def dream_status() -> JSONResponse:
-    """Stub status for 4.1.1 - always returns no dreams yet."""
+    """Stub status for 4.1.1 - always returns no dreams yet.
+
+    Returns:
+        A 200 ``JSONResponse`` with ``has_dreams=False`` and ``count=0``
+        regardless of the dream feature flag; a 500 ``JSONResponse`` on
+        unexpected failure.
+    """
     try:
         request_logger.log_request(endpoint="/dream/status", method="GET")
         # 4.1.1: always return empty/no dreams, regardless of ENABLE_DREAM

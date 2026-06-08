@@ -22,6 +22,20 @@ except Exception:
 
 @lru_cache(maxsize=32)
 def _resolve_encoding(model_name: Optional[str], encoding_name: str):
+    """Resolve and cache a tiktoken encoding, preferring the model-specific one.
+
+    Results are memoized per ``(model_name, encoding_name)`` pair. Lookup
+    failures fall back from the model-specific encoding to the named encoding,
+    and finally to None.
+
+    Args:
+        model_name: Optional model name to look up a tailored encoding.
+        encoding_name: Named encoding used when no model-specific match exists.
+
+    Returns:
+        A tiktoken encoding, or None when tiktoken is unavailable or both
+        lookups fail.
+    """
     if not tiktoken:
         return None
     if model_name:

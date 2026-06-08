@@ -7,7 +7,12 @@ This file is part of the Syx project. See the LICENSE file in the project
 root for full license information.
 """
 """
-LLM integration for Syx chatbot runtime (factory-based, no LangChain).
+LLM service layer for the Syx chatbot runtime.
+
+Orchestration on top of the ``llm_model`` provider boundary: builds prompts,
+records instrumentation, and exposes the high-level ``generate_chat_response`` /
+``generate_text_response`` / ``get_llm_health`` API consumed by the API and
+dream layers (factory-based, no LangChain).
 """
 
 

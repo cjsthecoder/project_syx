@@ -14,6 +14,10 @@ SQLite engine and memory root. The FAISS rebuild is patched to a no-op so create
 flows never reach embeddings/network.
 """
 
+import itertools
+import json
+from types import SimpleNamespace
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -186,3 +190,137 @@ def test_project_detail(client, db):
 def test_project_detail_missing_404(client):
     resp = client.get("/projects/missing")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# /projects/{id}/dream/keep orchestration
+#
+# These pin the two-pass persist flow (tag -> append + summary -> finalize) and
+# its key invariants (delete dream.json only on full success, filter remote
+# items without research) without reaching the real tagger, daily store, FAISS
+# cache, or sleep-summary writer. Those collaborators are unit-tested elsewhere;
+# here we exercise the router orchestration so it can be refactored safely.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def dream_keep_env(monkeypatch):
+    """Patch the dream-keep collaborators with deterministic recording fakes.
+
+    Returns a namespace recording ``tag``, ``append`` (persisted pairs),
+    ``rebuild`` (daily cache rebuilds), and ``sleep_summary`` writes.
+    """
+    calls = SimpleNamespace(tag=[], append=[], rebuild=[], sleep_summary=[])
+    memory_id_counter = itertools.count(1)
+
+    def fake_tag_pair(user_text, assistant_text, previous_pair_text=None, project_id=None):
+        calls.tag.append((user_text, assistant_text, previous_pair_text, project_id))
+        return {"topics": "alpha, beta", "intent": "learn", "type": "fact", "semantic_handle": "h1"}
+
+    monkeypatch.setattr(projects_module, "tag_pair", fake_tag_pair)
+    monkeypatch.setattr(projects_module, "_prune_assistant_for_tagger", lambda **kw: kw["assistant_text"])
+    monkeypatch.setattr(projects_module, "generate_memory_id", lambda **kw: f"mem-{next(memory_id_counter)}")
+    monkeypatch.setattr(projects_module, "append_pair", lambda *a, **k: calls.append.append((a, k)))
+    monkeypatch.setattr(projects_module, "rebuild_daily_cache", lambda *a, **k: calls.rebuild.append((a, k)))
+    monkeypatch.setattr(projects_module, "write_latest_sleep_summary", lambda **k: calls.sleep_summary.append(k))
+    return calls
+
+
+def _write_dream_json(root, pid, summary="proj summary"):
+    proj_dir = root / pid
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    (proj_dir / "dream.json").write_text(
+        json.dumps({"project_summary": summary, "items": []}),
+        encoding="utf-8",
+    )
+
+
+def _simple_dream_item(item_id, question, answer):
+    return {"id": item_id, "remember": True, "origin_text": question, "assistant_response": answer}
+
+
+def test_dream_keep_persists_and_deletes_on_success(client, temp_memory_root, dream_keep_env):
+    pid = "p1"
+    _write_dream_json(temp_memory_root, pid)
+    payload = {"items": [_simple_dream_item("i1", "Q1", "A1"), _simple_dream_item("i2", "Q2", "A2")]}
+
+    resp = client.post(f"/projects/{pid}/dream/keep", json=payload)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["processed"] == 2
+    assert body["kept"] == 2
+    assert body["failed"] == 0
+    assert body["deleted_dream"] is True
+
+    # Both pairs tagged + persisted; cache rebuilt once; sleep summary written.
+    assert len(dream_keep_env.tag) == 2
+    assert len(dream_keep_env.append) == 2
+    assert len(dream_keep_env.rebuild) == 1
+    assert len(dream_keep_env.sleep_summary) == 1
+
+    # dream.json removed; dream_summary.md written with a rendered block.
+    assert not (temp_memory_root / pid / "dream.json").exists()
+    summary_md = (temp_memory_root / pid / "dream_summary.md").read_text(encoding="utf-8")
+    assert "mem-" in summary_md
+
+
+def test_dream_keep_rejects_non_list_items(client):
+    resp = client.post("/projects/p1/dream/keep", json={"items": "nope"})
+    assert resp.status_code == 400
+
+
+def test_dream_keep_no_remembered_items_noops(client, dream_keep_env):
+    resp = client.post(
+        "/projects/p1/dream/keep",
+        json={"items": [{"id": "i1", "remember": False, "origin_text": "Q", "assistant_response": "A"}]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["processed"] == 0
+    assert body["kept"] == 0
+    assert body["deleted_dream"] is False
+    assert dream_keep_env.append == []
+
+
+def test_dream_keep_filters_remote_without_research(client, dream_keep_env):
+    payload = {"items": [{"id": "r1", "remember": True, "source_resolution": "answer_remote"}]}
+
+    resp = client.post("/projects/p1/dream/keep", json=payload)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["processed"] == 0
+    assert body["filtered_remote_without_research"] == 1
+    assert dream_keep_env.append == []
+
+
+def test_dream_keep_partial_failure_preserves_dream_json(
+    client, temp_memory_root, dream_keep_env, monkeypatch
+):
+    pid = "p1"
+    _write_dream_json(temp_memory_root, pid)
+
+    # Fail persistence of the second pair only.
+    state = {"n": 0}
+
+    def flaky_append(*a, **k):
+        state["n"] += 1
+        if state["n"] == 2:
+            raise RuntimeError("disk full")
+        dream_keep_env.append.append((a, k))
+
+    monkeypatch.setattr(projects_module, "append_pair", flaky_append)
+    payload = {"items": [_simple_dream_item("i1", "Q1", "A1"), _simple_dream_item("i2", "Q2", "A2")]}
+
+    resp = client.post(f"/projects/{pid}/dream/keep", json=payload)
+
+    assert resp.status_code == 500
+    body = resp.json()
+    assert body["processed"] == 2
+    assert body["kept"] == 1
+    assert body["failed"] == 1
+    assert body["deleted_dream"] is False
+
+    # On partial failure dream.json is preserved for retry; no sleep summary.
+    assert (temp_memory_root / pid / "dream.json").exists()
+    assert dream_keep_env.sleep_summary == []

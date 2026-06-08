@@ -18,8 +18,6 @@ from typing import Iterator
 from sqlmodel import SQLModel, Session, create_engine
 
 from .config import get_settings
-from .db_models import Project
-from sqlmodel import select
 
 logger = logging.getLogger(__name__)
 
@@ -77,18 +75,8 @@ def _run_migrations() -> None:
 
 
 def init_db() -> None:
-    """Ensure DB schema up-to-date and seed legacy default if needed."""
-    # Run migrations first to match current models
+    """Ensure the DB schema is up-to-date by running migrations to head."""
     _run_migrations()
-    # Cleanup: remove legacy 'default' project if present
-    try:
-        with Session(engine) as session:
-            legacy = session.exec(select(Project).where(Project.id == "default")).first()
-            if legacy and not legacy.system:
-                session.delete(legacy)
-                session.commit()
-    except Exception as exc:
-        logger.warning("database.init_db failed removing legacy default project detail=%s", exc)
 
 
 @contextmanager

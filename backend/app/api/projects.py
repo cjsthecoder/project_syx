@@ -37,9 +37,15 @@ from ..rag.daily_store import append_pair, daily_stats, rebuild_daily_cache, sta
 from ..rag.syx_memory_artifact import (
     generate_memory_id,
     render_artifact_header,
-    render_memory_entry,
     snake_case_value,
-    topics_to_list,
+)
+from ..dream.common import (
+    dream_markdown_block,
+    dream_memory_pairs_for_item,
+    filter_remote_without_research,
+    filter_remote_without_research_with_rows,
+    format_tags_block,
+    origin_memory_ids,
 )
 from ..core.config import get_settings
 from filelock import FileLock
@@ -66,101 +72,6 @@ request_logger = RequestLogger("projects")
 
 # Current project state (simple in-memory pointer)
 _current_project = None
-
-
-def _origin_memory_ids(item: Dict[str, Any]) -> List[str]:
-    """Collect de-duplicated origin memory ids referenced by a dream item.
-
-    Gathers ids from the item's top-level keys and nested ``metadata`` block
-    (single and list forms), preserving first-seen order.
-
-    Args:
-        item: Dream item dict that may carry origin ids at the top level or
-            under ``metadata``.
-
-    Returns:
-        Origin memory ids in first-seen order with duplicates removed.
-    """
-    values: List[str] = []
-    for key in ("origin_memory_id", "memory_id"):
-        val = item.get(key)
-        if isinstance(val, str) and val.strip():
-            values.append(val.strip())
-    metadata = item.get("metadata")
-    if isinstance(metadata, dict):
-        val = metadata.get("origin_memory_id") or metadata.get("memory_id")
-        if isinstance(val, str) and val.strip():
-            values.append(val.strip())
-        vals = metadata.get("origin_memory_ids")
-        if isinstance(vals, list):
-            values.extend(str(v).strip() for v in vals if str(v or "").strip())
-    return list(dict.fromkeys(values))
-
-
-def _dream_markdown_block(
-    *,
-    memory_id: str,
-    timestamp: str,
-    route: str,
-    keep: bool,
-    tags_meta: Optional[Dict[str, Any]],
-    item: Dict[str, Any],
-    user_text: str,
-    assistant_text: str,
-) -> str:
-    """Render a dream item as a memory-artifact markdown block.
-
-    Assembles entry metadata (memory id, dream provenance, route, topics,
-    semantic handle) and delegates to ``render_memory_entry`` to produce the
-    persisted block.
-
-    Args:
-        memory_id: Stable identifier for the memory entry.
-        timestamp: Human-readable creation timestamp for the entry.
-        route: Routing namespace recorded in the entry metadata.
-        keep: Whether the entry is flagged to be retained.
-        tags_meta: Optional tagger output supplying topics and semantic handle.
-        item: Source dream item providing provenance fields (id, origin type,
-            origin memory ids).
-        user_text: User-side text for the rendered pair.
-        assistant_text: Assistant-side text for the rendered pair.
-
-    Returns:
-        The rendered memory-artifact markdown block.
-    """
-    tags = tags_meta if isinstance(tags_meta, dict) else {}
-    metadata: Dict[str, Any] = {
-        "memory_id": memory_id,
-        "entry_type": "dream_output",
-        "source": "dream",
-        "source_agent": "syx",
-        "source_scope": "dream",
-        "current_scope": "dream",
-        "timestamp": timestamp,
-        "route": route,
-        "keep": bool(keep),
-    }
-    accepted_item_id = str(item.get("id") or "").strip()
-    if accepted_item_id:
-        metadata["accepted_item_id"] = accepted_item_id
-    dream_output_type = snake_case_value(item.get("origin_type") or item.get("source_resolution"))
-    if dream_output_type:
-        metadata["dream_output_type"] = dream_output_type
-    origin_ids = _origin_memory_ids(item)
-    if origin_ids:
-        metadata["origin_memory_ids"] = origin_ids
-    topics = topics_to_list(tags.get("topics"))
-    if topics:
-        metadata["topics"] = topics
-    semantic_handle = tags.get("semantic_handle")
-    if semantic_handle is not None and str(semantic_handle).strip():
-        metadata["semantic_handle"] = str(semantic_handle).strip()
-    return render_memory_entry(
-        memory_id=memory_id,
-        metadata=metadata,
-        user_text=user_text,
-        assistant_text=assistant_text,
-    )
 
 
 def _validate_dream_payload(data: Any) -> Optional[dict]:
@@ -249,146 +160,6 @@ def _read_pending_dream_project_summary(project_id: str, dream_path: str) -> Opt
         return None
     summary = data.get("project_summary")
     return summary if isinstance(summary, str) and summary.strip() else None
-
-
-def _normalize_resolution(value: Any) -> str:
-    """Normalize a dream source resolution to a known value, or empty string.
-
-    Recognizes ``ignore``, ``answer_local``, and ``answer_remote``; any other
-    value yields ``""``.
-
-    Args:
-        value: Raw source-resolution value (any type) to normalize.
-
-    Returns:
-        The lowercased recognized resolution, or ``""`` when unrecognized.
-    """
-    res = str(value or "").strip().lower()
-    if res in {"ignore", "answer_local", "answer_remote"}:
-        return res
-    return ""
-
-
-def _valid_research_entries(item: Dict[str, Any]) -> List[Dict[str, str]]:
-    """Return the item's research entries that have both a topic and a summary.
-
-    Args:
-        item: Dream item whose ``research`` list is filtered.
-
-    Returns:
-        Entries with non-empty ``research_topic`` and ``research_summary``,
-        each normalized to those two string keys.
-    """
-    out: List[Dict[str, str]] = []
-    research_list = item.get("research") if isinstance(item.get("research"), list) else []
-    for r in research_list:
-        if not isinstance(r, dict):
-            continue
-        topic = str(r.get("research_topic") or "").strip()
-        summary = str(r.get("research_summary") or "").strip()
-        if not topic or not summary:
-            continue
-        out.append({"research_topic": topic, "research_summary": summary})
-    return out
-
-
-def _dream_memory_pairs_for_item(item: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Expand a dream item into the user/assistant memory pairs to persist.
-
-    For ``answer_remote`` items, emits one pair per valid research entry
-    (topic as user text, summary as assistant text). Otherwise emits a single
-    pair from the item's origin text and assistant response.
-
-    Args:
-        item: Dream item to expand into persistable pairs.
-
-    Returns:
-        A list of pair dicts, each with ``item``, ``user_text``, and
-        ``assistant_text`` keys.
-    """
-    resolution = _normalize_resolution(item.get("source_resolution"))
-    if resolution == "answer_remote":
-        pairs = []
-        for r in _valid_research_entries(item):
-            pairs.append(
-                {
-                    "item": item,
-                    "user_text": r["research_topic"],
-                    "assistant_text": f"[RESEARCH]\n{r['research_summary']}".strip(),
-                }
-            )
-        return pairs
-
-    return [
-        {
-            "item": item,
-            "user_text": str(item.get("origin_text") or "").strip(),
-            "assistant_text": (str(item.get("assistant_response") or "").strip() or "(no summary)").strip(),
-        }
-    ]
-
-
-def _filter_remote_without_research(items: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
-    """Drop ``answer_remote`` items that lack valid research entries.
-
-    Args:
-        items: Dream items to filter.
-
-    Returns:
-        Tuple of ``(kept_items, dropped_count)``.
-    """
-    kept: List[Dict[str, Any]] = []
-    dropped = 0
-    for it in items:
-        if not isinstance(it, dict):
-            continue
-        resolution = _normalize_resolution(it.get("source_resolution"))
-        if resolution == "answer_remote" and not _valid_research_entries(it):
-            dropped += 1
-            continue
-        kept.append(it)
-    return kept, dropped
-
-
-def _filter_remote_without_research_with_rows(
-    items: List[Dict[str, Any]],
-) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Drop ``answer_remote`` items without research, returning kept items and report rows.
-
-    Like :func:`_filter_remote_without_research`, but instead of a count it
-    returns detailed rows describing each dropped item for the persist-filter
-    report.
-
-    Args:
-        items: Dream items to filter.
-
-    Returns:
-        Tuple of ``(kept_items, dropped_rows)``, where each dropped row records
-        the item id, origin text, resolution, research count, and drop reason.
-    """
-    kept: List[Dict[str, Any]] = []
-    dropped_rows: List[Dict[str, Any]] = []
-    for it in items:
-        if not isinstance(it, dict):
-            continue
-        resolution = _normalize_resolution(it.get("source_resolution"))
-        if resolution != "answer_remote":
-            kept.append(it)
-            continue
-        valid_research = _valid_research_entries(it)
-        if valid_research:
-            kept.append(it)
-            continue
-        dropped_rows.append(
-            {
-                "id": str(it.get("id") or ""),
-                "origin_text": str(it.get("origin_text") or "").strip(),
-                "source_resolution": resolution,
-                "research_count": 0,
-                "reason": "remote_without_research",
-            }
-        )
-    return kept, dropped_rows
 
 
 def _write_persist_filter_report(
@@ -503,7 +274,7 @@ async def get_project_dream(project_id: str) -> JSONResponse:
         validated = _validate_dream_payload(data)
         if not validated:
             return JSONResponse(status_code=200, content={"project_id": project_id, "dream": _read_latest_sleep_summary(project_id)})
-        filtered_items, dropped = _filter_remote_without_research(validated.get("items", []))
+        filtered_items, dropped = filter_remote_without_research(validated.get("items", []))
         validated["items"] = filtered_items
         if dropped:
             logger.info(
@@ -515,6 +286,300 @@ async def get_project_dream(project_id: str) -> JSONResponse:
     except Exception as e:
         logger.warning("[PROJECT][DREAM] Failed reading dream for %s: %s", project_id, e, exc_info=True)
         return JSONResponse(status_code=500, content={"project_id": project_id, "error": "Failed to read dream.json"})
+
+
+def _filter_remote_and_report(
+    project_id: str,
+    to_process: List[Dict[str, Any]],
+    total_remembered: int,
+) -> tuple[List[Dict[str, Any]], int]:
+    """Drop remote items lacking research and write the persist-filter report.
+
+    Args:
+        project_id: Project being persisted (used for logging and the report).
+        to_process: Remembered items selected for persistence.
+        total_remembered: Count of items the user marked to remember (for the
+            report header).
+
+    Returns:
+        Tuple of ``(kept_items, dropped_remote_count)`` where ``kept_items`` are
+        the items that survived filtering.
+    """
+    to_process, dropped_rows = filter_remote_without_research_with_rows(to_process)
+    dropped_remote_no_research = len(dropped_rows)
+    if dropped_remote_no_research:
+        logger.info(
+            "[PROJECT][DREAM][KEEP] Filtered remote items without research project=%s dropped=%s",
+            project_id,
+            dropped_remote_no_research,
+        )
+        try:
+            _write_persist_filter_report(
+                project_id=project_id,
+                total_remembered=total_remembered,
+                kept_after_filter=len(to_process),
+                dropped_rows=dropped_rows,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[PROJECT][DREAM][KEEP] Failed writing persist_filter_report project=%s: %s",
+                project_id,
+                exc,
+                exc_info=exc,
+            )
+    return to_process, dropped_remote_no_research
+
+
+def _prepare_dream_summary_paths(project_id: str) -> tuple[str, str, str]:
+    """Resolve dream-summary paths, creating dirs and migrating the legacy lock.
+
+    Ensures the project base and ``state`` directories exist and moves any
+    legacy top-level ``dream_summary.lock`` into ``state/`` when the new lock
+    is not already present.
+
+    Args:
+        project_id: Project whose memory tree is prepared.
+
+    Returns:
+        Tuple of ``(base_dir, summary_path, summary_lock_path)``.
+    """
+    base_dir = os.path.join(get_settings().memory_root, project_id)
+    os.makedirs(base_dir, exist_ok=True)
+    summary_path = os.path.join(base_dir, "dream_summary.md")
+    state_dir = os.path.join(base_dir, "state")
+    os.makedirs(state_dir, exist_ok=True)
+    summary_lock_path = os.path.join(state_dir, "dream_summary.lock")
+    legacy_summary_lock_path = os.path.join(base_dir, "dream_summary.lock")
+    if os.path.isfile(legacy_summary_lock_path) and not os.path.exists(summary_lock_path):
+        try:
+            os.replace(legacy_summary_lock_path, summary_lock_path)
+        except OSError as exc:
+            logger.warning("projects dream_summary lock migration failed project_id=%s detail=%s", project_id, exc)
+    return base_dir, summary_path, summary_lock_path
+
+
+def _tag_dream_pairs(project_id: str, to_process: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Expand and tag remembered dream items into persistable memory pairs.
+
+    Pass 1 of the keep flow: each item is expanded into per-topic pairs (remote
+    research yields one pair per topic), the assistant side is pruned for the
+    tagger, each pair is tagged independently (best-effort), and a tags block /
+    embed text is assembled. Empty pairs are skipped with a warning.
+
+    Args:
+        project_id: Project the pairs belong to (used for tagging and logging).
+        to_process: Remembered items to expand and tag.
+
+    Returns:
+        A list of tagged-pair records, each carrying the source item plus the
+        user/assistant text, token count, tagger metadata, tags block, and
+        embed text used in Pass 2.
+    """
+    tagged: List[Dict[str, Any]] = []
+    previous_pair_text: Optional[str] = None
+    for it in to_process:
+        for pair in dream_memory_pairs_for_item(it):
+            user_text = str(pair.get("user_text") or "").strip()
+            assistant_resp_full = str(pair.get("assistant_text") or "").strip()
+            if not user_text or not assistant_resp_full:
+                logger.warning(
+                    "[PROJECT][DREAM][KEEP] Skipping empty memory pair project=%s item_id=%s",
+                    project_id,
+                    str(it.get("id") or ""),
+                )
+                continue
+
+            assistant_text_for_memory = _prune_assistant_for_tagger(
+                project_id=project_id,
+                assistant_text=assistant_resp_full,
+                settings=get_settings(),
+            )
+            pair_text = f"User: {user_text}\nAssistant: {assistant_text_for_memory}"
+            tokens = int(count_tokens(pair_text))
+
+            tags_meta = None
+            try:
+                tags_meta = tag_pair(user_text, assistant_text_for_memory, previous_pair_text=previous_pair_text, project_id=project_id)
+            except Exception as exc:
+                logger.warning(
+                    "[PROJECT][DREAM][KEEP] Tagger failed; persisting without tags project=%s item_id=%s detail=%s",
+                    project_id,
+                    str(it.get("id") or ""),
+                    exc,
+                )
+                tags_meta = None
+
+            tags_block = format_tags_block(tags_meta)
+            embed_text = (tags_block + pair_text) if tags_block else pair_text
+            tagged.append({
+                "it": it,
+                "user_text": user_text,
+                "assistant_resp_full": assistant_text_for_memory,
+                "pair_text": pair_text,
+                "tokens": tokens,
+                "tags_meta": tags_meta,
+                "tags_block": tags_block,
+                "embed_text": embed_text,
+            })
+            previous_pair_text = pair_text
+    return tagged
+
+
+def _persist_tagged_dream_pairs(
+    project_id: str,
+    tagged: List[Dict[str, Any]],
+    summary_path: str,
+    summary_lock_path: str,
+) -> tuple[int, List[str]]:
+    """Append tagged pairs to daily memory and the bounded dream summary.
+
+    Pass 2 of the keep flow: for each tagged record, generate a memory id,
+    append the pair to ``daily.json`` (without cache update), and append a
+    rendered block to ``dream_summary.md`` under a file lock. Per-record
+    failures are collected rather than aborting the batch.
+
+    Args:
+        project_id: Project being persisted into.
+        tagged: Tagged-pair records produced by :func:`_tag_dream_pairs`.
+        summary_path: Path to the project's ``dream_summary.md``.
+        summary_lock_path: Path to the summary file lock.
+
+    Returns:
+        Tuple of ``(successes, failures)`` where ``successes`` is the count of
+        fully persisted pairs and ``failures`` is a list of error strings.
+    """
+    successes = 0
+    failures: List[str] = []
+    for rec in tagged:
+        it = rec["it"]
+        user_text = rec["user_text"]
+        assistant_resp_full = rec["assistant_resp_full"]
+        pair_text = rec["pair_text"]
+        tokens = rec["tokens"]
+        tags_meta = rec["tags_meta"]
+        embed_text = rec["embed_text"]
+        try:
+            ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())
+            accepted_item_id = str(it.get("id") or "").strip() or None
+            dream_output_type = snake_case_value(it.get("origin_type") or it.get("source_resolution")) or None
+            origin_ids = origin_memory_ids(it)
+            semantic_handle = None
+            if isinstance(tags_meta, dict) and tags_meta.get("semantic_handle") is not None:
+                semantic_handle = str(tags_meta.get("semantic_handle") or "").strip() or None
+            memory_id = generate_memory_id(
+                project_id=project_id,
+                timestamp=ts_local,
+                source="dream",
+                entry_type="dream_output",
+                route="other",
+                semantic_handle=semantic_handle,
+                dream_output_type=dream_output_type,
+                accepted_item_id=accepted_item_id,
+                origin_memory_ids=origin_ids,
+                dream_content=assistant_resp_full,
+            )
+            append_pair(
+                project_id,
+                pair_text,
+                -1,
+                -2,
+                int(tokens),
+                namespace="other",
+                keep=True,
+                embed_override=embed_text,
+                tags_meta=tags_meta,
+                write_daily_md=False,
+                update_cache=False,
+                created_at_iso_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                memory_id=memory_id,
+                entry_type="dream_output",
+                source="dream",
+                source_agent="syx",
+                source_scope="dream",
+                current_scope="dream",
+                accepted_item_id=accepted_item_id,
+                dream_output_type=dream_output_type,
+                origin_memory_ids=origin_ids,
+            )
+            keep_flag = bool(it.get("keep"))
+            block = dream_markdown_block(
+                memory_id=memory_id,
+                timestamp=ts_local,
+                route="other",
+                keep=keep_flag,
+                tags_meta=tags_meta,
+                item=it,
+                user_text=user_text,
+                assistant_text=assistant_resp_full,
+            )
+            with FileLock(summary_lock_path):
+                with open(summary_path, "a", encoding="utf-8", newline="\n") as sf:
+                    need_begin = (not os.path.isfile(summary_path)) or os.path.getsize(summary_path) == 0
+                    if need_begin:
+                        memory_date = time.strftime("%m-%d-%Y", time.localtime())
+                        sf.write(render_artifact_header(
+                            artifact_type="dream_memory",
+                            project_id=project_id,
+                            memory_date=memory_date,
+                        ))
+                    sf.write(block)
+            successes += 1
+        except Exception as e:
+            failures.append(str(e))
+    return successes, failures
+
+
+def _finalize_dream_keep(
+    project_id: str,
+    base_dir: str,
+    dream_path: str,
+    tagged: List[Dict[str, Any]],
+    successes: int,
+    failures: List[str],
+) -> bool:
+    """Rebuild the daily cache and finalize the keep batch.
+
+    Rebuilds the in-memory daily RAG once when any pair persisted, then—only on
+    full success with no failures—writes the latest sleep summary and removes
+    ``dream.json``. Rebuild/finalize errors are appended to ``failures`` (which
+    is mutated in place).
+
+    Args:
+        project_id: Project being finalized.
+        base_dir: Project memory base directory.
+        dream_path: Path to ``dream.json`` (removed on full success).
+        tagged: Tagged-pair records (used for the success check and accepted
+            items in the sleep summary).
+        successes: Count of successfully persisted pairs.
+        failures: Mutable list of error strings; appended to on failure.
+
+    Returns:
+        ``True`` when ``dream.json`` was deleted (full success), else ``False``.
+    """
+    if successes > 0:
+        try:
+            rebuild_daily_cache(project_id, reason="dream_batch")
+        except Exception as rb:
+            logger.warning("[PROJECT][DREAM][KEEP] Rebuild daily cache failed project=%s: %s", project_id, rb)
+            failures.append(f"rebuild_cache: {rb}")
+
+    deleted = False
+    pending_project_summary = _read_pending_dream_project_summary(project_id, dream_path)
+    if successes == len(tagged) and not failures:
+        try:
+            if not failures:
+                write_latest_sleep_summary(
+                    project_id=project_id,
+                    base_dir=base_dir,
+                    project_summary=pending_project_summary,
+                    accepted_items=[rec["it"] for rec in tagged],
+                )
+            if os.path.isfile(dream_path):
+                os.remove(dream_path)
+            deleted = True
+        except Exception as e:
+            failures.append(f"delete_dream_json: {e}")
+    return deleted
 
 
 @router.post("/projects/{project_id}/dream/keep")
@@ -549,28 +614,7 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
             return JSONResponse(status_code=200, content={"project_id": project_id, "processed": 0, "kept": 0, "deleted_dream": False})
 
         total_remembered = len(to_process)
-        to_process, dropped_rows = _filter_remote_without_research_with_rows(to_process)
-        dropped_remote_no_research = len(dropped_rows)
-        if dropped_remote_no_research:
-            logger.info(
-                "[PROJECT][DREAM][KEEP] Filtered remote items without research project=%s dropped=%s",
-                project_id,
-                dropped_remote_no_research,
-            )
-            try:
-                _write_persist_filter_report(
-                    project_id=project_id,
-                    total_remembered=total_remembered,
-                    kept_after_filter=len(to_process),
-                    dropped_rows=dropped_rows,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "[PROJECT][DREAM][KEEP] Failed writing persist_filter_report project=%s: %s",
-                    project_id,
-                    exc,
-                    exc_info=exc,
-                )
+        to_process, dropped_remote_no_research = _filter_remote_and_report(project_id, to_process, total_remembered)
         if not to_process:
             return JSONResponse(
                 status_code=200,
@@ -583,195 +627,17 @@ async def keep_dream_items(project_id: str, payload: Dict[str, Any]) -> JSONResp
                 },
             )
 
-        successes = 0
-        failures = []
-
-        # Prepare dream_summary.md append
-        base_dir = os.path.join(get_settings().memory_root, project_id)
-        os.makedirs(base_dir, exist_ok=True)
-        summary_path = os.path.join(base_dir, "dream_summary.md")
-        state_dir = os.path.join(base_dir, "state")
-        os.makedirs(state_dir, exist_ok=True)
-        summary_lock_path = os.path.join(state_dir, "dream_summary.lock")
-        legacy_summary_lock_path = os.path.join(base_dir, "dream_summary.lock")
-        if os.path.isfile(legacy_summary_lock_path) and not os.path.exists(summary_lock_path):
-            try:
-                os.replace(legacy_summary_lock_path, summary_lock_path)
-            except OSError as exc:
-                logger.warning("projects dream_summary lock migration failed project_id=%s detail=%s", project_id, exc)
+        base_dir, summary_path, summary_lock_path = _prepare_dream_summary_paths(project_id)
 
         # Pass 1: expand remote research into per-topic pairs, then tag each pair independently.
-        tagged: List[Dict[str, Any]] = []
-        previous_pair_text: Optional[str] = None
-        for it in to_process:
-            for pair in _dream_memory_pairs_for_item(it):
-                user_text = str(pair.get("user_text") or "").strip()
-                assistant_resp_full = str(pair.get("assistant_text") or "").strip()
-                if not user_text or not assistant_resp_full:
-                    logger.warning(
-                        "[PROJECT][DREAM][KEEP] Skipping empty memory pair project=%s item_id=%s",
-                        project_id,
-                        str(it.get("id") or ""),
-                    )
-                    continue
-
-                assistant_text_for_memory = _prune_assistant_for_tagger(
-                    project_id=project_id,
-                    assistant_text=assistant_resp_full,
-                    settings=get_settings(),
-                )
-                pair_text = f"User: {user_text}\nAssistant: {assistant_text_for_memory}"
-                tokens = int(count_tokens(pair_text))
-
-                tags_meta = None
-                try:
-                    tags_meta = tag_pair(user_text, assistant_text_for_memory, previous_pair_text=previous_pair_text, project_id=project_id)
-                except Exception as exc:
-                    logger.warning(
-                        "[PROJECT][DREAM][KEEP] Tagger failed; persisting without tags project=%s item_id=%s detail=%s",
-                        project_id,
-                        str(it.get("id") or ""),
-                        exc,
-                    )
-                    tags_meta = None
-
-                tags_block = ""
-                try:
-                    if isinstance(tags_meta, dict):
-                        topics = str(tags_meta.get("topics", "") or "")
-                        intent = str(tags_meta.get("intent", "") or "")
-                        tag_type = str(tags_meta.get("type", "") or "")
-                        semantic_handle = tags_meta.get("semantic_handle", None)
-                        lines = [f"#topics: {topics}", f"#intent: {intent}", f"#type: {tag_type}"]
-                        if semantic_handle is not None:
-                            lines.append(f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}")
-                        tags_block = "\n".join(lines) + "\n"
-                except Exception as exc:
-                    logger.warning(
-                        "[PROJECT][DREAM][KEEP] Failed formatting tags block project=%s item_id=%s detail=%s",
-                        project_id,
-                        str(it.get("id") or ""),
-                        exc,
-                    )
-                    tags_block = ""
-
-                embed_text = (tags_block + pair_text) if tags_block else pair_text
-                tagged.append({
-                    "it": it,
-                    "user_text": user_text,
-                    "assistant_resp_full": assistant_text_for_memory,
-                    "pair_text": pair_text,
-                    "tokens": tokens,
-                    "tags_meta": tags_meta,
-                    "tags_block": tags_block,
-                    "embed_text": embed_text,
-                })
-                previous_pair_text = pair_text
+        tagged = _tag_dream_pairs(project_id, to_process)
 
         # Pass 2: append each to daily.json only (no cache update), write bounded dream_summary blocks.
-        for rec in tagged:
-            it = rec["it"]
-            user_text = rec["user_text"]
-            assistant_resp_full = rec["assistant_resp_full"]
-            pair_text = rec["pair_text"]
-            tokens = rec["tokens"]
-            tags_meta = rec["tags_meta"]
-            tags_block = rec["tags_block"]
-            embed_text = rec["embed_text"]
-            try:
-                ts_local = time.strftime("%m-%d-%Y_%H:%M:%S", time.localtime())
-                accepted_item_id = str(it.get("id") or "").strip() or None
-                dream_output_type = snake_case_value(it.get("origin_type") or it.get("source_resolution")) or None
-                origin_memory_ids = _origin_memory_ids(it)
-                semantic_handle = None
-                if isinstance(tags_meta, dict) and tags_meta.get("semantic_handle") is not None:
-                    semantic_handle = str(tags_meta.get("semantic_handle") or "").strip() or None
-                memory_id = generate_memory_id(
-                    project_id=project_id,
-                    timestamp=ts_local,
-                    source="dream",
-                    entry_type="dream_output",
-                    route="other",
-                    semantic_handle=semantic_handle,
-                    dream_output_type=dream_output_type,
-                    accepted_item_id=accepted_item_id,
-                    origin_memory_ids=origin_memory_ids,
-                    dream_content=assistant_resp_full,
-                )
-                append_pair(
-                    project_id,
-                    pair_text,
-                    -1,
-                    -2,
-                    int(tokens),
-                    namespace="other",
-                    keep=True,
-                    embed_override=embed_text,
-                    tags_meta=tags_meta,
-                    write_daily_md=False,
-                    update_cache=False,
-                    created_at_iso_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    memory_id=memory_id,
-                    entry_type="dream_output",
-                    source="dream",
-                    source_agent="syx",
-                    source_scope="dream",
-                    current_scope="dream",
-                    accepted_item_id=accepted_item_id,
-                    dream_output_type=dream_output_type,
-                    origin_memory_ids=origin_memory_ids,
-                )
-                keep_flag = bool(it.get("keep"))
-                block = _dream_markdown_block(
-                    memory_id=memory_id,
-                    timestamp=ts_local,
-                    route="other",
-                    keep=keep_flag,
-                    tags_meta=tags_meta,
-                    item=it,
-                    user_text=user_text,
-                    assistant_text=assistant_resp_full,
-                )
-                with FileLock(summary_lock_path):
-                    with open(summary_path, "a", encoding="utf-8", newline="\n") as sf:
-                        need_begin = (not os.path.isfile(summary_path)) or os.path.getsize(summary_path) == 0
-                        if need_begin:
-                            memory_date = time.strftime("%m-%d-%Y", time.localtime())
-                            sf.write(render_artifact_header(
-                                artifact_type="dream_memory",
-                                project_id=project_id,
-                                memory_date=memory_date,
-                            ))
-                        sf.write(block)
-                successes += 1
-            except Exception as e:
-                failures.append(str(e))
+        successes, failures = _persist_tagged_dream_pairs(project_id, tagged, summary_path, summary_lock_path)
 
-        # Rebuild in-memory daily RAG once after all pairs are in daily.json
-        if successes > 0:
-            try:
-                rebuild_daily_cache(project_id, reason="dream_batch")
-            except Exception as rb:
-                logger.warning("[PROJECT][DREAM][KEEP] Rebuild daily cache failed project=%s: %s", project_id, rb)
-                failures.append(f"rebuild_cache: {rb}")
-
-        deleted = False
+        # Rebuild the daily cache once, then delete dream.json only on full success.
         dream_path = os.path.join(get_settings().memory_root, project_id, "dream.json")
-        pending_project_summary = _read_pending_dream_project_summary(project_id, dream_path)
-        if successes == len(tagged) and not failures:
-            try:
-                if not failures:
-                    write_latest_sleep_summary(
-                        project_id=project_id,
-                        base_dir=base_dir,
-                        project_summary=pending_project_summary,
-                        accepted_items=[rec["it"] for rec in tagged],
-                    )
-                if os.path.isfile(dream_path):
-                    os.remove(dream_path)
-                deleted = True
-            except Exception as e:
-                failures.append(f"delete_dream_json: {e}")
+        deleted = _finalize_dream_keep(project_id, base_dir, dream_path, tagged, successes, failures)
 
         status = 200 if not failures else 500
         return JSONResponse(

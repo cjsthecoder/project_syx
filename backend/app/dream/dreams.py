@@ -19,7 +19,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..core.config import get_settings
 from .agents.questions_agent import run_questions_agent
@@ -127,6 +127,29 @@ def _write_dreaming_debug_txt(
         body_lines.append(str(content or ""))
         body_lines.append("")
     write_debug_file(project_id, f"dreaming/{debug_ts}_{suffix}.txt", "\n".join(body_lines).rstrip() + "\n")
+
+
+def _safe_write_dreaming_debug(
+    project_id: str,
+    debug_ts: str,
+    suffix: str,
+    sections: List[Tuple[str, str]],
+) -> None:
+    """Write a Dream debug artifact, logging and suppressing any failure.
+
+    Best-effort wrapper around :func:`_write_dreaming_debug_txt` so a debug-write
+    failure never aborts the Dream cycle.
+
+    Args:
+        project_id: Project whose debug folder receives the artifact.
+        debug_ts: Filesystem-safe timestamp used in the artifact filename and header.
+        suffix: Filename suffix identifying the debug stage.
+        sections: Ordered ``(title, content)`` pairs rendered as labeled blocks.
+    """
+    try:
+        _write_dreaming_debug_txt(project_id, debug_ts, suffix, sections)
+    except Exception as de:
+        logger.warning("[DREAM][DEBUG] Failed writing %s debug project=%s: %s", suffix, project_id, de)
 
 
 def _build_research_plan_rows(idea_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -325,6 +348,108 @@ def _build_synthetic_open_question_item(question_obj: Dict[str, Any], idx: int) 
     }
 
 
+def _remote_research_questions(questions_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return question rows flagged ``used_remote_research`` with non-empty text.
+
+    Args:
+        questions_data: Questions Agent output; non-dict input or a missing/invalid
+            ``questions`` list yields no rows.
+
+    Returns:
+        The subset of question rows that used remote research and carry a
+        non-empty ``question`` string.
+    """
+    question_rows = questions_data.get("questions") if isinstance(questions_data, dict) else []
+    if not isinstance(question_rows, list):
+        return []
+    return [
+        q for q in question_rows
+        if isinstance(q, dict) and bool(q.get("used_remote_research", False)) and str(q.get("question", "") or "").strip()
+    ]
+
+
+def _index_items_by_origin_key(items: List[Any]) -> Dict[str, Dict[str, Any]]:
+    """Index idea items by the normalized key of their ``origin_text``.
+
+    Args:
+        items: Idea items to index; non-dict items and empty keys are skipped.
+
+    Returns:
+        Mapping of normalized origin-text key to the corresponding item.
+    """
+    by_origin_key: Dict[str, Dict[str, Any]] = {}
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        k = _normalize_text_key(str(it.get("origin_text", "") or ""))
+        if k:
+            by_origin_key[k] = it
+    return by_origin_key
+
+
+def _find_matching_item(
+    by_origin_key: Dict[str, Dict[str, Any]],
+    key: str,
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    """Find an existing idea item matching a question key (exact, then fuzzy).
+
+    Args:
+        by_origin_key: Index of idea items keyed by normalized origin text.
+        key: Normalized question key to look up.
+
+    Returns:
+        Tuple of ``(matched_item, matched_key)``; ``matched_item`` is ``None``
+        when no exact or fuzzy match exists.
+    """
+    if not key:
+        return None, key
+    target = by_origin_key.get(key)
+    if target is not None:
+        return target, key
+    for existing_key, existing_item in by_origin_key.items():
+        if _question_key_equivalent(key, existing_key):
+            return existing_item, existing_key
+    return None, key
+
+
+def _annotate_matched_item(target: Dict[str, Any], qobj: Dict[str, Any], q_text: str) -> Tuple[int, int]:
+    """Annotate a matched idea item with remote resolution and seeded research.
+
+    Sets ``source_resolution`` to ``answer_remote``, ensures a metadata block
+    exists, and appends the question text as a recommended research topic when
+    not already present. Mutates ``target`` in place.
+
+    Args:
+        target: Matched idea item to annotate in place.
+        qobj: Source question row supplying topic context for new metadata.
+        q_text: Question text to seed as a recommended research topic.
+
+    Returns:
+        Tuple of ``(seeded_topics, recommended_research_count)`` where
+        ``seeded_topics`` is 1 when a new topic was appended, else 0.
+    """
+    target["source_resolution"] = "answer_remote"
+    metadata = target.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {
+            "priority": 1,
+            "confidence": 0.30,
+            "theme": str(qobj.get("topic", "") or "open_question"),
+            "recommended_research": [],
+        }
+        target["metadata"] = metadata
+    rec = metadata.get("recommended_research")
+    if not isinstance(rec, list):
+        rec = [rec] if rec not in (None, "", []) else []
+    seeded = 0
+    # Ensure question text is represented as a research topic.
+    if q_text and q_text not in [str(x).strip() for x in rec]:
+        rec.append(q_text)
+        seeded = 1
+    metadata["recommended_research"] = rec
+    return seeded, len(rec)
+
+
 def _bridge_remote_questions_into_ideas(
     ideas: Dict[str, Any],
     questions_data: Dict[str, Any],
@@ -350,66 +475,29 @@ def _bridge_remote_questions_into_ideas(
     if not isinstance(items, list):
         items = []
         ideas["items"] = items
-    question_rows = questions_data.get("questions") if isinstance(questions_data, dict) else []
-    if not isinstance(question_rows, list):
-        question_rows = []
-
-    remote_rows = [
-        q for q in question_rows
-        if isinstance(q, dict) and bool(q.get("used_remote_research", False)) and str(q.get("question", "") or "").strip()
-    ]
+    remote_rows = _remote_research_questions(questions_data)
 
     matched = 0
     injected = 0
     seeded_topics = 0
     decisions: List[Dict[str, Any]] = []
-
-    by_origin_key: Dict[str, Dict[str, Any]] = {}
-    for it in items:
-        if not isinstance(it, dict):
-            continue
-        k = _normalize_text_key(str(it.get("origin_text", "") or ""))
-        if k:
-            by_origin_key[k] = it
+    by_origin_key = _index_items_by_origin_key(items)
 
     for idx, qobj in enumerate(remote_rows, start=1):
         q_text = str(qobj.get("question", "") or "").strip()
         key = _normalize_text_key(q_text)
-        target = by_origin_key.get(key) if key else None
-        matched_key = key
-        if target is None and key:
-            for existing_key, existing_item in by_origin_key.items():
-                if _question_key_equivalent(key, existing_key):
-                    target = existing_item
-                    matched_key = existing_key
-                    break
+        target, matched_key = _find_matching_item(by_origin_key, key)
         if isinstance(target, dict):
             matched += 1
-            target["source_resolution"] = "answer_remote"
-            metadata = target.get("metadata")
-            if not isinstance(metadata, dict):
-                metadata = {
-                    "priority": 1,
-                    "confidence": 0.30,
-                    "theme": str(qobj.get("topic", "") or "open_question"),
-                    "recommended_research": [],
-                }
-                target["metadata"] = metadata
-            rec = metadata.get("recommended_research")
-            if not isinstance(rec, list):
-                rec = [rec] if rec not in (None, "", []) else []
-            # Ensure question text is represented as a research topic.
-            if q_text and q_text not in [str(x).strip() for x in rec]:
-                rec.append(q_text)
-                seeded_topics += 1
-            metadata["recommended_research"] = rec
+            seeded, rec_count = _annotate_matched_item(target, qobj, q_text)
+            seeded_topics += seeded
             decisions.append(
                 {
                     "question": q_text,
                     "action": "matched_existing_item",
                     "matched_item_id": str(target.get("id", "") or ""),
                     "matched_key": matched_key or "",
-                    "recommended_research_count": len(rec),
+                    "recommended_research_count": rec_count,
                 }
             )
             continue
@@ -564,11 +652,201 @@ def write_dream_output(project_id: str, dream_data: dict, project_summary_text: 
         logger.error("Dream Writer failed for project=%s: %s", project_id, e, exc_info=True)
 
 
+def _run_questions_stage(project_id: str, debug_ts: str) -> Dict[str, Any]:
+    """Run the Questions Agent stage and emit its debug artifacts.
+
+    Reads the consolidated open-question input, runs the deterministic Questions
+    Agent synchronously, and writes the ``questions_in``/``questions_out`` debug
+    artifacts.
+
+    Args:
+        project_id: Project being dreamed.
+        debug_ts: Filesystem-safe timestamp for this cycle's debug artifacts.
+
+    Returns:
+        The Questions Agent output.
+    """
+    consolidated_questions_path = os.path.join(get_settings().memory_root, project_id, "open_questions_consolidated.json")
+    questions_input = _read_json_file_safe(consolidated_questions_path)
+    _safe_write_dreaming_debug(
+        project_id,
+        debug_ts,
+        "questions_in",
+        [("INPUT", json.dumps(questions_input or {"questions": []}, ensure_ascii=False, indent=2))],
+    )
+
+    # Process deterministic consolidated questions synchronously and keep results in memory.
+    questions_data = run_questions_agent(project_id)
+    _safe_write_dreaming_debug(
+        project_id,
+        debug_ts,
+        "questions_out",
+        [("OUTPUT", json.dumps(questions_data, ensure_ascii=False, indent=2))],
+    )
+    return questions_data
+
+
+def _run_idea_stage(
+    project_id: str,
+    debug_ts: str,
+    questions_data: Dict[str, Any],
+) -> Tuple[Dict[str, Any], str]:
+    """Build dream context, run the Idea Agent, and bridge remote questions.
+
+    Builds the dream context, runs the Idea Agent, attaches source resolutions,
+    filters items to known questions, and bridges remote-backed questions into
+    idea items, emitting a debug artifact at each step.
+
+    Args:
+        project_id: Project being dreamed.
+        debug_ts: Filesystem-safe timestamp for this cycle's debug artifacts.
+        questions_data: Questions Agent output from the questions stage.
+
+    Returns:
+        Tuple of ``(bridged_ideas, project_summary_text)`` for the research stage.
+    """
+    # Build dream context after questions are processed and sleep_summary.md.
+    dream_context, project_summary_text = build_dream_context(project_id, questions_data)
+    _safe_write_dreaming_debug(project_id, debug_ts, "dream_context", [("INPUT", dream_context)])
+
+    # Run Idea Agent on the constructed dream context.
+    ideas = run_idea_agent(project_id, dream_context)
+    resolution_stats = _attach_source_resolution_to_items(ideas, questions_data)
+    logger.info(
+        "[DREAM][RESOLUTION] project=%s total_items=%s resolved_items=%s",
+        project_id,
+        resolution_stats.get("total_items", 0),
+        resolution_stats.get("resolved_items", 0),
+    )
+    filter_stats = _filter_idea_items_to_known_questions(ideas, questions_data)
+    logger.info(
+        "[DREAM][IDEA_FILTER] project=%s before=%s after=%s dropped=%s",
+        project_id,
+        filter_stats.get("before", 0),
+        filter_stats.get("after", 0),
+        filter_stats.get("dropped", 0),
+    )
+    _safe_write_dreaming_debug(project_id, debug_ts, "idea_output", [("OUTPUT", json.dumps(ideas, ensure_ascii=False, indent=2))])
+
+    # Ensure remote-backed question research is represented in idea_data
+    # so Research Agent can persist it into final dream.json.
+    bridged_ideas, bridge_stats = _bridge_remote_questions_into_ideas(ideas, questions_data)
+    logger.info(
+        "[DREAM][BRIDGE] project=%s remote_questions=%s matched=%s injected=%s seeded_topics=%s",
+        project_id,
+        bridge_stats["remote_questions"],
+        bridge_stats["matched_items"],
+        bridge_stats["injected_items"],
+        bridge_stats["seeded_research_topics"],
+    )
+    _safe_write_dreaming_debug(
+        project_id,
+        debug_ts,
+        "bridge_report",
+        [(
+            "DECISIONS",
+            json.dumps(
+                {
+                    "stats": {
+                        "remote_questions": bridge_stats.get("remote_questions", 0),
+                        "matched_items": bridge_stats.get("matched_items", 0),
+                        "injected_items": bridge_stats.get("injected_items", 0),
+                        "seeded_research_topics": bridge_stats.get("seeded_research_topics", 0),
+                    },
+                    "rows": bridge_stats.get("decisions", []),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+        )],
+    )
+    return bridged_ideas, project_summary_text
+
+
+def _run_research_stage(
+    project_id: str,
+    debug_ts: str,
+    bridged_ideas: Dict[str, Any],
+    project_summary_text: str,
+) -> Dict[str, Any]:
+    """Run the Research Agent and serialize the final Dream output.
+
+    Builds the research-plan debug artifact, runs the Research Agent, mirrors the
+    research and dream-summary debug artifacts, and writes the final
+    ``dream.json`` via :func:`write_dream_output`.
+
+    Args:
+        project_id: Project being dreamed.
+        debug_ts: Filesystem-safe timestamp for this cycle's debug artifacts.
+        bridged_ideas: Idea Agent output bridged with remote questions.
+        project_summary_text: Project summary stored in the Dream output.
+
+    Returns:
+        The Research Agent's Dream data.
+    """
+    research_plan_rows = _build_research_plan_rows(bridged_ideas)
+    _safe_write_dreaming_debug(project_id, debug_ts, "research_plan", [("INPUT", json.dumps(research_plan_rows, ensure_ascii=False, indent=2))])
+
+    # Run Research Agent on the Idea Agent output, using the project summary text.
+    dream_data = run_research_agent(
+        project_id,
+        bridged_ideas,
+        project_summary_text,
+        debug_ts=debug_ts,
+    )
+    _safe_write_dreaming_debug(project_id, debug_ts, "research_results", [("OUTPUT", json.dumps(dream_data, ensure_ascii=False, indent=2))])
+
+    # Write dreaming-scoped debug artifact for research input/output.
+    try:
+        research_debug_body = (
+            f"# timestamp: {debug_ts}\n"
+            f"# project_id: {project_id}\n"
+            "\n"
+            "====== RESEARCH INPUT (JSON) ======\n"
+            f"{json.dumps(bridged_ideas, ensure_ascii=False, indent=2)}\n\n"
+            "====== RESEARCH OUTPUT (JSON) ======\n"
+            f"{json.dumps(dream_data, ensure_ascii=False, indent=2)}\n"
+        )
+        write_debug_file(project_id, f"dreaming/{debug_ts}_research.txt", research_debug_body)
+    except Exception as de:
+        logger.warning("[DREAM][DEBUG] Failed writing dreaming research debug project=%s: %s", project_id, de)
+
+    # Mirror the current debug_dream_summary.txt into dreaming/{timestamp}_dream_summary.txt.
+    try:
+        summary_debug_path = os.path.join(get_settings().memory_root, project_id, "debug", "debug_dream_summary.txt")
+        if os.path.isfile(summary_debug_path):
+            with open(summary_debug_path, "r", encoding="utf-8", errors="ignore") as sf:
+                summary_debug_text = sf.read()
+            write_debug_file(project_id, f"dreaming/{debug_ts}_dream_summary.txt", summary_debug_text)
+        else:
+            logger.info(
+                "[DREAM][DEBUG] debug_dream_summary.txt missing for project=%s; skipping dreaming summary mirror.",
+                project_id,
+            )
+    except Exception as de:
+        logger.warning("[DREAM][DEBUG] Failed writing dreaming summary debug project=%s: %s", project_id, de)
+
+    # Serialize final Dream output to disk for downstream consumers (e.g., GUI).
+    _safe_write_dreaming_debug(
+        project_id,
+        debug_ts,
+        "dream_write",
+        [
+            ("INPUT", json.dumps({"project_summary": project_summary_text}, ensure_ascii=False, indent=2)),
+            ("OUTPUT", json.dumps(dream_data, ensure_ascii=False, indent=2)),
+        ],
+    )
+    write_dream_output(project_id, dream_data, project_summary_text)
+    return dream_data
+
+
 def dream(project_id: str) -> None:
     """
     Execute Dream cycle for a project after Sleep completes.
 
-    This function processes questions and builds dream context synchronously.
+    Orchestrates the questions, idea, and research stages synchronously, then
+    clears consumed question artifacts. Stage failures are logged but never
+    raised so the Dream cycle is non-fatal to the caller.
 
     Args:
         project_id: Project identifier
@@ -583,197 +861,12 @@ def dream(project_id: str) -> None:
         debug_ts = _dream_file_timestamp()
         logger.info("[DREAM] Starting dreaming for project=%s", project_id)
         try:
-            consolidated_questions_path = os.path.join(get_settings().memory_root, project_id, "open_questions_consolidated.json")
-            questions_input = _read_json_file_safe(consolidated_questions_path)
-            try:
-                _write_dreaming_debug_txt(
-                    project_id,
-                    debug_ts,
-                    "questions_in",
-                    [
-                        ("INPUT", json.dumps(questions_input or {"questions": []}, ensure_ascii=False, indent=2)),
-                    ],
-                )
-            except Exception as de:
-                logger.warning("[DREAM][DEBUG] Failed writing questions_in debug project=%s: %s", project_id, de)
-
-            # Process deterministic consolidated questions synchronously and keep results in memory.
-            questions_data = run_questions_agent(project_id)
-            try:
-                _write_dreaming_debug_txt(
-                    project_id,
-                    debug_ts,
-                    "questions_out",
-                    [
-                        ("OUTPUT", json.dumps(questions_data, ensure_ascii=False, indent=2)),
-                    ],
-                )
-            except Exception as de:
-                logger.warning("[DREAM][DEBUG] Failed writing questions_out debug project=%s: %s", project_id, de)
-
-            # Build dream context after questions are processed and sleep_summary.md
-            dream_context, project_summary_text = build_dream_context(project_id, questions_data)
-            try:
-                _write_dreaming_debug_txt(
-                    project_id,
-                    debug_ts,
-                    "dream_context",
-                    [
-                        ("INPUT", dream_context),
-                    ],
-                )
-            except Exception as de:
-                logger.warning("[DREAM][DEBUG] Failed writing dream_context debug project=%s: %s", project_id, de)
-
-            # Run Idea Agent on the constructed dream context.
-            ideas = run_idea_agent(project_id, dream_context)
-            resolution_stats = _attach_source_resolution_to_items(ideas, questions_data)
-            logger.info(
-                "[DREAM][RESOLUTION] project=%s total_items=%s resolved_items=%s",
-                project_id,
-                resolution_stats.get("total_items", 0),
-                resolution_stats.get("resolved_items", 0),
-            )
-            filter_stats = _filter_idea_items_to_known_questions(ideas, questions_data)
-            logger.info(
-                "[DREAM][IDEA_FILTER] project=%s before=%s after=%s dropped=%s",
-                project_id,
-                filter_stats.get("before", 0),
-                filter_stats.get("after", 0),
-                filter_stats.get("dropped", 0),
-            )
-            try:
-                _write_dreaming_debug_txt(
-                    project_id,
-                    debug_ts,
-                    "idea_output",
-                    [
-                        ("OUTPUT", json.dumps(ideas, ensure_ascii=False, indent=2)),
-                    ],
-                )
-            except Exception as de:
-                logger.warning("[DREAM][DEBUG] Failed writing idea_output debug project=%s: %s", project_id, de)
-
-            # Ensure remote-backed question research is represented in idea_data
-            # so Research Agent can persist it into final dream.json.
-            bridged_ideas, bridge_stats = _bridge_remote_questions_into_ideas(ideas, questions_data)
-            logger.info(
-                "[DREAM][BRIDGE] project=%s remote_questions=%s matched=%s injected=%s seeded_topics=%s",
-                project_id,
-                bridge_stats["remote_questions"],
-                bridge_stats["matched_items"],
-                bridge_stats["injected_items"],
-                bridge_stats["seeded_research_topics"],
-            )
-            try:
-                _write_dreaming_debug_txt(
-                    project_id,
-                    debug_ts,
-                    "bridge_report",
-                    [
-                        (
-                            "DECISIONS",
-                            json.dumps(
-                                {
-                                    "stats": {
-                                        "remote_questions": bridge_stats.get("remote_questions", 0),
-                                        "matched_items": bridge_stats.get("matched_items", 0),
-                                        "injected_items": bridge_stats.get("injected_items", 0),
-                                        "seeded_research_topics": bridge_stats.get("seeded_research_topics", 0),
-                                    },
-                                    "rows": bridge_stats.get("decisions", []),
-                                },
-                                ensure_ascii=False,
-                                indent=2,
-                            ),
-                        ),
-                    ],
-                )
-            except Exception as de:
-                logger.warning("[DREAM][DEBUG] Failed writing bridge_report debug project=%s: %s", project_id, de)
-
-            research_plan_rows = _build_research_plan_rows(bridged_ideas)
-            try:
-                _write_dreaming_debug_txt(
-                    project_id,
-                    debug_ts,
-                    "research_plan",
-                    [
-                        ("INPUT", json.dumps(research_plan_rows, ensure_ascii=False, indent=2)),
-                    ],
-                )
-            except Exception as de:
-                logger.warning("[DREAM][DEBUG] Failed writing research_plan debug project=%s: %s", project_id, de)
-
-            # Run Research Agent on the Idea Agent output, using the project summary text.
-            dream_data = run_research_agent(
-                project_id,
-                bridged_ideas,
-                project_summary_text,
-                debug_ts=debug_ts,
-            )
-            try:
-                _write_dreaming_debug_txt(
-                    project_id,
-                    debug_ts,
-                    "research_results",
-                    [
-                        ("OUTPUT", json.dumps(dream_data, ensure_ascii=False, indent=2)),
-                    ],
-                )
-            except Exception as de:
-                logger.warning("[DREAM][DEBUG] Failed writing research_results debug project=%s: %s", project_id, de)
-
-            # Write dreaming-scoped debug artifact for research input/output.
-            try:
-                research_debug_body = (
-                    f"# timestamp: {debug_ts}\n"
-                    f"# project_id: {project_id}\n"
-                    "\n"
-                    "====== RESEARCH INPUT (JSON) ======\n"
-                    f"{json.dumps(bridged_ideas, ensure_ascii=False, indent=2)}\n\n"
-                    "====== RESEARCH OUTPUT (JSON) ======\n"
-                    f"{json.dumps(dream_data, ensure_ascii=False, indent=2)}\n"
-                )
-                write_debug_file(project_id, f"dreaming/{debug_ts}_research.txt", research_debug_body)
-            except Exception as de:
-                logger.warning("[DREAM][DEBUG] Failed writing dreaming research debug project=%s: %s", project_id, de)
-
-            # Mirror the current debug_dream_summary.txt into dreaming/{timestamp}_dream_summary.txt.
-            try:
-                summary_debug_path = os.path.join(get_settings().memory_root, project_id, "debug", "debug_dream_summary.txt")
-                if os.path.isfile(summary_debug_path):
-                    with open(summary_debug_path, "r", encoding="utf-8", errors="ignore") as sf:
-                        summary_debug_text = sf.read()
-                    write_debug_file(project_id, f"dreaming/{debug_ts}_dream_summary.txt", summary_debug_text)
-                else:
-                    logger.info(
-                        "[DREAM][DEBUG] debug_dream_summary.txt missing for project=%s; skipping dreaming summary mirror.",
-                        project_id,
-                    )
-            except Exception as de:
-                logger.warning("[DREAM][DEBUG] Failed writing dreaming summary debug project=%s: %s", project_id, de)
-
-            # Serialize final Dream output to disk for downstream consumers (e.g., GUI).
-            try:
-                _write_dreaming_debug_txt(
-                    project_id,
-                    debug_ts,
-                    "dream_write",
-                    [
-                        ("INPUT", json.dumps({"project_summary": project_summary_text}, ensure_ascii=False, indent=2)),
-                        ("OUTPUT", json.dumps(dream_data, ensure_ascii=False, indent=2)),
-                    ],
-                )
-            except Exception as de:
-                logger.warning("[DREAM][DEBUG] Failed writing dream_write debug project=%s: %s", project_id, de)
-            write_dream_output(project_id, dream_data, project_summary_text)
+            questions_data = _run_questions_stage(project_id, debug_ts)
+            bridged_ideas, project_summary_text = _run_idea_stage(project_id, debug_ts, questions_data)
+            _run_research_stage(project_id, debug_ts, bridged_ideas, project_summary_text)
 
             # Clear consumed question artifacts to prevent duplicate re-answering next cycle.
             _cleanup_question_artifacts(project_id)
-
-            # Currently, dream_data is kept in-memory for potential downstream use.
-            _ = dream_data  # placeholder to avoid lints until consumed
 
             elapsed = time.monotonic() - t0
             logger.info("[DREAM] Project %s complete in duration=%.2fs", project_id, elapsed)

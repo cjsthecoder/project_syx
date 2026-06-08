@@ -16,13 +16,14 @@ import logging
 import time
 import threading
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from ..core.models import ChatRequest, ChatResponse
-from ..core.llm import generate_chat_response, get_llm_health
+from ..core.llm_service import generate_chat_response, get_llm_health
 from ..llm_model.factory import get_llm_client
 from ..core.memory import get_memory_manager, set_last_context_tokens
 from ..utils.logging import RequestLogger, LLMLogger, set_message_id, clear_message_id, get_message_id, clear_namespace
@@ -54,6 +55,229 @@ def _next_turn_id() -> int:
         _TURN_SEQ += 1
         return int(_TURN_SEQ)
 
+
+def _default_rag_metrics() -> Dict[str, Any]:
+    """Return the baseline per-turn RAG metrics dict used before retrieval runs.
+
+    Returns:
+        A fresh metrics dict with neutral defaults (route ``OTHER``, RAG
+        disabled, all counts zero). A new dict is returned each call so callers
+        can mutate it safely.
+    """
+    return {
+        "route": "OTHER",
+        "rag_enabled": False,
+        "retrieved_count": 0,
+        "kept_count": 0,
+        "expanded_unique_chunks_after_merge": 0,
+        "rag_tokens_injected_est": 0,
+        "final_context_clipped": False,
+    }
+
+
+@dataclass
+class PreparedPrompts:
+    """Bundle of prompt/context artifacts produced for a single chat turn."""
+
+    conversation_history: Optional[list]
+    base_system_prompt: Optional[str]
+    assistant_hint: Optional[str]
+    personality_creativity: Optional[float]
+    rag_system_prompt: Optional[str]
+    primary_ns: Optional[str]
+    rag_metrics: Dict[str, Any]
+
+
+def _prepare_prompts(
+    pipeline: ChatPipeline,
+    *,
+    project_id: Optional[str],
+    message: str,
+    preview: str,
+    msg_id: str,
+) -> PreparedPrompts:
+    """Build conversation history, prompts, and RAG context for a turn.
+
+    Shared by the streaming and non-streaming endpoints so the prompt-assembly
+    sequence stays identical. Does not enforce the model whitelist (callers do
+    that explicitly so the failure surfaces at the call site).
+
+    Args:
+        pipeline: Pipeline used to build history, load prompts, and compute RAG.
+        project_id: Active project id, or ``None`` for a project-less turn.
+        message: Current user message.
+        preview: Truncated message preview for debug logging.
+        msg_id: Per-message correlation id.
+
+    Returns:
+        A ``PreparedPrompts`` with history, the RAG-augmented base system
+        prompt, the assistant hint, personality creativity, the RAG context
+        text, the primary namespace, and the turn RAG metrics.
+    """
+    conversation_history = pipeline.build_conversation_history(project_id)
+    base_system_prompt, assistant_hint, personality_creativity = pipeline.load_project_prompts(project_id)
+    rag_system_prompt, primary_ns, rag_metrics = pipeline.compute_rag_context(
+        project_id=project_id,
+        message=message,
+        preview=preview,
+        msg_id=msg_id,
+        conversation_history=conversation_history,
+    )
+    base_system_prompt = pipeline.apply_rag_guidance(base_system_prompt, rag_system_prompt)
+    return PreparedPrompts(
+        conversation_history=conversation_history,
+        base_system_prompt=base_system_prompt,
+        assistant_hint=assistant_hint,
+        personality_creativity=personality_creativity,
+        rag_system_prompt=rag_system_prompt,
+        primary_ns=primary_ns,
+        rag_metrics=rag_metrics,
+    )
+
+
+def _turn_end_meta(
+    rag_metrics: Optional[Dict[str, Any]],
+    *,
+    turn_id: int,
+    project_id: Optional[str],
+    conversation_id: Optional[str],
+    streaming: bool,
+    prompt_text: Optional[str],
+    response_text: Optional[str],
+    model_id: Optional[str],
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Assemble the ``output_meta`` payload recorded at turn end.
+
+    Centralizes the (otherwise duplicated) mapping of per-turn RAG metrics and
+    turn identity into the instrumentation payload.
+
+    Args:
+        rag_metrics: Per-turn RAG metrics (route, counts, token estimates);
+            ``None`` is treated as empty.
+        turn_id: Monotonic turn id.
+        project_id: Active project id.
+        conversation_id: Conversation id from the request.
+        streaming: Whether this turn used the streaming endpoint.
+        prompt_text: User prompt text (coerced to ``str``).
+        response_text: Assistant response text, or ``None`` if unavailable.
+        model_id: Resolved model id for the turn.
+        extra: Additional fields merged into the payload (e.g. ``response_len``
+            or ``error``).
+
+    Returns:
+        The ``output_meta`` dict for ``Instrumentation.end_turn``.
+    """
+    m = rag_metrics or {}
+    meta: Dict[str, Any] = {
+        "turn_id": turn_id,
+        "project_id": project_id,
+        "conversation_id": conversation_id,
+        "streaming": streaming,
+        "prompt_text": str(prompt_text or ""),
+        "response_text": response_text,
+        "model_id": model_id,
+        "route": str(m.get("route", "OTHER")),
+        "rag_enabled": bool(m.get("rag_enabled", False)),
+        "retrieved_count": int(m.get("retrieved_count", 0) or 0),
+        "kept_count": int(m.get("kept_count", 0) or 0),
+        "expanded_unique_chunks_after_merge": int(m.get("expanded_unique_chunks_after_merge", 0) or 0),
+        "rag_tokens_injected_est": int(m.get("rag_tokens_injected_est", 0) or 0),
+        "final_context_clipped": bool(m.get("final_context_clipped", False)),
+    }
+    if extra:
+        meta.update(extra)
+    return meta
+
+
+def _update_context_token_stats(
+    *,
+    project_id: Optional[str],
+    conversation_history: Optional[list],
+    message: Optional[str],
+    response_text: Optional[str],
+    msg_id: str,
+) -> None:
+    """Estimate and persist the turn's context-token count (best-effort).
+
+    Counts tokens across prior turns, the user message, and the assistant reply
+    (the RAG system prompt is intentionally excluded), then records the total
+    for the project. Failures are logged and swallowed; token stats are not a
+    persistence invariant.
+
+    Args:
+        project_id: Project to record stats for; ``None`` skips persistence.
+        conversation_history: Prior turns whose content is included.
+        message: Current user message.
+        response_text: Assistant reply text.
+        msg_id: Per-message correlation id for logging.
+    """
+    try:
+        combined_text = ''
+        if conversation_history:
+            for msg in conversation_history:
+                combined_text += (msg.get('content') or '') + '\n'
+        combined_text += message or ''
+        combined_text += '\n' + (response_text or '')
+        context_tokens = int(count_tokens(combined_text))
+        if project_id:
+            set_last_context_tokens(project_id, context_tokens)
+    except Exception as exc:
+        logger.warning(
+            "chat.context_tokens update failed; operation=set_last_context_tokens project_id=%s message_id=%s detail=%s",
+            project_id,
+            msg_id,
+            exc,
+        )
+
+
+def _build_stream_usage_payload(
+    provider_usage: Optional[dict],
+    msgs: list,
+    full_text: str,
+) -> Dict[str, Any]:
+    """Resolve the usage payload to record for a streamed invocation.
+
+    Prefers provider-reported usage when available; otherwise estimates token
+    counts from the prompt messages and streamed text. When no provider usage
+    is present and the estimate is non-positive, returns a zeroed estimate.
+
+    Args:
+        provider_usage: Usage reported by the provider during streaming, or
+            ``None`` if the provider did not report usage.
+        msgs: The prompt messages sent to the provider (for prompt-token
+            estimation).
+        full_text: The concatenated streamed completion text.
+
+    Returns:
+        A usage dict with reported/estimated prompt, completion, and total
+        token counts plus an ``usage_is_estimate`` flag.
+    """
+    prompt_tokens_est = int(estimate_message_tokens(msgs))
+    completion_tokens_est = int(estimate_tokens(full_text))
+    total_tokens_est = int(prompt_tokens_est + completion_tokens_est)
+    usage_payload = provider_usage or {
+        "prompt_tokens_reported": int(prompt_tokens_est),
+        "completion_tokens_reported": int(completion_tokens_est),
+        "total_tokens_reported": int(total_tokens_est),
+        "usage_is_estimate": True,
+    }
+    if (
+        not provider_usage
+        and (
+            not isinstance(usage_payload.get("total_tokens_reported"), int)
+            or int(usage_payload.get("total_tokens_reported", 0)) <= 0
+        )
+    ):
+        usage_payload = {
+            "prompt_tokens_reported": 0,
+            "completion_tokens_reported": 0,
+            "total_tokens_reported": 0,
+            "usage_is_estimate": True,
+        }
+    return usage_payload
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest) -> ChatResponse:
     """Main chat endpoint for user-AI conversation.
@@ -82,15 +306,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         instr = get_instrumentation()
         turn_id = _next_turn_id()
         turn_started = False
-        rag_turn_metrics: Dict[str, Any] = {
-            "route": "OTHER",
-            "rag_enabled": False,
-            "retrieved_count": 0,
-            "kept_count": 0,
-            "expanded_unique_chunks_after_merge": 0,
-            "rag_tokens_injected_est": 0,
-            "final_context_clipped": False,
-        }
+        rag_turn_metrics: Dict[str, Any] = _default_rag_metrics()
         msg_id = str(uuid.uuid4())
         set_message_id(msg_id)
         proj = request.project_id or "Main"
@@ -119,16 +335,20 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
 
         pipeline = ChatPipeline(settings)
         memory_manager = get_memory_manager() if request.project_id else None
-        conversation_history = pipeline.build_conversation_history(request.project_id)
-        base_system_prompt, assistant_hint, personality_creativity = pipeline.load_project_prompts(request.project_id)
-        rag_system_prompt, primary_ns, rag_turn_metrics = pipeline.compute_rag_context(
+        prepared = _prepare_prompts(
+            pipeline,
             project_id=request.project_id,
             message=request.message,
             preview=preview,
             msg_id=msg_id,
-            conversation_history=conversation_history,
         )
-        base_system_prompt = pipeline.apply_rag_guidance(base_system_prompt, rag_system_prompt)
+        conversation_history = prepared.conversation_history
+        base_system_prompt = prepared.base_system_prompt
+        assistant_hint = prepared.assistant_hint
+        personality_creativity = prepared.personality_creativity
+        rag_system_prompt = prepared.rag_system_prompt
+        primary_ns = prepared.primary_ns
+        rag_turn_metrics = prepared.rag_metrics
         pipeline.enforce_model_whitelist(request.model)
         # Log LLM request
         try:
@@ -217,24 +437,13 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             )
         
         # Update context tokens for stats (exclude RAG system prompt)
-        try:
-            combined_text = ''
-            if conversation_history:
-                for msg in conversation_history:
-                    combined_text += (msg.get('content') or '') + '\n'
-            combined_text += request.message or ''
-            # Include the assistant's latest reply
-            combined_text += '\n' + (llm_response.get('response') or '')
-            context_tokens = int(count_tokens(combined_text))
-            if request.project_id:
-                set_last_context_tokens(request.project_id, context_tokens)
-        except Exception as exc:
-            logger.warning(
-                "chat.context_tokens update failed; operation=set_last_context_tokens project_id=%s message_id=%s detail=%s",
-                request.project_id,
-                msg_id,
-                exc,
-            )
+        _update_context_token_stats(
+            project_id=request.project_id,
+            conversation_history=conversation_history,
+            message=request.message,
+            response_text=llm_response.get('response'),
+            msg_id=msg_id,
+        )
         
         # Create response
         response = ChatResponse(
@@ -313,26 +522,16 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                     _resp_text = str(locals()["llm_response"].get("response") or "")
                     _model_id = str(locals()["llm_response"].get("llm_model") or _model_id)
                 get_instrumentation().end_turn(
-                    output_meta={
-                        "turn_id": turn_id,
-                        "project_id": request.project_id,
-                        "conversation_id": request.conversation_id,
-                        "streaming": False,
-                        "route": str((rag_turn_metrics or {}).get("route", "OTHER")),
-                        "rag_enabled": bool((rag_turn_metrics or {}).get("rag_enabled", False)),
-                        "retrieved_count": int((rag_turn_metrics or {}).get("retrieved_count", 0) or 0),
-                        "kept_count": int((rag_turn_metrics or {}).get("kept_count", 0) or 0),
-                        "expanded_unique_chunks_after_merge": int(
-                            (rag_turn_metrics or {}).get("expanded_unique_chunks_after_merge", 0) or 0
-                        ),
-                        "rag_tokens_injected_est": int(
-                            (rag_turn_metrics or {}).get("rag_tokens_injected_est", 0) or 0
-                        ),
-                        "final_context_clipped": bool((rag_turn_metrics or {}).get("final_context_clipped", False)),
-                        "prompt_text": str(request.message or ""),
-                        "response_text": _resp_text,
-                        "model_id": _model_id,
-                    }
+                    output_meta=_turn_end_meta(
+                        rag_turn_metrics,
+                        turn_id=turn_id,
+                        project_id=request.project_id,
+                        conversation_id=request.conversation_id,
+                        streaming=False,
+                        prompt_text=request.message,
+                        response_text=_resp_text,
+                        model_id=_model_id,
+                    )
                 )
         except Exception as exc:
             logger.warning(
@@ -372,15 +571,7 @@ async def chat_stream(request: ChatRequest):
     turn_id = _next_turn_id()
     turn_started = False
     turn_closed = False
-    rag_turn_metrics: Dict[str, Any] = {
-        "route": "OTHER",
-        "rag_enabled": False,
-        "retrieved_count": 0,
-        "kept_count": 0,
-        "expanded_unique_chunks_after_merge": 0,
-        "rag_tokens_injected_est": 0,
-        "final_context_clipped": False,
-    }
+    rag_turn_metrics: Dict[str, Any] = _default_rag_metrics()
     try:
         t0 = time.time()
         msg_id = str(uuid.uuid4())
@@ -399,16 +590,19 @@ async def chat_stream(request: ChatRequest):
         proj = request.project_id or "Main"
 
         pipeline = ChatPipeline(settings)
-        conversation_history = pipeline.build_conversation_history(request.project_id)
-        base_system_prompt, assistant_hint, personality_creativity = pipeline.load_project_prompts(request.project_id)
-        rag_system_prompt, primary_ns, rag_turn_metrics = pipeline.compute_rag_context(
+        prepared = _prepare_prompts(
+            pipeline,
             project_id=request.project_id,
             message=(request.message or ""),
             preview=(request.message or "")[:settings.log_preview_max_chars],
             msg_id=msg_id,
-            conversation_history=conversation_history,
         )
-        base_system_prompt = pipeline.apply_rag_guidance(base_system_prompt, rag_system_prompt)
+        conversation_history = prepared.conversation_history
+        base_system_prompt = prepared.base_system_prompt
+        assistant_hint = prepared.assistant_hint
+        rag_system_prompt = prepared.rag_system_prompt
+        primary_ns = prepared.primary_ns
+        rag_turn_metrics = prepared.rag_metrics
         pipeline.enforce_model_whitelist(request.model)
         # Persist user immediately (streaming semantics)
         pipeline.persist_user(request.project_id, request.message)
@@ -521,28 +715,7 @@ async def chat_stream(request: ChatRequest):
             finally:
                 try:
                     full_text = "".join(collected)
-                    prompt_tokens_est = int(estimate_message_tokens(msgs))
-                    completion_tokens_est = int(estimate_tokens(full_text))
-                    total_tokens_est = int(prompt_tokens_est + completion_tokens_est)
-                    usage_payload = provider_usage or {
-                        "prompt_tokens_reported": int(prompt_tokens_est),
-                        "completion_tokens_reported": int(completion_tokens_est),
-                        "total_tokens_reported": int(total_tokens_est),
-                        "usage_is_estimate": True,
-                    }
-                    if (
-                        not provider_usage
-                        and (
-                            not isinstance(usage_payload.get("total_tokens_reported"), int)
-                            or int(usage_payload.get("total_tokens_reported", 0)) <= 0
-                        )
-                    ):
-                        usage_payload = {
-                            "prompt_tokens_reported": 0,
-                            "completion_tokens_reported": 0,
-                            "total_tokens_reported": 0,
-                            "usage_is_estimate": True,
-                        }
+                    usage_payload = _build_stream_usage_payload(provider_usage, msgs, full_text)
                     if invocation_id:
                         if first_token_ms is None:
                             logger.warning("chat.stream produced no first token timing; forcing ttfb_ms=0")
@@ -583,30 +756,19 @@ async def chat_stream(request: ChatRequest):
                 try:
                     nonlocal turn_closed
                     if turn_started and not turn_closed:
+                        final_text = "".join(collected)
                         instr.end_turn(
-                            output_meta={
-                                "turn_id": turn_id,
-                                "project_id": request.project_id,
-                                "conversation_id": request.conversation_id,
-                                "streaming": True,
-                                "response_len": len("".join(collected)),
-                                "prompt_text": str(request.message or ""),
-                                "response_text": "".join(collected),
-                                "model_id": str(request.model or settings.model_name),
-                                "route": str((rag_turn_metrics or {}).get("route", "OTHER")),
-                                "rag_enabled": bool((rag_turn_metrics or {}).get("rag_enabled", False)),
-                                "retrieved_count": int((rag_turn_metrics or {}).get("retrieved_count", 0) or 0),
-                                "kept_count": int((rag_turn_metrics or {}).get("kept_count", 0) or 0),
-                                "expanded_unique_chunks_after_merge": int(
-                                    (rag_turn_metrics or {}).get("expanded_unique_chunks_after_merge", 0) or 0
-                                ),
-                                "rag_tokens_injected_est": int(
-                                    (rag_turn_metrics or {}).get("rag_tokens_injected_est", 0) or 0
-                                ),
-                                "final_context_clipped": bool(
-                                    (rag_turn_metrics or {}).get("final_context_clipped", False)
-                                ),
-                            }
+                            output_meta=_turn_end_meta(
+                                rag_turn_metrics,
+                                turn_id=turn_id,
+                                project_id=request.project_id,
+                                conversation_id=request.conversation_id,
+                                streaming=True,
+                                prompt_text=request.message,
+                                response_text=final_text,
+                                model_id=str(request.model or settings.model_name),
+                                extra={"response_len": len(final_text)},
+                            )
                         )
                         turn_closed = True
                 except Exception as exc:
@@ -622,29 +784,17 @@ async def chat_stream(request: ChatRequest):
         try:
             if turn_started and not turn_closed:
                 instr.end_turn(
-                    output_meta={
-                        "turn_id": turn_id,
-                        "project_id": request.project_id,
-                        "conversation_id": request.conversation_id,
-                        "streaming": True,
-                        "error": str(e),
-                        "prompt_text": str(request.message or ""),
-                        "response_text": None,
-                        "model_id": str(request.model or settings.model_name),
-                        "route": str((rag_turn_metrics or {}).get("route", "OTHER")),
-                        "rag_enabled": bool((rag_turn_metrics or {}).get("rag_enabled", False)),
-                        "retrieved_count": int((rag_turn_metrics or {}).get("retrieved_count", 0) or 0),
-                        "kept_count": int((rag_turn_metrics or {}).get("kept_count", 0) or 0),
-                        "expanded_unique_chunks_after_merge": int(
-                            (rag_turn_metrics or {}).get("expanded_unique_chunks_after_merge", 0) or 0
-                        ),
-                        "rag_tokens_injected_est": int(
-                            (rag_turn_metrics or {}).get("rag_tokens_injected_est", 0) or 0
-                        ),
-                        "final_context_clipped": bool(
-                            (rag_turn_metrics or {}).get("final_context_clipped", False)
-                        ),
-                    }
+                    output_meta=_turn_end_meta(
+                        rag_turn_metrics,
+                        turn_id=turn_id,
+                        project_id=request.project_id,
+                        conversation_id=request.conversation_id,
+                        streaming=True,
+                        prompt_text=request.message,
+                        response_text=None,
+                        model_id=str(request.model or settings.model_name),
+                        extra={"error": str(e)},
+                    )
                 )
                 turn_closed = True
         except Exception as exc:

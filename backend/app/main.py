@@ -414,7 +414,7 @@ async def health_check():
         api_key_status = "configured" if validate_openai_key() else "missing"
         
         # Check LLM health
-        from .core.llm import get_llm_health
+        from .core.llm_service import get_llm_health
         llm_health = get_llm_health()
         
         dependencies = {

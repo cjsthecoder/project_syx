@@ -55,13 +55,13 @@ All items must pass:
 1) Future reuse:
    - The topic, gap, or learned result is likely to matter in later chats.
 2) Decision impact:
-   - Better information would materially improve future answers, architecture choices, implementation plans, retrieval behavior, or patent framing.
+   - Better information would materially improve future answers, architecture choices, implementation plans, or retrieval behavio.
 3) Concreteness:
    - The knowledge can be expressed as a concrete result, technical constraint, design gap, evidence need, or well-defined research target.
 4) Non-duplication:
    - The content is not already sufficiently covered in QUESTION ANSWERS or elsewhere in dream_context.
 5) Project relevance:
-   - The item is directly tied to Syx architecture, implementation, memory model, sleep cycle, retrieval, provenance, consolidation, patent relevance, or another persistent project concern.
+   - The item is directly tied to Syx architecture, implementation, memory model, sleep cycle, retrieval, provenance, consolidation, or another persistent project concern.
 
 Additional rule for answer_local items:
 6) High bar for local-only capture:

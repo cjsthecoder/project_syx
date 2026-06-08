@@ -12,7 +12,7 @@ Tests for LLM integration.
 
 import pytest
 from unittest.mock import patch, MagicMock
-from app.core.llm import (
+from app.core.llm_service import (
     LLMProvider,
     get_llm_provider,
     generate_chat_response,
@@ -33,7 +33,7 @@ def mock_openai_key():
     """
     reset_llm_provider()
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-123"}), patch(
-        "app.core.llm.validate_openai_key", return_value=True
+        "app.core.llm_service.validate_openai_key", return_value=True
     ):
         yield
     reset_llm_provider()
@@ -41,19 +41,19 @@ def mock_openai_key():
 
 def test_llm_provider_initialization(mock_openai_key):
     """Test LLM provider initialization."""
-    with patch("app.core.llm.validate_openai_key", return_value=True):
+    with patch("app.core.llm_service.validate_openai_key", return_value=True):
         provider = LLMProvider()
         assert provider is not None
 
 
 def test_llm_provider_without_key():
     """Test LLM provider without API key."""
-    with patch("app.core.llm.validate_openai_key", return_value=False):
+    with patch("app.core.llm_service.validate_openai_key", return_value=False):
         with pytest.raises(ValueError, match="OpenAI API key"):
             LLMProvider()
 
 
-@patch("app.core.llm.get_llm_client")
+@patch("app.core.llm_service.get_llm_client")
 def test_generate_response(mock_get_client, mock_openai_key):
     """Test response generation."""
     mock_client = MagicMock()
@@ -77,7 +77,7 @@ def test_generate_response(mock_get_client, mock_openai_key):
     assert result["tokens_used"] == 25
 
 
-@patch("app.core.llm.get_llm_client")
+@patch("app.core.llm_service.get_llm_client")
 def test_generate_response_with_history(mock_get_client, mock_openai_key):
     """Test response generation with conversation history."""
     mock_client = MagicMock()
@@ -105,7 +105,7 @@ def test_generate_response_with_history(mock_get_client, mock_openai_key):
     assert "I remember our previous conversation!" in result["response"]
 
 
-@patch("app.core.llm.get_llm_client")
+@patch("app.core.llm_service.get_llm_client")
 def test_llm_error_handling(mock_get_client, mock_openai_key):
     """Test LLM error handling."""
     mock_client = MagicMock()
@@ -119,7 +119,7 @@ def test_llm_error_handling(mock_get_client, mock_openai_key):
     assert "API Error" in result["response"]
 
 
-@patch("app.core.llm.get_llm_client")
+@patch("app.core.llm_service.get_llm_client")
 def test_generate_text_response(mock_get_client, mock_openai_key):
     """Test Responses API generation through core LLM helper."""
     mock_client = MagicMock()
@@ -150,7 +150,7 @@ def test_generate_text_response(mock_get_client, mock_openai_key):
 
 def test_get_llm_provider_singleton(mock_openai_key):
     """Test that get_llm_provider returns a singleton."""
-    with patch("app.core.llm.validate_openai_key", return_value=True):
+    with patch("app.core.llm_service.validate_openai_key", return_value=True):
         provider1 = get_llm_provider()
         provider2 = get_llm_provider()
         assert provider1 is provider2

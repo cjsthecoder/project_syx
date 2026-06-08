@@ -280,6 +280,91 @@ def format_contextual_turn(user_text: str, tags_meta_json: str) -> str:
     return out
 
 
+def _parse_builder_response(raw: str, project_id: str) -> Dict[str, Any]:
+    """Clean and parse a classifier response into a validated route dict.
+
+    Strips Markdown code fences, slices out the first balanced JSON object
+    (ignoring trailing prose), parses it, and falls back to a permissive regex
+    extraction when strict parsing fails. Validates that the result is a dict
+    containing a ``route`` key.
+
+    Args:
+        raw: Raw classifier response text.
+        project_id: Project scope, used only for diagnostic logging.
+
+    Returns:
+        The parsed builder JSON object (guaranteed to contain ``route``).
+
+    Raises:
+        json.JSONDecodeError: When no JSON object can be parsed.
+        ValueError: When the parsed value is not a dict or lacks ``route``.
+    """
+    clean = raw
+    if clean.startswith("```"):
+        lines = [ln for ln in clean.splitlines() if not ln.strip().startswith("```")]
+        clean = "\n".join(lines).strip()
+    # Slice out the first balanced JSON object to avoid trailing prose
+    clean = _slice_first_json(clean)
+    try:
+        data = json.loads(clean)
+    except json.JSONDecodeError as je:
+        # Provide a concise diagnostic snippet near the error position
+        try:
+            pos = getattr(je, "pos", 0)
+            snippet = clean[max(0, pos - 80) : pos + 80]
+            logger.debug("builder json decode failed near pos=%s snippet=%r", pos, snippet)
+        except Exception as exc:
+            logger.warning("builder json decode diagnostics failed project_id=%s detail=%s", project_id, exc)
+        import re
+        m = re.search(r"\{[\s\S]*\}", clean)
+        if not m:
+            raise
+        data = json.loads(m.group(0))
+    # Basic shape validation
+    if not isinstance(data, dict) or "route" not in data:
+        raise ValueError("invalid builder json")
+    return data
+
+
+def _dump_builder_prompt(
+    *,
+    project_id: str,
+    user_text: str,
+    user_prompt: str,
+    raw_response: str,
+    data: Optional[Dict[str, Any]],
+    model: Optional[str],
+    failure: bool = False,
+) -> None:
+    """Best-effort debug dump of a builder prompt/response (no-op by default).
+
+    Writes a debug artifact only when ``GENERATE_DEBUG_FILES`` is enabled; any
+    failure is logged and swallowed so it never affects routing.
+
+    Args:
+        project_id: Project scope for the dump.
+        user_text: Raw user message.
+        user_prompt: Fully formatted classifier user prompt.
+        raw_response: Raw classifier response text.
+        data: Parsed builder data, or None when unavailable.
+        model: Builder model id, or None.
+        failure: Whether this dump is from the failure path (affects log label).
+    """
+    try:
+        _PROMPT_DUMPER.dump(
+            project_id=project_id,
+            user_text=user_text,
+            system_prompt=_SYS_PROMPT,
+            user_prompt=user_prompt,
+            raw_response=raw_response,
+            data=data,
+            model=model,
+        )
+    except Exception as exc:
+        label = "builder failure-path prompt dump failed" if failure else "builder debug prompt dump failed"
+        logger.warning("%s project_id=%s detail=%s", label, project_id, exc)
+
+
 def build_query(project_id: str, history_summary: str, user_text: str) -> Optional[Dict[str, Any]]:
     """Invoke classifier LLM and return parsed JSON or None on failure.
 
@@ -351,44 +436,16 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
             usage["extra_usage"] = response.usage.extra_usage
         raw = response.text
         logger.debug("builder raw=%s", (raw[:cap] + ("…" if len(raw) > cap else "")))
-        # Clean output to ensure strict JSON parsing
-        clean = raw
-        if clean.startswith("```"):
-            lines = [ln for ln in clean.splitlines() if not ln.strip().startswith("```")]
-            clean = "\n".join(lines).strip()
-        # Slice out the first balanced JSON object to avoid trailing prose
-        clean = _slice_first_json(clean)
-        try:
-            data = json.loads(clean)
-        except json.JSONDecodeError as je:
-            # Provide a concise diagnostic snippet near the error position
-            try:
-                pos = getattr(je, "pos", 0)
-                snippet = clean[max(0, pos - 80) : pos + 80]
-                logger.debug("builder json decode failed near pos=%s snippet=%r", pos, snippet)
-            except Exception as exc:
-                logger.warning("builder json decode diagnostics failed project_id=%s detail=%s", project_id, exc)
-            import re
-            m = re.search(r"\{[\s\S]*\}", clean)
-            if not m:
-                raise
-            data = json.loads(m.group(0))
-        # Basic shape validation
-        if not isinstance(data, dict) or "route" not in data:
-            raise ValueError("invalid builder json")
+        data = _parse_builder_response(raw, project_id)
         # Debug dump (best-effort; no-op unless GENERATE_DEBUG_FILES=true)
-        try:
-            _PROMPT_DUMPER.dump(
-                project_id=project_id,
-                user_text=user_text,
-                system_prompt=_SYS_PROMPT,
-                user_prompt=user,
-                raw_response=raw,
-                data=data,
-                model=settings.builder_model,
-            )
-        except Exception as exc:
-            logger.warning("builder debug prompt dump failed project_id=%s detail=%s", project_id, exc)
+        _dump_builder_prompt(
+            project_id=project_id,
+            user_text=user_text,
+            user_prompt=user,
+            raw_response=raw,
+            data=data,
+            model=settings.builder_model,
+        )
         data2 = _filter_route_only(data)
         if settings.builder_cache:
             _CACHE[key] = (time.time(), data2)
@@ -402,18 +459,15 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
         return data2
     except Exception as e:
         # Debug dump failure case (best-effort)
-        try:
-            _PROMPT_DUMPER.dump(
-                project_id=project_id,
-                user_text=user_text,
-                system_prompt=_SYS_PROMPT,
-                user_prompt=user,
-                raw_response=raw,
-                data=(data if isinstance(data, dict) else None),
-                model=getattr(settings, "builder_model", None),
-            )
-        except Exception as exc:
-            logger.warning("builder failure-path prompt dump failed project_id=%s detail=%s", project_id, exc)
+        _dump_builder_prompt(
+            project_id=project_id,
+            user_text=user_text,
+            user_prompt=user,
+            raw_response=raw,
+            data=(data if isinstance(data, dict) else None),
+            model=getattr(settings, "builder_model", None),
+            failure=True,
+        )
         logger.warning(f"builder failed: {e}")
         if invocation_id:
             instr.end_invocation(

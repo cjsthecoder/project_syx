@@ -152,37 +152,30 @@ def ltm_docstore_item_id(metadata: dict) -> str:
     return f"{did}::chunk={seq}"
 
 
-def rebuild_faiss_index(project_id: str) -> str:
-    """Rebuild a project's FAISS index from scratch from its uploads directory.
+def _collect_chunks_from_uploads(
+    project_id: str,
+    uploads_dir: str,
+    settings: Any,
+) -> Tuple[List[str], List[dict], Dict[str, int], Dict[str, int]]:
+    """Walk a project's uploads directory and produce chunk texts and metadata.
 
-    Clears the existing FAISS directory, parses and chunks every uploaded file,
-    embeds the chunks in parallel batches, then persists the index, docstore,
-    index-to-id map, manifest, and adjacency sidecar. Also backfills per-file
-    token/page counts and embedding status in the database.
+    Parses every uploaded file into Syx regions, chunks each region, and builds
+    aligned ``texts``/``metadatas`` along with per-file token sums and page
+    counts used to backfill the database after a successful build.
 
     Args:
-        project_id: Project whose index is rebuilt from its uploads directory.
+        project_id: Project whose uploads are being indexed (stamped into each
+            chunk's metadata).
+        uploads_dir: Absolute path to the project's uploads directory. A missing
+            directory yields empty results.
+        settings: Settings object providing ``chunk_size`` and ``chunk_overlap``.
 
     Returns:
-        The absolute path to the project's FAISS directory. When there are no
-        chunks (or no resulting vectors), the directory is returned without a
-        persisted index.
-
-    Raises:
-        RuntimeError: If batch metadata is missing, an embedding batch fails, a
-            batch result is missing, or the embedding dimensionality changes
-            mid-build.
+        A tuple ``(texts, metadatas, file_token_sums, file_page_max)`` where
+        ``texts`` and ``metadatas`` are index-aligned per chunk, ``file_token_sums``
+        maps filename to total region token count, and ``file_page_max`` maps
+        filename to its page count (currently always 1).
     """
-    settings = get_settings()
-    active_embedding_model = get_active_embedding_model()
-    memory_root = settings.memory_root
-    uploads_dir = os.path.join(memory_root, project_id, "uploads")
-    faiss_dir = os.path.join(memory_root, project_id, "faiss")
-    os.makedirs(faiss_dir, exist_ok=True)
-
-    # No legacy support: rebuild from scratch.
-    clear_dir_contents(faiss_dir)
-
     files: List[str] = []
     if os.path.isdir(uploads_dir):
         for root, _, names in os.walk(uploads_dir):
@@ -230,87 +223,116 @@ def rebuild_faiss_index(project_id: str) -> str:
                     }
                 )
 
-    if not texts:
-        return faiss_dir
+    return texts, metadatas, file_token_sums, file_page_max
 
-    max_req_tokens = int(getattr(settings, "max_embed_tokens_per_request", 250_000))
-    worker_count_raw = int(getattr(settings, "rag_embed_rebuild_workers", 1) or 1)
-    worker_count = max(1, min(8, worker_count_raw))
-    llm = get_embedding_client()
 
-    index: faiss.IndexFlatIP | None = None
-    index_dim: int | None = None
-    index_to_id: List[str] = []
-    docstore: Dict[str, Dict[str, Any]] = {}
+def _prepare_embedding_batches(
+    texts: List[str],
+    metadatas: List[dict],
+    *,
+    max_tokens_per_request: int,
+    model_name: str,
+) -> List[Tuple[List[str], List[dict], int]]:
+    """Pack chunk texts/metadata into token-budgeted embedding batches.
+
+    Args:
+        texts: Ordered chunk texts to embed.
+        metadatas: Per-chunk metadata, index-aligned with ``texts``.
+        max_tokens_per_request: Maximum estimated tokens allowed per batch.
+        model_name: Embedding model id forwarded to the token estimator.
+
+    Returns:
+        A list of ``(batch_texts, batch_metas, est_tokens)`` tuples with
+        defensively copied contents.
+
+    Raises:
+        RuntimeError: If batching produces a batch without metadata.
+    """
     prepared_batches: List[Tuple[List[str], List[dict], int]] = []
     for batch_texts, batch_metas, est_tokens in iter_token_batches(
         texts,
         metadatas=metadatas,
-        max_tokens_per_batch=max_req_tokens,
-        model_name=active_embedding_model,
+        max_tokens_per_batch=max_tokens_per_request,
+        model_name=model_name,
     ):
         if batch_metas is None:
             raise RuntimeError("RAG rebuild batching produced missing metadata.")
         prepared_batches.append((list(batch_texts), list(batch_metas), int(est_tokens)))
+    return prepared_batches
 
-    logger.info(
-        "RAG: rebuild embedding start project=%s batches=%s workers=%s max_req_tokens=%s",
-        project_id,
-        int(len(prepared_batches)),
-        int(worker_count),
-        int(max_req_tokens),
-    )
-    embed_start_ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-    embed_stage_t0 = time.monotonic()
-    write_debug_file(
-        project_id,
-        f"rag/rebuild/{embed_start_ts}_embedding_start.txt",
-        (
-            f"# timestamp: {embed_start_ts}\n"
-            f"# project_id: {project_id}\n"
-            f"# stage: embedding_start\n"
-            f"# embedding_model: {active_embedding_model}\n"
-            f"# total_batches: {int(len(prepared_batches))}\n"
-            f"# workers: {int(worker_count)}\n"
-            f"# max_embed_tokens_per_request: {int(max_req_tokens)}\n"
-        ),
-    )
 
-    def _embed_batch(
-        batch_id: int,
-        batch_texts: List[str],
-        batch_metas: List[dict],
-        est_tokens: int,
-    ) -> Dict[str, Any]:
-        """Embed one prepared batch and package the result for the index build.
+def _embed_one_batch(
+    batch_id: int,
+    batch_texts: List[str],
+    batch_metas: List[dict],
+    est_tokens: int,
+    *,
+    llm: Any,
+    model_name: str,
+) -> Dict[str, Any]:
+    """Embed one prepared batch and package the result for the index build.
 
-        Args:
-            batch_id: 1-based batch ordinal used to reassemble results in order.
-            batch_texts: Chunk texts to embed.
-            batch_metas: Per-chunk metadata aligned with ``batch_texts``.
-            est_tokens: Estimated token count for the batch (telemetry only).
+    Args:
+        batch_id: 1-based batch ordinal used to reassemble results in order.
+        batch_texts: Chunk texts to embed.
+        batch_metas: Per-chunk metadata aligned with ``batch_texts``.
+        est_tokens: Estimated token count for the batch (telemetry only).
+        llm: Embedding client exposing ``embed(texts, model=...)``.
+        model_name: Embedding model id to embed with.
 
-        Returns:
-            A payload dict with the batch id, texts, metas, estimated tokens,
-            resulting vectors, and elapsed seconds.
-        """
-        t0 = time.monotonic()
-        res = llm.embed(list(batch_texts), model=active_embedding_model)
-        dt = time.monotonic() - t0
-        return {
-            "batch_id": int(batch_id),
-            "texts": list(batch_texts),
-            "metas": list(batch_metas),
-            "est_tokens": int(est_tokens),
-            "vectors": list(res.vectors),
-            "elapsed_s": float(dt),
-        }
+    Returns:
+        A payload dict with the batch id, texts, metas, estimated tokens,
+        resulting vectors, and elapsed seconds.
+    """
+    t0 = time.monotonic()
+    res = llm.embed(list(batch_texts), model=model_name)
+    dt = time.monotonic() - t0
+    return {
+        "batch_id": int(batch_id),
+        "texts": list(batch_texts),
+        "metas": list(batch_metas),
+        "est_tokens": int(est_tokens),
+        "vectors": list(res.vectors),
+        "elapsed_s": float(dt),
+    }
 
+
+def _embed_batches_parallel(
+    prepared_batches: List[Tuple[List[str], List[dict], int]],
+    *,
+    llm: Any,
+    model_name: str,
+    worker_count: int,
+    project_id: str,
+) -> Dict[int, Dict[str, Any]]:
+    """Embed all prepared batches concurrently and collect results by batch id.
+
+    Args:
+        prepared_batches: Batches produced by ``_prepare_embedding_batches``.
+        llm: Embedding client passed through to ``_embed_one_batch``.
+        model_name: Embedding model id to embed with.
+        worker_count: Number of parallel embedding workers.
+        project_id: Project id used for log context.
+
+    Returns:
+        A mapping of 1-based batch id to its embedding payload.
+
+    Raises:
+        RuntimeError: If any embedding batch fails (rate-limit or otherwise).
+    """
     batch_results: Dict[int, Dict[str, Any]] = {}
     with ThreadPoolExecutor(max_workers=int(worker_count)) as pool:
         future_to_batch: Dict[Any, int] = {}
         for batch_id, (batch_texts, batch_metas, est_tokens) in enumerate(prepared_batches, start=1):
-            fut = pool.submit(_embed_batch, batch_id, batch_texts, batch_metas, est_tokens)
+            fut = pool.submit(
+                _embed_one_batch,
+                batch_id,
+                batch_texts,
+                batch_metas,
+                est_tokens,
+                llm=llm,
+                model_name=model_name,
+            )
             future_to_batch[fut] = int(batch_id)
         for fut in as_completed(future_to_batch):
             batch_id = int(future_to_batch[fut])
@@ -338,6 +360,42 @@ def rebuild_faiss_index(project_id: str) -> str:
                     f"RAG rebuild failed during embedding batch={batch_id} workers={worker_count}: {exc}"
                 ) from exc
             batch_results[int(batch_id)] = payload
+    return batch_results
+
+
+def _assemble_index_from_results(
+    prepared_batches: List[Tuple[List[str], List[dict], int]],
+    batch_results: Dict[int, Dict[str, Any]],
+    *,
+    project_id: str,
+    worker_count: int,
+    max_req_tokens: int,
+) -> Tuple["faiss.IndexFlatIP | None", "int | None", List[str], Dict[str, Dict[str, Any]]]:
+    """Build the FAISS index and docstore from ordered embedding results.
+
+    Iterates batches in submission order, normalizes each batch's vectors, and
+    accumulates them into a single inner-product index alongside an index-to-id
+    list and docstore keyed by stable chunk ids.
+
+    Args:
+        prepared_batches: The batches embedded (used only for count/log context).
+        batch_results: Mapping of batch id to embedding payload.
+        project_id: Project id used for log context.
+        worker_count: Number of embedding workers (telemetry only).
+        max_req_tokens: Per-request token budget (telemetry only).
+
+    Returns:
+        A tuple ``(index, index_dim, index_to_id, docstore)``. ``index`` and
+        ``index_dim`` are ``None`` when no batch produced vectors.
+
+    Raises:
+        RuntimeError: If a batch result is missing or embedding dimensionality
+            changes mid-build.
+    """
+    index: "faiss.IndexFlatIP | None" = None
+    index_dim: int | None = None
+    index_to_id: List[str] = []
+    docstore: Dict[str, Dict[str, Any]] = {}
 
     for batch_id in range(1, len(prepared_batches) + 1):
         payload = batch_results.get(int(batch_id))
@@ -375,18 +433,31 @@ def rebuild_faiss_index(project_id: str) -> str:
             int(max_req_tokens),
         )
 
-    embed_stage_elapsed_s = time.monotonic() - embed_stage_t0
-    logger.info(
-        "RAG: rebuild embedding complete project=%s batches=%s workers=%s total_embed_elapsed_s=%.2f",
-        project_id,
-        int(len(prepared_batches)),
-        int(worker_count),
-        float(embed_stage_elapsed_s),
-    )
+    return index, index_dim, index_to_id, docstore
 
-    if index is None or index_dim is None or int(index.ntotal) <= 0:
-        return faiss_dir
 
+def _persist_index_artifacts(
+    *,
+    project_id: str,
+    faiss_dir: str,
+    index: "faiss.IndexFlatIP",
+    index_dim: int,
+    index_to_id: List[str],
+    docstore: Dict[str, Dict[str, Any]],
+    settings: Any,
+) -> None:
+    """Write the FAISS index, id map, docstore, manifest, and adjacency sidecar.
+
+    Args:
+        project_id: Project whose artifacts are written.
+        faiss_dir: Target FAISS directory.
+        index: The populated FAISS index to persist.
+        index_dim: Embedding dimensionality recorded in the manifest.
+        index_to_id: Ordered docstore ids aligned with index positions.
+        docstore: Mapping of docstore id to ``{text, metadata}``.
+        settings: Settings providing ``chunk_size``/``chunk_overlap`` for the
+            manifest.
+    """
     faiss.write_index(index, os.path.join(faiss_dir, LTM_INDEX_FILE_NAME))
     atomic_write_json(os.path.join(faiss_dir, LTM_INDEX_TO_ID_NAME), index_to_id)
     atomic_write_json(os.path.join(faiss_dir, LTM_DOCSTORE_NAME), docstore)
@@ -406,6 +477,22 @@ def rebuild_faiss_index(project_id: str) -> str:
     except Exception as exc:
         logger.warning("RAG: exception writing adjacency index project=%s detail=%s", project_id, exc)
 
+
+def _backfill_file_stats(
+    project_id: str,
+    file_token_sums: Dict[str, int],
+    file_page_max: Dict[str, int],
+) -> None:
+    """Backfill per-file token/page counts and embedding status in the database.
+
+    Best-effort: a database failure is logged and otherwise suppressed so a
+    successful index build is not lost due to a stats backfill error.
+
+    Args:
+        project_id: Project whose file rows are updated.
+        file_token_sums: Filename to total token count.
+        file_page_max: Filename to page count.
+    """
     try:
         with get_session() as session:
             for fname, tok_sum in file_token_sums.items():
@@ -425,4 +512,116 @@ def rebuild_faiss_index(project_id: str) -> str:
             exc,
             exc_info=True,
         )
+
+
+def rebuild_faiss_index(project_id: str) -> str:
+    """Rebuild a project's FAISS index from scratch from its uploads directory.
+
+    Clears the existing FAISS directory, parses and chunks every uploaded file,
+    embeds the chunks in parallel batches, then persists the index, docstore,
+    index-to-id map, manifest, and adjacency sidecar. Also backfills per-file
+    token/page counts and embedding status in the database.
+
+    Args:
+        project_id: Project whose index is rebuilt from its uploads directory.
+
+    Returns:
+        The absolute path to the project's FAISS directory. When there are no
+        chunks (or no resulting vectors), the directory is returned without a
+        persisted index.
+
+    Raises:
+        RuntimeError: If batch metadata is missing, an embedding batch fails, a
+            batch result is missing, or the embedding dimensionality changes
+            mid-build.
+    """
+    settings = get_settings()
+    active_embedding_model = get_active_embedding_model()
+    memory_root = settings.memory_root
+    uploads_dir = os.path.join(memory_root, project_id, "uploads")
+    faiss_dir = os.path.join(memory_root, project_id, "faiss")
+    os.makedirs(faiss_dir, exist_ok=True)
+
+    # No legacy support: rebuild from scratch.
+    clear_dir_contents(faiss_dir)
+
+    texts, metadatas, file_token_sums, file_page_max = _collect_chunks_from_uploads(
+        project_id, uploads_dir, settings
+    )
+    if not texts:
+        return faiss_dir
+
+    max_req_tokens = int(getattr(settings, "max_embed_tokens_per_request", 250_000))
+    worker_count_raw = int(getattr(settings, "rag_embed_rebuild_workers", 1) or 1)
+    worker_count = max(1, min(8, worker_count_raw))
+    llm = get_embedding_client()
+
+    prepared_batches = _prepare_embedding_batches(
+        texts,
+        metadatas,
+        max_tokens_per_request=max_req_tokens,
+        model_name=active_embedding_model,
+    )
+
+    logger.info(
+        "RAG: rebuild embedding start project=%s batches=%s workers=%s max_req_tokens=%s",
+        project_id,
+        int(len(prepared_batches)),
+        int(worker_count),
+        int(max_req_tokens),
+    )
+    embed_start_ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    embed_stage_t0 = time.monotonic()
+    write_debug_file(
+        project_id,
+        f"rag/rebuild/{embed_start_ts}_embedding_start.txt",
+        (
+            f"# timestamp: {embed_start_ts}\n"
+            f"# project_id: {project_id}\n"
+            f"# stage: embedding_start\n"
+            f"# embedding_model: {active_embedding_model}\n"
+            f"# total_batches: {int(len(prepared_batches))}\n"
+            f"# workers: {int(worker_count)}\n"
+            f"# max_embed_tokens_per_request: {int(max_req_tokens)}\n"
+        ),
+    )
+
+    batch_results = _embed_batches_parallel(
+        prepared_batches,
+        llm=llm,
+        model_name=active_embedding_model,
+        worker_count=worker_count,
+        project_id=project_id,
+    )
+
+    index, index_dim, index_to_id, docstore = _assemble_index_from_results(
+        prepared_batches,
+        batch_results,
+        project_id=project_id,
+        worker_count=worker_count,
+        max_req_tokens=max_req_tokens,
+    )
+
+    embed_stage_elapsed_s = time.monotonic() - embed_stage_t0
+    logger.info(
+        "RAG: rebuild embedding complete project=%s batches=%s workers=%s total_embed_elapsed_s=%.2f",
+        project_id,
+        int(len(prepared_batches)),
+        int(worker_count),
+        float(embed_stage_elapsed_s),
+    )
+
+    if index is None or index_dim is None or int(index.ntotal) <= 0:
+        return faiss_dir
+
+    _persist_index_artifacts(
+        project_id=project_id,
+        faiss_dir=faiss_dir,
+        index=index,
+        index_dim=index_dim,
+        index_to_id=index_to_id,
+        docstore=docstore,
+        settings=settings,
+    )
+    _backfill_file_stats(project_id, file_token_sums, file_page_max)
     return faiss_dir

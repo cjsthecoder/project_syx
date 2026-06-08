@@ -57,8 +57,9 @@ class OpenAIEmbeddingProvider:
             status_code = getattr(exc, "status_code", None)
             if int(status_code or 0) == 429:
                 return True
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as status_exc:
+            # Non-numeric/absent status code; fall back to message-text detection below.
+            logger.debug("embedding provider status-code parse skipped detail=%s", status_exc)
         msg = str(exc or "").lower()
         return ("rate limit" in msg) or ("too many requests" in msg) or ("429" in msg)
 
@@ -111,6 +112,74 @@ class OpenAIEmbeddingProvider:
         msg = str(exc or "").lower()
         return ("timed out" in msg) or ("timeout" in msg)
 
+    @staticmethod
+    def _parse_embedding_vectors(resp: Any) -> List[List[float]]:
+        """Extract embedding vectors from an OpenAI embeddings response.
+
+        Reads ``resp.data`` directly, falling back to ``model_dump()`` when the
+        attribute is absent, and coerces each item's ``embedding`` into a list of
+        floats. Items without a list embedding are skipped.
+
+        Args:
+            resp: Raw response object returned by the embeddings API.
+
+        Returns:
+            One float vector per response item that carried a list embedding.
+        """
+        vectors: List[List[float]] = []
+        data = getattr(resp, "data", None)
+        if data is None:
+            dumped = getattr(resp, "model_dump", None)
+            if callable(dumped):
+                obj = dumped(mode="python")
+                if isinstance(obj, dict):
+                    data = obj.get("data", [])
+        for item in data or []:
+            vec = getattr(item, "embedding", None)
+            if vec is None and isinstance(item, dict):
+                vec = item.get("embedding")
+            if isinstance(vec, list):
+                vectors.append([float(x) for x in vec])
+        return vectors
+
+    @staticmethod
+    def _rate_limit_base_wait_seconds(exc: Exception, attempt: int) -> float:
+        """Compute the base rate-limit backoff (before jitter) in seconds.
+
+        Honors the provider's ``retry-after`` hint when present; otherwise uses
+        exponential backoff with the attempt index capped at 5.
+
+        Args:
+            exc: The rate-limit exception raised by the SDK call.
+            attempt: One-based rate-limit attempt number.
+
+        Returns:
+            The base wait in seconds; the caller adds jitter.
+        """
+        retry_after_s = OpenAIEmbeddingProvider._extract_retry_after_seconds(exc)
+        if retry_after_s is not None:
+            return float(retry_after_s)
+        return 0.6 * (2 ** min(attempt - 1, 5))
+
+    def _sleep_quietly(self, seconds: float, *, model: str, phase: str) -> None:
+        """Sleep for ``seconds``, logging (but not raising) if interrupted.
+
+        Args:
+            seconds: Backoff duration to sleep.
+            model: Model name, for log context.
+            phase: Backoff phase label (e.g. ``rate-limit`` or ``general``).
+        """
+        try:
+            time.sleep(seconds)
+        except Exception as sleep_exc:
+            logger.info(
+                "embedding provider sleep interrupted during %s backoff model=%s wait_s=%.2f detail=%s",
+                phase,
+                str(model),
+                float(seconds),
+                sleep_exc,
+            )
+
     def embed(
         self,
         texts: List[str],
@@ -154,20 +223,7 @@ class OpenAIEmbeddingProvider:
                     input=clean,
                     timeout=self._timeout_s,
                 )
-                vectors: List[List[float]] = []
-                data = getattr(resp, "data", None)
-                if data is None:
-                    dumped = getattr(resp, "model_dump", None)
-                    if callable(dumped):
-                        obj = dumped(mode="python")
-                        if isinstance(obj, dict):
-                            data = obj.get("data", [])
-                for item in data or []:
-                    vec = getattr(item, "embedding", None)
-                    if vec is None and isinstance(item, dict):
-                        vec = item.get("embedding")
-                    if isinstance(vec, list):
-                        vectors.append([float(x) for x in vec])
+                vectors = self._parse_embedding_vectors(resp)
                 dt = time.monotonic() - t0
                 total_retry_attempts = int(general_attempt) + int(rate_limit_attempt)
                 if total_retry_attempts > 0:
@@ -194,8 +250,7 @@ class OpenAIEmbeddingProvider:
                     )
                 if self._is_rate_limit_error(exc):
                     rate_limit_attempt += 1
-                    retry_after_s = self._extract_retry_after_seconds(exc)
-                    base_wait = retry_after_s if retry_after_s is not None else (0.6 * (2 ** min(rate_limit_attempt - 1, 5)))
+                    base_wait = self._rate_limit_base_wait_seconds(exc, rate_limit_attempt)
                     wait_s = float(base_wait) + random.uniform(0.0, 0.25)
                     logger.warning(
                         "embedding provider throttled model=%s attempt=%s/%s wait_s=%.2f detail=%s",
@@ -207,30 +262,14 @@ class OpenAIEmbeddingProvider:
                     )
                     if rate_limit_attempt > int(rate_limit_retries):
                         break
-                    try:
-                        time.sleep(wait_s)
-                    except Exception as sleep_exc:
-                        logger.info(
-                            "embedding provider sleep interrupted during rate-limit backoff model=%s wait_s=%.2f detail=%s",
-                            str(use_model),
-                            float(wait_s),
-                            sleep_exc,
-                        )
+                    self._sleep_quietly(wait_s, model=str(use_model), phase="rate-limit")
                     continue
 
                 general_attempt += 1
                 if general_attempt > int(retries):
                     break
-                try:
-                    backoff_s = (0.4 * (2 ** (general_attempt - 1))) + random.uniform(0.0, 0.2)
-                    time.sleep(backoff_s)
-                except Exception as sleep_exc:
-                    logger.info(
-                        "embedding provider sleep interrupted during general backoff model=%s backoff_s=%.2f detail=%s",
-                        str(use_model),
-                        float(backoff_s),
-                        sleep_exc,
-                    )
+                backoff_s = (0.4 * (2 ** (general_attempt - 1))) + random.uniform(0.0, 0.2)
+                self._sleep_quietly(backoff_s, model=str(use_model), phase="general")
         raise RuntimeError(
             "embedding provider failed after retries="
             f"{retries} and rate_limit_retries={rate_limit_retries}: {last_err}"

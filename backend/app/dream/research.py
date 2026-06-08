@@ -15,7 +15,7 @@ research fetch used to enrich Dream reasoning.
 import logging
 
 from ..core.config import get_settings
-from ..core.llm import generate_text_response
+from ..core.llm_service import generate_text_response
 from ..utils.tokens import count_tokens as _count_tokens, trim_to_tokens as _trim_to_tokens
 
 logger = logging.getLogger(__name__)

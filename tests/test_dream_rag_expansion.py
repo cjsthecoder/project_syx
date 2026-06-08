@@ -131,9 +131,9 @@ def test_questions_agent_uses_expanded_dream_rag(monkeypatch):
     )
     monkeypatch.setitem(sys.modules, "app.core.config", config_module)
 
-    llm_module = types.ModuleType("app.core.llm")
+    llm_module = types.ModuleType("app.core.llm_service")
     llm_module.generate_text_response = lambda *_args, **_kwargs: SimpleNamespace(text='{"answer": "ok"}', usage={})  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "app.core.llm", llm_module)
+    monkeypatch.setitem(sys.modules, "app.core.llm_service", llm_module)
 
     research_module = types.ModuleType("app.dream.research")
     research_module.count_tokens = lambda text: len(str(text).split())  # type: ignore[attr-defined]
@@ -197,9 +197,9 @@ def test_research_agent_adds_synthesis_expanded_context(monkeypatch):
     )
     monkeypatch.setitem(sys.modules, "app.core.config", config_module)
 
-    llm_module = types.ModuleType("app.core.llm")
+    llm_module = types.ModuleType("app.core.llm_service")
     llm_module.generate_text_response = lambda *_args, **_kwargs: SimpleNamespace(text="## Topic\n\n### Key findings\n- fact", usage={})  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "app.core.llm", llm_module)
+    monkeypatch.setitem(sys.modules, "app.core.llm_service", llm_module)
 
     dream_rag_module = types.ModuleType("app.dream.rag")
 
@@ -271,9 +271,9 @@ def test_dream_context_topic_enrichment_uses_expanded_adapter(monkeypatch):
     config_module.get_settings = lambda: SimpleNamespace(memory_root="")  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.core.config", config_module)
 
-    llm_module = types.ModuleType("app.core.llm")
+    llm_module = types.ModuleType("app.core.llm_service")
     llm_module.generate_text_response = lambda *_args, **_kwargs: SimpleNamespace(text="", usage={})  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "app.core.llm", llm_module)
+    monkeypatch.setitem(sys.modules, "app.core.llm_service", llm_module)
 
     tokens_module = types.ModuleType("app.utils.tokens")
     tokens_module.count_tokens = lambda text: len(str(text).split())  # type: ignore[attr-defined]

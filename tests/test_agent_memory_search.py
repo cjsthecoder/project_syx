@@ -204,7 +204,7 @@ def test_agent_memory_search_endpoint_returns_structured_snippets(monkeypatch):
     monkeypatch.setattr("app.agent_interface.router.write_agent_debug_files", lambda **_kwargs: None)
 
     with patch("app.core.query_builder.build_query", side_effect=AssertionError("classifier called")):
-        with patch("app.core.llm.generate_chat_response", side_effect=AssertionError("model called")):
+        with patch("app.core.llm_service.generate_chat_response", side_effect=AssertionError("model called")):
             response = client.post(
                 "/agent/memory/search",
                 json={

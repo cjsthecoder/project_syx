@@ -14,9 +14,14 @@ deterministic helpers it relies on: cache keying, route filtering, balanced-JSON
 slicing, and contextual-turn formatting.
 """
 
+import json
+
+import pytest
+
 from app.core.query_builder import (
     _cache_key,
     _filter_route_only,
+    _parse_builder_response,
     _slice_first_json,
     format_contextual_turn,
 )
@@ -114,3 +119,37 @@ def test_format_contextual_turn_empty_base_has_no_leading_space():
 def test_format_contextual_turn_ignores_non_string_fields():
     meta = '{"semantic_handle": 5, "intent": "ask"}'
     assert format_contextual_turn("hello", meta) == "hello Intent: ask."
+
+
+def test_parse_builder_response_plain_json():
+    assert _parse_builder_response('{"route": "DIRECT"}', "p1") == {"route": "DIRECT"}
+
+
+def test_parse_builder_response_strips_code_fences():
+    raw = '```json\n{"route": "SYNTHESIS"}\n```'
+    assert _parse_builder_response(raw, "p1") == {"route": "SYNTHESIS"}
+
+
+def test_parse_builder_response_strips_trailing_prose():
+    raw = 'Sure: {"route": "CHITCHAT"} hope that helps'
+    assert _parse_builder_response(raw, "p1") == {"route": "CHITCHAT"}
+
+
+def test_parse_builder_response_skips_leading_garbage():
+    raw = '}}garbage {"route": "OTHER"}'
+    assert _parse_builder_response(raw, "p1") == {"route": "OTHER"}
+
+
+def test_parse_builder_response_missing_route_raises():
+    with pytest.raises(ValueError):
+        _parse_builder_response('{"intent": "ask"}', "p1")
+
+
+def test_parse_builder_response_non_dict_raises():
+    with pytest.raises(ValueError):
+        _parse_builder_response('[1, 2, 3]', "p1")
+
+
+def test_parse_builder_response_unparseable_raises():
+    with pytest.raises(json.JSONDecodeError):
+        _parse_builder_response("not json at all", "p1")

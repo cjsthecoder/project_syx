@@ -2051,7 +2051,7 @@ Version 4.1.2 introduces the first functional Dream Agent. This agent processes 
 * Dream must use the Dream-specific OpenAI Responses wrapper and must not depend on legacy generic LLM wrappers.
 * Create `backend/app/core/dream_llm.py`:
 
-  * Uses the shared LLM runtime via `backend.app.core.llm.generate_text_response(...)` (Responses-style call through `llm_model.factory`).
+  * Uses the shared LLM runtime via `backend.app.core.llm_service.generate_text_response(...)` (Responses-style call through `llm_model.factory`).
   * Uses environment variables:
     * `DREAM_MODEL` (default: `gpt-5.5`)
     * `DREAM_TEMPERATURE` (default: `1.0`)
@@ -2577,7 +2577,7 @@ The returned string SHALL constitute the full and final prompt passed to the LLM
 
 ## FR-4.2.5 LLM Invocation
 The Idea Agent SHALL invoke the LLM using:
-`backend.app.core.llm.generate_text_response(user_prompt: str, ...)`
+`backend.app.core.llm_service.generate_text_response(user_prompt: str, ...)`
 The Idea Agent SHALL:
 - use only the shared core LLM runtime (no Dream-specific wrapper)
 - pass `max_output_tokens=settings.dream_max_tokens` (backed by `DREAM_MAX_TOKENS`, default 32000) for all Idea Agent calls

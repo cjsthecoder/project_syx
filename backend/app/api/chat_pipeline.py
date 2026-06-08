@@ -24,7 +24,7 @@ from ..core.db_models import Project
 from ..core.memory import get_memory_manager
 from ..core.personality import load_project_personality, load_project_system_prompt
 from ..core.query_builder import build_query, format_contextual_turn
-from ..core.route_policy import get_route_policy
+from ..core.route_policy import RoutePolicy, get_route_policy
 from ..rag.manager import merge_daily_and_main
 from ..tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
@@ -276,6 +276,168 @@ class ChatPipeline:
             logger.debug("chat.daily_enabled lookup failed project_id=%s", project_id, exc_info=True)
         return True
 
+    @staticmethod
+    def _initial_rag_metrics() -> Dict[str, Any]:
+        """Return the default RAG metrics dict for a turn (RAG not yet run).
+
+        Returns:
+            A metrics dict with the route defaulted to ``OTHER`` and all counts
+            zeroed, matching the shape returned by ``compute_rag_context``.
+        """
+        return {
+            "route": "OTHER",
+            "rag_enabled": False,
+            "retrieved_count": 0,
+            "kept_count": 0,
+            "expanded_unique_chunks_after_merge": 0,
+            "rag_tokens_injected_est": 0,
+            "final_context_clipped": False,
+        }
+
+    def _classify_route(
+        self,
+        *,
+        project_id: str,
+        message: str,
+        summary: str,
+        preview: str,
+        msg_id: str,
+    ) -> Optional[str]:
+        """Classify a turn into a retrieval route via the query builder.
+
+        Runs the builder and logs the outcome. When the builder is unavailable
+        it logs the skip and returns ``None`` so the caller can no-op; otherwise
+        it returns the upper-cased route (defaulting to ``OTHER``).
+
+        Args:
+            project_id: Project being queried.
+            message: Current user message.
+            summary: Builder input summary of prior turns.
+            preview: Truncated message preview used in debug logs.
+            msg_id: Per-message correlation id for logging.
+
+        Returns:
+            The classified route (e.g. ``DIRECT``, ``OTHER``), or ``None`` when
+            the builder is unavailable.
+        """
+        b = build_query(project_id, summary, message)
+        if b is None:
+            try:
+                logger.debug(
+                    "[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview=\"%s\"",
+                    project_id,
+                    msg_id,
+                    "OTHER",
+                    "false",
+                    0.00,
+                    0,
+                    preview,
+                )
+                logger.debug(
+                    "[ROUTE] project_id=%s message_id=%s route=%s namespaces=%s",
+                    project_id,
+                    msg_id,
+                    "OTHER",
+                    [],
+                )
+            except Exception:
+                logger.debug("chat.builder debug logging failed project_id=%s", project_id, exc_info=True)
+            logger.debug("builder unavailable; skipping RAG for this turn")
+            return None
+
+        route = (b.get("route") or "OTHER").upper()
+        conf = float(b.get("confidence") or 0.0) if isinstance(b.get("confidence"), (int, float, str)) else 0.0
+        topics = b.get("topics") or []
+        standalone = b.get("standalone") or message
+
+        try:
+            builder_prev = (standalone or preview or "")[:self.settings.log_preview_max_chars]
+            logger.debug(
+                "[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview=\"%s\"",
+                project_id,
+                msg_id,
+                route,
+                "true",
+                conf,
+                len(topics or []),
+                builder_prev,
+            )
+        except Exception as exc:
+            logger.debug("chat.builder route logging failed project_id=%s detail=%s", project_id, exc)
+
+        return route
+
+    def _resolve_retrieval_policy(self, route: str) -> Tuple[RoutePolicy, int]:
+        """Resolve the route policy and per-source retrieval depth for a route.
+
+        Args:
+            route: Classified route name.
+
+        Returns:
+            Tuple of ``(policy, per_source_k)`` where ``per_source_k`` is the
+            per-source top-k derived from the base top-k and the route's
+            retrieval multiplier.
+        """
+        pol = get_route_policy(route)
+        per_source_k = compute_per_source_k(int(self.settings.base_top_k), float(pol.retrieval_multiplier))
+        return pol, per_source_k
+
+    def _write_rag_query_debug(
+        self,
+        *,
+        project_id: str,
+        route: str,
+        pol: RoutePolicy,
+        per_source_k: int,
+        queries: list,
+        message: str,
+        primary_query: str,
+        msg_id: str,
+    ) -> None:
+        """Write a best-effort RAG-query debug file for a turn.
+
+        Records the route, retrieval parameters, user prompt, and assembled RAG
+        query string. Failures are swallowed (debug-only; no-op unless debug
+        files are enabled).
+
+        Args:
+            project_id: Project the turn belongs to.
+            route: Classified route name.
+            pol: Resolved route policy (source of multiplier/keep/score values).
+            per_source_k: Per-source top-k used for retrieval.
+            queries: Query strings issued for the turn (used for the count).
+            message: Raw user message.
+            primary_query: Contextualized RAG query string.
+            msg_id: Per-message correlation id for logging.
+        """
+        try:
+            ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+            fname = f"{ts}_rag_query.txt"
+            body = (
+                f"# timestamp: {ts}\n"
+                f"# project_id: {project_id}\n"
+                f"# route: {route}\n"
+                f"# rag: true\n"
+                f"# base_top_k: {int(self.settings.base_top_k)}\n"
+                f"# retrieval_multiplier: {float(pol.retrieval_multiplier)}\n"
+                f"# per_source_k: {int(per_source_k)}\n"
+                f"# max_keep: {int(pol.max_keep)}\n"
+                f"# min_score: {float(pol.min_score)}\n"
+                f"# queries_count: {len([q for q in queries if q])}\n\n"
+                "====== USER PROMPT ======\n"
+                f"{message or ''}\n\n"
+                "====== RAG Query String ======\n"
+                f"{primary_query}\n"
+            )
+            write_debug_file(project_id, f"prompts/{fname}", body)
+        except Exception as exc:
+            logger.debug(
+                "chat.retrieval metrics logging failed project_id=%s message_id=%s detail=%s",
+                project_id,
+                msg_id,
+                exc,
+            )
+
     def compute_rag_context(
         self,
         *,
@@ -287,10 +449,10 @@ class ChatPipeline:
     ) -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
         """Build the RAG context prompt for a turn and report retrieval metrics.
 
-        Runs the query builder to classify the route, applies the route
-        policy (retrieval multiplier, keep limits, score threshold), retrieves
-        and merges daily and main memory, and assembles the injected context
-        text. No-ops when RAG-on-chat is disabled, no project is given, or the
+        Classifies the route (see ``_classify_route``), applies the route policy
+        (retrieval multiplier, keep limits, score threshold), retrieves and
+        merges daily and main memory, and assembles the injected context text.
+        No-ops when RAG-on-chat is disabled, no project is given, or the
         builder/route yields nothing to retrieve. Writes a best-effort RAG
         query debug file and sets the active route/namespace for logging.
 
@@ -307,83 +469,27 @@ class ChatPipeline:
             ``None``), and ``rag_metrics`` reports route, counts, and token
             estimates for the turn.
         """
-        rag_system_prompt: Optional[str] = None
-        primary_ns: Optional[str] = None
-        rag_metrics: Dict[str, Any] = {
-            "route": "OTHER",
-            "rag_enabled": False,
-            "retrieved_count": 0,
-            "kept_count": 0,
-            "expanded_unique_chunks_after_merge": 0,
-            "rag_tokens_injected_est": 0,
-            "final_context_clipped": False,
-        }
+        rag_metrics = self._initial_rag_metrics()
         if (not self.settings.rag_on_chat) or (not project_id):
             return None, None, rag_metrics
 
         summary = self._build_builder_summary(project_id, conversation_history)
-        b = build_query(project_id, summary, message)
-        if b is None:
-            try:
-                logger.debug(
-                    "[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview=\"%s\"",
-                    project_id,
-                    msg_id,
-                    "UNKNOWN",
-                    "false",
-                    0.00,
-                    0,
-                    preview,
-                )
-                logger.debug(
-                    "[ROUTE] project_id=%s message_id=%s route=%s namespaces=%s",
-                    project_id,
-                    msg_id,
-                    "UNKNOWN",
-                    [],
-                )
-            except Exception:
-                logger.debug("chat.builder debug logging failed project_id=%s", project_id, exc_info=True)
-            logger.debug("builder unavailable; skipping RAG for this turn")
+        route = self._classify_route(
+            project_id=project_id,
+            message=message,
+            summary=summary,
+            preview=preview,
+            msg_id=msg_id,
+        )
+        if route is None:
             return None, None, rag_metrics
 
-        route = (b.get("route") or "").upper()
-        conf = float(b.get("confidence") or 0.0) if isinstance(b.get("confidence"), (int, float, str)) else 0.0
-        topics = b.get("topics") or []
-
-        standalone = b.get("standalone") or message
-        _ = standalone  # explicit - retained for compatibility/debug parity
-        _ = b.get("paraphrases") or []
-        _ = b.get("hyde") or ""
-
-        try:
-            builder_prev = (standalone or preview or "")[:self.settings.log_preview_max_chars]
-            logger.debug(
-                "[BUILDER] project_id=%s message_id=%s route=%s rag_used=%s confidence=%.2f topics_count=%s preview=\"%s\"",
-                project_id,
-                msg_id,
-                route or "UNKNOWN",
-                "true",
-                conf,
-                len(topics or []),
-                builder_prev,
-            )
-        except Exception as exc:
-            logger.debug("chat.builder route logging failed project_id=%s detail=%s", project_id, exc)
-
-        set_route(route or "UNKNOWN")
-        try:
-            primary_ns = (route or "other").lower() if route else "other"
-        except Exception:
-            primary_ns = "other"
+        set_route(route)
+        primary_ns = route.lower()
         set_namespace(primary_ns)
-        rag_metrics["route"] = str(route or "OTHER")
+        rag_metrics["route"] = route
 
-        pol = get_route_policy(route or "OTHER")
-        mult_val = float(pol.retrieval_multiplier)
-        max_keep = int(pol.max_keep)
-        min_score = float(pol.min_score)
-        per_source_k = compute_per_source_k(int(self.settings.base_top_k), float(mult_val))
+        pol, per_source_k = self._resolve_retrieval_policy(route)
         if per_source_k <= 0:
             logger.info("Chat: skipping RAG due to route=%s per_source_k=%s", route, per_source_k)
             return None, primary_ns, rag_metrics
@@ -391,49 +497,30 @@ class ChatPipeline:
         daily_enabled = self._daily_enabled(project_id)
         primary_query = format_contextual_turn(message, summary)
         queries = [primary_query] if primary_query else []
-
-        try:
-            ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-            fname = f"{ts}_rag_query.txt"
-            body = (
-                f"# timestamp: {ts}\n"
-                f"# project_id: {project_id}\n"
-                f"# route: {route or 'UNKNOWN'}\n"
-                f"# rag: true\n"
-                f"# base_top_k: {int(self.settings.base_top_k)}\n"
-                f"# retrieval_multiplier: {mult_val}\n"
-                f"# per_source_k: {int(per_source_k)}\n"
-                f"# max_keep: {max_keep}\n"
-                f"# min_score: {min_score}\n"
-                f"# queries_count: {len([q for q in queries if q])}\n\n"
-                "====== USER PROMPT ======\n"
-                f"{message or ''}\n\n"
-                "====== RAG Query String ======\n"
-                f"{primary_query}\n"
-            )
-            write_debug_file(project_id, f"prompts/{fname}", body)
-        except Exception as exc:
-            logger.debug(
-                "chat.retrieval metrics logging failed project_id=%s message_id=%s detail=%s",
-                project_id,
-                msg_id,
-                exc,
-            )
+        self._write_rag_query_debug(
+            project_id=project_id,
+            route=route,
+            pol=pol,
+            per_source_k=per_source_k,
+            queries=queries,
+            message=message,
+            primary_query=primary_query,
+            msg_id=msg_id,
+        )
 
         rc = merge_daily_and_main(
             project_id=project_id,
             query=primary_query,
             daily_enabled=bool(daily_enabled),
-            max_keep=int(max_keep),
-            route=(route or "OTHER"),
+            max_keep=int(pol.max_keep),
+            route=route,
             per_source_k_override=int(per_source_k),
         )
 
-        if rc.get("context_text"):
-            rag_system_prompt = rc["context_text"]
+        rag_system_prompt = rc["context_text"] if rc.get("context_text") else None
         rag_metrics.update(
             {
-                "route": str(route or "OTHER"),
+                "route": route,
                 "rag_enabled": True,
                 "retrieved_count": int(rc.get("ordered_candidates", 0) or 0),
                 "kept_count": int(rc.get("selected_candidates", 0) or 0),

@@ -19,7 +19,7 @@ import re
 from typing import Any, Dict, List
 
 from ..core.config import get_settings
-from ..core.llm import generate_text_response
+from ..core.llm_service import generate_text_response
 from ..utils.tokens import count_tokens
 from .debug import safe_dream_purpose, write_dream_prompt_to_execute, write_dream_response_usage_debug
 from .prompts import build_project_summary_prompt
@@ -480,7 +480,7 @@ def build_dream_context(project_id: str, questions_data: Dict[str, Any]) -> tupl
         write_debug_file(project_id, "debug_context.txt", context_block)
         return context_block, project_summary_text
     except Exception as e:
-        # Per 4.1.3.x: errors inside the context builder must not be fatal.
+        # errors inside the context builder must not be fatal.
         logger.error(
             "project=%s dream context build failed inside context builder: %s",
             project_id,

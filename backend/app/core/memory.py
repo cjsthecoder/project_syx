@@ -16,6 +16,7 @@ System (RAG) messages are not stored. Provides last_context_tokens per project f
 import logging
 import os
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Deque, Tuple
 from datetime import datetime, timedelta, timezone
@@ -252,6 +253,28 @@ def _prune_assistant_for_tagger(
         return original
 
 
+@dataclass
+class _AssistantTagResult:
+    """Result of tagging an assistant turn, carrying metadata for persistence.
+
+    Attributes:
+        tags_meta: Parsed tagger metadata dict (or None when tagging is skipped
+            or fails). May include the private ``_pruned_assistant_text`` field.
+        tags_meta_json: JSON serialization of ``tags_meta`` stored on the row
+            (or None).
+        semantic_handle: Semantic handle from the tagger (or None).
+        question_candidates: Normalized open-question candidates.
+        pruned_assistant_text: Pruned assistant text when pruning changed the
+            content (used for roll-off), else None.
+    """
+
+    tags_meta: Optional[Dict[str, Any]] = None
+    tags_meta_json: Optional[str] = None
+    semantic_handle: Optional[str] = None
+    question_candidates: List[Dict[str, str]] = field(default_factory=list)
+    pruned_assistant_text: Optional[str] = None
+
+
 class MemoryManager:
     """Per-project working memory mirrored with DB for persistence."""
 
@@ -483,26 +506,103 @@ class MemoryManager:
         self._ensure_loaded(project_id)
         now = datetime.now(timezone.utc)
         ns = (namespace or get_namespace() or "other").lower()
-        tags_meta: Optional[Dict[str, Any]] = None
-        tags_meta_json: Optional[str] = None
-        semantic_handle: Optional[str] = None
-        question_candidates: List[Dict[str, str]] = []
-        source_user_message_id: Optional[int] = None
-        pruned_assistant_text: Optional[str] = None
+        source_user_message_id = self._find_source_user_message_id(project_id)
+        tag_result = self._tag_assistant_pair(
+            project_id=project_id,
+            content=content,
+            user_text_for_tagging=user_text_for_tagging,
+            previous_pair_text_for_tagging=previous_pair_text_for_tagging,
+            skip_tagger=skip_tagger,
+        )
+        msg_id = self._persist_assistant_row(
+            project_id=project_id,
+            content=content,
+            now=now,
+            forget=bool(forget),
+            ns=ns,
+            tags_meta_json=tag_result.tags_meta_json,
+            semantic_handle=tag_result.semantic_handle,
+        )
+        self.project_deques[project_id].append({
+            "id": msg_id,
+            "role": "assistant",
+            "content": content,
+            "created_at": now,
+            "forget": bool(forget),
+            "namespace": ns,
+            "keep": False,
+            "tags_meta_json": tag_result.tags_meta_json,
+            "semantic_handle": tag_result.semantic_handle,
+            "pruned_content": tag_result.pruned_assistant_text,
+        })
+        self._append_open_questions_artifact(
+            project_id=project_id,
+            assistant_message_id=(int(msg_id) if isinstance(msg_id, int) else None),
+            user_message_id=source_user_message_id,
+            namespace=ns,
+            semantic_handle=tag_result.semantic_handle if isinstance(tag_result.semantic_handle, str) else None,
+            questions=tag_result.question_candidates,
+        )
+        self.prune_to_limit(project_id)
+
+    def _find_source_user_message_id(self, project_id: str) -> Optional[int]:
+        """Return the id of the user message immediately preceding this turn.
+
+        Inspects the tail of the working-memory deque; the assistant turn being
+        appended is anchored to that user message for open-question provenance.
+
+        Args:
+            project_id: Project whose deque tail is inspected.
+
+        Returns:
+            The trailing user message id, or None when the tail is not a user
+            message or the lookup fails.
+        """
         try:
             dq = self.project_deques.get(project_id)
             if dq:
                 last = dq[-1]
                 if isinstance(last, dict) and (last.get("role") == "user"):
                     uid = last.get("id")
-                    source_user_message_id = int(uid) if isinstance(uid, int) else None
+                    return int(uid) if isinstance(uid, int) else None
         except Exception as exc:
             logger.warning(
                 "append_assistant_message source user lookup failed; project_id=%s detail=%s",
                 project_id,
                 exc,
             )
-            source_user_message_id = None
+        return None
+
+    def _tag_assistant_pair(
+        self,
+        *,
+        project_id: str,
+        content: str,
+        user_text_for_tagging: Optional[str],
+        previous_pair_text_for_tagging: Optional[str],
+        skip_tagger: bool,
+    ) -> _AssistantTagResult:
+        """Prune and tag the assistant turn, returning persistence metadata.
+
+        No-ops (returns an empty result) when ``skip_tagger`` is set or no user
+        anchor text is supplied. Uses the immediately previous active pair as
+        the tagging context anchor. Tagger/serialization failures are logged and
+        downgraded to empty metadata so the message still persists.
+
+        Args:
+            project_id: Project being tagged.
+            content: Raw assistant response text.
+            user_text_for_tagging: User turn used as the tagging anchor; tagging
+                is skipped when None.
+            previous_pair_text_for_tagging: Prior pair text used as context.
+            skip_tagger: When True, bypass tagging entirely.
+
+        Returns:
+            An ``_AssistantTagResult`` with tags metadata, its JSON form, the
+            semantic handle, normalized question candidates, and any pruned
+            assistant text.
+        """
+        result = _AssistantTagResult()
         # Tag immediately after assistant reply using the immediately previous active pair as context anchor.
         try:
             if (not bool(skip_tagger)) and (user_text_for_tagging is not None):
@@ -513,7 +613,7 @@ class MemoryManager:
                     settings=settings,
                 )
                 if assistant_text_for_tagging != str(content or ""):
-                    pruned_assistant_text = assistant_text_for_tagging
+                    result.pruned_assistant_text = assistant_text_for_tagging
                 tagged = tag_pair(
                     user_text_for_tagging,
                     assistant_text_for_tagging,
@@ -528,29 +628,61 @@ class MemoryManager:
                         # semantic_handle is required but may be empty; store None only if missing.
                         "semantic_handle": tagged.get("semantic_handle", None),
                     }
-                    if pruned_assistant_text is not None:
+                    if result.pruned_assistant_text is not None:
                         # Private rolloff-only field: daily/LTM should carry pruned assistant text.
-                        tags_meta["_pruned_assistant_text"] = pruned_assistant_text
-                    question_candidates = self._normalize_question_candidates(tagged.get("questions"))
-                    semantic_handle = tags_meta.get("semantic_handle", None)  # type: ignore[assignment]
+                        tags_meta["_pruned_assistant_text"] = result.pruned_assistant_text
+                    result.tags_meta = tags_meta
+                    result.question_candidates = self._normalize_question_candidates(tagged.get("questions"))
+                    result.semantic_handle = tags_meta.get("semantic_handle", None)
                     try:
-                        tags_meta_json = json.dumps(tags_meta, ensure_ascii=False)
+                        result.tags_meta_json = json.dumps(tags_meta, ensure_ascii=False)
                     except Exception as exc:
                         logger.warning(
                             "append_assistant_message tag metadata serialization failed; project_id=%s detail=%s",
                             project_id,
                             exc,
                         )
-                        tags_meta_json = None
+                        result.tags_meta_json = None
         except Exception as exc:
             logger.warning(
                 "append_assistant_message tagging failed; project_id=%s detail=%s",
                 project_id,
                 exc,
             )
-            tags_meta = None
-            tags_meta_json = None
-            semantic_handle = None
+            result.tags_meta = None
+            result.tags_meta_json = None
+            result.semantic_handle = None
+        return result
+
+    def _persist_assistant_row(
+        self,
+        *,
+        project_id: str,
+        content: str,
+        now: datetime,
+        forget: bool,
+        ns: str,
+        tags_meta_json: Optional[str],
+        semantic_handle: Optional[str],
+    ) -> Optional[int]:
+        """Insert the assistant ``ChatMessage`` and mirror the semantic handle.
+
+        Persists the assistant row and, when a non-empty semantic handle is
+        present, updates ``Project.last_semantic_handle`` so it survives the
+        sleep flush (which wipes ``ChatMessage``).
+
+        Args:
+            project_id: Project receiving the message.
+            content: Assistant response text.
+            now: Creation timestamp.
+            forget: Whether the pair is excluded from roll-off.
+            ns: Resolved namespace.
+            tags_meta_json: Serialized tagger metadata (or None).
+            semantic_handle: Semantic handle to store (or None).
+
+        Returns:
+            The new message id assigned by the database.
+        """
         with get_session() as session:
             msg = ChatMessage(
                 project_id=project_id,
@@ -579,27 +711,7 @@ class MemoryManager:
                 )
             session.commit()
             session.refresh(msg)
-        self.project_deques[project_id].append({
-            "id": msg.id,
-            "role": "assistant",
-            "content": content,
-            "created_at": now,
-            "forget": bool(forget),
-            "namespace": ns,
-            "keep": False,
-            "tags_meta_json": tags_meta_json,
-            "semantic_handle": semantic_handle,
-            "pruned_content": pruned_assistant_text,
-        })
-        self._append_open_questions_artifact(
-            project_id=project_id,
-            assistant_message_id=(int(msg.id) if isinstance(msg.id, int) else None),
-            user_message_id=source_user_message_id,
-            namespace=ns,
-            semantic_handle=semantic_handle if isinstance(semantic_handle, str) else None,
-            questions=question_candidates,
-        )
-        self.prune_to_limit(project_id)
+            return msg.id
 
     def prune_to_limit(self, project_id: str) -> None:
         """Roll off oldest complete pairs until within the pair limit.
@@ -665,6 +777,28 @@ class MemoryManager:
             return
         user_msg = dq.popleft()
         asst_msg = dq.popleft()
+        self._append_pair_to_daily(project_id, user_msg, asst_msg)
+        self._delete_pair_rows(user_msg, asst_msg)
+
+    def _append_pair_to_daily(
+        self,
+        project_id: str,
+        user_msg: Dict[str, Any],
+        asst_msg: Dict[str, Any],
+    ) -> None:
+        """Append an evicted pair to the daily store, reusing stored metadata.
+
+        Skips the append when the pair is forgotten or Daily RAG is disabled.
+        Roll-off does NOT re-run the tagger; it reuses metadata stored on the
+        assistant row, preferring pruned assistant text (from the deque or the
+        stored ``_pruned_assistant_text``) and prepending a tags block to the
+        embedded text. Append failures are logged; eviction still proceeds.
+
+        Args:
+            project_id: Project whose pair is being rolled off.
+            user_msg: Evicted user message dict.
+            asst_msg: Evicted assistant message dict (source of metadata).
+        """
         user_text = user_msg.get('content') or ''
         # Append to daily if enabled and not forgotten; on any error we still drop per spec
         try:
@@ -720,7 +854,7 @@ class MemoryManager:
                     except Exception:
                         tags_block = ""
                 embed_text = (tags_block + pair_text) if tags_block else pair_text
-                ok = append_pair(
+                append_pair(
                     project_id,
                     pair_text,
                     int(user_msg.get("id")),
@@ -739,7 +873,14 @@ class MemoryManager:
                 logger.info("[DailyRAG] Skipping daily append (disabled for project=%s)", project_id)
         except Exception as e:
             logger.error(f"DailyRAG rolloff append failed: {e}")
-        # Delete both rows from DB
+
+    def _delete_pair_rows(self, user_msg: Dict[str, Any], asst_msg: Dict[str, Any]) -> None:
+        """Delete the evicted user/assistant rows from the database.
+
+        Args:
+            user_msg: Evicted user message dict (provides the row id).
+            asst_msg: Evicted assistant message dict (provides the row id).
+        """
         try:
             with get_session() as session:
                 for mid in (user_msg.get("id"), asst_msg.get("id")):

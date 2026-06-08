@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from ...core.config import get_settings
-from ...core.llm import generate_text_response
+from ...core.llm_service import generate_text_response
 from app.utils.debug_utils import write_debug_file
 from ..debug import safe_dream_purpose, write_dream_prompt_to_execute, write_dream_response_usage_debug
 from ..research import count_tokens

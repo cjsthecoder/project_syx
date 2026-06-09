@@ -242,8 +242,51 @@ testable without a mock-provider subclass:
   except in `_extract_retry_after_seconds`, since the regex only matches a
   parseable number.
 
+## Sleep: orchestration helpers with every external stage faked
+
+`app/sleep/` is one large orchestration module (`cycle.py`) plus a thread
+launcher (`worker.py`) and a deterministic consolidator
+(`questions_consolidation.py`). The discipline is to fake **every** boundary —
+DB session, memory manager, tagger, pruner, daily store, dream/auto-accept,
+FAISS rebuild/load, debug writers — and use a temp memory root, so no model,
+FAISS, or network is ever touched:
+
+- **Pure helpers tested directly**: `_public_tags_meta`, `_build_pair_tags_block`,
+  `_summary_content_only` (existing), plus `_prepare_pair_for_daily` (stored-
+  tags-json reuse, malformed-json fallback to the tagger, pruning that mutates
+  the meta) and `_delete_pair_rows`.
+- **Per-stage helpers driven in isolation**: `_flush_active_pairs` (disabled-
+  project skip, rebuild-failure → `partial`, cache-clear failure log, per-project
+  and global failure containment), `_backfill_daily_md`, `_run_dream_and_auto_accept`
+  (disabled/success/failed/raises), `_post_merge_cleanup` (each inner remove
+  failure logged), `_write_merge_artifacts_and_rebuild` (write sleep+dream,
+  clobber-avoidance, `verify_rag` pass/fail, rebuild failure, legacy-lock
+  migration failure), and `_run_project_summary_pipeline` (no-daily skip,
+  consolidate failure, happy path, read failure, dream-summary consumption +
+  debug write, empty-summary skip, merge/dream replace failures, outer failure).
+- **`_sleep_cycle_worker` orchestration** is asserted by faking the stage
+  functions and checking call order (`engage → flush → backfill → pipe* →
+  release`), plus the project-query-failure → empty-rows, fatal-failure-still-
+  releases, and release-failure-logged branches.
+- **Endpoints** use a FastAPI `TestClient`; the stub `get_memory_manager`/
+  `cleanup_old_memories` are faked for happy paths, and the error handlers are
+  reached by making those (or `is_sleeping`/`release_lock`) raise. Note the
+  `/sleep_cycle*` endpoints route failures through `handle_memory_error`, so they
+  return **507**, not 500. The purely-static `GET /sleep_cycle/schedule` has no
+  external call, so its `except` is exercised by monkeypatching `cycle.JSONResponse`
+  to raise only on the `status_code=200` construction (the handler then builds the
+  500 response with the real class).
+- **`worker.py`** double-checked locking: the early skip, the inside-lock skip
+  (an `is_sleeping` iterator returning `False` then `True`), and the real thread
+  start (joined on a `threading.Event` so no daemon thread leaks).
+- **Genuinely unreachable guard** is `# pragma: no cover`: the `if not key:`
+  check in `questions_consolidation` (the key always contains the `"||"`
+  separator, so it is never falsy).
+
 ## Status so far
 
+- `app/sleep/` — entire directory at **100%** (cycle, worker,
+  questions_consolidation).
 - `app/embedding/` — entire directory at **100%** (openai_provider,
   sentence_transformers_provider, base, batching, factory, vector_index).
 - `app/dream/` — entire directory at **100%** (dreams, context, auto_accept,

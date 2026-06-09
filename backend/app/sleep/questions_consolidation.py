@@ -120,7 +120,7 @@ def consolidate_open_questions_artifact(project_id: str) -> Dict[str, Any]:
                     if resolution not in {"ignore", "answer_local", "answer_remote"}:
                         resolution = "ignore"
                     key = _normalize_question_key(question, topic)
-                    if not key:
+                    if not key:  # pragma: no cover - key always includes the "||" separator
                         continue
                     parsed += 1
                     ts = str(obj.get("ts", "") or "")

@@ -93,3 +93,36 @@ def test_word_count_fallback_when_tiktoken_missing(monkeypatch):
     finally:
         # Drop the cached None encoder so other tests use real tiktoken again.
         tokens._resolve_encoding.cache_clear()
+
+
+def test_resolve_encoding_returns_none_when_both_lookups_fail(monkeypatch):
+    class _FakeTiktoken:
+        def encoding_for_model(self, _name):
+            raise RuntimeError("no model encoding")
+
+        def get_encoding(self, _name):
+            raise RuntimeError("no named encoding")
+
+    monkeypatch.setattr(tokens, "tiktoken", _FakeTiktoken())
+    tokens._resolve_encoding.cache_clear()
+    try:
+        # Unique encoding_name keeps this off any cached entry; the model lookup
+        # raises (-> pass) and the named lookup raises (-> return None).
+        assert tokens.get_encoding_cached(model_name="gpt-x", encoding_name="bogus_enc") is None
+    finally:
+        tokens._resolve_encoding.cache_clear()
+
+
+class _RaisingEncoder:
+    def encode(self, _text):
+        raise RuntimeError("encode failed")
+
+
+def test_count_tokens_falls_back_to_word_count_when_encode_raises(monkeypatch):
+    monkeypatch.setattr(tokens, "get_encoding_cached", lambda **_kw: _RaisingEncoder())
+    assert count_tokens("a b c d") == 4
+
+
+def test_trim_returns_text_when_encode_raises(monkeypatch):
+    monkeypatch.setattr(tokens, "get_encoding_cached", lambda **_kw: _RaisingEncoder())
+    assert trim_to_tokens("a b c d", 2) == "a b c d"

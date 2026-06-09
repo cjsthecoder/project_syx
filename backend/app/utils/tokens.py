@@ -13,9 +13,9 @@ Shared tokenization helpers for best-effort counting and trimming.
 from functools import lru_cache
 from typing import Any, Iterable, Optional
 
-try:
+try:  # pragma: no cover - import success/failure is environment-dependent
     import tiktoken  # type: ignore
-except Exception:
+except Exception:  # pragma: no cover
     tiktoken = None
 
 

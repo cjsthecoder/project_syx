@@ -216,8 +216,36 @@ validation/branching logic with crafted payloads:
   returns `None`) and the `=== TOPIC: ===` title-slice `except` in
   `context._extract_rag_topics` (string slicing cannot raise).
 
+## Embedding: fake only the SDK client and the backoff sleeps
+
+`app/embedding/providers/openai_provider.py` looks network-bound but is very
+testable without a mock-provider subclass:
+
+- **Fake just the SDK boundary**: `patch.object(provider_mod, "OpenAI")` so
+  `__init__` builds a fake client, then set
+  `client.embeddings.create.side_effect` to a list of crafted responses /
+  exceptions (`SimpleNamespace(data=[...])`, a `_RateLimitError` with
+  `status_code=429`, a `TimeoutError`, or a generic `RuntimeError`).
+- **Neutralize the backoff** by monkeypatching `provider_mod.time.sleep` (and the
+  retry loop's `random.uniform` jitter is harmless), so retry/exhaustion paths
+  run instantly and deterministically.
+- **Helpers tested directly**: `_is_rate_limit_error` (429 status, non-numeric
+  status → message fallback, unrelated → False), `_is_timeout_error`,
+  `_extract_retry_after_seconds` (dict headers, object-with-`.get` headers, a
+  header value that fails `float()`, the "try again in Ns" message hint, and the
+  no-hint `None`), `_parse_embedding_vectors`, and `_rate_limit_base_wait_seconds`.
+- **`_sleep_quietly`'s interrupted branch** is covered by making `time.sleep`
+  raise a regular `Exception` (not `KeyboardInterrupt`, which is a
+  `BaseException` and would escape the `except Exception`); the log is INFO-level
+  so `caplog.set_level(logging.INFO)` is required.
+- **Genuinely unreachable guard** is `# pragma: no cover`: the `float(m.group(1))`
+  except in `_extract_retry_after_seconds`, since the regex only matches a
+  parseable number.
+
 ## Status so far
 
+- `app/embedding/` — entire directory at **100%** (openai_provider,
+  sentence_transformers_provider, base, batching, factory, vector_index).
 - `app/dream/` — entire directory at **100%** (dreams, context, auto_accept,
   common, rag, research, debug, prompts, and the idea/questions/research agents
   + their prompt builders).

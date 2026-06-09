@@ -97,7 +97,7 @@ class OpenAIEmbeddingProvider:
             return None
         try:
             return float(m.group(1))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError):  # pragma: no cover - regex guarantees a parseable number
             return None
 
     @staticmethod

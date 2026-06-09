@@ -10,9 +10,11 @@ Tests for the OpenAI embedding provider.
 
 Covers the pure response-parsing and rate-limit backoff helpers extracted from
 ``embed`` plus the end-to-end ``embed``/``embed_query`` behavior (success,
-empty-input short-circuit, and rate-limit retry-then-success) using a fake
-OpenAI client.
+empty-input short-circuit, rate-limit retry-then-success, timeout retry, and
+retry exhaustion) using a fake OpenAI client. The only faked boundary is the
+SDK client (``OpenAI``) and the ``time.sleep``/``random`` backoff calls.
 """
+import logging
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -72,6 +74,85 @@ def test_parse_vectors_skips_items_without_list_embedding():
 
 def test_parse_vectors_empty_data():
     assert OpenAIEmbeddingProvider._parse_embedding_vectors(SimpleNamespace(data=[])) == []
+
+
+# ----- _is_rate_limit_error -----
+
+
+def test_is_rate_limit_error_status_code_429():
+    assert OpenAIEmbeddingProvider._is_rate_limit_error(_RateLimitError("x")) is True
+
+
+def test_is_rate_limit_error_non_numeric_status_falls_back_to_message():
+    exc = Exception("429 Too Many Requests")
+    exc.status_code = "not-a-number"  # int() raises -> message-text detection
+    assert OpenAIEmbeddingProvider._is_rate_limit_error(exc) is True
+
+
+def test_is_rate_limit_error_false_for_unrelated():
+    assert OpenAIEmbeddingProvider._is_rate_limit_error(Exception("network down")) is False
+
+
+# ----- _is_timeout_error -----
+
+
+def test_is_timeout_error():
+    assert OpenAIEmbeddingProvider._is_timeout_error(Exception("Request timed out")) is True
+    assert OpenAIEmbeddingProvider._is_timeout_error(Exception("nope")) is False
+
+
+# ----- _extract_retry_after_seconds -----
+
+
+def test_extract_retry_after_from_dict_headers():
+    exc = SimpleNamespace(response=SimpleNamespace(headers={"retry-after": "12"}))
+    assert OpenAIEmbeddingProvider._extract_retry_after_seconds(exc) == 12.0
+
+
+def test_extract_retry_after_from_object_headers():
+    class _Headers:
+        def get(self, key):
+            return "5" if key == "retry-after" else None
+
+    exc = SimpleNamespace(response=SimpleNamespace(headers=_Headers()))
+    assert OpenAIEmbeddingProvider._extract_retry_after_seconds(exc) == 5.0
+
+
+def test_extract_retry_after_header_parse_error_falls_through(caplog):
+    caplog.set_level(logging.DEBUG)
+
+    class _BadHeaders:
+        def get(self, key):
+            return "not-a-float"
+
+    exc = SimpleNamespace(response=SimpleNamespace(headers=_BadHeaders()))
+    # float("not-a-float") raises -> logged -> no "try again in Ns" hint -> None.
+    assert OpenAIEmbeddingProvider._extract_retry_after_seconds(exc) is None
+    assert any("retry-after header parse skipped" in r.message for r in caplog.records)
+
+
+def test_extract_retry_after_from_message_hint():
+    exc = Exception("Rate limit reached, try again in 3.5s. Contact us.")
+    assert OpenAIEmbeddingProvider._extract_retry_after_seconds(exc) == 3.5
+
+
+def test_extract_retry_after_none_when_no_hint():
+    assert OpenAIEmbeddingProvider._extract_retry_after_seconds(Exception("boom")) is None
+
+
+# ----- _sleep_quietly -----
+
+
+def test_sleep_quietly_logs_when_interrupted(monkeypatch, caplog):
+    caplog.set_level(logging.INFO)
+    provider, _client = _make_provider(monkeypatch, create_side_effect=[])
+
+    def _raise(_s):
+        raise RuntimeError("interrupted")
+
+    monkeypatch.setattr(provider_mod.time, "sleep", _raise)
+    provider._sleep_quietly(0.1, model="m", phase="general")  # must not raise
+    assert any("sleep interrupted" in r.message for r in caplog.records)
 
 
 # ----- _rate_limit_base_wait_seconds -----
@@ -135,6 +216,27 @@ def test_embed_raises_after_exhausting_retries(monkeypatch):
 
     with pytest.raises(RuntimeError, match="embedding provider failed after retries"):
         provider.embed(["x"], retries=1)
+
+
+def test_embed_logs_timeout_then_retries(monkeypatch):
+    resp = SimpleNamespace(data=[SimpleNamespace(embedding=[1.0])])
+    provider, client = _make_provider(
+        monkeypatch, create_side_effect=[TimeoutError("Request timed out"), resp]
+    )
+    monkeypatch.setattr(provider_mod.time, "sleep", lambda s: None)
+
+    result = provider.embed(["x"])
+
+    assert result.vectors == [[1.0]]
+    assert client.embeddings.create.call_count == 2
+
+
+def test_embed_raises_after_rate_limit_retries_exhausted(monkeypatch):
+    provider, _client = _make_provider(monkeypatch, create_side_effect=_RateLimitError("slow"))
+    monkeypatch.setattr(provider_mod.time, "sleep", lambda s: None)
+
+    with pytest.raises(RuntimeError, match="rate_limit_retries=0"):
+        provider.embed(["x"], rate_limit_retries=0)
 
 
 def test_embed_query_returns_first_vector(monkeypatch):

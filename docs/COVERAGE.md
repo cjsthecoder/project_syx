@@ -372,8 +372,94 @@ as the embedding provider — fake only the SDK boundary:
   `return None` in `units._next_blank_line_index` (the loop always returns once
   a newline is seen, or `None` earlier).
 
+## App entrypoint (main.py): refactor for testability, then fake startup deps
+
+`app/main.py` was first cleaned up (conservatively, behavior-preserving) so it
+could be tested: imports were consolidated to the top, the dead module-level
+`logger` was removed, the ~155-line `lifespan` body was split into named
+helpers (`_init_factory_clients`, `_init_instrumentation`, `_clear_startup_lock`,
+`_backfill_project_defaults`, `_init_sleep_lock_from_disk`,
+`_seed_main_user_profile`, `_startup_rag_rebuild_sweep`, `_start_sleep_scheduler`),
+and the `__main__` server block became a module-level `LoggingRedirect`,
+`_flush_and_close_log_handlers()`, and `run_server()` (with
+`if __name__ == "__main__": run_server()` preserved for `python -m app.main`).
+
+`test_main.py` then covers it without real startup or a real server:
+- Each startup helper is called directly with its dependencies faked
+  (`get_session` via a `_FakeSession`/`_FakeExec`, `get_llm_client`,
+  `get_embedding_client`, `init_instrumentation`, `rebuild_faiss_index`,
+  `BackgroundScheduler`, `release_lock`, etc.), covering success plus every
+  failure branch -- including the fatal sentence_transformers embedding re-raise
+  and the USER_PROFILE copy + RAG-rebuild paths (driven with `tmp_path`).
+- `lifespan` is driven as an async context manager (`asyncio.run`) with the
+  helpers patched, asserting ordering and the shutdown `end_run` success +
+  failure.
+- `sleep_guard` (block 423 / GET / allowlist / state-check failure),
+  `_schedule_entrypoint`, `root`, `serve_react_app`, and `health_check` are
+  tested via the route functions / `TestClient`.
+- `run_server` is exercised with a patched `uvicorn.run` (no real server) across
+  the DEBUG and non-DEBUG branches; `LoggingRedirect` and
+  `_flush_and_close_log_handlers` are unit-tested (the latter with the root
+  logger handlers swapped to a `_BoomHandler` via a fixture so real handlers are
+  never closed).
+- `# pragma: no cover` is used only for genuine system/entry points: the
+  import-time route-policy fail-fast guard, the `except KeyboardInterrupt`
+  signal handler, and the `if __name__ == "__main__"` line.
+
+## Utils tokens / dream_summary / debug_utils: fake encoders + I/O failures
+
+The remaining `app/utils` helpers are small and best-effort, so the gaps were
+the import/encode fallbacks and the write-failure branches:
+
+- **tokens**: `test_utils_tokens.py` drives `_resolve_encoding` to `None` when
+  both the model-specific and named lookups raise (a fake `tiktoken` whose
+  `encoding_for_model`/`get_encoding` raise, with a unique `encoding_name` to
+  dodge the `lru_cache`), and `count_tokens`/`trim_to_tokens` falling back to
+  word count / original text when `enc.encode` raises (a `_RaisingEncoder`
+  injected via `get_encoding_cached`). The `tiktoken` import guard stays
+  `# pragma: no cover` (environment-dependent, like the `ctypes` import).
+- **dream_summary**: `collect_research_topics` skips non-dict items and non-dict
+  research entries; `write_latest_sleep_summary` no-ops on a blank summary,
+  writes the card under `tmp_path`, and logs a warning when `open` raises
+  `OSError` (patched via `monkeypatch.setattr(dream_summary, "open", ...)`).
+- **debug_utils**: `test_utils_debug_utils.py` covers the disabled no-op
+  (`generate_debug_files=False`), the enabled happy-path write under
+  `memory/{project}/debug/`, and the warning branch when `os.makedirs` raises.
+
+## Utils logging: fake the terminal/Windows probe, snapshot global state
+
+`app/utils/logging.py` is small but touches process-global logging and
+terminal/OS detection. `test_utils_logging.py` covers it without a real TTY,
+Windows console, or permanently mutated logging config:
+
+- **CustomFormatter**: patch `_supports_colors` to force both the colored and
+  the plain format dictionaries, and render a record through `format()`
+  (including the unknown-level → INFO fallback).
+- **`_supports_colors`**: capture the real method (`_REAL_SUPPORTS_COLORS`)
+  before patching, then drive each branch by faking `sys.stdout.isatty`,
+  `TERM`, and `os.name`: non-tty → False, known `TERM` → True, unknown `TERM`
+  on non-Windows → False, and the Windows path where a stub `ctypes` whose
+  `kernel32` lacks `GetStdHandle` raises `AttributeError` → False. The real
+  Windows `GetConsoleMode` call and the `ctypes` import block stay
+  `# pragma: no cover` (environment-specific).
+- **`setup_logging`**: a fixture snapshots and restores the root / `uvicorn` /
+  `uvicorn.error` / `syx` logger handlers, levels, and `propagate` flags so the
+  reconfiguration does not leak into other tests. `get_settings` is faked to a
+  `SimpleNamespace` writing to `tmp_path`, exercising both the DEBUG branch
+  (uvicorn → DEBUG) and the INFO branch.
+- **Context vars + loggers**: the `set_/get_/clear_` message-id, route, and
+  namespace helpers round-trip, `get_logger` always returns the shared `syx`
+  logger, and the `RequestLogger`/`LLMLogger` helpers are asserted via `caplog`.
+
 ## Status so far
 
+- **Backend at 100%**: every measured module reports 0 missing lines (the only
+  exclusions are `app/tracking/*`, omitted from measurement, and a handful of
+  `# pragma: no cover` import-time/system guards).
+- `app/main.py` — at **100%** (startup helpers, lifespan, sleep_guard,
+  scheduler entrypoint, SPA routes, health check, run_server/LoggingRedirect).
+- `app/utils/` — entire directory at **100%** (logging, dream_summary, tokens,
+  debug_utils, errors).
 - `app/pruning/light_response_pruner/` — entire package at **100%** (config,
   models, pruner, units, similarity, whitespace, markdown, normalize, rules).
 - `app/llm_model/` — entire directory at **100%** (providers/openai_provider,

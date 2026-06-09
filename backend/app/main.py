@@ -14,23 +14,19 @@ It includes endpoints for chat, RAG queries, projects, and sleep cycle managemen
 
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import uuid
-from contextlib import asynccontextmanager
-
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-
-# Set up module-level logger
-logger = logging.getLogger(__name__)
-
-import shutil
+from contextlib import asynccontextmanager, redirect_stderr, redirect_stdout
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from sqlmodel import select
 
 from .agent_interface import router as agent_interface_router
 from .api import chat
@@ -46,7 +42,7 @@ from .core.db_models import Project
 from .core.models import HealthResponse
 from .core.personality import backfill_all_projects
 from .core.route_policy import load_and_validate_route_policy
-from .core.state import init_from_disk, is_sleeping
+from .core.state import clear_stale_lock, init_from_disk, is_sleeping, release_lock
 from .embedding.factory import get_embedding_client
 from .llm_model.factory import get_llm_client, get_llm_client_mini
 from .rag.manager import rebuild_faiss_index
@@ -64,7 +60,7 @@ logger.info("Config: DB_PATH=%s", settings.db_path)
 # route_policy.json is required; validate at startup (fail-fast).
 try:
     load_and_validate_route_policy()
-except Exception as e:
+except Exception as e:  # pragma: no cover - import-time fail-fast guard
     logger.error("[CONFIG] route_policy.json validation failed: %s", e)
     raise
 
@@ -191,8 +187,6 @@ def _ensure_default_project() -> None:
     no-op when a project named ``Main`` already exists. Downstream startup steps
     (default backfill, ``USER_PROFILE.txt`` seeding) then operate on it.
     """
-    from sqlmodel import select
-
     try:
         with get_session() as session:
             existing = session.exec(select(Project).where(Project.name.ilike("Main"))).first()
@@ -214,25 +208,14 @@ def _ensure_default_project() -> None:
         logger.warning("[INIT] Failed to ensure default 'Main' project: %s", e, exc_info=True)
 
 
-# Lifespan handler to manage startup/shutdown
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Manage application startup and shutdown side effects.
+def _init_factory_clients() -> None:
+    """Eagerly construct the LLM and embedding factory clients at startup.
 
-    On startup this initializes the database, ensures the default ``Main``
-    system project exists, eagerly constructs the LLM and embedding factory
-    clients, starts the instrumentation run, clears any leftover sleep lock,
-    backfills project defaults, seeds ``USER_PROFILE.txt`` for the Main project
-    (rebuilding its RAG index), optionally rebuilds every project's RAG index,
-    and starts the daily sleep scheduler. On shutdown it finalizes the
-    instrumentation run.
+    LLM client failures are logged and tolerated. Embedding failures are
+    re-raised (fatal) when the configured provider is ``sentence_transformers``,
+    since the system cannot embed without it; otherwise they are logged and
+    tolerated.
     """
-    logger.info("FastAPI startup")
-    init_db()
-    # Seed the default system project ('Main') when absent. The squashed,
-    # schema-only initial migration no longer creates it as a data seed.
-    _ensure_default_project()
-    # Initialize factory clients at startup so configuration is visible in logs.
     try:
         get_llm_client()
         get_llm_client_mini()
@@ -253,7 +236,14 @@ async def lifespan(app: FastAPI):
         )
     else:
         logger.info("[INIT] Factory clients initialized at startup")
-    # Initialize instrumentation facade and start process run if enabled.
+
+
+def _init_instrumentation() -> None:
+    """Initialize the instrumentation facade and start the process run if enabled.
+
+    Failures are logged and swallowed so a tracking problem never blocks
+    startup.
+    """
     try:
         git_commit, git_dirty = _collect_git_metadata()
         instr = init_instrumentation(get_settings(), has_lifespan_hook=True)
@@ -272,28 +262,41 @@ async def lifespan(app: FastAPI):
             )
     except Exception as e:
         logger.warning("[TRACKING] Failed to initialize instrumentation: %s", e, exc_info=True)
-    # Clear any leftover lock on startup to avoid stuck sleep state
-    try:
-        from .core.state import release_lock
 
+
+def _clear_startup_lock() -> None:
+    """Clear any leftover sleep lock on startup to avoid a stuck sleep state."""
+    try:
         release_lock()
         logger.info("[SLEEP] Cleared any existing lock on startup")
     except Exception as e:
         logger.warning("[SLEEP] Failed clearing startup lock: %s", e)
-    # Backfill system prompt and personality defaults for existing projects
+
+
+def _backfill_project_defaults() -> None:
+    """Backfill system prompt and personality defaults for existing projects."""
     try:
         backfill_all_projects()
     except Exception as e:
         logger.warning("[PROJECT] Backfill defaults failed: %s", e, exc_info=True)
-    # Initialize sleep lock from disk if present
+
+
+def _init_sleep_lock_from_disk() -> None:
+    """Initialize the in-memory sleep lock from the on-disk lock if present."""
     try:
         init_from_disk()
     except Exception as e:
         logger.warning("[SLEEP] Failed to init lock from disk: %s", e, exc_info=True)
-    # Seed USER_PROFILE.txt for Main if present and missing
-    try:
-        from sqlmodel import select
 
+
+def _seed_main_user_profile() -> None:
+    """Seed ``USER_PROFILE.txt`` for the Main project when present and missing.
+
+    Copies the packaged default profile into Main's uploads directory and
+    rebuilds its RAG index so the baseline knowledge is retrievable. All
+    failures are logged and swallowed (best-effort seeding).
+    """
+    try:
         with get_session() as session:
             row = session.exec(select(Project).where(Project.name.ilike("Main"))).first()
         if row:
@@ -321,11 +324,16 @@ async def lifespan(app: FastAPI):
                 )
     except Exception as e:
         logger.warning("[INIT] Main seed failed: %s", e, exc_info=True)
-    # Optional startup sweep to rebuild all project RAG indexes from uploads.
+
+
+def _startup_rag_rebuild_sweep() -> None:
+    """Optionally rebuild every project's RAG index from uploads at startup.
+
+    Controlled by ``FORCE_RAG_REBUILD_ON_STARTUP``; per-project rebuild failures
+    are isolated and logged, and the whole sweep is best-effort.
+    """
     try:
         if bool(get_settings().force_rag_rebuild_on_startup):
-            from sqlmodel import select
-
             with get_session() as session:
                 project_ids = [p.id for p in session.exec(select(Project)).all()]
 
@@ -343,7 +351,14 @@ async def lifespan(app: FastAPI):
             logger.info("[INIT] FORCE_RAG_REBUILD_ON_STARTUP disabled; skipping full RAG rebuild.")
     except Exception as e:
         logger.warning("[INIT] Startup RAG rebuild sweep failed: %s", e, exc_info=True)
-    # Start daily scheduler if enabled
+
+
+def _start_sleep_scheduler() -> None:
+    """Start the daily background sleep-cycle scheduler when enabled.
+
+    Failures are logged and swallowed so a scheduler problem never blocks
+    startup.
+    """
     try:
         if get_settings().enable_scheduler:
             sched = BackgroundScheduler(timezone=None)
@@ -361,6 +376,34 @@ async def lifespan(app: FastAPI):
             logger.info("[SCHED] Sleep scheduler started (hour=%s, minute=%s)", hour, minute)
     except Exception as e:
         logger.warning("[SCHED] Failed to start scheduler: %s", e, exc_info=True)
+
+
+# Lifespan handler to manage startup/shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application startup and shutdown side effects.
+
+    On startup this initializes the database, ensures the default ``Main``
+    system project exists, eagerly constructs the LLM and embedding factory
+    clients, starts the instrumentation run, clears any leftover sleep lock,
+    backfills project defaults, seeds ``USER_PROFILE.txt`` for the Main project
+    (rebuilding its RAG index), optionally rebuilds every project's RAG index,
+    and starts the daily sleep scheduler. On shutdown it finalizes the
+    instrumentation run.
+    """
+    logger.info("FastAPI startup")
+    init_db()
+    # Seed the default system project ('Main') when absent. The squashed,
+    # schema-only initial migration no longer creates it as a data seed.
+    _ensure_default_project()
+    _init_factory_clients()
+    _init_instrumentation()
+    _clear_startup_lock()
+    _backfill_project_defaults()
+    _init_sleep_lock_from_disk()
+    _seed_main_user_profile()
+    _startup_rag_rebuild_sweep()
+    _start_sleep_scheduler()
     try:
         yield
     finally:
@@ -401,12 +444,8 @@ app.include_router(llm_models.router, tags=["models"])
 app.include_router(dream_api.router, tags=["dream"])
 app.include_router(agent_interface_router.router, tags=["agent-interface"])
 
+
 # Write-blocking middleware during sleep
-from fastapi.responses import JSONResponse
-
-from .core.state import clear_stale_lock
-
-
 @app.middleware("http")
 async def sleep_guard(request: Request, call_next):
     """Reject mutating requests with HTTP 423 while a sleep cycle is in progress.
@@ -564,7 +603,77 @@ async def serve_react_app(full_path: str):
         }
 
 
-if __name__ == "__main__":
+class LoggingRedirect:
+    """File-like adapter that forwards stdout/stderr writes to the logger."""
+
+    def __init__(self, logger, level):
+        """Configure the adapter to forward writes to a logger at one level.
+
+        Args:
+            logger: Logger that received writes are forwarded to.
+            level: Logging level used for forwarded lines.
+        """
+        self.logger = logger
+        self.level = level
+        self.buffer = ""
+
+    def write(self, text):
+        """Forward a non-empty stdout/stderr write to the configured logger.
+
+        Blank writes are dropped, and sentence-transformers/tqdm weight-loading
+        progress is suppressed except for the completed line (demoted to INFO)
+        so genuine warnings/errors retain their severity.
+
+        Args:
+            text: The text chunk written to the redirected stream.
+        """
+        line = (text or "").strip()
+        if not line:
+            return
+        # sentence-transformers/tqdm prints weight-loading progress to stderr.
+        # Keep only the completed progress line and demote it to INFO so stderr
+        # redirection still preserves warning/error semantics for real failures.
+        if "Loading weights:" in line:
+            if "100%|" in line:
+                self.logger.info(line)
+            return
+        self.logger.log(self.level, line)
+
+    def flush(self):
+        pass
+
+
+def _flush_and_close_log_handlers() -> None:
+    """Flush and close all root logger handlers for a clean shutdown.
+
+    Per-handler flush/close failures are logged at INFO and tolerated so a
+    single misbehaving handler cannot break shutdown.
+    """
+    root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        try:
+            handler.flush()
+        except Exception as exc:
+            logger.info(
+                "[SHUTDOWN] Failed to flush log handler %s: %s", type(handler).__name__, exc
+            )
+        try:
+            if hasattr(handler, "close"):
+                handler.close()
+        except Exception as exc:
+            logger.info(
+                "[SHUTDOWN] Failed to close log handler %s: %s", type(handler).__name__, exc
+            )
+
+
+def run_server() -> None:
+    """Launch the uvicorn server (the ``python -m app.main`` entry point).
+
+    Validates the OpenAI key (warn-only), reads host/port from settings, and
+    runs uvicorn. Outside DEBUG, stdout/stderr are redirected through the shared
+    logger so third-party output keeps consistent formatting and severity. On
+    Ctrl-C it shuts down gracefully, and log handlers are always flushed/closed.
+    """
     import uvicorn
 
     # Validate configuration
@@ -575,55 +684,12 @@ if __name__ == "__main__":
     # Get configuration from settings
     host = settings.host
     port = settings.port
-    reload = settings.reload
 
     logger.info(f"Starting Syx API server on {host}:{port}")
     logger.info(f"API Documentation: http://{host}:{port}/api/docs")
     logger.info(f"Health Check: http://{host}:{port}/health")
 
     # Restore stdout/stderr redirection so uvicorn and other libs flow through our logger
-    import sys
-    from contextlib import redirect_stderr, redirect_stdout
-
-    class LoggingRedirect:
-        """File-like adapter that forwards stdout/stderr writes to the logger."""
-
-        def __init__(self, logger, level):
-            """Configure the adapter to forward writes to a logger at one level.
-
-            Args:
-                logger: Logger that received writes are forwarded to.
-                level: Logging level used for forwarded lines.
-            """
-            self.logger = logger
-            self.level = level
-            self.buffer = ""
-
-        def write(self, text):
-            """Forward a non-empty stdout/stderr write to the configured logger.
-
-            Blank writes are dropped, and sentence-transformers/tqdm weight-loading
-            progress is suppressed except for the completed line (demoted to INFO)
-            so genuine warnings/errors retain their severity.
-
-            Args:
-                text: The text chunk written to the redirected stream.
-            """
-            line = (text or "").strip()
-            if not line:
-                return
-            # sentence-transformers/tqdm prints weight-loading progress to stderr.
-            # Keep only the completed progress line and demote it to INFO so stderr
-            # redirection still preserves warning/error semantics for real failures.
-            if "Loading weights:" in line:
-                if "100%|" in line:
-                    self.logger.info(line)
-                return
-            self.logger.log(self.level, line)
-
-        def flush(self):
-            pass
-
     stdout_redirect = LoggingRedirect(logger, logging.INFO)
     stderr_redirect = LoggingRedirect(logger, logging.WARNING)
 
@@ -655,22 +721,11 @@ if __name__ == "__main__":
                     use_colors=False,
                     log_config=None,
                 )
-    except KeyboardInterrupt:
+    except KeyboardInterrupt:  # pragma: no cover - OS interrupt signal
         logger.info("Received Ctrl-C (KeyboardInterrupt). Shutting down gracefully...")
     finally:
-        # Flush and close logging handlers to ensure clean shutdown
-        root_logger = logging.getLogger()
-        for handler in list(root_logger.handlers):
-            try:
-                handler.flush()
-            except Exception as exc:
-                logger.info(
-                    "[SHUTDOWN] Failed to flush log handler %s: %s", type(handler).__name__, exc
-                )
-            try:
-                if hasattr(handler, "close"):
-                    handler.close()
-            except Exception as exc:
-                logger.info(
-                    "[SHUTDOWN] Failed to close log handler %s: %s", type(handler).__name__, exc
-                )
+        _flush_and_close_log_handlers()
+
+
+if __name__ == "__main__":  # pragma: no cover - process entry point
+    run_server()

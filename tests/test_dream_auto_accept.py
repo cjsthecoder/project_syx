@@ -292,3 +292,183 @@ def test_auto_accept_renames_dream_json_on_persist_failure(tmp_path, monkeypatch
     assert not dream_path.exists()
     assert Path(result.renamed_bad_path).name.startswith("bad_dream_")
     assert Path(result.renamed_bad_path).exists()
+
+
+# --- helper-level coverage -------------------------------------------------
+
+
+def test_bad_dream_path_collision_uses_unique_suffix(tmp_path, monkeypatch):
+    auto_accept, _ = _load_auto_accept_module(monkeypatch)
+    # Force os.path.exists to report the first candidate as taken.
+    monkeypatch.setattr(auto_accept.os.path, "exists", lambda _p: True)
+    path = auto_accept._bad_dream_path(str(tmp_path))
+    assert path.startswith(str(tmp_path)) and path.endswith(".json")
+    # The unique form embeds an extra "_<nanoseconds>" before .json.
+    assert auto_accept.os.path.basename(path).count("_") >= 3
+
+
+def test_rename_bad_dream_logs_on_oserror(tmp_path, monkeypatch, caplog):
+    auto_accept, _ = _load_auto_accept_module(monkeypatch)
+    monkeypatch.setattr(
+        auto_accept.os, "replace", lambda *a, **k: (_ for _ in ()).throw(OSError("locked"))
+    )
+    result = auto_accept._rename_bad_dream("p1", str(tmp_path / "dream.json"))
+    assert result is None
+    assert any("Failed renaming bad dream.json" in r.message for r in caplog.records)
+
+
+def test_delete_dream_file_logs_on_oserror(tmp_path, monkeypatch, caplog):
+    auto_accept, _ = _load_auto_accept_module(monkeypatch)
+    dream_path = tmp_path / "dream.json"
+    dream_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        auto_accept.os, "remove", lambda _p: (_ for _ in ()).throw(OSError("locked"))
+    )
+    assert auto_accept._delete_dream_file("p1", str(dream_path)) is False
+    assert any("Failed deleting dream.json" in r.message for r in caplog.records)
+
+
+def test_prepare_dream_summary_paths_migrates_legacy_lock(tmp_path, monkeypatch):
+    auto_accept, _ = _load_auto_accept_module(monkeypatch)
+    base_dir = tmp_path / "p1"
+    base_dir.mkdir()
+    (base_dir / "dream_summary.lock").write_text("", encoding="utf-8")
+    summary_path, lock_path = auto_accept._prepare_dream_summary_paths(str(base_dir), "p1")
+    assert lock_path.endswith("state/dream_summary.lock")
+    assert Path(lock_path).exists() and not (base_dir / "dream_summary.lock").exists()
+
+
+def test_prepare_dream_summary_paths_migration_failure_logged(tmp_path, monkeypatch, caplog):
+    auto_accept, _ = _load_auto_accept_module(monkeypatch)
+    base_dir = tmp_path / "p1"
+    base_dir.mkdir()
+    (base_dir / "dream_summary.lock").write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        auto_accept.os, "replace", lambda *a, **k: (_ for _ in ()).throw(OSError("locked"))
+    )
+    auto_accept._prepare_dream_summary_paths(str(base_dir), "p1")
+    assert any("lock migration failed" in r.message for r in caplog.records)
+
+
+def test_tag_dream_pairs_skips_empty_pair(tmp_path, monkeypatch, caplog):
+    auto_accept, _ = _load_auto_accept_module(monkeypatch)
+    monkeypatch.setattr(
+        auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
+    # answer_local item with blank origin_text -> empty user_text -> skipped.
+    item = {
+        "id": "i1",
+        "origin_text": "   ",
+        "assistant_response": "a",
+        "source_resolution": "answer_local",
+    }
+    tagged = auto_accept._tag_dream_pairs("p1", [item])
+    assert tagged == []
+    assert any("Skipping empty memory pair" in r.message for r in caplog.records)
+
+
+def test_auto_accept_tagger_failure_persists_without_tags(tmp_path, monkeypatch, caplog):
+    auto_accept, calls = _load_auto_accept_module(monkeypatch, tagger_raises=True)
+    monkeypatch.setattr(
+        auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
+    project_dir = tmp_path / "p1"
+    project_dir.mkdir()
+    (project_dir / "dream.json").write_text(
+        json.dumps({"items": [{"id": "i1", "origin_text": "q", "assistant_response": "a"}]}),
+        encoding="utf-8",
+    )
+    result = auto_accept.auto_accept_dreams("p1")
+    assert result.accepted == 1
+    assert any("Tagger failed" in r.message for r in caplog.records)
+
+
+def test_auto_accept_no_dream_json_returns_empty(tmp_path, monkeypatch):
+    auto_accept, _ = _load_auto_accept_module(monkeypatch)
+    monkeypatch.setattr(
+        auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
+    (tmp_path / "p1").mkdir()
+    result = auto_accept.auto_accept_dreams("p1")
+    assert result.processed == 0 and result.accepted == 0
+
+
+def test_auto_accept_invalid_json_quarantines(tmp_path, monkeypatch):
+    auto_accept, _ = _load_auto_accept_module(monkeypatch)
+    monkeypatch.setattr(
+        auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
+    project_dir = tmp_path / "p1"
+    project_dir.mkdir()
+    (project_dir / "dream.json").write_text("{not valid json", encoding="utf-8")
+    result = auto_accept.auto_accept_dreams("p1")
+    assert result.failed == 1 and result.renamed_bad_path is not None
+
+
+def test_auto_accept_invalid_shape_quarantines(tmp_path, monkeypatch):
+    auto_accept, _ = _load_auto_accept_module(monkeypatch)
+    monkeypatch.setattr(
+        auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
+    project_dir = tmp_path / "p1"
+    project_dir.mkdir()
+    (project_dir / "dream.json").write_text(json.dumps([1, 2, 3]), encoding="utf-8")
+    result = auto_accept.auto_accept_dreams("p1")
+    assert "invalid_dream_json_shape" in result.errors
+    assert result.renamed_bad_path is not None
+
+
+def test_auto_accept_no_items_delete_failure(tmp_path, monkeypatch):
+    auto_accept, _ = _load_auto_accept_module(monkeypatch)
+    monkeypatch.setattr(
+        auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
+    monkeypatch.setattr(auto_accept, "_delete_dream_file", lambda pid, path: False)
+    project_dir = tmp_path / "p1"
+    project_dir.mkdir()
+    # All-remote-without-research -> nothing to process.
+    (project_dir / "dream.json").write_text(
+        json.dumps({"items": [{"id": "r1", "source_resolution": "answer_remote"}]}),
+        encoding="utf-8",
+    )
+    result = auto_accept.auto_accept_dreams("p1")
+    assert result.failed == 1 and "delete_dream_json_failed" in result.errors
+
+
+def test_auto_accept_rebuild_cache_failure_recorded(tmp_path, monkeypatch):
+    auto_accept, _ = _load_auto_accept_module(monkeypatch)
+    monkeypatch.setattr(
+        auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
+    monkeypatch.setattr(
+        auto_accept,
+        "rebuild_daily_cache",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("rebuild boom")),
+    )
+    project_dir = tmp_path / "p1"
+    project_dir.mkdir()
+    (project_dir / "dream.json").write_text(
+        json.dumps({"items": [{"id": "i1", "origin_text": "q", "assistant_response": "a"}]}),
+        encoding="utf-8",
+    )
+    result = auto_accept.auto_accept_dreams("p1")
+    assert any(err.startswith("rebuild_cache:") for err in result.errors)
+    assert result.failed >= 1
+
+
+def test_auto_accept_success_but_delete_fails(tmp_path, monkeypatch):
+    auto_accept, _ = _load_auto_accept_module(monkeypatch)
+    monkeypatch.setattr(
+        auto_accept, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
+    )
+    monkeypatch.setattr(auto_accept, "_delete_dream_file", lambda pid, path: False)
+    project_dir = tmp_path / "p1"
+    project_dir.mkdir()
+    (project_dir / "dream.json").write_text(
+        json.dumps({"items": [{"id": "i1", "origin_text": "q", "assistant_response": "a"}]}),
+        encoding="utf-8",
+    )
+    result = auto_accept.auto_accept_dreams("p1")
+    assert result.accepted == 1
+    assert result.failed == 1 and "delete_dream_json_failed" in result.errors
+    assert result.renamed_bad_path is not None

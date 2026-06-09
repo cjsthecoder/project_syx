@@ -181,8 +181,46 @@ For `app/core/` the same boundary discipline applied:
   (so it always raised `AttributeError`). With no callers anywhere in the tree it
   was deleted outright rather than covered.
 
+## Dream: agent pipeline with faked LLM/RAG boundaries
+
+For `app/dream/` the agents and orchestration are heavy on LLM and retrieval
+calls, so the discipline is to fake **only** those boundaries and drive the real
+validation/branching logic with crafted payloads:
+
+- **Pure helpers tested directly**: `common` (id collection, resolution
+  normalization, research filtering, pair expansion, tag-block formatting,
+  markdown assembly), `prompts`/`agents/prompts` (f-string builders — one call
+  each), `debug` (artifact writers with `write_debug_file` faked), and the many
+  `dreams` helpers (fuzzy question matching, JSON read, research-plan rows,
+  resolution attach/filter, remote-question bridging).
+- **Agents fake `generate_text_response`** (return a `SimpleNamespace(text=...,
+  usage=...)` or raise) plus `retrieve_dream_context`, `fetch_remote_research`,
+  and the debug writers. The Idea/Research/Questions validation branches are
+  exercised by feeding crafted JSON/text responses, never a model. `rag.py` fakes
+  `get_route_policy`/`merge_daily_and_main` (and uses the real `db` fixture for
+  the daily-flag lookup) so FAISS/embeddings/network are never touched.
+- **`context.build_dream_context`** writes file sources under a temp memory root
+  and fakes the RAG/LLM/debug boundaries; the minimal DAILY-MEMORY-only fallback
+  (and the fallback-where-daily-also-fails) are covered by making the section
+  helpers raise.
+- **`auto_accept`** keeps its existing module-injection harness; the added tests
+  call the helpers directly (`_bad_dream_path` collision, `_rename_bad_dream`/
+  `_delete_dream_file` OSError logging, legacy-lock migration, empty-pair skip,
+  tagger-failure-persists-without-tags) and drive the quarantine / no-items /
+  rebuild-failure / delete-failure branches of `auto_accept_dreams`.
+- **`caplog.set_level(logging.INFO)`** is required for the INFO-level branches
+  (e.g. the missing-summary-mirror notice in `_run_research_stage`).
+- **Genuinely unreachable guards** are `# pragma: no cover` with justification:
+  the Idea Agent's redundant required-field re-checks (the earlier required-key
+  guards already guarantee presence; `_normalize_recommended_research` never
+  returns `None`) and the `=== TOPIC: ===` title-slice `except` in
+  `context._extract_rag_topics` (string slicing cannot raise).
+
 ## Status so far
 
+- `app/dream/` — entire directory at **100%** (dreams, context, auto_accept,
+  common, rag, research, debug, prompts, and the idea/questions/research agents
+  + their prompt builders).
 - `app/rag/` — entire directory at **100%** (chunk_utils, manager, manager_index_io,
   manager_rebuild, syx_memory_artifact, daily_store).
 - `app/api/` — entire directory at **100%** (chat, chat_pipeline, chat_prompting,

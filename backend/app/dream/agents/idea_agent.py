@@ -242,7 +242,9 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
         metadata["priority"] = priority_int
 
         # Confidence: must exist; range hints are in prompt, but we don't hard-enforce
-        if "confidence" not in metadata:
+        if (
+            "confidence" not in metadata
+        ):  # pragma: no cover - required-key check above guarantees presence
             logger.warning(
                 "Idea Agent skipping item with missing confidence index=%s project=%s",
                 idx,
@@ -260,7 +262,9 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
             )
             continue
         rec_norm = _normalize_recommended_research(rec_raw)
-        if rec_norm is None:
+        if (
+            rec_norm is None
+        ):  # pragma: no cover - _normalize_recommended_research never returns None
             logger.warning(
                 "Idea Agent skipping item with unusable recommended_research index=%s project=%s",
                 idx,
@@ -287,7 +291,7 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
         for field in ("origin_text", "assistant_response", "context_link", "theme"):
             if field == "theme":
                 # theme lives under metadata
-                if field not in metadata:
+                if field not in metadata:  # pragma: no cover - required-key check guarantees theme
                     logger.warning(
                         "Idea Agent skipping item missing theme in metadata index=%s project=%s",
                         idx,
@@ -296,7 +300,9 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
                     break
                 # empty strings are allowed
             else:
-                if field not in item:
+                if (
+                    field not in item
+                ):  # pragma: no cover - required-fields check guarantees presence
                     logger.warning(
                         "Idea Agent skipping item missing field %s index=%s project=%s",
                         field,
@@ -310,7 +316,7 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
             continue
 
         # If we broke out of the loop above, continue to next item
-        continue
+        continue  # pragma: no cover - reached only via the unreachable field-missing breaks
 
     if not validated:
         logger.info("[DREAM][IDEA] Completed project=%s count=0", project_id)

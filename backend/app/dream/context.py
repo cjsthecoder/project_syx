@@ -342,7 +342,7 @@ def _extract_rag_topics(project_id: str) -> List[str]:
             # Extract section title between "=== TOPIC:" and "==="
             try:
                 title = line[len("=== TOPIC:") : -3].strip()
-            except Exception:
+            except Exception:  # pragma: no cover - string slicing cannot raise here
                 title = ""
             # Look for immediate #topics line (next non-empty line)
             j = i + 1

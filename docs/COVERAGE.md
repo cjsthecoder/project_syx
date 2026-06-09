@@ -147,6 +147,40 @@ For `app/agent_interface/` the same discipline applied, with two wrinkles:
   unparseable-block raise in `parse_prompt_context_to_snippets`, whose `parts`
   always begin with a matched header; the `int()` except guarded by `_INT_RE`).
 
+## Core: pure helpers, faked DB/LLM, and module-global state isolation
+
+For `app/core/` the same boundary discipline applied:
+
+- **Pure helpers tested directly**: `route_policy` coercers/loader (monkeypatch
+  `_policy_path` to a temp file to drive every fail-fast branch),
+  `query_builder` JSON slicing/route filtering/`build_query` (fake
+  `get_llm_client_mini` + `get_instrumentation`, no network), `config` validators
+  and `compute_per_source_k` fallbacks, `similarity`.
+- **`llm_service` instrumented branches**: the real no-op instrumentation returns
+  an empty invocation id, so the start/end-invocation usage payloads stay
+  uncovered. Inject a `_FakeInstr` that returns a real id (and optionally raises
+  in `end_invocation`) to exercise the usage/finalize/finalize-error paths;
+  `get_llm_client` is faked so no model is ever called.
+- **`memory` boundaries faked**: `get_session` (swapped to the temp-DB engine by
+  the `db` fixture, or monkeypatched to raise for the error branches), `tag_pair`,
+  `_prune_assistant_for_tagger`, `append_pair`, and `write_debug_file`. Internal
+  methods (`_append_pair_to_daily`, `_persist_assistant_row`, `_cleanup_unpaired_edges`,
+  `_rolloff_oldest_pair`) are unit-tested directly with crafted deques/rows rather
+  than only through the full append flow.
+- **Module-global state isolation**: `state.py` keeps a process-global sleeping
+  flag and a module-level `_LOCK_PATH`; an autouse fixture monkeypatches the lock
+  path to a temp file and resets the flag per test. `database.py` fakes Alembic
+  (`alembic.config.Config` / `alembic.command.upgrade`) and points `create_all`
+  at an in-memory engine so no real migration runs.
+- **Genuinely unreachable guards** are `# pragma: no cover`: the json-decode
+  diagnostics `except` in `query_builder._parse_builder_response` (string slicing
+  cannot fail) and the tags-block `except` in `memory._append_pair_to_daily`
+  (the dict is sourced from `json.loads`, so `.get`/`str` cannot raise).
+- **Dead code removed, not pinned**: writing tests exposed `memory.store_conversation`,
+  which called a `MemoryManager.store_message` method deleted back in Oct 2025
+  (so it always raised `AttributeError`). With no callers anywhere in the tree it
+  was deleted outright rather than covered.
+
 ## Status so far
 
 - `app/rag/` — entire directory at **100%** (chunk_utils, manager, manager_index_io,
@@ -155,7 +189,10 @@ For `app/agent_interface/` the same discipline applied, with two wrinkles:
   projects, files, dream, llm_models, sleep).
 - `app/agent_interface/` — entire directory at **100%** (parser, retrieval,
   entry_expansion, router, models).
-- `app/pruning/light_response_pruner/rules.py`, `app/core/similarity.py`,
+- `app/core/` — entire directory at **100%** (config, database, llm_service, memory,
+  personality, query_builder, route_policy, similarity, state, plus the already-100%
+  db_models/models/retrieval_ordering).
+- `app/pruning/light_response_pruner/rules.py`,
   `app/embedding/providers/sentence_transformers_provider.py` — **100%**.
 - `app/llm_model/llm_client.py` — excluded (re-export shim).
 - `app/tracking/` — omitted from measurement.

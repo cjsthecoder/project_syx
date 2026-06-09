@@ -889,7 +889,7 @@ class MemoryManager:
                                 f"#semantic_handle: {str(semantic_handle) if semantic_handle is not None else ''}"
                             )
                         tags_block = "\n".join(lines) + "\n"
-                    except Exception:
+                    except Exception:  # pragma: no cover - json-sourced dict cannot raise here
                         tags_block = ""
                 embed_text = (tags_block + pair_text) if tags_block else pair_text
                 append_pair(
@@ -1120,24 +1120,6 @@ def get_memory_manager() -> MemoryManager:
 
 
 # Convenience functions
-
-
-def store_conversation(
-    conversation_id: str, message: str, response: str, metadata: Optional[Dict[str, Any]] = None
-) -> bool:
-    """Store a conversation message.
-
-    Args:
-        conversation_id: Conversation the exchange belongs to.
-        message: User message text.
-        response: Assistant response text.
-        metadata: Optional metadata to associate with the stored message.
-
-    Returns:
-        True if the message was stored successfully.
-    """
-    manager = get_memory_manager()
-    return manager.store_message(conversation_id, message, response, metadata)
 
 
 def set_last_context_tokens(project_id: str, tokens: int) -> None:

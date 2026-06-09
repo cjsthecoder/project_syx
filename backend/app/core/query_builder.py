@@ -311,7 +311,7 @@ def _parse_builder_response(raw: str, project_id: str) -> Dict[str, Any]:
             pos = getattr(je, "pos", 0)
             snippet = clean[max(0, pos - 80) : pos + 80]
             logger.debug("builder json decode failed near pos=%s snippet=%r", pos, snippet)
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - diagnostics on str slices cannot fail
             logger.warning(
                 "builder json decode diagnostics failed project_id=%s detail=%s", project_id, exc
             )

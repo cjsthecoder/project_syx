@@ -60,6 +60,46 @@ def test_compute_per_source_k_invalid_multiplier_falls_back_to_base():
     assert compute_per_source_k(6, float("nan")) == 6
 
 
+def test_compute_per_source_k_invalid_multiplier_and_base_returns_zero():
+    # Outer ceil() fails on a non-numeric multiplier, then the inner
+    # int(base_top_k) also fails -> final fallback returns 0.
+    assert compute_per_source_k("not-an-int", "not-a-float") == 0
+
+
+def test_compute_per_source_k_invalid_multiplier_uses_base_fallback():
+    assert compute_per_source_k(5, "not-a-float") == 5
+
+
+def test_tagger_percent_coerces_bool_to_int():
+    assert (
+        Settings(tagger_min_response_length_for_chop=True).tagger_min_response_length_for_chop == 1
+    )
+
+
+def test_tagger_percent_coerces_float_to_int():
+    assert (
+        Settings(
+            tagger_current_response_middle_cut_percent=62.5
+        ).tagger_current_response_middle_cut_percent
+        == 62
+    )
+
+
+def test_tagger_percent_blank_string_falls_through_to_validation_error():
+    with pytest.raises(ValidationError):
+        Settings(tagger_min_response_length_for_chop="   ")
+
+
+def test_tagger_percent_non_numeric_string_falls_through_to_validation_error():
+    with pytest.raises(ValidationError):
+        Settings(tagger_min_response_length_for_chop="abc")
+
+
+def test_tagger_percent_non_numeric_type_falls_through_to_validation_error():
+    with pytest.raises(ValidationError):
+        Settings(tagger_min_response_length_for_chop=[1, 2])
+
+
 def test_get_active_embedding_model_openai(settings_override):
     settings_override(embedding_provider="openai", embedding_model="text-embedding-3-large")
     assert get_active_embedding_model() == "text-embedding-3-large"

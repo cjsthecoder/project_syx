@@ -92,7 +92,9 @@ def _extract_text_parts(value: Any) -> str:
                 if isinstance(nested, str) and nested:
                     out.append(nested)
                     continue
-            if md.get("type") == "output_text":
+            if (
+                md.get("type") == "output_text"
+            ):  # pragma: no cover - redundant fallback: a non-empty "text" is already captured above
                 maybe = md.get("text")
                 if isinstance(maybe, str) and maybe:
                     out.append(maybe)

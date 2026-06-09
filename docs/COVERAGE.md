@@ -310,8 +310,39 @@ boundaries for `tag_pair`:
   raise), and the error path's invocation finalize (non-JSON output → `ValueError`)
   including the finalize-failure log.
 
+## LLM provider: fake the SDK client, drive the version-compat fallbacks
+
+`app/llm_model/providers/openai_provider.py` wraps the OpenAI Chat Completions
+and Responses APIs and is full of SDK-version-tolerance branches. Same pattern
+as the embedding provider — fake only the SDK boundary:
+
+- **Pure envelope helpers tested directly**: `_as_mapping` (dict passthrough,
+  `model_dump` success / non-dict / raises / absent), `_coerce_int`,
+  `_extract_text_parts` (bare string, non-string, list of strings, the
+  text/text-dict/`output_text` content-part shapes), `_safe_usage_from_chat`
+  (legacy `prompt/completion`, `input/output` fallback, parse-failure estimate),
+  `_safe_usage_from_responses` (extra-detail collection, a per-field access that
+  raises is skipped, parse-failure estimate), and `_responses_output_text`
+  (`output_text` preferred, structured-output walk, `output` via mapping
+  fallback, and both best-effort `except` logs).
+- **Provider methods fake the client**: `patch.object(provider_mod, "OpenAI", MagicMock())`
+  so `__init__` builds a fake client, then set
+  `client.chat.completions.create` / `client.responses.create` `return_value`
+  (or `side_effect` lists/iterators). This drives the temperature-retry and
+  non-temperature-reraise paths (chat + stream), the `content`-via-mapping and
+  contained text-parse-failure branches, the streaming text/usage/skip/chunk-
+  failure paths, and `generate_response`'s optional-kwarg wiring plus the
+  `input`-flatten and `text.format`-drop SDK fallbacks (and the other-error
+  reraise).
+- **Genuinely unreachable guard** is `# pragma: no cover`: the
+  `if md.get("type") == "output_text":` append in `_extract_text_parts` is a
+  redundant fallback — any non-empty `text` is already captured by the generic
+  text handling immediately above, so the append can never run.
+
 ## Status so far
 
+- `app/llm_model/` — entire directory at **100%** (providers/openai_provider,
+  base, factory; `llm_client.py` excluded as a re-export shim).
 - `app/tagging/` — `tagger.py` at **100%**.
 - `app/sleep/` — entire directory at **100%** (cycle, worker,
   questions_consolidation).

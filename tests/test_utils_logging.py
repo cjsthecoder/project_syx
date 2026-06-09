@@ -14,6 +14,7 @@ fallback), setup_logging's DEBUG-level wiring (with the global logging state
 snapshotted and restored), the context-var setters/clearers, and the
 Request/LLM logger helpers. No real terminal or Windows API is touched.
 """
+import io
 import logging
 from types import SimpleNamespace
 
@@ -82,32 +83,36 @@ def test_custom_formatter_format_unknown_level_falls_back_to_info(monkeypatch):
 _REAL_SUPPORTS_COLORS = CustomFormatter._supports_colors
 
 
+def _patch_env(monkeypatch, *, is_atty, term="", os_name="posix"):
+    # Replace the `sys`/`os` *names in the logging module* (never the real
+    # modules). Mutating the interpreter's `sys.stdout` collides with pytest's
+    # output capture, and mutating the real `os.name` flips pathlib to Windows
+    # semantics mid-run -- both crashed pytest's reporting with an INTERNALERROR.
+    monkeypatch.setattr(logging_mod, "sys", SimpleNamespace(stdout=_tty(is_atty)))
+    monkeypatch.setattr(logging_mod, "os", SimpleNamespace(name=os_name, environ={"TERM": term}))
+
+
 def test_supports_colors_false_when_not_a_tty(monkeypatch):
     fmt = CustomFormatter()
-    monkeypatch.setattr(logging_mod.sys, "stdout", _tty(False))
+    _patch_env(monkeypatch, is_atty=False)
     assert _REAL_SUPPORTS_COLORS(fmt) is False
 
 
 def test_supports_colors_true_for_known_term(monkeypatch):
     fmt = CustomFormatter()
-    monkeypatch.setattr(logging_mod.sys, "stdout", _tty(True))
-    monkeypatch.setenv("TERM", "xterm-256color")
+    _patch_env(monkeypatch, is_atty=True, term="xterm-256color")
     assert _REAL_SUPPORTS_COLORS(fmt) is True
 
 
 def test_supports_colors_false_for_unknown_term_non_windows(monkeypatch):
     fmt = CustomFormatter()
-    monkeypatch.setattr(logging_mod.sys, "stdout", _tty(True))
-    monkeypatch.setenv("TERM", "dumb")
-    monkeypatch.setattr(logging_mod.os, "name", "posix")
+    _patch_env(monkeypatch, is_atty=True, term="dumb", os_name="posix")
     assert _REAL_SUPPORTS_COLORS(fmt) is False
 
 
 def test_supports_colors_windows_attribute_error_fallback(monkeypatch):
     fmt = CustomFormatter()
-    monkeypatch.setattr(logging_mod.sys, "stdout", _tty(True))
-    monkeypatch.setenv("TERM", "dumb")
-    monkeypatch.setattr(logging_mod.os, "name", "nt")
+    _patch_env(monkeypatch, is_atty=True, term="dumb", os_name="nt")
 
     # kernel32 lacks GetStdHandle -> AttributeError inside the try -> False.
     fake_ctypes = SimpleNamespace(windll=SimpleNamespace(kernel32=SimpleNamespace()))
@@ -119,8 +124,13 @@ def test_supports_colors_windows_attribute_error_fallback(monkeypatch):
 
 
 @pytest.fixture
-def _restore_logging_state():
-    """Snapshot and restore the global logging configuration around a test."""
+def _restore_logging_state(monkeypatch):
+    """Snapshot and restore the global logging configuration around a test.
+
+    Also points setup_logging's console StreamHandler at a throwaway buffer (not
+    the real sys.stdout / pytest capture buffer) and closes any handlers the test
+    creates, so nothing is flushed against a closed capture buffer at shutdown.
+    """
     root = logging.getLogger()
     names = ["", "uvicorn", "uvicorn.error", "syx"]
     saved = {
@@ -131,10 +141,18 @@ def _restore_logging_state():
         )
         for name in names
     }
+    saved_handler_ids = {id(h) for (handlers, _l, _p) in saved.values() for h in handlers}
     saved_root_handlers = list(root.handlers)
+    monkeypatch.setattr(logging_mod, "sys", SimpleNamespace(stdout=io.StringIO()))
     try:
         yield
     finally:
+        # Close handlers created during the test so they leave logging's global
+        # registry and are never flushed at interpreter shutdown.
+        for name in names:
+            for h in list(logging.getLogger(name).handlers):
+                if id(h) not in saved_handler_ids:
+                    h.close()
         for name, (handlers, level, propagate) in saved.items():
             lg = logging.getLogger(name)
             lg.handlers = list(handlers)

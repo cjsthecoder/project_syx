@@ -71,6 +71,9 @@ the exception** rather than keeping a broad catch.
   or monkeypatch the scheduled function to a recorder.
 - **Bypass Pydantic validation with `model_construct(...)`** only to reach defensive
   branches that valid construction cannot produce (e.g. an "invalid merged result").
+- **For API routers, mount one router at a time** onto a bare `FastAPI()` with a
+  `TestClient`, patch the FAISS rebuild to a no-op/raiser, and inject fake
+  pipeline/memory/instrumentation stubs — the LLM and network are never called.
 - Prefer **one assertion target per test** and a short comment explaining the branch
   being exercised, especially for non-obvious edge cases.
 
@@ -102,384 +105,66 @@ This was the root cause of an `AttributeError: module 'numpy' has no attribute
 - Generate viewer-friendly reports (`term-missing`, `html`, `xml`, `lcov`) via
   `make coverage-backend` for line-level inspection.
 
-## API routers: test boundaries, not the LLM
+## Notable deviations & gotchas
 
-For `app/api/` we kept the same "fake only the boundaries" discipline:
+Things worth remembering that are not obvious from the tests themselves:
 
-- **Mount one router at a time** onto a bare `FastAPI()` app with a `TestClient`,
-  using the shared `db` / `temp_memory_root` / `reset_projects_state` fixtures for
-  isolation. The FAISS rebuild is patched to a no-op (or a raiser) so create/upload
-  flows never reach embeddings or the network.
-- **The LLM is never called.** Endpoints already delegate to
-  `generate_chat_response` / `get_llm_client`; tests inject a `FakePipeline`,
-  recording fake memory manager/instrumentation, and small streaming-client stubs.
-- **`ChatPipeline` is unit-tested directly** (no TestClient), faking
-  `get_memory_manager`, `get_session`, `build_query`, `get_route_policy`,
-  `merge_daily_and_main`, `get_instrumentation`, and `write_debug_file`.
-- **Best-effort log branches**: assert on `caplog`. Remember to
-  `caplog.set_level(logging.INFO)` (or `DEBUG`) for branches that log below
-  WARNING — the default capture level is WARNING and will silently miss them.
-- **Defensive debug-logging guards** (e.g. `except Exception: logger.debug(...)`
-  wrapping only a debug/`clear_namespace` call) are the rare `# pragma: no cover`
-  cases here; everything reachable with a real request is tested.
+- **We refactored `app/main.py` to make it testable** (the one place we changed
+  source structure for coverage). It was a conservative, behavior-preserving
+  cleanup: imports consolidated, dead module-level `logger` removed, the
+  monolithic `lifespan` split into named startup helpers, and the `__main__`
+  block extracted into module-level `LoggingRedirect`,
+  `_flush_and_close_log_handlers()`, and `run_server()`. The
+  `if __name__ == "__main__": run_server()` entry point is preserved so
+  `python -m app.main` (Dockerfile/Makefile) still works.
+- **Dead code is deleted, not pinned with a test.** `memory.store_conversation`
+  called a `MemoryManager.store_message` method removed back in Oct 2025 (so it
+  always raised `AttributeError`) and had no callers — it was removed outright.
+- **`/sleep_cycle*` endpoints return HTTP 507, not 500**, because their failures
+  route through `handle_memory_error`. Assert on 507.
+- **`caplog` defaults to capturing WARNING.** For any branch that logs at INFO or
+  DEBUG you must `caplog.set_level(logging.INFO)` (or `DEBUG`) or the record is
+  silently missed.
+- **`KeyboardInterrupt` is a `BaseException`** and escapes `except Exception`. To
+  test an interrupted-sleep / best-effort `except Exception` branch, raise a plain
+  `Exception`, not `KeyboardInterrupt`.
+- **`tokens._resolve_encoding` is `lru_cache`d.** Use a unique `encoding_name` per
+  test (and/or `cache_clear()` in a `finally`) so a fake encoder does not leak via
+  the cache.
+- **`numpy`/`faiss` stubs must be guarded** (see "Test isolation" above). A blind
+  `sys.modules.setdefault` once shadowed real `numpy` and produced an
+  `AttributeError: module 'numpy' has no attribute 'linalg'` only in the full
+  suite.
 
-## Agent interface: pure helpers + faked retrieval boundaries
+## Intentional pragma inventory
 
-For `app/agent_interface/` the same discipline applied, with two wrinkles:
+Most `# pragma: no cover` in the backend are **routine best-effort / defensive
+guards** that follow the policy above — `except Exception` blocks that only log
+(debug logging, neighbor/meta lookups, malformed-docstore/manifest reads) and
+never block the request. The bulk live in `rag/manager.py` and `app/api/*`; each
+carries an inline justification at the call site.
 
-- **`parser.py` is a pure module** (only depends on the snippet model). Test its
-  helpers directly — header/YAML metadata parsing, scalar coercion, chunk-index
-  parsing, topics/page normalization, and the round-trip renderer — rather than
-  only through the public `parse_prompt_context_to_snippets`. A couple of header
-  predicates (`_is_context_delimited_snippet_start`) are easiest to cover by
-  calling them directly with crafted line lists.
-- **`retrieval.py` fakes only the boundaries**: `get_session`,
-  `merge_daily_and_main`, the parser, the entry expander, the route policy, and
-  `write_debug_file`. `resolve_project_name` uses the real `db` fixture; the rest
-  monkeypatch the module-level names so FAISS/embeddings/network are never hit.
-- **`entry_expansion.py`**: exercise artifact-boundary, source_document_id, docstore
-  reconstruction, and original-snippet fallbacks against real `tmp_path` artifacts.
-  Syx markers require a real-format `mem_YYYYMMDD_HHMMSS_<hex>` id or the parser
-  rejects them. The one defensive branch the real parser can't reach (it dedupes
-  duplicate `memory_id`s before returning entries) is covered by faking
-  `parse_syx_entries` to return duplicates — not pragma'd.
-- **Genuinely unreachable defensive guards** are `# pragma: no cover` (the
-  unparseable-block raise in `parse_prompt_context_to_snippets`, whose `parts`
-  always begin with a matched header; the `int()` except guarded by `_INT_RE`).
+The table below lists the **noteworthy** pragmas — the logic-specific
+"provably unreachable" branches and the environment/system guards — since those
+are the ones worth a second look if the surrounding code changes:
 
-## Core: pure helpers, faked DB/LLM, and module-global state isolation
-
-For `app/core/` the same boundary discipline applied:
-
-- **Pure helpers tested directly**: `route_policy` coercers/loader (monkeypatch
-  `_policy_path` to a temp file to drive every fail-fast branch),
-  `query_builder` JSON slicing/route filtering/`build_query` (fake
-  `get_llm_client_mini` + `get_instrumentation`, no network), `config` validators
-  and `compute_per_source_k` fallbacks, `similarity`.
-- **`llm_service` instrumented branches**: the real no-op instrumentation returns
-  an empty invocation id, so the start/end-invocation usage payloads stay
-  uncovered. Inject a `_FakeInstr` that returns a real id (and optionally raises
-  in `end_invocation`) to exercise the usage/finalize/finalize-error paths;
-  `get_llm_client` is faked so no model is ever called.
-- **`memory` boundaries faked**: `get_session` (swapped to the temp-DB engine by
-  the `db` fixture, or monkeypatched to raise for the error branches), `tag_pair`,
-  `_prune_assistant_for_tagger`, `append_pair`, and `write_debug_file`. Internal
-  methods (`_append_pair_to_daily`, `_persist_assistant_row`, `_cleanup_unpaired_edges`,
-  `_rolloff_oldest_pair`) are unit-tested directly with crafted deques/rows rather
-  than only through the full append flow.
-- **Module-global state isolation**: `state.py` keeps a process-global sleeping
-  flag and a module-level `_LOCK_PATH`; an autouse fixture monkeypatches the lock
-  path to a temp file and resets the flag per test. `database.py` fakes Alembic
-  (`alembic.config.Config` / `alembic.command.upgrade`) and points `create_all`
-  at an in-memory engine so no real migration runs.
-- **Genuinely unreachable guards** are `# pragma: no cover`: the json-decode
-  diagnostics `except` in `query_builder._parse_builder_response` (string slicing
-  cannot fail) and the tags-block `except` in `memory._append_pair_to_daily`
-  (the dict is sourced from `json.loads`, so `.get`/`str` cannot raise).
-- **Dead code removed, not pinned**: writing tests exposed `memory.store_conversation`,
-  which called a `MemoryManager.store_message` method deleted back in Oct 2025
-  (so it always raised `AttributeError`). With no callers anywhere in the tree it
-  was deleted outright rather than covered.
-
-## Dream: agent pipeline with faked LLM/RAG boundaries
-
-For `app/dream/` the agents and orchestration are heavy on LLM and retrieval
-calls, so the discipline is to fake **only** those boundaries and drive the real
-validation/branching logic with crafted payloads:
-
-- **Pure helpers tested directly**: `common` (id collection, resolution
-  normalization, research filtering, pair expansion, tag-block formatting,
-  markdown assembly), `prompts`/`agents/prompts` (f-string builders — one call
-  each), `debug` (artifact writers with `write_debug_file` faked), and the many
-  `dreams` helpers (fuzzy question matching, JSON read, research-plan rows,
-  resolution attach/filter, remote-question bridging).
-- **Agents fake `generate_text_response`** (return a `SimpleNamespace(text=...,
-  usage=...)` or raise) plus `retrieve_dream_context`, `fetch_remote_research`,
-  and the debug writers. The Idea/Research/Questions validation branches are
-  exercised by feeding crafted JSON/text responses, never a model. `rag.py` fakes
-  `get_route_policy`/`merge_daily_and_main` (and uses the real `db` fixture for
-  the daily-flag lookup) so FAISS/embeddings/network are never touched.
-- **`context.build_dream_context`** writes file sources under a temp memory root
-  and fakes the RAG/LLM/debug boundaries; the minimal DAILY-MEMORY-only fallback
-  (and the fallback-where-daily-also-fails) are covered by making the section
-  helpers raise.
-- **`auto_accept`** keeps its existing module-injection harness; the added tests
-  call the helpers directly (`_bad_dream_path` collision, `_rename_bad_dream`/
-  `_delete_dream_file` OSError logging, legacy-lock migration, empty-pair skip,
-  tagger-failure-persists-without-tags) and drive the quarantine / no-items /
-  rebuild-failure / delete-failure branches of `auto_accept_dreams`.
-- **`caplog.set_level(logging.INFO)`** is required for the INFO-level branches
-  (e.g. the missing-summary-mirror notice in `_run_research_stage`).
-- **Genuinely unreachable guards** are `# pragma: no cover` with justification:
-  the Idea Agent's redundant required-field re-checks (the earlier required-key
-  guards already guarantee presence; `_normalize_recommended_research` never
-  returns `None`) and the `=== TOPIC: ===` title-slice `except` in
-  `context._extract_rag_topics` (string slicing cannot raise).
-
-## Embedding: fake only the SDK client and the backoff sleeps
-
-`app/embedding/providers/openai_provider.py` looks network-bound but is very
-testable without a mock-provider subclass:
-
-- **Fake just the SDK boundary**: `patch.object(provider_mod, "OpenAI")` so
-  `__init__` builds a fake client, then set
-  `client.embeddings.create.side_effect` to a list of crafted responses /
-  exceptions (`SimpleNamespace(data=[...])`, a `_RateLimitError` with
-  `status_code=429`, a `TimeoutError`, or a generic `RuntimeError`).
-- **Neutralize the backoff** by monkeypatching `provider_mod.time.sleep` (and the
-  retry loop's `random.uniform` jitter is harmless), so retry/exhaustion paths
-  run instantly and deterministically.
-- **Helpers tested directly**: `_is_rate_limit_error` (429 status, non-numeric
-  status → message fallback, unrelated → False), `_is_timeout_error`,
-  `_extract_retry_after_seconds` (dict headers, object-with-`.get` headers, a
-  header value that fails `float()`, the "try again in Ns" message hint, and the
-  no-hint `None`), `_parse_embedding_vectors`, and `_rate_limit_base_wait_seconds`.
-- **`_sleep_quietly`'s interrupted branch** is covered by making `time.sleep`
-  raise a regular `Exception` (not `KeyboardInterrupt`, which is a
-  `BaseException` and would escape the `except Exception`); the log is INFO-level
-  so `caplog.set_level(logging.INFO)` is required.
-- **Genuinely unreachable guard** is `# pragma: no cover`: the `float(m.group(1))`
-  except in `_extract_retry_after_seconds`, since the regex only matches a
-  parseable number.
-
-## Sleep: orchestration helpers with every external stage faked
-
-`app/sleep/` is one large orchestration module (`cycle.py`) plus a thread
-launcher (`worker.py`) and a deterministic consolidator
-(`questions_consolidation.py`). The discipline is to fake **every** boundary —
-DB session, memory manager, tagger, pruner, daily store, dream/auto-accept,
-FAISS rebuild/load, debug writers — and use a temp memory root, so no model,
-FAISS, or network is ever touched:
-
-- **Pure helpers tested directly**: `_public_tags_meta`, `_build_pair_tags_block`,
-  `_summary_content_only` (existing), plus `_prepare_pair_for_daily` (stored-
-  tags-json reuse, malformed-json fallback to the tagger, pruning that mutates
-  the meta) and `_delete_pair_rows`.
-- **Per-stage helpers driven in isolation**: `_flush_active_pairs` (disabled-
-  project skip, rebuild-failure → `partial`, cache-clear failure log, per-project
-  and global failure containment), `_backfill_daily_md`, `_run_dream_and_auto_accept`
-  (disabled/success/failed/raises), `_post_merge_cleanup` (each inner remove
-  failure logged), `_write_merge_artifacts_and_rebuild` (write sleep+dream,
-  clobber-avoidance, `verify_rag` pass/fail, rebuild failure, legacy-lock
-  migration failure), and `_run_project_summary_pipeline` (no-daily skip,
-  consolidate failure, happy path, read failure, dream-summary consumption +
-  debug write, empty-summary skip, merge/dream replace failures, outer failure).
-- **`_sleep_cycle_worker` orchestration** is asserted by faking the stage
-  functions and checking call order (`engage → flush → backfill → pipe* →
-  release`), plus the project-query-failure → empty-rows, fatal-failure-still-
-  releases, and release-failure-logged branches.
-- **Endpoints** use a FastAPI `TestClient`; the stub `get_memory_manager`/
-  `cleanup_old_memories` are faked for happy paths, and the error handlers are
-  reached by making those (or `is_sleeping`/`release_lock`) raise. Note the
-  `/sleep_cycle*` endpoints route failures through `handle_memory_error`, so they
-  return **507**, not 500. The purely-static `GET /sleep_cycle/schedule` has no
-  external call, so its `except` is exercised by monkeypatching `cycle.JSONResponse`
-  to raise only on the `status_code=200` construction (the handler then builds the
-  500 response with the real class).
-- **`worker.py`** double-checked locking: the early skip, the inside-lock skip
-  (an `is_sleeping` iterator returning `False` then `True`), and the real thread
-  start (joined on a `threading.Event` so no daemon thread leaks).
-- **Genuinely unreachable guard** is `# pragma: no cover`: the `if not key:`
-  check in `questions_consolidation` (the key always contains the `"||"`
-  separator, so it is never falsy).
-
-## Tagging: pure prompt helpers + a faked mini-LLM and instrumentation
-
-`app/tagging/tagger.py` is one module: pure prompt-assembly/parse helpers plus
-`tag_pair`, which calls the mini/tagger LLM. The discipline is to test the
-helpers directly and fake only the LLM + instrumentation + debug-writer
-boundaries for `tag_pair`:
-
-- **Pure helpers tested directly**: `_slice_first_json` (balanced slice, empty
-  input, escaped-quote/brace-inside-string scanning, unbalanced → input
-  unchanged), `_safe_percent`/`_safe_min_len` coercion, `_middle_cut_assistant_text`
-  (short unchanged, long elision, `cut<=0` no-op, and the min-side-restore path
-  that collapses back to the original), `_extract_prev_tag_value`,
-  `_build_previous_turn_block` (the leading-`\n` regex vs the no-newline fallback,
-  and rendering every `#route/#keep/#topics/#intent/#type/#semantic_handle` tag
-  line), `_extract_tagger_fields`, and `_tagger_usage_from_response`.
-- **Debug dump helpers** (`_write_tagger_success_debug` / `_write_tagger_failure_debug`)
-  are called directly with `write_debug_file` faked: the body runs only when
-  `project_id` is truthy (no-op otherwise), and the best-effort `except` is hit
-  by making the writer raise.
-- **`tag_pair` faked boundaries**: `get_settings`, `get_instrumentation` (a
-  `_FakeInstr` returning a truthy invocation id, optionally raising in
-  `end_invocation`), `get_llm_client_mini` (returns a `SimpleNamespace` response),
-  and `write_debug_file`. This covers the success-debug write with a real
-  `project_id`, the contained summary-log failure (monkeypatch `logger.info` to
-  raise), and the error path's invocation finalize (non-JSON output → `ValueError`)
-  including the finalize-failure log.
-
-## LLM provider: fake the SDK client, drive the version-compat fallbacks
-
-`app/llm_model/providers/openai_provider.py` wraps the OpenAI Chat Completions
-and Responses APIs and is full of SDK-version-tolerance branches. Same pattern
-as the embedding provider — fake only the SDK boundary:
-
-- **Pure envelope helpers tested directly**: `_as_mapping` (dict passthrough,
-  `model_dump` success / non-dict / raises / absent), `_coerce_int`,
-  `_extract_text_parts` (bare string, non-string, list of strings, the
-  text/text-dict/`output_text` content-part shapes), `_safe_usage_from_chat`
-  (legacy `prompt/completion`, `input/output` fallback, parse-failure estimate),
-  `_safe_usage_from_responses` (extra-detail collection, a per-field access that
-  raises is skipped, parse-failure estimate), and `_responses_output_text`
-  (`output_text` preferred, structured-output walk, `output` via mapping
-  fallback, and both best-effort `except` logs).
-- **Provider methods fake the client**: `patch.object(provider_mod, "OpenAI", MagicMock())`
-  so `__init__` builds a fake client, then set
-  `client.chat.completions.create` / `client.responses.create` `return_value`
-  (or `side_effect` lists/iterators). This drives the temperature-retry and
-  non-temperature-reraise paths (chat + stream), the `content`-via-mapping and
-  contained text-parse-failure branches, the streaming text/usage/skip/chunk-
-  failure paths, and `generate_response`'s optional-kwarg wiring plus the
-  `input`-flatten and `text.format`-drop SDK fallbacks (and the other-error
-  reraise).
-- **Genuinely unreachable guard** is `# pragma: no cover`: the
-  `if md.get("type") == "output_text":` append in `_extract_text_parts` is a
-  redundant fallback — any non-empty `text` is already captured by the generic
-  text handling immediately above, so the append can never run.
-
-## Pruning: small direct tests for the remaining error/edge branches
-
-`app/pruning/light_response_pruner/` already had broad behavior tests
-(`test_pruning.py`); the gaps were fail-fast guards and low-level span helpers.
-`test_pruning_coverage.py` fills them with small, direct tests:
-
-- **config**: `validate_rules` passthrough/invalid, `load_rule_file`
-  missing/invalid-JSON/non-object/comment-strip, `merge_rules`
-  empty/combine/union, the conflicting-`cut_mode` raises for front and end
-  sections (use `model_construct` to bypass the `Literal` validator and force
-  the conflict branch), the empty-section `None` returns, `_merge_prefix_lists`
-  dedup, `_normalize_sources` wrap/list/empty, and `_coerce_rule_source`
-  passthrough.
-- **models**: the `_dedupe_prefixes` blank-raises / dedup paths via
-  `FrontRuleSection`, and all three `trimmed_side` computed-field branches
-  (front-only, end-only, none).
-- **pruner**: the `PrunerConfig` type/range guards (parametrized),
-  `from_file`/`from_files`, the `prune` non-string and oversized-input guards
-  (the latter asserts the warning), `prune_response`, and the `_prune_end`
-  fenced-code skip (a matching paragraph that sits inside an open fence but
-  does not itself start with a structural marker) plus the safety-block path.
-- **units / similarity / whitespace**: span helpers driven directly —
-  `leading_sentence_span` (blank, non-terminal dot), `paragraph_spans`
-  (leading-blank skip + trailing-ws trim), `_is_inside_fenced_code_block`,
-  `_starts_with_ordered_list_marker`, `prune_similar_sentences` (blank
-  passthrough + dup-before-fence newline reinsertion), `_sentence_spans` blank,
-  and `compact_whitespace` blank.
-- **Genuinely unreachable guards** are `# pragma: no cover`: the merged-rules
-  `ValidationError` re-raise in `config.merge_rules` (every input rule set has
-  at least one valid section, so the merge is always valid) and the trailing
-  `return None` in `units._next_blank_line_index` (the loop always returns once
-  a newline is seen, or `None` earlier).
-
-## App entrypoint (main.py): refactor for testability, then fake startup deps
-
-`app/main.py` was first cleaned up (conservatively, behavior-preserving) so it
-could be tested: imports were consolidated to the top, the dead module-level
-`logger` was removed, the ~155-line `lifespan` body was split into named
-helpers (`_init_factory_clients`, `_init_instrumentation`, `_clear_startup_lock`,
-`_backfill_project_defaults`, `_init_sleep_lock_from_disk`,
-`_seed_main_user_profile`, `_startup_rag_rebuild_sweep`, `_start_sleep_scheduler`),
-and the `__main__` server block became a module-level `LoggingRedirect`,
-`_flush_and_close_log_handlers()`, and `run_server()` (with
-`if __name__ == "__main__": run_server()` preserved for `python -m app.main`).
-
-`test_main.py` then covers it without real startup or a real server:
-- Each startup helper is called directly with its dependencies faked
-  (`get_session` via a `_FakeSession`/`_FakeExec`, `get_llm_client`,
-  `get_embedding_client`, `init_instrumentation`, `rebuild_faiss_index`,
-  `BackgroundScheduler`, `release_lock`, etc.), covering success plus every
-  failure branch -- including the fatal sentence_transformers embedding re-raise
-  and the USER_PROFILE copy + RAG-rebuild paths (driven with `tmp_path`).
-- `lifespan` is driven as an async context manager (`asyncio.run`) with the
-  helpers patched, asserting ordering and the shutdown `end_run` success +
-  failure.
-- `sleep_guard` (block 423 / GET / allowlist / state-check failure),
-  `_schedule_entrypoint`, `root`, `serve_react_app`, and `health_check` are
-  tested via the route functions / `TestClient`.
-- `run_server` is exercised with a patched `uvicorn.run` (no real server) across
-  the DEBUG and non-DEBUG branches; `LoggingRedirect` and
-  `_flush_and_close_log_handlers` are unit-tested (the latter with the root
-  logger handlers swapped to a `_BoomHandler` via a fixture so real handlers are
-  never closed).
-- `# pragma: no cover` is used only for genuine system/entry points: the
-  import-time route-policy fail-fast guard, the `except KeyboardInterrupt`
-  signal handler, and the `if __name__ == "__main__"` line.
-
-## Utils tokens / dream_summary / debug_utils: fake encoders + I/O failures
-
-The remaining `app/utils` helpers are small and best-effort, so the gaps were
-the import/encode fallbacks and the write-failure branches:
-
-- **tokens**: `test_utils_tokens.py` drives `_resolve_encoding` to `None` when
-  both the model-specific and named lookups raise (a fake `tiktoken` whose
-  `encoding_for_model`/`get_encoding` raise, with a unique `encoding_name` to
-  dodge the `lru_cache`), and `count_tokens`/`trim_to_tokens` falling back to
-  word count / original text when `enc.encode` raises (a `_RaisingEncoder`
-  injected via `get_encoding_cached`). The `tiktoken` import guard stays
-  `# pragma: no cover` (environment-dependent, like the `ctypes` import).
-- **dream_summary**: `collect_research_topics` skips non-dict items and non-dict
-  research entries; `write_latest_sleep_summary` no-ops on a blank summary,
-  writes the card under `tmp_path`, and logs a warning when `open` raises
-  `OSError` (patched via `monkeypatch.setattr(dream_summary, "open", ...)`).
-- **debug_utils**: `test_utils_debug_utils.py` covers the disabled no-op
-  (`generate_debug_files=False`), the enabled happy-path write under
-  `memory/{project}/debug/`, and the warning branch when `os.makedirs` raises.
-
-## Utils logging: fake the terminal/Windows probe, snapshot global state
-
-`app/utils/logging.py` is small but touches process-global logging and
-terminal/OS detection. `test_utils_logging.py` covers it without a real TTY,
-Windows console, or permanently mutated logging config:
-
-- **CustomFormatter**: patch `_supports_colors` to force both the colored and
-  the plain format dictionaries, and render a record through `format()`
-  (including the unknown-level → INFO fallback).
-- **`_supports_colors`**: capture the real method (`_REAL_SUPPORTS_COLORS`)
-  before patching, then drive each branch by faking `sys.stdout.isatty`,
-  `TERM`, and `os.name`: non-tty → False, known `TERM` → True, unknown `TERM`
-  on non-Windows → False, and the Windows path where a stub `ctypes` whose
-  `kernel32` lacks `GetStdHandle` raises `AttributeError` → False. The real
-  Windows `GetConsoleMode` call and the `ctypes` import block stay
-  `# pragma: no cover` (environment-specific).
-- **`setup_logging`**: a fixture snapshots and restores the root / `uvicorn` /
-  `uvicorn.error` / `syx` logger handlers, levels, and `propagate` flags so the
-  reconfiguration does not leak into other tests. `get_settings` is faked to a
-  `SimpleNamespace` writing to `tmp_path`, exercising both the DEBUG branch
-  (uvicorn → DEBUG) and the INFO branch.
-- **Context vars + loggers**: the `set_/get_/clear_` message-id, route, and
-  namespace helpers round-trip, `get_logger` always returns the shared `syx`
-  logger, and the `RequestLogger`/`LLMLogger` helpers are asserted via `caplog`.
-
-## Status so far
-
-- **Backend at 100%**: every measured module reports 0 missing lines (the only
-  exclusions are `app/tracking/*`, omitted from measurement, and a handful of
-  `# pragma: no cover` import-time/system guards).
-- `app/main.py` — at **100%** (startup helpers, lifespan, sleep_guard,
-  scheduler entrypoint, SPA routes, health check, run_server/LoggingRedirect).
-- `app/utils/` — entire directory at **100%** (logging, dream_summary, tokens,
-  debug_utils, errors).
-- `app/pruning/light_response_pruner/` — entire package at **100%** (config,
-  models, pruner, units, similarity, whitespace, markdown, normalize, rules).
-- `app/llm_model/` — entire directory at **100%** (providers/openai_provider,
-  base, factory; `llm_client.py` excluded as a re-export shim).
-- `app/tagging/` — `tagger.py` at **100%**.
-- `app/sleep/` — entire directory at **100%** (cycle, worker,
-  questions_consolidation).
-- `app/embedding/` — entire directory at **100%** (openai_provider,
-  sentence_transformers_provider, base, batching, factory, vector_index).
-- `app/dream/` — entire directory at **100%** (dreams, context, auto_accept,
-  common, rag, research, debug, prompts, and the idea/questions/research agents
-  + their prompt builders).
-- `app/rag/` — entire directory at **100%** (chunk_utils, manager, manager_index_io,
-  manager_rebuild, syx_memory_artifact, daily_store).
-- `app/api/` — entire directory at **100%** (chat, chat_pipeline, chat_prompting,
-  projects, files, dream, llm_models, sleep).
-- `app/agent_interface/` — entire directory at **100%** (parser, retrieval,
-  entry_expansion, router, models).
-- `app/core/` — entire directory at **100%** (config, database, llm_service, memory,
-  personality, query_builder, route_policy, similarity, state, plus the already-100%
-  db_models/models/retrieval_ordering).
-- `app/llm_model/llm_client.py` — excluded (re-export shim).
-- `app/tracking/` — omitted from measurement.
+| Location | Why |
+| --- | --- |
+| `llm_model/llm_client.py` (whole module) | Thin re-export shim; only exercised via the preferred import path. |
+| `rag/manager_index_io.build_ltm_adjacency_lists` `if not pairs:` | Unreachable — every doc_id provably has at least one pair. |
+| `agent_interface/parser.parse_prompt_context_to_snippets` unparseable-block raise | `parts` always begin with a matched header, so the raise cannot fire. |
+| `agent_interface/parser` `int()` except | Guarded by `_INT_RE`, so the value always parses. |
+| `core/query_builder._parse_builder_response` json-decode except | Diagnostics on string slices cannot fail. |
+| `core/memory._append_pair_to_daily` tags-block except | Dict comes from `json.loads`, so `.get`/`str` cannot raise. |
+| `dream/agents/idea_agent.py` required-field re-checks (×5) | Earlier required-key guards already guarantee presence; `_normalize_recommended_research` never returns `None`. |
+| `dream/context._extract_rag_topics` title-slice except | String slicing cannot raise. |
+| `embedding/.../openai_provider._extract_retry_after_seconds` `float(...)` except | The regex only matches a parseable number. |
+| `sleep/questions_consolidation` `if not key:` | The key always contains the `"||"` separator, so it is never falsy. |
+| `llm_model/.../openai_provider._extract_text_parts` `output_text` append | Redundant fallback — non-empty `text` is already captured just above. |
+| `pruning/.../config.merge_rules` `ValidationError` re-raise | Every input rule set has at least one valid section, so the merge is always valid. |
+| `pruning/.../units._next_blank_line_index` trailing `return None` | The loop always returns earlier once a newline is seen, or `None` before. |
+| `utils/tokens` `tiktoken` import guard | Environment-dependent import. |
+| `utils/logging` `ctypes` import block + Windows `GetConsoleMode` call | Environment-specific (Windows console API). |
+| `main.py` import-time route-policy fail-fast guard | Only reachable at import with a broken `route_policy.json`. |
+| `main.py` `except KeyboardInterrupt` in `run_server` | OS interrupt signal. |
+| `main.py` `if __name__ == "__main__"` | Process entry point. |

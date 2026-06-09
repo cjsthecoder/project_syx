@@ -22,4 +22,7 @@ services:
       - ./runtime/logs:/app/runtime/logs
       - ./runtime/runs:/app/runtime/runs
       - ./runtime/state:/app/runtime/state
+      # Persist the Hugging Face cache so the sentence-transformers model
+      # (e.g. BAAI/bge-m3, ~2.3 GB) is downloaded once and reused across restarts.
+      - ./data/hf-cache:/root/.cache/huggingface
     restart: unless-stopped

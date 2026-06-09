@@ -10,11 +10,9 @@ backend/app/static/
 .env.*
 !.env.example
 
-# Runtime and persisted data (bind mounts at runtime)
-backend/memory/
-backend/logs/
-backend/app/data/
-backend/runtime/
+# Runtime and persisted data (bind mounts at runtime; not copied into the image)
+data/
+runtime/
 
 # Git and IDE
 .git/

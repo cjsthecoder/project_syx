@@ -16,6 +16,7 @@ import logging
 import os
 import subprocess
 import sys
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -182,20 +183,55 @@ def _build_run_config(settings, route_policy, git_commit: str, git_dirty: bool) 
     }
 
 
+def _ensure_default_project() -> None:
+    """Ensure the non-deletable system project ``Main`` exists.
+
+    The schema-only initial migration does not seed data, so the default
+    ``Main`` project is created here at startup when absent. Idempotent: it is a
+    no-op when a project named ``Main`` already exists. Downstream startup steps
+    (default backfill, ``USER_PROFILE.txt`` seeding) then operate on it.
+    """
+    from sqlmodel import select
+
+    try:
+        with get_session() as session:
+            existing = session.exec(select(Project).where(Project.name.ilike("Main"))).first()
+            if existing is not None:
+                return
+            project = Project(
+                id=str(uuid.uuid4()),
+                name="Main",
+                description=(
+                    "The continuous memory stream where all thoughts, ideas, and "
+                    "context flow beyond individual projects."
+                ),
+                system=True,
+            )
+            session.add(project)
+            session.commit()
+            logger.info("[INIT] Seeded default system project 'Main' id=%s", project.id)
+    except Exception as e:
+        logger.warning("[INIT] Failed to ensure default 'Main' project: %s", e, exc_info=True)
+
+
 # Lifespan handler to manage startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application startup and shutdown side effects.
 
-    On startup this initializes the database, eagerly constructs the LLM and
-    embedding factory clients, starts the instrumentation run, clears any
-    leftover sleep lock, backfills project defaults, seeds ``USER_PROFILE.txt``
-    for the Main project (rebuilding its RAG index), optionally rebuilds every
-    project's RAG index, and starts the daily sleep scheduler. On shutdown it
-    finalizes the instrumentation run.
+    On startup this initializes the database, ensures the default ``Main``
+    system project exists, eagerly constructs the LLM and embedding factory
+    clients, starts the instrumentation run, clears any leftover sleep lock,
+    backfills project defaults, seeds ``USER_PROFILE.txt`` for the Main project
+    (rebuilding its RAG index), optionally rebuilds every project's RAG index,
+    and starts the daily sleep scheduler. On shutdown it finalizes the
+    instrumentation run.
     """
     logger.info("FastAPI startup")
     init_db()
+    # Seed the default system project ('Main') when absent. The squashed,
+    # schema-only initial migration no longer creates it as a data seed.
+    _ensure_default_project()
     # Initialize factory clients at startup so configuration is visible in logs.
     try:
         get_llm_client()

@@ -26,17 +26,8 @@ FROM python:3.13.3-slim-bookworm AS backend
 
 WORKDIR /app
 
-# Copy backend (includes backend/app/config/route_policy.json)
-COPY backend ./backend
-COPY requirements.txt ./requirements.txt
-
-# Overwrite with built static from stage 1
-COPY --from=frontend-builder /app/backend/app/static ./backend/app/static
-
-# Directories the app writes to (bind mounts override these at runtime)
-RUN mkdir -p data/memory data/db runtime/logs runtime/runs runtime/state
-
-# Build tools + Rust (numpy needs gcc; tiktoken needs Rust when no wheel for platform/python)
+# Build tools + Rust (numpy needs gcc; tiktoken needs Rust when no wheel for platform/python).
+# Placed before app code so this layer stays cached across source changes.
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential curl \
     && rm -rf /var/lib/apt/lists/* \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
@@ -44,10 +35,21 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 # Let tiktoken (PyO3) build against Python 3.13 via stable ABI (PyO3 officially supports up to 3.12)
 ENV PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
 
-# Virtualenv and install Python deps
+# Install Python deps first so this expensive layer is cached unless requirements.txt
+# changes; copying backend source (below) no longer busts the dependency cache.
+COPY requirements.txt ./requirements.txt
 RUN python3 -m venv /app/venv && \
     /app/venv/bin/pip install --upgrade pip setuptools wheel && \
     /app/venv/bin/pip install -r requirements.txt
+
+# Copy backend (includes backend/app/config/route_policy.json)
+COPY backend ./backend
+
+# Overwrite with built static from stage 1
+COPY --from=frontend-builder /app/backend/app/static ./backend/app/static
+
+# Directories the app writes to (bind mounts override these at runtime)
+RUN mkdir -p data/memory data/db runtime/logs runtime/runs runtime/state
 
 # App runs from backend/ so relative paths (../data/*, ../runtime/*) resolve correctly
 WORKDIR /app/backend

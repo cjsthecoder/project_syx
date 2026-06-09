@@ -496,8 +496,8 @@ unlock-sleep:
 # Docker: create host directories for bind mounts (run before first docker-compose up)
 docker-data-dirs:
 	@echo "📁 Creating host directories for Docker bind mounts..."
-	@mkdir -p data/memory data/db runtime/logs runtime/runs runtime/state
-	@echo "✅ Created data/memory data/db runtime/logs runtime/runs runtime/state"
+	@mkdir -p data/memory data/db data/hf-cache runtime/logs runtime/runs runtime/state
+	@echo "✅ Created data/memory data/db data/hf-cache runtime/logs runtime/runs runtime/state"
 
 # Docker: set permissions so container process can read/write (container typically runs as root)
 docker-data-permissions:

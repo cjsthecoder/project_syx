@@ -55,7 +55,7 @@ def parse_prompt_context_to_snippets(context_text: str) -> List[AgentMemorySnipp
     snippets: List[AgentMemorySnippet] = []
     for part in parts:
         snippet = _parse_part(part)
-        if snippet is None:
+        if snippet is None:  # pragma: no cover - parts always begin with a matched header line
             raise SnippetParseError("retrieval context contained an unparseable snippet block")
         snippets.append(snippet)
     return snippets
@@ -329,7 +329,7 @@ def _clean_scalar(value: str) -> Any:
     if _INT_RE.match(v):
         try:
             return int(v)
-        except ValueError:
+        except ValueError:  # pragma: no cover - _INT_RE guarantees int() succeeds
             return v
     return v
 

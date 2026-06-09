@@ -390,3 +390,302 @@ def test_chat_stream_disabled_falls_back_to_simulated_stream(client, chat_env, m
     assert "::event: done" in resp.text
     assistant = [c for c in chat_env.persist if c[0] == "assistant"]
     assert assistant and assistant[0][2] == "abc"
+
+
+# ---------------------------------------------------------------------------
+# Pure helpers
+# ---------------------------------------------------------------------------
+
+
+def test_build_stream_usage_payload_prefers_provider_usage():
+    provider = {"total_tokens_reported": 99, "usage_is_estimate": False}
+    out = chat_module._build_stream_usage_payload(provider, [{"content": "x"}], "abc")
+    assert out is provider
+
+
+def test_build_stream_usage_payload_estimates_when_no_provider():
+    out = chat_module._build_stream_usage_payload(
+        None, [{"role": "user", "content": "hello there"}], "a longer reply"
+    )
+    assert out["usage_is_estimate"] is True
+    assert out["total_tokens_reported"] > 0
+
+
+def test_build_stream_usage_payload_zeroes_nonpositive_estimate():
+    # Empty prompt + empty completion -> estimate 0 -> zeroed payload.
+    out = chat_module._build_stream_usage_payload(None, [], "")
+    assert out["total_tokens_reported"] == 0
+    assert out["usage_is_estimate"] is True
+
+
+def test_update_context_token_stats_failure_logged(monkeypatch, caplog):
+    monkeypatch.setattr(
+        chat_module, "count_tokens", lambda _t: (_ for _ in ()).throw(RuntimeError("tok down"))
+    )
+    chat_module._update_context_token_stats(
+        project_id="p1",
+        conversation_history=[{"content": "x"}],
+        message="m",
+        response_text="r",
+        msg_id="mid",
+    )
+    assert any("context_tokens update failed" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# /chat additional branches
+# ---------------------------------------------------------------------------
+
+
+def test_chat_llm_error_maps_to_llm_handler(client, chat_env, monkeypatch):
+    # An error message mentioning "llm" routes through handle_llm_error (503).
+    monkeypatch.setattr(
+        chat_module,
+        "generate_chat_response",
+        lambda **kwargs: {"success": False, "error": "llm provider exploded"},
+    )
+    resp = client.post("/chat", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"})
+    assert resp.status_code == 503
+
+
+def test_chat_persist_failure_is_logged(client, chat_env, monkeypatch, caplog):
+    monkeypatch.setattr(
+        chat_module,
+        "generate_chat_response",
+        lambda **kwargs: {"success": True, "response": "ok", "llm_model": "m", "tokens_used": 1},
+    )
+
+    def boom(*a, **k):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(FakeMemoryManager, "append_user_message", boom)
+    resp = client.post("/chat", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"})
+    assert resp.status_code == 200  # persistence failure does not fail the turn
+    assert any("Persist failed" in r.message for r in caplog.records)
+
+
+def test_chat_prompt_debug_dump_failure_is_logged(client, chat_env, monkeypatch, caplog):
+    monkeypatch.setattr(
+        chat_module,
+        "generate_chat_response",
+        lambda **kwargs: {"success": True, "response": "ok", "llm_model": "m", "tokens_used": 1},
+    )
+
+    def boom(**kwargs):
+        raise RuntimeError("debug write failed")
+
+    monkeypatch.setattr(chat_module, "dump_prompt_debug", boom)
+    resp = client.post("/chat", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"})
+    assert resp.status_code == 200
+    assert any("prompt_debug dump failed" in r.message for r in caplog.records)
+
+
+def test_chat_turn_end_instrumentation_failure_logged(client, chat_env, monkeypatch, caplog):
+    monkeypatch.setattr(
+        chat_module,
+        "generate_chat_response",
+        lambda **kwargs: {"success": True, "response": "ok", "llm_model": "m", "tokens_used": 1},
+    )
+
+    def boom(self, *, output_meta):
+        raise RuntimeError("end_turn down")
+
+    monkeypatch.setattr(FakeInstrumentation, "end_turn", boom)
+    resp = client.post("/chat", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"})
+    assert resp.status_code == 200  # finally guard swallows instrumentation failure
+    assert any("turn_end instrumentation failed" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# /chat/stream additional branches
+# ---------------------------------------------------------------------------
+
+
+def test_chat_stream_fake_assistant_persist_failure_logged(client, chat_env, monkeypatch, caplog):
+    monkeypatch.setattr(get_settings(), "streaming_enabled", False)
+    monkeypatch.setattr(
+        chat_module,
+        "generate_chat_response",
+        lambda **kwargs: {"success": True, "response": "abc", "llm_model": "m", "tokens_used": 1},
+    )
+
+    def boom(self, *a, **k):
+        raise RuntimeError("persist down")
+
+    monkeypatch.setattr(FakePipeline, "persist_assistant", boom)
+    resp = client.post(
+        "/chat/stream", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"}
+    )
+    assert resp.status_code == 200
+    assert "abc" in resp.text
+    assert any("fake_stream assistant persist failed" in r.message for r in caplog.records)
+
+
+def test_chat_stream_fake_generate_failure_yields_error(client, chat_env, monkeypatch):
+    monkeypatch.setattr(get_settings(), "streaming_enabled", False)
+
+    def boom(**kwargs):
+        raise RuntimeError("generation exploded")
+
+    monkeypatch.setattr(chat_module, "generate_chat_response", boom)
+    resp = client.post(
+        "/chat/stream", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"}
+    )
+    assert resp.status_code == 200
+    assert "[error]" in resp.text
+
+
+class _UsageWithExtra:
+    def __init__(self):
+        self.prompt_tokens_reported = 1
+        self.completion_tokens_reported = 1
+        self.total_tokens_reported = 2
+        self.usage_is_estimate = False
+        self.extra_usage = {"reasoning_tokens": 3}
+
+
+class _StreamClientWithExtraUsage:
+    def stream_chat(self, *, messages, model, temperature, max_completion_tokens):
+        yield ("hi", None)
+        yield (None, _UsageWithExtra())
+
+
+def test_chat_stream_records_extra_usage(client, chat_env, monkeypatch):
+    monkeypatch.setattr(get_settings(), "streaming_enabled", True)
+    monkeypatch.setattr(chat_module, "get_llm_client", lambda: _StreamClientWithExtraUsage())
+    resp = client.post(
+        "/chat/stream", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"}
+    )
+    assert resp.status_code == 200
+    assert "hi" in resp.text
+
+
+class _StreamClientNoTokens:
+    def stream_chat(self, *, messages, model, temperature, max_completion_tokens):
+        yield (None, _FakeUsage())  # only usage, never a text token
+
+
+def test_chat_stream_no_first_token_warns(client, chat_env, monkeypatch, caplog):
+    monkeypatch.setattr(get_settings(), "streaming_enabled", True)
+    monkeypatch.setattr(chat_module, "get_llm_client", lambda: _StreamClientNoTokens())
+    resp = client.post(
+        "/chat/stream", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"}
+    )
+    assert resp.status_code == 200
+    assert any("no first token timing" in r.message for r in caplog.records)
+
+
+def test_chat_stream_invocation_finalize_failure_logged(client, chat_env, monkeypatch, caplog):
+    monkeypatch.setattr(get_settings(), "streaming_enabled", True)
+    monkeypatch.setattr(chat_module, "get_llm_client", lambda: _FakeStreamClient())
+
+    def boom(self, invocation_id, *, usage=None, timing=None):
+        raise RuntimeError("end_invocation down")
+
+    monkeypatch.setattr(FakeInstrumentation, "end_invocation", boom)
+    resp = client.post(
+        "/chat/stream", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"}
+    )
+    assert resp.status_code == 200
+    assert any(
+        "invocation instrumentation finalization failed" in r.message for r in caplog.records
+    )
+
+
+def test_chat_stream_assistant_persist_failure_logged(client, chat_env, monkeypatch, caplog):
+    monkeypatch.setattr(get_settings(), "streaming_enabled", True)
+    monkeypatch.setattr(chat_module, "get_llm_client", lambda: _FakeStreamClient())
+
+    def boom(self, *a, **k):
+        raise RuntimeError("persist down")
+
+    monkeypatch.setattr(FakePipeline, "persist_assistant", boom)
+    resp = client.post(
+        "/chat/stream", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"}
+    )
+    assert resp.status_code == 200
+    assert any("stream assistant persist failed" in r.message for r in caplog.records)
+
+
+def test_chat_stream_turn_end_failure_logged(client, chat_env, monkeypatch, caplog):
+    monkeypatch.setattr(get_settings(), "streaming_enabled", True)
+    monkeypatch.setattr(chat_module, "get_llm_client", lambda: _FakeStreamClient())
+
+    def boom(self, *, output_meta):
+        raise RuntimeError("end_turn down")
+
+    monkeypatch.setattr(FakeInstrumentation, "end_turn", boom)
+    resp = client.post(
+        "/chat/stream", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"}
+    )
+    assert resp.status_code == 200
+    assert any("stream turn_end failed" in r.message for r in caplog.records)
+
+
+def test_chat_stream_prompt_debug_failure_logged(client, chat_env, monkeypatch, caplog):
+    monkeypatch.setattr(get_settings(), "streaming_enabled", True)
+    monkeypatch.setattr(chat_module, "get_llm_client", lambda: _FakeStreamClient())
+
+    def boom(**kwargs):
+        raise RuntimeError("debug write failed")
+
+    monkeypatch.setattr(chat_module, "dump_prompt_debug", boom)
+    resp = client.post(
+        "/chat/stream", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"}
+    )
+    assert resp.status_code == 200
+    assert any("stream prompt_debug dump failed" in r.message for r in caplog.records)
+
+
+def test_chat_stream_setup_failure_returns_500(client, chat_env, monkeypatch, caplog):
+    monkeypatch.setattr(get_settings(), "streaming_enabled", True)
+
+    def boom(*a, **k):
+        raise RuntimeError("prepare exploded")
+
+    monkeypatch.setattr(chat_module, "_prepare_prompts", boom)
+    resp = client.post(
+        "/chat/stream", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"}
+    )
+    assert resp.status_code == 500
+    assert "prepare exploded" in resp.json()["error"]
+
+
+def test_chat_stream_setup_failure_turn_end_failure_logged(client, chat_env, monkeypatch, caplog):
+    monkeypatch.setattr(get_settings(), "streaming_enabled", True)
+
+    def boom(*a, **k):
+        raise RuntimeError("prepare exploded")
+
+    monkeypatch.setattr(chat_module, "_prepare_prompts", boom)
+
+    def boom_end(self, *, output_meta):
+        raise RuntimeError("end_turn down")
+
+    monkeypatch.setattr(FakeInstrumentation, "end_turn", boom_end)
+    resp = client.post(
+        "/chat/stream", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"}
+    )
+    assert resp.status_code == 500
+    assert any("error turn_end failed" in r.message for r in caplog.records)
+
+
+def test_chat_health_exception_returns_503(client, monkeypatch):
+    def boom():
+        raise RuntimeError("health down")
+
+    monkeypatch.setattr(chat_module, "get_llm_health", boom)
+    resp = client.get("/chat/health")
+    assert resp.status_code == 503
+    assert "health down" in resp.json()["error"]
+
+
+def test_chat_stats_failure_returns_500(client, monkeypatch):
+    class _BadMM:
+        def get_memory_stats(self):
+            raise RuntimeError("stats down")
+
+    monkeypatch.setattr(chat_module, "get_memory_manager", lambda: _BadMM())
+    resp = client.get("/chat/stats")
+    assert resp.status_code == 500
+    assert resp.json()["error"] == "Failed to retrieve statistics"

@@ -83,7 +83,9 @@ This project implements a modular chatbot and memory system with:
 
 ## Testing
 
-- Backend tests under `/backend/tests/`.
+- Backend tests live under `/tests/` (pytest). Run via `make` targets such as
+  `make coverage-backend`.
+- Follow `docs/COVERAGE.md` for test and coverage policy (see the `testing` rule).
 - Frontend smoke tests where reasonable.
 
 ## Identity

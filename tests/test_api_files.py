@@ -92,3 +92,118 @@ def test_delete_file(client):
 def test_delete_missing_file_404(client):
     resp = client.request("DELETE", "/projects/p1/files/99999")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# _compute_file_stats helper
+# ---------------------------------------------------------------------------
+
+
+def test_compute_file_stats_tracks_pages_and_tokens(monkeypatch):
+    monkeypatch.setattr(
+        files_module,
+        "read_file_text",
+        lambda path: iter(
+            [("page one text", {"page_number": 1}), ("page two text", {"page_number": 2})]
+        ),
+    )
+    monkeypatch.setattr(files_module, "count_tokens", lambda text: 5)
+    pages, tokens = files_module._compute_file_stats("/fake/path")
+    assert pages == 2
+    assert tokens == 10
+
+
+def test_compute_file_stats_failure_defaults(monkeypatch, caplog):
+    def boom(_path):
+        raise RuntimeError("extract failed")
+
+    monkeypatch.setattr(files_module, "read_file_text", boom)
+    pages, tokens = files_module._compute_file_stats("/fake/path")
+    assert pages == 1 and tokens == 0
+    assert any("compute_file_stats failed" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# upload rollback / error branches
+# ---------------------------------------------------------------------------
+
+
+def test_upload_batch_rollback_delete_failure_logged(
+    client, settings_override, monkeypatch, caplog
+):
+    settings_override(max_upload_mb=10, max_batch_mb=0)
+
+    def boom(_path):
+        raise OSError("rollback remove denied")
+
+    monkeypatch.setattr(files_module.os, "remove", boom)
+    resp = client.post("/projects/p1/files", files=[_txt()])
+    assert resp.status_code == 400
+    assert any("rollback delete failed" in r.message for r in caplog.records)
+
+
+def test_upload_storage_walk_getsize_failure_logged(client, monkeypatch, caplog):
+    def boom(_path):
+        raise OSError("getsize denied")
+
+    monkeypatch.setattr(files_module.os.path, "getsize", boom)
+    resp = client.post("/projects/p1/files", files=[_txt()])
+    # getsize failure leaves existing_total at 0, so upload still succeeds.
+    assert resp.status_code == 200
+    assert any("size calc failed" in r.message for r in caplog.records)
+
+
+def test_upload_post_batch_storage_rollback(client, settings_override, monkeypatch, caplog):
+    # existing_total (just-written 20 bytes) <= limit, but existing+written exceeds it.
+    settings_override(max_upload_mb=10, max_batch_mb=50, storage_limit_mb=3e-5)
+
+    def boom(_path):
+        raise OSError("storage rollback remove denied")
+
+    monkeypatch.setattr(files_module.os, "remove", boom)
+    resp = client.post("/projects/p1/files", files=[_txt()])
+    assert resp.status_code == 400
+    assert "would be exceeded" in str(resp.json())
+    assert any("storage rollback delete failed" in r.message for r in caplog.records)
+
+
+def test_upload_rebuild_failure_reports_status(client, monkeypatch):
+    def boom(_pid):
+        raise RuntimeError("rag down")
+
+    monkeypatch.setattr(files_module, "rebuild_faiss_index", boom)
+    resp = client.post("/projects/p1/files", files=[_txt()])
+    assert resp.status_code == 200
+    assert resp.json()["rebuild_status"] == "failed"
+    assert resp.json()["index_dir"] is None
+
+
+# ---------------------------------------------------------------------------
+# delete error branches
+# ---------------------------------------------------------------------------
+
+
+def test_delete_disk_remove_failure_logged(client, monkeypatch, caplog):
+    client.post("/projects/p1/files", files=[_txt(name="rm.txt")])
+    file_id = client.get("/projects/p1/files").json()["files"][0]["id"]
+
+    def boom(_path):
+        raise OSError("remove denied")
+
+    monkeypatch.setattr(files_module.os, "remove", boom)
+    resp = client.request("DELETE", f"/projects/p1/files/{file_id}")
+    assert resp.status_code == 200  # disk-remove failure is non-fatal
+    assert any("failed removing disk file" in r.message for r in caplog.records)
+
+
+def test_delete_rebuild_failure_reports_status(client, monkeypatch):
+    client.post("/projects/p1/files", files=[_txt(name="reb.txt")])
+    file_id = client.get("/projects/p1/files").json()["files"][0]["id"]
+
+    def boom(_pid):
+        raise RuntimeError("rag down")
+
+    monkeypatch.setattr(files_module, "rebuild_faiss_index", boom)
+    resp = client.request("DELETE", f"/projects/p1/files/{file_id}")
+    assert resp.status_code == 200
+    assert resp.json()["rebuild_status"] == "failed"

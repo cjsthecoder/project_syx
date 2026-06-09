@@ -290,6 +290,117 @@ def test_agent_memory_search_sleep_lock_reaches_endpoint(monkeypatch):
     assert response.json()["project_id"] == "proj-1"
 
 
+def _authz(authorized=True, forbidden=False, message=None):
+    return SimpleNamespace(authorized=authorized, forbidden=forbidden, message=message)
+
+
+def test_agent_memory_search_missing_project_name_returns_400():
+    response = client.post("/agent/memory/search", json={"query": "q", "agent_token": ""})
+    assert response.status_code == 400
+    assert response.json()["error"] == "invalid_request"
+
+
+def test_agent_memory_search_missing_query_returns_400():
+    response = client.post("/agent/memory/search", json={"project_name": "P", "agent_token": ""})
+    assert response.status_code == 400
+    assert response.json()["error"] == "invalid_request"
+
+
+def test_agent_memory_search_project_not_found_returns_404(monkeypatch):
+    monkeypatch.setattr("app.agent_interface.router.resolve_project_name", lambda _n: None)
+    response = client.post(
+        "/agent/memory/search", json={"project_name": "Ghost", "query": "q", "agent_token": ""}
+    )
+    assert response.status_code == 404
+    assert response.json()["error"] == "project_not_found"
+    assert response.json()["project_name"] == "Ghost"
+
+
+def test_agent_memory_search_forbidden_returns_403(monkeypatch):
+    monkeypatch.setattr(
+        "app.agent_interface.router.resolve_project_name",
+        lambda _n: SimpleNamespace(id="proj-1"),
+    )
+    monkeypatch.setattr(
+        "app.agent_interface.router.authorize_agent_token",
+        lambda _pid, _tok: _authz(authorized=False, forbidden=True, message="denied"),
+    )
+    response = client.post(
+        "/agent/memory/search",
+        json={"project_name": "P", "query": "q", "agent_token": "wrong"},
+    )
+    assert response.status_code == 403
+    assert response.json()["error"] == "forbidden"
+    assert response.json()["message"] == "denied"
+
+
+def test_agent_memory_search_unauthorized_returns_401(monkeypatch):
+    monkeypatch.setattr(
+        "app.agent_interface.router.resolve_project_name",
+        lambda _n: SimpleNamespace(id="proj-1"),
+    )
+    monkeypatch.setattr(
+        "app.agent_interface.router.authorize_agent_token",
+        lambda _pid, _tok: _authz(authorized=False, forbidden=False, message="bad token"),
+    )
+    response = client.post(
+        "/agent/memory/search",
+        json={"project_name": "P", "query": "q", "agent_token": "bad"},
+    )
+    assert response.status_code == 401
+    assert response.json()["error"] == "unauthorized"
+    assert response.json()["message"] == "bad token"
+
+
+def _setup_authorized(monkeypatch):
+    monkeypatch.setattr(
+        "app.agent_interface.router.resolve_project_name",
+        lambda _n: SimpleNamespace(id="proj-1"),
+    )
+    monkeypatch.setattr(
+        "app.agent_interface.router.authorize_agent_token", lambda _pid, _tok: _authz()
+    )
+    monkeypatch.setattr("app.agent_interface.router.is_sleeping", lambda: False)
+
+
+def test_agent_memory_search_snippet_parse_error_returns_500(monkeypatch):
+    from app.agent_interface.parser import SnippetParseError
+
+    _setup_authorized(monkeypatch)
+    debug_calls = []
+
+    def boom(**_kwargs):
+        raise SnippetParseError("unparseable", raw_context="raw ctx")
+
+    monkeypatch.setattr("app.agent_interface.router.retrieve_agent_memory", boom)
+    monkeypatch.setattr(
+        "app.agent_interface.router.write_agent_debug_files",
+        lambda **kwargs: debug_calls.append(kwargs),
+    )
+    response = client.post(
+        "/agent/memory/search",
+        json={"project_name": "P", "query": "q", "agent_token": ""},
+    )
+    assert response.status_code == 500
+    assert response.json()["error"] == "snippet_parse_failed"
+    # Debug artifacts are still written on the parse-failure path.
+    assert debug_calls and debug_calls[0]["error_payload"]["error"] == "snippet_parse_failed"
+
+
+def test_agent_memory_search_generic_error_returns_500(monkeypatch):
+    _setup_authorized(monkeypatch)
+    monkeypatch.setattr(
+        "app.agent_interface.router.retrieve_agent_memory",
+        lambda **_k: (_ for _ in ()).throw(RuntimeError("kaboom")),
+    )
+    response = client.post(
+        "/agent/memory/search",
+        json={"project_name": "P", "query": "q", "agent_token": ""},
+    )
+    assert response.status_code == 500
+    assert response.json()["error"] == "agent_memory_search_failed"
+
+
 def test_cli_prints_raw_json_and_writes_debug(tmp_path, monkeypatch, capsys):
     class _Response:
         status = 200

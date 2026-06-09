@@ -381,7 +381,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 len((assistant_hint or "").encode("utf-8")),
                 ((base_system_prompt or "")[:200].replace("\n", " ")),
             )
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - defensive guard around debug logging only
             logger.debug("chat.prompt size logging failed message_id=%s detail=%s", msg_id, exc)
         llm_logger.log_llm_request(
             model=(request.model or settings.model_name),
@@ -569,7 +569,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         clear_message_id()
         try:
             clear_namespace()
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - defensive guard around context clear only
             logger.debug("chat.clear_namespace failed detail=%s", exc)
 
 
@@ -843,7 +843,7 @@ async def chat_stream(request: ChatRequest):
         clear_message_id()
         try:
             clear_namespace()
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - defensive guard around context clear only
             logger.debug("chat.stream clear_namespace failed detail=%s", exc)
 
 

@@ -1306,7 +1306,7 @@ async def get_project_personality(project_id: str) -> JSONResponse:
                 p.get("verbosity"),
                 p.get("format"),
             )
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - defensive guard around debug logging only
             logger.info(
                 "[PROJECT] personality_get debug log failed project_id=%s detail=%s",
                 project_id,

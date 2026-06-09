@@ -355,7 +355,7 @@ class ChatPipeline:
                     "OTHER",
                     [],
                 )
-            except Exception:
+            except Exception:  # pragma: no cover - defensive guard around debug logging only
                 logger.debug(
                     "chat.builder debug logging failed project_id=%s", project_id, exc_info=True
                 )
@@ -383,7 +383,7 @@ class ChatPipeline:
                 len(topics or []),
                 builder_prev,
             )
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - defensive guard around debug logging only
             logger.debug(
                 "chat.builder route logging failed project_id=%s detail=%s", project_id, exc
             )

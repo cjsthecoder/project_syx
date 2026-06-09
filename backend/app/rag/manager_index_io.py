@@ -206,7 +206,7 @@ def build_ltm_adjacency_lists(
         out: Dict[str, List[str]] = {}
         for doc_id, pairs in by_doc.items():
             pairs = sorted(pairs, key=lambda p: p[0])
-            if not pairs:
+            if not pairs:  # pragma: no cover - unreachable; every doc_id has >=1 pair
                 continue
             seqs = [p[0] for p in pairs]
             if seqs[0] != 0 or seqs != list(range(0, len(seqs))):

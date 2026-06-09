@@ -33,7 +33,7 @@ help:
 	@echo "  make test-frontend        - Run frontend tests"
 	@echo "  make lint                 - Lint all code (black/isort/ruff + tsc)"
 	@echo "  make lint-backend         - Lint Python code (black --check, isort --check, ruff)"
-	@echo "  make lint-frontend        - Type-check TypeScript/React code (tsc --noEmit)"
+	@echo "  make lint-frontend        - Lint TypeScript/React code (eslint + tsc --noEmit)"
 	@echo "  make format               - Format all code"
 	@echo "  make format-backend       - Format Python code"
 	@echo "  make format-frontend      - Format TypeScript/React code"
@@ -202,13 +202,18 @@ lint-backend:
 	@echo "✅ Backend linting completed"
 
 lint-frontend:
-	@echo "🔍 Type-checking TypeScript/React code (tsc --noEmit)..."
+	@echo "🔍 Linting TypeScript/React code (eslint + tsc --noEmit)..."
+	@if node -e "const s=require('./frontend/package.json').scripts||{}; process.exit(s.lint?0:1)"; then \
+		cd frontend && npm run lint; \
+	else \
+		echo "ℹ️  Skipping frontend lint: no 'lint' script in frontend/package.json"; \
+	fi
 	@if node -e "const s=require('./frontend/package.json').scripts||{}; process.exit(s.typecheck?0:1)"; then \
 		cd frontend && npm run typecheck; \
 	else \
 		echo "ℹ️  Skipping frontend type-check: no 'typecheck' script in frontend/package.json"; \
 	fi
-	@echo "✅ Frontend type-check completed"
+	@echo "✅ Frontend lint + type-check completed"
 
 # Format code
 format: format-backend format-frontend

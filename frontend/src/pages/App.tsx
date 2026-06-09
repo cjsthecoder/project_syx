@@ -57,7 +57,6 @@ export default function App() {
     projectSummary,
     setProjectSummary,
     hasDreamItems,
-    setHasDreamItems,
     dreamItems,
     setDreamItems,
     savingDream,
@@ -205,8 +204,9 @@ export default function App() {
   }, [model])
 
   useEffect(() => {
+    // Async mount loader: state is set after an await, not a synchronous cascade.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadModels()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadModels])
 
   // Refresh project data when project changes

@@ -16,7 +16,17 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/pages/app/api'
 import { toDreamViewState } from '@/pages/app/dream'
 import { extractErrorMessage, readJsonSafe, throwRequestError } from '@/pages/app/request'
-import { DreamItem, Project, ProjectInfo, ProjectStats } from '@/pages/app/types'
+import {
+  DreamItem,
+  FormatPref,
+  Personality,
+  Project,
+  ProjectFile,
+  ProjectInfo,
+  ProjectStats,
+  Tone,
+  Verbosity,
+} from '@/pages/app/types'
 
 type UseProjectDataArgs = {
   showDebugValues: boolean
@@ -38,7 +48,7 @@ type UseProjectDataArgs = {
 export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs) {
   const [projects, setProjects] = useState<Project[]>([])
   const [projectId, setProjectId] = useState<string>('')
-  const [files, setFiles] = useState<any[]>([])
+  const [files, setFiles] = useState<ProjectFile[]>([])
   const [stats, setStats] = useState<ProjectStats | null>(null)
   const [projectInfo, setProjectInfo] = useState<ProjectInfo | null>(null)
   const [showSleepModal, setShowSleepModal] = useState(false)
@@ -50,9 +60,9 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
   const [savingDream, setSavingDream] = useState(false)
 
   const [systemPrompt, setSystemPrompt] = useState('')
-  const [tone, setTone] = useState<'analytical' | 'friendly' | 'creative' | 'formal'>('analytical')
-  const [verbosity, setVerbosity] = useState<'concise' | 'balanced' | 'detailed'>('concise')
-  const [formatPref, setFormatPref] = useState<'markdown' | 'plain' | 'html'>('markdown')
+  const [tone, setTone] = useState<Tone>('analytical')
+  const [verbosity, setVerbosity] = useState<Verbosity>('concise')
+  const [formatPref, setFormatPref] = useState<FormatPref>('markdown')
   const [creativity, setCreativity] = useState(0.4)
   const [domainFocus, setDomainFocus] = useState('')
 
@@ -85,7 +95,7 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
    */
   const loadFiles = useCallback(async (pid: string) => {
     try {
-      const data = await api<{ project_id: string; files: any[] }>(`/projects/${pid}/files`)
+      const data = await api<{ project_id: string; files: ProjectFile[] }>(`/projects/${pid}/files`)
       setFiles(data.files || [])
     } catch {
       setFiles([])
@@ -299,13 +309,13 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
       }
       personalityInFlightRef.current.add(pid)
       try {
-        const data = await api<{ project_id: string; personality: any; system_prompt: string }>(`/projects/${pid}/personality`)
+        const data = await api<{ project_id: string; personality: Personality; system_prompt: string }>(`/projects/${pid}/personality`)
         const p = data.personality || {}
         setSystemPrompt(data.system_prompt || '')
-        setTone((p.tone || 'analytical').toLowerCase())
-        setVerbosity((p.verbosity || 'concise').toLowerCase())
-        setFormatPref((p.format || 'markdown').toLowerCase())
-        setCreativity(parseFloat(p.creativity ?? 0.4) || 0.4)
+        setTone((p.tone || 'analytical').toLowerCase() as Tone)
+        setVerbosity((p.verbosity || 'concise').toLowerCase() as Verbosity)
+        setFormatPref((p.format || 'markdown').toLowerCase() as FormatPref)
+        setCreativity(parseFloat(String(p.creativity ?? 0.4)) || 0.4)
         setDomainFocus(Array.isArray(p.domain_focus) ? p.domain_focus.join(', ') : '')
       } catch (e: unknown) {
         onError(e instanceof Error ? e.message : 'Failed to load personality')
@@ -422,6 +432,8 @@ export function useProjectData({ showDebugValues, onError }: UseProjectDataArgs)
   }, [dreamItems, onError, projectId])
 
   useEffect(() => {
+    // Async mount loader: state is set after an await, not a synchronous cascade.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadProjects()
   }, [loadProjects])
 

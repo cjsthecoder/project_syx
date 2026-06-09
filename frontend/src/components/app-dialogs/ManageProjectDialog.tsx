@@ -13,7 +13,7 @@
  */
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogFooter, DialogHeader } from '@/components/ui/dialog'
-import { ProjectInfo } from '@/pages/app/types'
+import { ProjectFile, ProjectInfo } from '@/pages/app/types'
 import type { DragEventHandler } from 'react'
 
 type ManageProjectDialogProps = {
@@ -21,7 +21,7 @@ type ManageProjectDialogProps = {
   projectId: string
   projectInfo: ProjectInfo | null
   renameProjectName: string
-  files: any[]
+  files: ProjectFile[]
   dragOver: boolean
   onClose: () => void
   onRenameProjectNameChange: (value: string) => void
@@ -127,7 +127,7 @@ export function ManageProjectDialog({
         <div>
           <div className="font-semibold mb-2">Files</div>
           <ul className="space-y-2 max-h-64 overflow-auto">
-            {files.map((f: any) => (
+            {files.map((f) => (
               <li key={f.id} className="flex items-center justify-between text-sm">
                 <div className="truncate mr-3">{f.filename}</div>
                 <div className="flex items-center gap-3">

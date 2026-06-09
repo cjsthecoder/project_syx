@@ -16,7 +16,8 @@ describe('cn', () => {
   })
 
   it('drops falsy values and supports conditional objects', () => {
-    expect(cn('a', false && 'b', null, undefined, { c: true, d: false })).toBe('a c')
+    const show = false
+    expect(cn('a', show && 'b', null, undefined, { c: true, d: false })).toBe('a c')
   })
 
   it('resolves conflicting tailwind classes (last wins)', () => {

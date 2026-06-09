@@ -100,6 +100,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Lint (eslint)
+        working-directory: frontend
+        run: npm run lint
+
       - name: Type check (tsc --noEmit)
         working-directory: frontend
         run: npm run typecheck

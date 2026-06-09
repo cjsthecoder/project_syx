@@ -25,6 +25,24 @@ export type Project = { id: string; name?: string }
 
 export type ModelItem = string
 
+export type ProjectFile = {
+  id: number
+  filename: string
+  size_bytes: number
+}
+
+export type Tone = 'analytical' | 'friendly' | 'creative' | 'formal'
+export type Verbosity = 'concise' | 'balanced' | 'detailed'
+export type FormatPref = 'markdown' | 'plain' | 'html'
+
+export type Personality = {
+  tone?: string
+  verbosity?: string
+  format?: string
+  creativity?: number | string
+  domain_focus?: string[] | string
+}
+
 export type DreamResearch = {
   research_topic?: string
   research_summary?: string

@@ -215,7 +215,7 @@ def _next_blank_line_index(text: str, start: int) -> int | None:
 
         cursor = next_line_start
 
-    return None
+    return None  # pragma: no cover - the loop always returns once a newline is seen (or None above)
 
 
 def _consume_blank_line_separator(text: str, start: int) -> int:

@@ -339,8 +339,43 @@ as the embedding provider — fake only the SDK boundary:
   redundant fallback — any non-empty `text` is already captured by the generic
   text handling immediately above, so the append can never run.
 
+## Pruning: small direct tests for the remaining error/edge branches
+
+`app/pruning/light_response_pruner/` already had broad behavior tests
+(`test_pruning.py`); the gaps were fail-fast guards and low-level span helpers.
+`test_pruning_coverage.py` fills them with small, direct tests:
+
+- **config**: `validate_rules` passthrough/invalid, `load_rule_file`
+  missing/invalid-JSON/non-object/comment-strip, `merge_rules`
+  empty/combine/union, the conflicting-`cut_mode` raises for front and end
+  sections (use `model_construct` to bypass the `Literal` validator and force
+  the conflict branch), the empty-section `None` returns, `_merge_prefix_lists`
+  dedup, `_normalize_sources` wrap/list/empty, and `_coerce_rule_source`
+  passthrough.
+- **models**: the `_dedupe_prefixes` blank-raises / dedup paths via
+  `FrontRuleSection`, and all three `trimmed_side` computed-field branches
+  (front-only, end-only, none).
+- **pruner**: the `PrunerConfig` type/range guards (parametrized),
+  `from_file`/`from_files`, the `prune` non-string and oversized-input guards
+  (the latter asserts the warning), `prune_response`, and the `_prune_end`
+  fenced-code skip (a matching paragraph that sits inside an open fence but
+  does not itself start with a structural marker) plus the safety-block path.
+- **units / similarity / whitespace**: span helpers driven directly —
+  `leading_sentence_span` (blank, non-terminal dot), `paragraph_spans`
+  (leading-blank skip + trailing-ws trim), `_is_inside_fenced_code_block`,
+  `_starts_with_ordered_list_marker`, `prune_similar_sentences` (blank
+  passthrough + dup-before-fence newline reinsertion), `_sentence_spans` blank,
+  and `compact_whitespace` blank.
+- **Genuinely unreachable guards** are `# pragma: no cover`: the merged-rules
+  `ValidationError` re-raise in `config.merge_rules` (every input rule set has
+  at least one valid section, so the merge is always valid) and the trailing
+  `return None` in `units._next_blank_line_index` (the loop always returns once
+  a newline is seen, or `None` earlier).
+
 ## Status so far
 
+- `app/pruning/light_response_pruner/` — entire package at **100%** (config,
+  models, pruner, units, similarity, whitespace, markdown, normalize, rules).
 - `app/llm_model/` — entire directory at **100%** (providers/openai_provider,
   base, factory; `llm_client.py` excluded as a re-export shim).
 - `app/tagging/` — `tagger.py` at **100%**.
@@ -360,7 +395,5 @@ as the embedding provider — fake only the SDK boundary:
 - `app/core/` — entire directory at **100%** (config, database, llm_service, memory,
   personality, query_builder, route_policy, similarity, state, plus the already-100%
   db_models/models/retrieval_ordering).
-- `app/pruning/light_response_pruner/rules.py`,
-  `app/embedding/providers/sentence_transformers_provider.py` — **100%**.
 - `app/llm_model/llm_client.py` — excluded (re-export shim).
 - `app/tracking/` — omitted from measurement.

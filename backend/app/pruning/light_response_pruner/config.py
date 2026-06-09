@@ -137,7 +137,9 @@ def merge_rules(rule_sets: Sequence[PruneRules]) -> PruneRules:
 
     try:
         return PruneRules(front=merged_front, end=merged_end)
-    except ValidationError as exc:
+    except (
+        ValidationError
+    ) as exc:  # pragma: no cover - each input set has >=1 valid section, so the merge is always valid
         raise RuleConfigError(f"Merged pruning rules are invalid: {exc}") from exc
 
 

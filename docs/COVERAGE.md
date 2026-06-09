@@ -283,8 +283,36 @@ FAISS, or network is ever touched:
   check in `questions_consolidation` (the key always contains the `"||"`
   separator, so it is never falsy).
 
+## Tagging: pure prompt helpers + a faked mini-LLM and instrumentation
+
+`app/tagging/tagger.py` is one module: pure prompt-assembly/parse helpers plus
+`tag_pair`, which calls the mini/tagger LLM. The discipline is to test the
+helpers directly and fake only the LLM + instrumentation + debug-writer
+boundaries for `tag_pair`:
+
+- **Pure helpers tested directly**: `_slice_first_json` (balanced slice, empty
+  input, escaped-quote/brace-inside-string scanning, unbalanced → input
+  unchanged), `_safe_percent`/`_safe_min_len` coercion, `_middle_cut_assistant_text`
+  (short unchanged, long elision, `cut<=0` no-op, and the min-side-restore path
+  that collapses back to the original), `_extract_prev_tag_value`,
+  `_build_previous_turn_block` (the leading-`\n` regex vs the no-newline fallback,
+  and rendering every `#route/#keep/#topics/#intent/#type/#semantic_handle` tag
+  line), `_extract_tagger_fields`, and `_tagger_usage_from_response`.
+- **Debug dump helpers** (`_write_tagger_success_debug` / `_write_tagger_failure_debug`)
+  are called directly with `write_debug_file` faked: the body runs only when
+  `project_id` is truthy (no-op otherwise), and the best-effort `except` is hit
+  by making the writer raise.
+- **`tag_pair` faked boundaries**: `get_settings`, `get_instrumentation` (a
+  `_FakeInstr` returning a truthy invocation id, optionally raising in
+  `end_invocation`), `get_llm_client_mini` (returns a `SimpleNamespace` response),
+  and `write_debug_file`. This covers the success-debug write with a real
+  `project_id`, the contained summary-log failure (monkeypatch `logger.info` to
+  raise), and the error path's invocation finalize (non-JSON output → `ValueError`)
+  including the finalize-failure log.
+
 ## Status so far
 
+- `app/tagging/` — `tagger.py` at **100%**.
 - `app/sleep/` — entire directory at **100%** (cycle, worker,
   questions_consolidation).
 - `app/embedding/` — entire directory at **100%** (openai_provider,

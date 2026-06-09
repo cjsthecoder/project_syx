@@ -13,21 +13,49 @@ bounded text), fallback behavior for malformed markers or invalid YAML
 metadata, and the ``ltm_docstore_item_id`` / ``_ltm_candidate_metadata``
 helpers that surface Syx metadata fields to retrieval.
 """
+import importlib.util
 import logging
 import sys
 import types
+
+
+def _install_stub_if_missing(name: str, stub: types.ModuleType) -> None:
+    """Register a lightweight stub only when the real package is not installed.
+
+    These tests only need the pure manager/manager_rebuild helpers, so they avoid
+    importing heavy C extensions when absent. Crucially, when the real package IS
+    installed we leave sys.modules untouched: permanently swapping in a stub here
+    would leak into every later test module in a full-suite run (e.g. shadowing
+    ``faiss.IndexFlatIP``).
+
+    Args:
+        name: Top-level module name to guard (e.g. ``"faiss"``).
+        stub: Lightweight stand-in to install only when the real one is absent.
+    """
+    cached = sys.modules.get(name)
+    if cached is not None and getattr(cached, "__spec__", None) is not None:
+        return  # real module already imported; use it
+    sys.modules.pop(name, None)
+    try:
+        available = importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        available = False
+    if available:
+        return  # leave unset so the real package imports on next use
+    sys.modules[name] = stub
+
 
 faiss_module = types.ModuleType("faiss")
 faiss_module.IndexFlatIP = type("IndexFlatIP", (), {})  # type: ignore[attr-defined]
 faiss_module.write_index = lambda *_args, **_kwargs: None  # type: ignore[attr-defined]
 faiss_module.read_index = lambda *_args, **_kwargs: None  # type: ignore[attr-defined]
-sys.modules["faiss"] = faiss_module
+_install_stub_if_missing("faiss", faiss_module)
 
 numpy_module = types.ModuleType("numpy")
 numpy_module.ndarray = object  # type: ignore[attr-defined]
 numpy_module.float32 = "float32"  # type: ignore[attr-defined]
 numpy_module.array = lambda value, dtype=None: value  # type: ignore[attr-defined]
-sys.modules["numpy"] = numpy_module
+_install_stub_if_missing("numpy", numpy_module)
 
 embedding_factory_module = types.ModuleType("app.embedding.factory")
 embedding_factory_module.get_embedding_client = lambda: None  # type: ignore[attr-defined]

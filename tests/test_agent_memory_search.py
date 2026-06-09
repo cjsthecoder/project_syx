@@ -12,6 +12,7 @@ Covers parsing of prompt context into structured snippets, the
 ``/agent/memory/search`` endpoint behavior (auth, sleep lock, structured
 responses), and the ``agent_memory_search`` CLI output and debug files.
 """
+import importlib.util
 import json
 import sys
 import types
@@ -29,16 +30,41 @@ if str(BACKEND) not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+
+def _install_stub_if_missing(name: str, stub: types.ModuleType) -> None:
+    """Register a lightweight stub only when the real package is not installed.
+
+    When the real package IS installed we leave sys.modules untouched: permanently
+    swapping in a stub here would leak into every later test module in a full-suite
+    run (e.g. shadowing ``faiss.IndexFlatIP``).
+
+    Args:
+        name: Top-level module name to guard (e.g. ``"faiss"``).
+        stub: Lightweight stand-in to install only when the real one is absent.
+    """
+    cached = sys.modules.get(name)
+    if cached is not None and getattr(cached, "__spec__", None) is not None:
+        return  # real module already imported; use it
+    sys.modules.pop(name, None)
+    try:
+        available = importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        available = False
+    if available:
+        return  # leave unset so the real package imports on next use
+    sys.modules[name] = stub
+
+
 faiss_module = types.ModuleType("faiss")
 faiss_module.IndexFlatIP = type("IndexFlatIP", (), {})  # type: ignore[attr-defined]
 faiss_module.read_index = lambda *_args, **_kwargs: None  # type: ignore[attr-defined]
-sys.modules.setdefault("faiss", faiss_module)
+_install_stub_if_missing("faiss", faiss_module)
 
 numpy_module = types.ModuleType("numpy")
 numpy_module.ndarray = object  # type: ignore[attr-defined]
 numpy_module.float32 = "float32"  # type: ignore[attr-defined]
 numpy_module.array = lambda value, dtype=None: value  # type: ignore[attr-defined]
-sys.modules.setdefault("numpy", numpy_module)
+_install_stub_if_missing("numpy", numpy_module)
 
 embedding_factory_module = types.ModuleType("app.embedding.factory")
 embedding_factory_module.get_embedding_client = lambda: None  # type: ignore[attr-defined]

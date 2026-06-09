@@ -13,6 +13,7 @@ artifact file, marking unbounded snippets not-applicable, deduplicating
 repeated memory ids, falling back to docstore reconstruction, and truncating
 oversized entries to the configured character limit.
 """
+import importlib.util
 import json
 import sys
 import types
@@ -24,9 +25,34 @@ BACKEND = ROOT / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
+
+def _install_stub_if_missing(name: str, stub: types.ModuleType) -> None:
+    """Register a lightweight stub only when the real package is not installed.
+
+    Crucially, when the real package IS installed we leave sys.modules untouched:
+    permanently swapping in a stub here would leak into every later test module
+    in a full-suite run (e.g. shadowing ``numpy.linalg`` used by RAG retrieval).
+
+    Args:
+        name: Top-level module name to guard (e.g. ``"numpy"``).
+        stub: Lightweight stand-in to install only when the real one is absent.
+    """
+    cached = sys.modules.get(name)
+    if cached is not None and getattr(cached, "__spec__", None) is not None:
+        return  # real module already imported; use it
+    sys.modules.pop(name, None)
+    try:
+        available = importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        available = False
+    if available:
+        return  # leave unset so the real package imports on next use
+    sys.modules[name] = stub
+
+
 numpy_module = types.ModuleType("numpy")
 numpy_module.ndarray = object  # type: ignore[attr-defined]
-sys.modules.setdefault("numpy", numpy_module)
+_install_stub_if_missing("numpy", numpy_module)
 
 from app.agent_interface import entry_expansion
 from app.agent_interface.entry_expansion import expand_agent_memory_snippets

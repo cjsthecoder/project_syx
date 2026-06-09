@@ -82,6 +82,8 @@ pids
 # Coverage/test outputs
 coverage/
 *.lcov
+lcov.info
+coverage.xml
 .nyc_output
 .coverage
 .coverage.*

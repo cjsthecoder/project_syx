@@ -1,7 +1,7 @@
 # Syx AGI Chatbot Framework - Build Automation
 # Make targets for development and deployment
 
-.PHONY: help install build run clean test lint format generate-docs docker-data-dirs docker-data-permissions docker-setup run-docker restart-docker stop-docker docker-rebuild
+.PHONY: help install build run clean test coverage coverage-backend lint format generate-docs docker-data-dirs docker-data-permissions docker-setup run-docker restart-docker stop-docker docker-rebuild
 
 # Resolve Python interpreter once (prefer local venv, then system python/python3)
 PYTHON := $(shell if [ -x venv/bin/python ]; then printf "%s" "$(CURDIR)/venv/bin/python"; else command -v python || command -v python3; fi)
@@ -31,6 +31,7 @@ help:
 	@echo "  make test                 - Run all tests (backend + frontend)"
 	@echo "  make test-backend         - Run backend tests"
 	@echo "  make test-frontend        - Run frontend tests"
+	@echo "  make coverage             - Backend coverage reports (term + html + xml + lcov)"
 	@echo "  make lint                 - Lint all code (black/isort/ruff + tsc)"
 	@echo "  make lint-backend         - Lint Python code (black --check, isort --check, ruff)"
 	@echo "  make lint-frontend        - Lint TypeScript/React code (eslint + tsc --noEmit)"
@@ -189,6 +190,23 @@ test-frontend:
 		echo "ℹ️  Skipping frontend tests: no 'test' script in frontend/package.json"; \
 	fi
 	@echo "✅ Frontend tests completed"
+
+# Coverage (backend): run the suite once and emit every report format we use.
+# Outputs land under backend/: htmlcov/ (browse), coverage.xml (Cobertura),
+# and lcov.info (Coverage Gutters / Codecov). All are gitignored.
+coverage: coverage-backend
+	@echo "✅ Coverage reports generated"
+
+coverage-backend:
+	@echo "📊 Measuring backend coverage (term-missing + html + xml + lcov)..."
+	cd backend && $(PYTHON) -m pytest ../tests/ \
+		--cov=app \
+		--cov-config=../pyproject.toml \
+		--cov-report=term-missing \
+		--cov-report=html \
+		--cov-report=xml \
+		--cov-report=lcov:lcov.info
+	@echo "✅ Reports: backend/htmlcov/index.html | backend/coverage.xml | backend/lcov.info"
 
 # Run linting
 lint: lint-backend lint-frontend

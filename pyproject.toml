@@ -40,3 +40,13 @@ extend-immutable-calls = [
     "fastapi.Path",
     "fastapi.Query",
 ]
+
+[tool.coverage.run]
+# The tracking/instrumentation layer is I/O-heavy telemetry glue (run/stage
+# recording, JSON artifact writes, token-tolerance checks). It is deliberately
+# excluded from coverage measurement rather than padded with brittle, low-value
+# unit tests. Keep this list narrow and justified.
+omit = [
+    "app/tracking/*",
+    "*/tracking/*",
+]

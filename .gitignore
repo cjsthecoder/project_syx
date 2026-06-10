@@ -21,6 +21,7 @@ research_output.txt
 research.txt
 dependencies.md
 tools/agent_interface/
+chat_summary.md
 
 # Virtual environments
 venv/

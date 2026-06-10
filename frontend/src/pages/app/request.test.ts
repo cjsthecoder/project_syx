@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   RequestError,
+  extractErrorCode,
   extractErrorMessage,
   parseResponseBody,
   readJsonSafe,
@@ -30,6 +31,12 @@ describe('extractErrorMessage', () => {
     expect(extractErrorMessage({ detail: 'd', error: 'e', message: 'm' })).toBe('d')
     expect(extractErrorMessage({ error: 'e', message: 'm' })).toBe('e')
     expect(extractErrorMessage({ message: 'm' })).toBe('m')
+  })
+
+  it('reads nested FastAPI detail objects', () => {
+    const payload = { detail: { error: 'OpenAI API key not configured', error_code: 'llm_not_configured' } }
+    expect(extractErrorMessage(payload)).toBe('OpenAI API key not configured')
+    expect(extractErrorCode(payload)).toBe('llm_not_configured')
   })
 
   it('falls back when fields are blank or missing', () => {

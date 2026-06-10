@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Toast } from '@/components/ui/toast'
 import { api } from '@/pages/app/api'
+import { loadAppHealth } from '@/pages/app/health'
 import { Message, ModelItem } from '@/pages/app/types'
 import { useProjectData } from '@/hooks/useProjectData'
 import { useChatStream } from '@/hooks/useChatStream'
@@ -40,6 +41,7 @@ export default function App() {
     String(import.meta.env.VITE_SHOW_DEBUG_VALUES ?? '').trim().toLowerCase(),
   )
   const [error, setError] = useState<string | null>(null)
+  const [llmUnavailableMessage, setLlmUnavailableMessage] = useState<string | null>(null)
   const dismissError = useCallback(() => setError(null), [])
   const handleError = useCallback((message: string) => setError(message), [])
 
@@ -103,6 +105,7 @@ export default function App() {
 
   const [model, setModel] = useState('gpt-5.5')
   const [models, setModels] = useState<ModelItem[]>(['gpt-5.5'])
+  const chatEnabled = !llmUnavailableMessage
 
   // UI state
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -132,6 +135,7 @@ export default function App() {
     onBeforeSend: handleBeforeSend,
     onError: handleError,
     checkSleeping,
+    chatEnabled,
     onAfterStream: useCallback(async (pid: string) => {
       const handlers = streamHandlersRef.current
       if (!handlers) return
@@ -207,11 +211,25 @@ export default function App() {
     }
   }, [])
 
+  const refreshAppHealth = useCallback(async () => {
+    try {
+      setLlmUnavailableMessage(await loadAppHealth())
+    } catch (e) {
+      console.warn('loadAppHealth failed', e)
+    }
+  }, [])
+
   useEffect(() => {
     // Async mount loader: state is set after an await, not a synchronous cascade.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadModels()
   }, [loadModels])
+
+  useEffect(() => {
+    // Async mount health check: establishes whether chat can call the LLM.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refreshAppHealth()
+  }, [refreshAppHealth])
 
   // Refresh project data when project changes
   useEffect(() => {
@@ -283,6 +301,18 @@ export default function App() {
     }
   }
 
+  const systemNotices = llmUnavailableMessage
+    ? [
+        {
+          id: 'llm-not-configured',
+          title: 'LLM is not configured',
+          message: llmUnavailableMessage,
+          actionLabel: 'Check again',
+          onAction: refreshAppHealth,
+        },
+      ]
+    : []
+
   return (
     <div className="h-full flex flex-col">
       <header className="border-b py-2 grid grid-cols-3 items-center">
@@ -324,6 +354,28 @@ export default function App() {
           </Select>
         </div>
       </header>
+
+      {systemNotices.map((notice) => (
+        <div
+          key={notice.id}
+          className="border-b border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-950"
+          role="status"
+        >
+          <div className="mx-auto flex w-3/5 items-center gap-3">
+            <div className="flex-1">
+              <div className="font-semibold">{notice.title}</div>
+              <div>{notice.message}</div>
+            </div>
+            <Button
+              className="bg-yellow-900 text-white hover:bg-yellow-800"
+              type="button"
+              onClick={notice.onAction}
+            >
+              {notice.actionLabel}
+            </Button>
+          </div>
+        </div>
+      ))}
 
       {/* Stats Bar */}
       {showDebugValues && (
@@ -417,8 +469,9 @@ export default function App() {
           >
             <Textarea
               className="w-full min-h-[96px] max-h-64 resize-y text-left"
-              placeholder="Type your message..."
+              placeholder={chatEnabled ? 'Type your message...' : 'Chat is unavailable until the LLM is configured.'}
               value={input}
+              disabled={!chatEnabled}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {

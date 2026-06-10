@@ -29,6 +29,11 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _llm_configured(monkeypatch):
+    monkeypatch.setattr(chat_module, "validate_openai_key", lambda: True)
+
+
 # ---------------------------------------------------------------------------
 # Orchestration fakes
 #
@@ -317,6 +322,16 @@ def test_chat_without_project_skips_persistence(client, chat_env, monkeypatch):
     assert chat_env.context_tokens == []
 
 
+def test_chat_missing_openai_key_returns_503_before_persistence(client, chat_env, monkeypatch):
+    monkeypatch.setattr(chat_module, "validate_openai_key", lambda: False)
+
+    resp = client.post("/chat", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"})
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"]["error_code"] == "llm_not_configured"
+    assert chat_env.mem == []
+
+
 def test_chat_llm_failure_returns_500(client, chat_env, monkeypatch):
     monkeypatch.setattr(
         chat_module,
@@ -390,6 +405,20 @@ def test_chat_stream_disabled_falls_back_to_simulated_stream(client, chat_env, m
     assert "::event: done" in resp.text
     assistant = [c for c in chat_env.persist if c[0] == "assistant"]
     assert assistant and assistant[0][2] == "abc"
+
+
+def test_chat_stream_missing_openai_key_returns_503_before_persistence(
+    client, chat_env, monkeypatch
+):
+    monkeypatch.setattr(chat_module, "validate_openai_key", lambda: False)
+
+    resp = client.post(
+        "/chat/stream", json={"message": "hi", "project_id": "p1", "conversation_id": "c1"}
+    )
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"]["error_code"] == "llm_not_configured"
+    assert chat_env.persist == []
 
 
 # ---------------------------------------------------------------------------

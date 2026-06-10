@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from ..core.config import get_settings
+from ..core.config import get_settings, validate_openai_key
 from ..core.llm_service import generate_chat_response, get_llm_health
 from ..core.memory import get_memory_manager, set_last_context_tokens
 from ..core.models import ChatRequest, ChatResponse
@@ -50,6 +50,11 @@ llm_logger = LLMLogger()
 _TURN_SEQ = 0
 _TURN_SEQ_LOCK = threading.Lock()
 
+LLM_NOT_CONFIGURED_CODE = "llm_not_configured"
+LLM_NOT_CONFIGURED_MESSAGE = (
+    "OpenAI API key is not configured. Set OPENAI_API_KEY and restart the server."
+)
+
 
 def _next_turn_id() -> int:
     """Return the next monotonic turn id, incrementing a shared counter under a lock.
@@ -62,6 +67,38 @@ def _next_turn_id() -> int:
     with _TURN_SEQ_LOCK:
         _TURN_SEQ += 1
         return int(_TURN_SEQ)
+
+
+def _require_llm_configured(*, endpoint: str, project_id: Optional[str]) -> None:
+    """Reject chat requests when the runtime LLM cannot be configured.
+
+    This guard runs before prompt assembly or memory persistence so a missing
+    API key does not create orphaned user messages.
+
+    Args:
+        endpoint: Chat endpoint being guarded, used for diagnostics.
+        project_id: Optional project id for diagnostics.
+
+    Raises:
+        HTTPException: 503 with a stable ``llm_not_configured`` code when the
+            OpenAI API key is missing or still set to the documented placeholder.
+    """
+    if validate_openai_key():
+        return
+    logger.warning(
+        "chat.llm_not_configured; operation=preflight endpoint=%s project_id=%s",
+        endpoint,
+        project_id,
+    )
+    raise HTTPException(
+        status_code=503,
+        detail={
+            "success": False,
+            "error": LLM_NOT_CONFIGURED_MESSAGE,
+            "error_code": LLM_NOT_CONFIGURED_CODE,
+            "details": {"dependency": "openai", "setting": "OPENAI_API_KEY"},
+        },
+    )
 
 
 def _default_rag_metrics() -> Dict[str, Any]:
@@ -323,6 +360,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             by ``handle_llm_error`` when the failure originates from the LLM
             provider.
     """
+    _require_llm_configured(endpoint="/chat", project_id=request.project_id)
     try:
         t0 = time.time()
         instr = get_instrumentation()
@@ -592,6 +630,7 @@ async def chat_stream(request: ChatRequest):
         A ``StreamingResponse`` emitting plain-text token chunks on success, or
         a 500 ``JSONResponse`` describing the error.
     """
+    _require_llm_configured(endpoint="/chat/stream", project_id=request.project_id)
     settings = get_settings()
     instr = get_instrumentation()
     turn_id = _next_turn_id()

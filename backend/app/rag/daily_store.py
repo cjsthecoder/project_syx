@@ -27,7 +27,6 @@ from ..core.config import get_active_embedding_model, get_settings
 from ..embedding.batching import iter_token_batches
 from ..embedding.factory import get_embedding_client
 from ..embedding.vector_index import VectorEntry, VectorHit, VectorIndex, VectorIndexInfo
-from ..utils.debug_utils import write_debug_file
 from .syx_memory_artifact import (
     generate_memory_id,
     local_timestamp_from_iso,

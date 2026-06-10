@@ -13,6 +13,7 @@
  */
 import { useCallback, useMemo, useState } from 'react'
 import { api } from '@/pages/app/api'
+import { messageForChatError } from '@/pages/app/health'
 import { RequestError, throwRequestError } from '@/pages/app/request'
 import { Message } from '@/pages/app/types'
 
@@ -23,6 +24,7 @@ type UseChatStreamArgs = {
   onError: (message: string) => void
   checkSleeping: () => Promise<boolean>
   onAfterStream?: (projectId: string) => Promise<void>
+  chatEnabled?: boolean
 }
 
 /**
@@ -38,6 +40,7 @@ type UseChatStreamArgs = {
  * @param args.onError - Callback invoked with a message when sending/streaming fails.
  * @param args.checkSleeping - Resolves true when the system is sleeping (send is aborted).
  * @param args.onAfterStream - Optional callback invoked with the project id after a stream completes.
+ * @param args.chatEnabled - Whether chat sends are currently allowed by app health.
  * @returns Message list and setter, input state, `loading`/`canSend` flags, and the `send` and `loadChats` actions.
  */
 export function useChatStream({
@@ -47,6 +50,7 @@ export function useChatStream({
   onError,
   checkSleeping,
   onAfterStream,
+  chatEnabled = true,
 }: UseChatStreamArgs) {
   const makeClientId = () =>
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -57,7 +61,10 @@ export function useChatStream({
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading])
+  const canSend = useMemo(
+    () => chatEnabled && input.trim().length > 0 && !loading,
+    [chatEnabled, input, loading],
+  )
 
   /**
    * Load persisted chat history for a project, resetting to empty on failure.
@@ -111,9 +118,11 @@ export function useChatStream({
       })
       if (!res.ok || !res.body) {
         let detail = ''
+        let requestError: unknown = null
         try {
           await throwRequestError(res)
         } catch (err) {
+          requestError = err
           if (err instanceof RequestError) {
             detail = err.message || ''
           } else if (err instanceof Error) {
@@ -123,6 +132,9 @@ export function useChatStream({
         if (res.status === 423 || /sleep/i.test(detail)) {
           await checkSleeping()
           throw new Error('System is sleeping')
+        }
+        if (requestError) {
+          throw requestError
         }
         throw new Error(detail || `HTTP ${res.status}`)
       }
@@ -170,7 +182,7 @@ export function useChatStream({
         await onAfterStream(projectId)
       }
     } catch (e: unknown) {
-      onError(e instanceof Error ? e.message : 'Stream failed')
+      onError(messageForChatError(e))
     } finally {
       setLoading(false)
     }

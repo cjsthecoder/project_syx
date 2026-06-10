@@ -30,6 +30,25 @@ export class RequestError extends Error {
 }
 
 /**
+ * Return the first object-like error payload from common FastAPI shapes.
+ *
+ * FastAPI wraps `HTTPException.detail` under `detail`, while internal helpers
+ * may return the structured envelope directly. Normalizing here keeps callers
+ * from duplicating response-shape checks.
+ *
+ * @param payload - Parsed error body from a failed response.
+ * @returns The structured payload object when one is present.
+ */
+export function extractErrorObject(payload: unknown): Record<string, unknown> | null {
+  if (!payload || typeof payload !== 'object') return null
+  const obj = payload as Record<string, unknown>
+  if (obj.detail && typeof obj.detail === 'object') {
+    return obj.detail as Record<string, unknown>
+  }
+  return obj
+}
+
+/**
  * Read a response body as text, returning an empty string if reading throws.
  *
  * @param res - The response whose body to read.
@@ -57,13 +76,25 @@ export function extractErrorMessage(payload: unknown, fallback = 'Request failed
   if (!payload) return fallback
   if (typeof payload === 'string') return payload || fallback
   if (typeof payload === 'object') {
-    const obj = payload as Record<string, unknown>
+    const obj = extractErrorObject(payload) ?? (payload as Record<string, unknown>)
     const detail = obj.detail
     if (typeof detail === 'string' && detail.trim()) return detail
     if (typeof obj.error === 'string' && obj.error.trim()) return obj.error
     if (typeof obj.message === 'string' && obj.message.trim()) return obj.message
   }
   return fallback
+}
+
+/**
+ * Extract a machine-readable error code from a parsed error body.
+ *
+ * @param payload - Parsed error body from a failed response.
+ * @returns The error code when the body carries one.
+ */
+export function extractErrorCode(payload: unknown): string | null {
+  const obj = extractErrorObject(payload)
+  const code = obj?.error_code
+  return typeof code === 'string' && code.trim() ? code : null
 }
 
 /**

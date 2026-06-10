@@ -66,7 +66,6 @@ def wired(tmp_path, monkeypatch):
     monkeypatch.setattr(ds, "get_settings", lambda: settings)
     monkeypatch.setattr(ds, "get_active_embedding_model", lambda: "fake-model")
     monkeypatch.setattr(ds, "get_embedding_client", lambda: _FakeLLM(dim=4))
-    monkeypatch.setattr(ds, "write_debug_file", lambda *a, **k: None)
     return SimpleNamespace(tmp_path=tmp_path, settings=settings)
 
 

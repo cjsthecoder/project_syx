@@ -786,54 +786,16 @@ def _embed_daily_batches(
     return vs
 
 
-def _write_daily_rebuild_report(
-    project_id: str,
-    reason: str,
-    runtime_model: str,
-    vector_count: int,
-    id_by_seq: Dict[int, str],
-) -> None:
-    """Write a best-effort human-readable rebuild report for the Daily cache.
-
-    Args:
-        project_id: Project whose report is written.
-        reason: Short reason recorded in the report.
-        runtime_model: Embedding model used for the rebuild.
-        vector_count: Number of vectors built into the cache.
-        id_by_seq: Adjacency map used to report the day_sequence range.
-    """
-    try:
-        ts = time.strftime("%Y-%m-%dT%H-%M-%S", time.localtime())
-        seqs = sorted(id_by_seq.keys())
-        body = (
-            f"# timestamp: {ts}\n"
-            f"# project_id: {project_id}\n"
-            f"# reason: {reason}\n"
-            f"# embedding_model: {runtime_model}\n"
-            f"# vectors: {vector_count}\n"
-            f"# day_sequence_min: {seqs[0] if seqs else None}\n"
-            f"# day_sequence_max: {seqs[-1] if seqs else None}\n"
-        )
-        write_debug_file(project_id, f"rag/daily/{ts}_daily_cache_report.txt", body)
-    except Exception as exc:
-        logger.warning(
-            "DailyRAG: failed writing daily cache debug report project=%s detail=%s",
-            project_id,
-            exc,
-        )
-
-
 def rebuild_daily_cache(project_id: str, reason: str) -> bool:
     """Force a rebuild of the in-memory Daily cache from daily.json.
 
     Clears the existing cache, reconciles each entry's ``embedding_model`` to the
     active model (rewriting daily.json when stale), re-embeds every entry in token
     batches, and repopulates the vector index plus the metadata/adjacency maps.
-    A human-readable debug report is written best-effort.
 
     Args:
         project_id: Project whose cache is rebuilt.
-        reason: Short reason recorded in logs and the debug report.
+        reason: Short reason recorded in logs.
 
     Returns:
         True when the cache (possibly empty) is rebuilt; False when an unexpected
@@ -897,7 +859,6 @@ def rebuild_daily_cache(project_id: str, reason: str) -> bool:
                 len(texts),
                 reason,
             )
-            _write_daily_rebuild_report(project_id, reason, runtime_model, len(texts), id_by_seq)
             return True
         except Exception as be:
             logger.error(

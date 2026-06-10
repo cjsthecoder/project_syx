@@ -25,7 +25,7 @@ def write_debug_file(project_id: str, filename: str, content: str) -> None:
 
     Args:
         project_id: Project identifier
-        filename: Debug filename (e.g., "debug_context.txt")
+        filename: Debug filename relative to the debug directory
         content: File contents to write
     """
     settings = get_settings()

@@ -50,6 +50,28 @@ def test_write_prompt_to_execute_writes(monkeypatch):
     assert "hello" in body and "dream-mini" in body
 
 
+def test_write_context_summary_debug_noop_without_project(monkeypatch):
+    writes = []
+    monkeypatch.setattr(dream_debug, "write_debug_file", lambda *a, **k: writes.append(a))
+    dream_debug.write_dream_context_summary_debug(project_id=None, summary_prompt="prompt")
+    assert writes == []
+
+
+def test_write_context_summary_debug_writes_dreaming_artifact(monkeypatch):
+    writes = []
+    monkeypatch.setattr(
+        dream_debug, "write_debug_file", lambda pid, path, body: writes.append((pid, path, body))
+    )
+    dream_debug.write_dream_context_summary_debug(project_id="p1", summary_prompt="summarize me")
+
+    assert len(writes) == 1
+    pid, path, body = writes[0]
+    assert pid == "p1"
+    assert path.startswith("dreaming/")
+    assert path.endswith("_context_summary.txt")
+    assert "summarize me" in body and "dream_purpose: context_summary" in body
+
+
 def test_write_response_usage_noop_without_project(monkeypatch):
     writes = []
     monkeypatch.setattr(dream_debug, "write_debug_file", lambda *a, **k: writes.append(a))

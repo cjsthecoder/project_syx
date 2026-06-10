@@ -17,8 +17,6 @@ import logging
 import os
 from typing import Any, Dict, List
 
-from app.utils.debug_utils import write_debug_file
-
 from ...core.config import get_settings
 from ...core.llm_service import generate_text_response
 from ..debug import (
@@ -257,13 +255,6 @@ def run_questions_agent(
             except Exception as qe:
                 logger.warning("project=%s per-question pipeline error: %s", project_id, qe)
         result: Dict[str, Any] = {"questions": outputs}
-
-        # Optional debug file: debug_questions.txt
-        try:
-            debug_payload = json.dumps(result, ensure_ascii=False, indent=2)
-            write_debug_file(project_id, "debug_questions.txt", debug_payload)
-        except Exception as we:
-            logger.warning("project=%s failed writing debug_questions.txt: %s", project_id, we)
 
         count = len(outputs)
         logger.info("[DREAM][QUESTIONS] Completed project=%s count=%s", project_id, count)

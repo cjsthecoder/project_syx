@@ -1173,7 +1173,7 @@ def test_write_retrieval_debug_artifacts_full(monkeypatch, temp_memory_root, set
         daily_enabled=True,
         adjacent_bonus=1,
         resources=res,
-        ordered=selected,
+        ordered=[*selected, _cand("ltm", doc="dropped", idx=0)],
         selected_candidates=selected,
         kept_candidates=kept,
         audit=audit,
@@ -1182,8 +1182,15 @@ def test_write_retrieval_debug_artifacts_full(monkeypatch, temp_memory_root, set
     retrieval_dir = temp_memory_root / "p" / "debug" / "rag" / "retrieval"
     written = sorted(f.name for f in retrieval_dir.iterdir())
     assert any("ordered_candidates" in n for n in written)
+    assert not any("kept_candidates" in n for n in written)
     assert any("expansion_plan" in n for n in written)
     assert any("deduped_chunks" in n for n in written)
+    ordered = next(f for f in retrieval_dir.iterdir() if "ordered_candidates" in f.name)
+    ordered_text = ordered.read_text()
+    assert "selected_count: 4" in ordered_text
+    assert "[KEPT]" in ordered_text
+    assert "SELECTION CUTOFF: kept 4 of 5 candidates" in ordered_text
+    assert "[NOT_KEPT]" in ordered_text
     plan = next(f for f in retrieval_dir.iterdir() if "expansion_plan" in f.name)
     text = plan.read_text()
     assert "EXPANSION_PLAN" in text

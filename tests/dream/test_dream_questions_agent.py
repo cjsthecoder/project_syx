@@ -41,7 +41,6 @@ def _patch_pipeline(
     remote_text="remote research blob",
 ):
     monkeypatch.setattr(questions_agent, "get_settings", lambda: _settings(enable_remote))
-    monkeypatch.setattr(questions_agent, "write_debug_file", lambda *a, **k: None)
     monkeypatch.setattr(questions_agent, "write_dream_prompt_to_execute", lambda **k: None)
     monkeypatch.setattr(questions_agent, "write_dream_response_usage_debug", lambda **k: None)
 
@@ -146,7 +145,6 @@ def test_pipeline_remote_research_trimmed(monkeypatch, caplog):
             dream_remote_context_max_tokens=2,
         ),
     )
-    monkeypatch.setattr(questions_agent, "write_debug_file", lambda *a, **k: None)
     monkeypatch.setattr(questions_agent, "write_dream_prompt_to_execute", lambda **k: None)
     monkeypatch.setattr(questions_agent, "write_dream_response_usage_debug", lambda **k: None)
     monkeypatch.setattr(
@@ -226,7 +224,6 @@ def test_run_questions_agent_processes_questions(monkeypatch, tmp_path):
             "used_remote_research": False,
         },
     )
-    monkeypatch.setattr(questions_agent, "write_debug_file", lambda *a, **k: None)
     out = questions_agent.run_questions_agent("p1")
     assert len(out["questions"]) == 1
     assert out["questions"][0]["answer"] == "A"
@@ -242,23 +239,9 @@ def test_run_questions_agent_per_question_error_logged(monkeypatch, tmp_path, ca
         "_run_open_question_pipeline",
         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("pipeline boom")),
     )
-    monkeypatch.setattr(questions_agent, "write_debug_file", lambda *a, **k: None)
     out = questions_agent.run_questions_agent("p1")
     assert out["questions"] == []
     assert any("per-question pipeline error" in r.message for r in caplog.records)
-
-
-def test_run_questions_agent_debug_write_failure_logged(monkeypatch, tmp_path, caplog):
-    monkeypatch.setattr(
-        questions_agent, "get_settings", lambda: SimpleNamespace(memory_root=str(tmp_path))
-    )
-    _write_consolidated(tmp_path, "p1", {"questions": []})
-    monkeypatch.setattr(
-        questions_agent, "write_debug_file", lambda *a, **k: (_ for _ in ()).throw(OSError("disk"))
-    )
-    out = questions_agent.run_questions_agent("p1")
-    assert out["questions"] == []
-    assert any("failed writing debug_questions" in r.message for r in caplog.records)
 
 
 def test_run_questions_agent_non_list_questions_normalized(monkeypatch):
@@ -266,7 +249,6 @@ def test_run_questions_agent_non_list_questions_normalized(monkeypatch):
     monkeypatch.setattr(
         questions_agent, "_load_consolidated_questions", lambda pid: {"questions": "not-a-list"}
     )
-    monkeypatch.setattr(questions_agent, "write_debug_file", lambda *a, **k: None)
     out = questions_agent.run_questions_agent("p1")
     assert out == {"questions": []}
 

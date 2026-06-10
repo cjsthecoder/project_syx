@@ -47,7 +47,6 @@ def _patch_llm(monkeypatch, *, text=None, raise_exc=False):
             dream_max_tokens=128, dream_model="dream-mini", dream_temperature=0.7
         ),
     )
-    monkeypatch.setattr(idea_agent, "write_debug_file", lambda *a, **k: None)
     monkeypatch.setattr(idea_agent, "write_dream_prompt_to_execute", lambda **k: None)
     monkeypatch.setattr(idea_agent, "write_dream_response_usage_debug", lambda **k: None)
 

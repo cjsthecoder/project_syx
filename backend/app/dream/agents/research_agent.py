@@ -260,13 +260,6 @@ def run_research_agent(
     result: Dict[str, Any] = {"date": date_str, "items": items}
 
     try:
-        debug_payload = json.dumps(result, ensure_ascii=False, indent=2)
-        write_debug_file(project_id, "debug_research.txt", debug_payload)
-    except Exception as de:
-        logger.warning(
-            "Research Agent failed to write debug_research.txt project=%s: %s", project_id, de
-        )
-    try:
         if debug_ts:
             prompts_body = (
                 f"# timestamp: {debug_ts}\n"

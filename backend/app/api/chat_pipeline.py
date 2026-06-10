@@ -454,7 +454,7 @@ class ChatPipeline:
                 "====== RAG Query String ======\n"
                 f"{primary_query}\n"
             )
-            write_debug_file(project_id, f"prompts/{fname}", body)
+            write_debug_file(project_id, f"rag/retrieval/{fname}", body)
         except Exception as exc:
             logger.debug(
                 "chat.retrieval metrics logging failed project_id=%s message_id=%s detail=%s",

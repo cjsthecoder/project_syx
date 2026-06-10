@@ -349,7 +349,9 @@ def test_resolve_retrieval_policy(monkeypatch):
 def test_write_rag_query_debug_happy(monkeypatch):
     captured = {}
     monkeypatch.setattr(
-        cp, "write_debug_file", lambda pid, path, body: captured.update(pid=pid, body=body)
+        cp,
+        "write_debug_file",
+        lambda pid, path, body: captured.update(pid=pid, path=path, body=body),
     )
     pol = SimpleNamespace(retrieval_multiplier=1.0, max_keep=3, min_score=0.2)
     _pipeline()._write_rag_query_debug(
@@ -363,6 +365,8 @@ def test_write_rag_query_debug_happy(monkeypatch):
         msg_id="m1",
     )
     assert captured["pid"] == "p1"
+    assert captured["path"].startswith("rag/retrieval/")
+    assert captured["path"].endswith("_rag_query.txt")
     assert "route: DIRECT" in captured["body"]
     assert "queries_count: 1" in captured["body"]
 

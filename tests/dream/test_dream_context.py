@@ -34,6 +34,7 @@ def _isolate(monkeypatch, tmp_path):
         ),
     )
     monkeypatch.setattr(ctx, "write_debug_file", lambda *a, **k: None)
+    monkeypatch.setattr(ctx, "write_dream_context_summary_debug", lambda **k: None)
     monkeypatch.setattr(ctx, "write_dream_prompt_to_execute", lambda **k: None)
     monkeypatch.setattr(ctx, "write_dream_response_usage_debug", lambda **k: None)
     ctx._CONTEXT_CACHE.clear()
@@ -154,12 +155,24 @@ def test_get_context_summary_happy(tmp_path, monkeypatch):
     d = _proj_dir(tmp_path)
     with open(os.path.join(d, "sleep_summary.md"), "w", encoding="utf-8") as h:
         h.write("sleep summary source")
+    summary_writes = []
+    monkeypatch.setattr(
+        ctx,
+        "write_dream_context_summary_debug",
+        lambda **kwargs: summary_writes.append(kwargs),
+    )
     monkeypatch.setattr(
         ctx,
         "generate_text_response",
         lambda *a, **k: SimpleNamespace(text="GEN", usage=SimpleNamespace()),
     )
     assert ctx._get_project_context_summary("p1") == "GEN"
+    assert summary_writes == [
+        {
+            "project_id": "p1",
+            "summary_prompt": ctx.build_project_summary_prompt("sleep summary source"),
+        }
+    ]
 
 
 def test_get_context_summary_llm_failure(tmp_path, monkeypatch, caplog):

@@ -17,8 +17,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from app.utils.debug_utils import write_debug_file
-
 from ...core.config import get_settings
 from ...core.llm_service import generate_text_response
 from ..debug import (
@@ -84,9 +82,6 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
     # Build prompt
     prompt = build_idea_prompt(dream_context)
 
-    # Debug: write prompt if enabled
-    write_debug_file(project_id, "debug_idea_prompt.txt", prompt)
-
     # Call Dream LLM through the shared core LLM runtime.
     purpose = "idea_agent"
     max_tokens = int(settings.dream_max_tokens)
@@ -121,9 +116,6 @@ def run_idea_agent(project_id: str, dream_context: str) -> Dict[str, Any]:
             "Idea Agent LLM invocation failed project=%s: %s", project_id, e, exc_info=True
         )
         raw = '{"answer": "Dream agent failed to generate a valid answer."}'
-
-    # Debug: write raw response if enabled
-    write_debug_file(project_id, "debug_idea_raw_response.txt", raw or "")
 
     # Parse JSON
     try:

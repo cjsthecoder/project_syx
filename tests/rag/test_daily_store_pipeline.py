@@ -473,28 +473,6 @@ def test_embed_daily_batches_empty_vectors_yields_none(wired, monkeypatch):
     assert vs is None
 
 
-# --- _write_daily_rebuild_report ------------------------------------------
-
-
-def test_write_daily_rebuild_report_happy(wired, monkeypatch):
-    captured = {}
-    monkeypatch.setattr(
-        ds, "write_debug_file", lambda pid, path, body: captured.update(pid=pid, body=body)
-    )
-    ds._write_daily_rebuild_report("p", "unit", "fake-model", 5, {1: "e1", 2: "e2"})
-    assert captured["pid"] == "p"
-    assert "vectors: 5" in captured["body"]
-
-
-def test_write_daily_rebuild_report_swallows_error(wired, monkeypatch, caplog):
-    def boom(*_a, **_k):
-        raise RuntimeError("disk full")
-
-    monkeypatch.setattr(ds, "write_debug_file", boom)
-    ds._write_daily_rebuild_report("p", "unit", "fake-model", 1, {})  # must not raise
-    assert any("failed writing daily cache debug report" in r.message for r in caplog.records)
-
-
 # --- rebuild_daily_cache --------------------------------------------------
 
 

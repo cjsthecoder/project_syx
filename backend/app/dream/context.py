@@ -24,6 +24,7 @@ from ..core.llm_service import generate_text_response
 from ..utils.tokens import count_tokens
 from .debug import (
     safe_dream_purpose,
+    write_dream_context_summary_debug,
     write_dream_prompt_to_execute,
     write_dream_response_usage_debug,
 )
@@ -189,7 +190,7 @@ def _get_project_context_summary(project_id: str) -> str:
     summary_path = os.path.join(get_settings().memory_root, project_id, "sleep_summary.md")
     summ_src = _read_file_safe(summary_path)
     summary_prompt = build_project_summary_prompt(summ_src)
-    write_debug_file(project_id, "debug_context_summary.txt", summary_prompt)
+    write_dream_context_summary_debug(project_id=project_id, summary_prompt=summary_prompt)
     purpose = "context_summary"
     max_tokens = int(settings.dream_max_tokens)
     model = str(settings.dream_model)
@@ -500,8 +501,6 @@ def build_dream_context(project_id: str, questions_data: Dict[str, Any]) -> tupl
         context_block = "".join(parts)
         _CONTEXT_CACHE[project_id] = context_block
         logger.info("[DREAM][CONTEXT] Combined context ready")
-        # Write debug context file if enabled via shared debug helper
-        write_debug_file(project_id, "debug_context.txt", context_block)
         return context_block, project_summary_text
     except Exception as e:
         # errors inside the context builder must not be fatal.
@@ -527,5 +526,4 @@ def build_dream_context(project_id: str, questions_data: Dict[str, Any]) -> tupl
         ]
         context_block = "".join(fallback_parts)
         _CONTEXT_CACHE[project_id] = context_block
-        write_debug_file(project_id, "debug_context.txt", context_block)
         return context_block, "(empty)"

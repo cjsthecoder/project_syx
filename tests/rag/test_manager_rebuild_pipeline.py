@@ -360,7 +360,6 @@ def _wire_rebuild(monkeypatch, tmp_path, llm, *, settings=None):
     monkeypatch.setattr(mr, "get_settings", lambda: settings or _settings(tmp_path))
     monkeypatch.setattr(mr, "get_active_embedding_model", lambda: "fake-model")
     monkeypatch.setattr(mr, "get_embedding_client", lambda: llm)
-    monkeypatch.setattr(mr, "write_debug_file", lambda *a, **k: None)
     monkeypatch.setattr(mr, "get_session", lambda: _FakeSession(row=None))
 
 

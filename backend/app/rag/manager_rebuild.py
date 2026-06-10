@@ -27,7 +27,6 @@ from ..core.database import get_session
 from ..core.db_models import File as FileRow
 from ..embedding.batching import iter_token_batches
 from ..embedding.factory import get_embedding_client
-from ..utils.debug_utils import write_debug_file
 from ..utils.tokens import count_tokens as _count_tokens
 from ..utils.tokens import trim_to_tokens as _trim_to_tokens
 from .chunk_utils import split_text_simple
@@ -584,21 +583,7 @@ def rebuild_faiss_index(project_id: str) -> str:
         int(worker_count),
         int(max_req_tokens),
     )
-    embed_start_ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     embed_stage_t0 = time.monotonic()
-    write_debug_file(
-        project_id,
-        f"rag/rebuild/{embed_start_ts}_embedding_start.txt",
-        (
-            f"# timestamp: {embed_start_ts}\n"
-            f"# project_id: {project_id}\n"
-            f"# stage: embedding_start\n"
-            f"# embedding_model: {active_embedding_model}\n"
-            f"# total_batches: {int(len(prepared_batches))}\n"
-            f"# workers: {int(worker_count)}\n"
-            f"# max_embed_tokens_per_request: {int(max_req_tokens)}\n"
-        ),
-    )
 
     batch_results = _embed_batches_parallel(
         prepared_batches,

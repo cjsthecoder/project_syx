@@ -321,7 +321,7 @@ class Settings(BaseSettings):
     )
     # Debug file generation
     generate_debug_files: bool = Field(
-        default=False, description="Enable writing debug files (e.g., debug_context.txt)"
+        default=False, description="Enable writing debug files (e.g., dreaming/*_context_summary.txt)"
     )
     # Frontend-only Vite flags may live in the same .env; keep backend parsing tolerant.
     vite_show_debug_values: Optional[str] = Field(

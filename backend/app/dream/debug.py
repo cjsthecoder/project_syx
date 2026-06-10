@@ -71,6 +71,35 @@ def write_dream_prompt_to_execute(
     write_debug_file(project_id, f"dreaming/{ts}_{safe_purpose}_prompt_to_execute.txt", body)
 
 
+def write_dream_context_summary_debug(
+    *,
+    project_id: Optional[str],
+    summary_prompt: str,
+) -> None:
+    """Write the Dream context-summary prompt to a per-cycle debug artifact.
+
+    No-op when ``project_id`` is falsy.
+
+    Args:
+        project_id: Project whose debug folder receives the artifact.
+        summary_prompt: Prompt used to generate the project context summary.
+    """
+    if not project_id:
+        return
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    body = (
+        f"# timestamp: {ts}\n"
+        f"# project_id: {project_id}\n"
+        "# dream_purpose: context_summary\n"
+        f"# total_tokens_estimate: {count_tokens(summary_prompt or '')}\n"
+        "\n"
+        "====== CONTEXT SUMMARY PROMPT ======\n"
+        f"{summary_prompt or ''}"
+        "\n"
+    )
+    write_debug_file(project_id, f"dreaming/{ts}_context_summary.txt", body)
+
+
 def write_dream_response_usage_debug(
     *,
     project_id: Optional[str],

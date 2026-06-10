@@ -1387,8 +1387,8 @@ def _write_retrieval_debug_artifacts(
 ) -> None:
     """Write human-readable retrieval debug dumps (best-effort).
 
-    Emits ordered-candidate, kept-candidate, expansion-plan, and deduped-chunk
-    artifacts. Any failure is logged and otherwise suppressed.
+    Emits ordered-candidate, expansion-plan, and deduped-chunk artifacts. Any
+    failure is logged and otherwise suppressed.
 
     Args:
         project_id: Project the dumps belong to (a falsy id skips writing).
@@ -1450,6 +1450,58 @@ def _write_retrieval_debug_artifacts(
                     fname = md.get("filename")
                     lines.append(
                         f"{rank:>3}. source={src} score={score} source_document_id={doc_id} chunk_index={chunk_idx} file={fname}"
+                    )
+                lines.append("")
+                return "\n".join(lines)
+
+            def _fmt_ordered_candidates(
+                items: List[Dict[str, Any]], selected: List[Dict[str, Any]]
+            ) -> str:
+                """Render ordered candidates with selection tags and cutoff marker."""
+                selected_ids = {id(c) for c in selected or []}
+                total_count = int(len(items or []))
+                selected_count = int(len(selected or []))
+                lines = [
+                    f"# timestamp: {ts}",
+                    f"# project_id: {project_id}",
+                    f"# query_preview: {qprev}",
+                    f"# per_source_k: {int(per_source_k)}",
+                    f"# max_keep: {int(max_keep)}",
+                    f"# min_score: {float(min_score):.4f}",
+                    f"# daily_enabled: {str(bool(daily_enabled)).lower()}",
+                    f"# total_candidates: {total_count}",
+                    f"# selected_count: {selected_count}",
+                    f"# adjacent_bonus: {int(adjacent_bonus)}",
+                    "",
+                    "====== ORDERED_CANDIDATES ======",
+                    "",
+                ]
+                cutoff_written = False
+                for rank, c in enumerate(items, start=1):
+                    is_kept = id(c) in selected_ids
+                    if not is_kept and not cutoff_written:
+                        lines.extend(
+                            [
+                                "",
+                                f"------ SELECTION CUTOFF: kept {selected_count} of {total_count} candidates ------",
+                                "",
+                            ]
+                        )
+                        cutoff_written = True
+
+                    md = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
+                    src = c.get("source")
+                    score = c.get("score")
+                    doc_id = md.get("source_document_id") or md.get("doc_id")
+                    chunk_idx = (
+                        md.get("chunk_index")
+                        if md.get("chunk_index") is not None
+                        else md.get("chunk_seq")
+                    )
+                    fname = md.get("filename")
+                    tag = "[KEPT]" if is_kept else "[NOT_KEPT]"
+                    lines.append(
+                        f"{rank:>3}. {tag} source={src} score={score} source_document_id={doc_id} chunk_index={chunk_idx} file={fname}"
                     )
                 lines.append("")
                 return "\n".join(lines)
@@ -1603,12 +1655,7 @@ def _write_retrieval_debug_artifacts(
             write_debug_file(
                 project_id,
                 f"rag/retrieval/{ts}_ordered_candidates.txt",
-                _fmt_list("ORDERED_CANDIDATES", ordered),
-            )
-            write_debug_file(
-                project_id,
-                f"rag/retrieval/{ts}_kept_candidates.txt",
-                _fmt_list("KEPT_CANDIDATES", selected_candidates),
+                _fmt_ordered_candidates(ordered, selected_candidates),
             )
             write_debug_file(
                 project_id,

@@ -2629,3 +2629,39 @@ Tests SHOULD cover:
 14. Docstore reconstruction is treated as fallback.
 15. No memory is written.
 16. Normal chat behavior is unchanged.
+
+# DELTA-DREAM-DEBUG-1 — Dream Debug Artifact De-Duplication
+
+## Status
+
+Draft
+
+## Intent
+
+Keep Dream debug output under the timestamped `debug/dreaming/` artifact
+structure and stop emitting duplicate root-level Dream debug files.
+
+## Requirements
+
+Dream agents SHALL write prompt and response debug artifacts through the
+Dream-specific timestamped debug helpers, using paths such as:
+
+```text
+debug/dreaming/<timestamp>_idea_agent_prompt_to_execute.txt
+debug/dreaming/<timestamp>_idea_agent_response_usage.txt
+debug/dreaming/<timestamp>_context_summary.txt
+```
+
+Dream agents SHALL NOT write duplicate root-level debug files such as:
+
+```text
+debug/debug_idea_prompt.txt
+debug/debug_idea_raw_response.txt
+debug/debug_questions.txt
+debug/debug_research.txt
+debug/debug_context.txt
+debug/debug_context_summary.txt
+```
+
+Historical requirements that name those root-level duplicate files are
+superseded by this delta.

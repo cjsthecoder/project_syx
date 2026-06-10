@@ -1,0 +1,20 @@
+---
+alwaysApply: true
+---
+# Function Design Rule
+
+When creating or modifying functions, enforce single-responsibility design.
+
+Prefer small, named functions over large multi-phase functions. A function should normally have one primary reason to change.
+
+Split functions that mix validation, retrieval, transformation, persistence, external calls, prompt construction, or presentation.
+
+Do not add new behavior to an already broad function. Extract the relevant phase first, then add the new behavior in the correct layer.
+
+Target 10 to 40 lines per function. Treat 60 lines as a soft limit and 80 lines as a refactor warning.
+
+Use guard clauses to reduce nesting. Target maximum nesting depth of 2.
+
+Comments are not a substitute for extraction. If a function has internal sections such as validate, load, transform, save, those sections should usually become named helpers.
+
+Preserve behavior during refactors. Run or update tests when behavior is not already covered.

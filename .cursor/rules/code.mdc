@@ -1,0 +1,52 @@
+---
+alwaysApply: true
+---
+## Python Exception handling, logging, and “no blind pass”
+
+### Core principle
+- **Never swallow exceptions silently.** A bare `except ...: pass` is forbidden.
+
+### Forbidden patterns
+- `except Exception: pass`
+- `except: pass`
+- `except Exception: ...` with no log and no explicit fallback behavior
+- `try:` blocks that wrap multiple unrelated operations (hard to reason about what failed)
+
+### Required handling patterns
+1) **Catch only specific exceptions**
+- If you can name the exception type(s), catch them explicitly.
+- If you cannot name the exception, let it raise.
+
+2) **Always do one of: log, re-raise, or return an explicit fallback**
+- Every `except` block must contain at least one of:
+  - `logger.info(...)` or `logger.warning(...)` or `logger.exception(...)`
+  - `raise` (or `raise SomeDomainError(...) from exc`)
+  - `return <fallback>` that preserves system invariants
+
+3) **Severity guidance**
+- Use `logger.info` when:
+  - The exception is expected in normal operation
+  - Downstream behavior remains correct without the operation
+  - Example: optional telemetry, optional cache write
+- Use `logger.warning` when:
+  - The operation failing degrades behavior, quality, or persistence guarantees
+  - The request can continue but may have missing memory, missing tagging, or reduced retrieval quality
+- Use `logger.exception` when:
+  - The exception is unexpected, indicates a bug, or you need a stack trace for debugging
+
+4) **Best-effort calls**
+- Best-effort exception suppression is allowed only if ALL are true:
+  - The failure is common and expected
+  - Skipping the operation does not violate invariants (for Morpheus, memory persistence is usually an invariant)
+  - There is an inline comment explaining why it is safe to ignore
+  - There is at least an `info` log (or a debug flag gated log), unless logs would be spammy
+- If you truly must suppress without logging (rare), the comment must explicitly justify no log and reference a rate limiting or spam concern.
+
+5) **Logging content requirements**
+- Logs must include enough context to debug:
+  - operation name
+  - `project_id`
+  - any relevant message or id (avoid full user content if sensitive)
+- Prefer:
+  - `logger.warning("append_assistant_message failed; project_id=%s", project_id, exc_info=exc)`
+  - or `logger.exception("...")` for stack trace

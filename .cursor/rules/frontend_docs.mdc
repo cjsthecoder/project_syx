@@ -1,0 +1,24 @@
+---
+alwaysApply: true
+---
+# Frontend Structure and Documentation Rule
+
+Prefer functional React components, hooks, and plain functions over classes unless a class provides clear value.
+
+Use JSDoc for exported functions, custom hooks, API client functions, shared utilities, context providers, reducers, complex components, and functions with side effects.
+
+For TypeScript, do not repeat obvious type information already present in the function signature. Use comments to explain responsibility, side effects, invariants, security constraints, or architecture boundaries.
+
+Document exported classes when used. A class docstring should explain what the class represents, what responsibility it owns, and any important side effects or invariants.
+
+Document constructor parameters only when they are not obvious from TypeScript types or when construction has side effects.
+
+Document public methods on exported classes when their behavior, side effects, errors, or return values are not obvious.
+
+Do not add JSDoc to trivial local handlers, obvious presentational components, one-line helpers, or private implementation details unless the behavior is non-obvious.
+
+Keep React components focused. Avoid combining data fetching, transformation, complex state management, and rendering in one component. Extract API calls, custom hooks, pure helpers, and presentational components as needed.
+
+Keep API clients separate from UI components.
+
+Keep frontend state transitions explicit and testable where practical.

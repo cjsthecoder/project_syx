@@ -1,0 +1,12 @@
+---
+alwaysApply: true
+---
+# Apply Google-style Python docstrings.
+
+Add docstrings to public functions, API handlers, service-layer functions, factory functions, lifecycle functions, and architecture-boundary functions.
+
+Do not add docstrings to trivial private helpers unless the behavior is non-obvious.
+
+Do not add comments that merely restate the code. Comments should explain intent, invariants, side effects, or architecture boundaries.
+
+Use Args, Returns, and Raises sections only when applicable.

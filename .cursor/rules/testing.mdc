@@ -1,0 +1,38 @@
+---
+description: Backend testing policy and coverage conventions
+alwaysApply: true
+---
+
+# Testing
+
+`docs/COVERAGE.md` is the authoritative guidance for writing and reviewing
+tests. Read it before adding or changing tests, and keep tests consistent with
+it. Update `docs/COVERAGE.md` when the policy evolves.
+
+## Core principles (see `docs/COVERAGE.md` for full detail)
+
+- Test **real behavior**, not metrics. 100% should mean logic and error paths
+  are genuinely exercised, never that hard branches were hidden.
+- Use the **real `faiss` and `numpy`**; only fake the boundaries (embedding
+  client, `get_settings`, `get_active_embedding_model`, DB session,
+  `write_debug_file`).
+- **Reset module-level global state between tests** with an autouse fixture so
+  tests do not leak state.
+- **Make background work deterministic** (replace `threading.Thread` with a
+  synchronous stand-in or monkeypatch the scheduled function).
+- Prefer **one assertion target per test** with a short comment naming the
+  branch being exercised.
+- Assert on `caplog` for best-effort failure / log branches.
+
+## `# pragma: no cover`
+
+Only pragma genuinely untestable code (defensive guards, re-export shims, truly
+unreachable safety branches), and always add an inline comment justifying it.
+Never pragma real business logic, parsing, retrieval/index assembly, or any
+branch a caller can reach with valid input — write a test instead.
+
+## Running coverage
+
+From `backend/`, pass the config explicitly
+(`--cov-config=../pyproject.toml`) or use `make coverage-backend`, otherwise the
+`omit` list is not discovered.

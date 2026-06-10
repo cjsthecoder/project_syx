@@ -42,7 +42,6 @@ ENV/
 !.env.example
 
 # IDE/editor
-.cursor/
 .vscode/
 .idea/
 *.swp

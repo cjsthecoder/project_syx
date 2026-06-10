@@ -1,7 +1,6 @@
 ---
+description: 
 alwaysApply: true
-description: "Syx AGI Chatbot Project Prompt"
-priority: high
 ---
 
 # Syx AGI Project Rules
@@ -39,7 +38,7 @@ This project implements a modular chatbot and memory system with:
 - Always read **both** REQUIREMENTS.md and DELTAS.md before making changes.
 - If they conflict, DELTAS.md wins.
 - If neither mentions the topic, stop and ask.
-- Do not commit code to git, without being told to specifically.
+- Do not commit code to git, without being told to specifically. And when you are asked, run 'make coverage' and verify 100% code coverage and all tests pass.
 
 ## Architecture Constraints
 

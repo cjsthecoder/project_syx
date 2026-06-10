@@ -1,0 +1,16 @@
+---
+alwaysApply: true
+---
+# Python Class Documentation Rule
+
+Use Google-style class docstrings for public classes, dataclasses, Pydantic models, service classes, lifecycle managers, API schemas, and architecture-boundary classes.
+
+A class docstring should explain what the class represents, what responsibility it owns, and any important invariants, side effects, or architecture boundaries.
+
+Document constructor arguments in the class docstring when they are part of the public contract or not obvious from type hints.
+
+Document public attributes with an Attributes section for dataclasses, DTOs, Pydantic models, and classes whose attributes are intended to be read by other modules.
+
+Do not document every private implementation detail. Avoid docstrings that merely repeat class or field names.
+
+For Pydantic models, prefer Field descriptions for request/response schema fields.

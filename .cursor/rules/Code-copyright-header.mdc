@@ -1,0 +1,27 @@
+---
+alwaysApply: true
+---
+
+For all new code files include this header.
+
+Python (`.py`):
+"""
+SPDX-License-Identifier: MIT
+
+This file is part of the Syx project. See the LICENSE file in the project
+root for full license information.
+"""
+
+TypeScript/JavaScript (`.ts`, `.tsx`, `.js`, `.jsx`):
+/**
+ * SPDX-License-Identifier: MIT
+ *
+ * This file is part of the Syx project. See the LICENSE file in the project
+ * root for full license information.
+ */
+
+The project is MIT licensed. Per-file headers carry only the SPDX identifier;
+the single required copyright notice lives in the root `LICENSE` file. Do not
+add per-file `Copyright (c) ...` lines, individual author names, or proprietary
+/ "all rights reserved" notices. `tools/add_header.py` applies and normalizes
+these headers automatically.

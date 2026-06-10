@@ -1,0 +1,12 @@
+---
+alwaysApply: true
+---
+#Apply JSDoc-style documentation to the frontend.
+
+Add JSDoc to exported functions, custom hooks, API client functions, shared utilities, context providers, reducers, complex components, and functions with side effects.
+
+Do not add JSDoc to trivial local handlers, obvious presentational components, or one-line helpers.
+
+For TypeScript, do not repeat obvious type information already present in the function signature.
+
+Comments should explain intent, invariants, side effects, architecture boundaries, or security constraints. Do not add comments that merely restate the code.

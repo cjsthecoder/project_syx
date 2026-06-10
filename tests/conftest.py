@@ -20,6 +20,8 @@ import os
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 os.environ.setdefault("LOGS_DIR", os.path.join(_REPO_ROOT, "runtime", "logs", "tests"))
 os.environ.setdefault("LOG_FILE_PREFIX", "test_")
+# Keep local .env debug settings from creating memory/p1 debug artifacts during tests.
+os.environ["GENERATE_DEBUG_FILES"] = "false"
 
 import pytest
 from app.core.config import get_settings

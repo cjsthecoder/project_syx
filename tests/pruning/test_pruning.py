@@ -9,8 +9,8 @@ root for full license information.
 Tests for the light response pruner.
 
 Exercises ``light_response_pruner`` behaviors: front/end prefix trimming,
-markdown stripping, whitespace compaction, similar-sentence deduplication,
-fenced-code-block safety, per-stage enable toggles, and config validation.
+whitespace compaction, similar-sentence deduplication, fenced-code-block
+safety, per-stage enable toggles, and config validation.
 """
 from typing import cast
 
@@ -22,7 +22,6 @@ from app.pruning.light_response_pruner import (
     compact_whitespace,
     normalize_for_prefix_match,
     prune_similar_sentences,
-    strip_markdown_markup,
 )
 
 
@@ -124,102 +123,6 @@ def test_end_pruning_ignores_matching_middle_paragraph() -> None:
     assert result.changed is False
 
 
-def test_strip_markdown_markup_removes_common_markers() -> None:
-    text = (
-        "## What is **solid**\n"
-        "- **Turn lifecycle** is clear\n"
-        ". Dot bullet style should also be stripped\n"
-        "See [docs](https://example.com) and `token_accounting_ok`.\n"
-        "Inline dash marker - should also be removed."
-    )
-
-    assert strip_markdown_markup(text) == (
-        "What is solid\n"
-        "Turn lifecycle is clear\n"
-        "Dot bullet style should also be stripped\n"
-        "See docs and token_accounting_ok.\n"
-        "Inline dash marker - should also be removed."
-    )
-
-
-def test_strip_markdown_markup_preserves_subtraction_operators() -> None:
-    text = "prompt_estimate_error = prompt_est - prompt_reported"
-    assert strip_markdown_markup(text) == text
-
-
-def test_strip_markdown_markup_does_not_strip_list_markers_inside_code_fence() -> None:
-    text = (
-        "Outside prose.\n\n"
-        "```python\n"
-        "- keep this bullet-like line\n"
-        "1. keep this numbered line\n"
-        "```\n\n"
-        "- strip this outside bullet\n"
-        "1. strip this outside numbered item"
-    )
-
-    assert strip_markdown_markup(text) == (
-        "Outside prose.\n\n"
-        "```python\n"
-        "- keep this bullet-like line\n"
-        "1. keep this numbered line\n"
-        "```\n\n"
-        "strip this outside bullet\n"
-        "strip this outside numbered item"
-    )
-
-
-def test_strip_markdown_markup_preserves_requirement_like_numbered_lines() -> None:
-    text = (
-        "1. FR-1.0.1 Keep this requirement numbering.\n"
-        "2) Q: Keep this Q/A numbering.\n"
-        "3. Question: Keep this too.\n"
-        "4. Normal markdown list item should strip marker."
-    )
-
-    assert strip_markdown_markup(text) == (
-        "1. FR-1.0.1 Keep this requirement numbering.\n"
-        "2) Q: Keep this Q/A numbering.\n"
-        "3. Question: Keep this too.\n"
-        "Normal markdown list item should strip marker."
-    )
-
-
-def test_pruner_strips_markdown_before_front_and_end_pruning() -> None:
-    pruner = Pruner.from_rules(
-        {
-            "front": {"prefix": ["got it"], "cut_mode": "sentence"},
-            "end": {"prefix": ["let me know"], "cut_mode": "paragraph_to_end"},
-        },
-        config=PrunerConfig(whitespace_mode="off"),
-    )
-    text = (
-        "**Got it.**\n"
-        "## What is **solid**\n"
-        "- **Turn lifecycle** is clear.\n\n"
-        "**Let me know** if you want more examples."
-    )
-
-    result = pruner.prune(text)
-
-    assert result.pruned_text == "What is solid\nTurn lifecycle is clear."
-    assert result.trimmed_side == "both"
-
-
-def test_markdown_stripping_preserves_fenced_code_safety() -> None:
-    pruner = Pruner.from_rules(
-        {"end": {"prefix": ["let me know"], "cut_mode": "paragraph_to_end"}},
-        config=PrunerConfig(whitespace_mode="off"),
-    )
-    text = '**Important** answer.\n\n```\nLet me know = "not boilerplate"\n```'
-
-    result = pruner.prune(text)
-
-    assert result.pruned_text == 'Important answer.\n\n```\nLet me know = "not boilerplate"\n```'
-    assert result.changed is True
-    assert result.trimmed_end is False
-
-
 def test_compact_whitespace_preserves_fenced_code_block_contents() -> None:
     text = (
         "A   spaced\tline.\n\n\n"
@@ -278,7 +181,6 @@ def test_response_pruning_defaults_all_true() -> None:
         "enabled": True,
         "front_enabled": True,
         "end_enabled": True,
-        "markdown_enabled": True,
         "whitespace_enabled": True,
         "similarity_enabled": True,
     }
@@ -317,22 +219,6 @@ def test_response_pruning_front_toggle_is_enforced() -> None:
 
     result = pruner.prune("Got it. Keep this.")
     assert result.pruned_text == "Got it. Keep this."
-
-
-def test_response_pruning_markdown_toggle_is_enforced() -> None:
-    pruner = Pruner.from_rules(
-        {"front": {"prefix": ["not a match"], "cut_mode": "sentence"}},
-        config=PrunerConfig(
-            whitespace_mode="off",
-            response_pruning={
-                "markdown_enabled": False,
-            },
-        ),
-    )
-
-    text = "## Heading with **bold**"
-    result = pruner.prune(text)
-    assert result.pruned_text == text
 
 
 def test_response_pruning_whitespace_toggle_is_enforced() -> None:

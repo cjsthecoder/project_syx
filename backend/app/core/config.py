@@ -225,10 +225,6 @@ class Settings(BaseSettings):
         default=True,
         description="Enable response-pruning trailing paragraph trimming",
     )
-    response_pruning_markdown_enabled: bool = Field(
-        default=True,
-        description="Enable response-pruning markdown cleanup",
-    )
     response_pruning_whitespace_enabled: bool = Field(
         default=True,
         description="Enable response-pruning whitespace cleanup",
@@ -412,14 +408,13 @@ def get_response_pruning_stage_config() -> dict[str, bool]:
 
     Returns:
         A mapping of each response-pruning stage name to its enabled flag
-        (``enabled``, ``front_enabled``, ``end_enabled``, ``markdown_enabled``,
+        (``enabled``, ``front_enabled``, ``end_enabled``,
         ``whitespace_enabled``, ``similarity_enabled``).
     """
     return {
         "enabled": bool(settings.response_pruning_enabled),
         "front_enabled": bool(settings.response_pruning_front_enabled),
         "end_enabled": bool(settings.response_pruning_end_enabled),
-        "markdown_enabled": bool(settings.response_pruning_markdown_enabled),
         "whitespace_enabled": bool(settings.response_pruning_whitespace_enabled),
         "similarity_enabled": bool(settings.response_pruning_similarity_enabled),
     }

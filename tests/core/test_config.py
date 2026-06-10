@@ -135,7 +135,6 @@ def test_get_response_pruning_stage_config_keys(settings_override):
         "enabled",
         "front_enabled",
         "end_enabled",
-        "markdown_enabled",
         "whitespace_enabled",
         "similarity_enabled",
     }

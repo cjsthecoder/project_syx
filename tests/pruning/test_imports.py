@@ -30,7 +30,6 @@ from app.pruning.light_response_pruner import (
     normalize_for_prefix_match,
     prune_response,
     prune_similar_sentences,
-    strip_markdown_markup,
     validate_rules,
 )
 
@@ -55,4 +54,3 @@ def test_public_api_exports_are_importable() -> None:
     assert prune_response is not None
     assert prune_similar_sentences is not None
     assert compact_whitespace is not None
-    assert strip_markdown_markup is not None

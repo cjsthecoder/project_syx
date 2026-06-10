@@ -285,7 +285,6 @@ def test_prune_end_skips_paragraph_inside_fenced_code_block():
             "enabled": True,
             "front_enabled": False,
             "end_enabled": True,
-            "markdown_enabled": False,
             "whitespace_enabled": False,
             "similarity_enabled": False,
         },

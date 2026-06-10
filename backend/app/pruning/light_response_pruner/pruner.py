@@ -8,9 +8,9 @@ root for full license information.
 """
 Core pruning engine for the light response pruner.
 
-Provides the Pruner class and PrunerConfig that orchestrate markdown stripping,
-front/end prefix trimming, whitespace compaction, and similarity pruning to
-produce a structured PruneResult.
+Provides the Pruner class and PrunerConfig that orchestrate front/end prefix
+trimming, whitespace compaction, and similarity pruning to produce a structured
+PruneResult.
 """
 
 import logging
@@ -20,7 +20,6 @@ from typing import Any
 
 from .config import load_rules
 from .exceptions import PrunerConfigError, PrunerInputError
-from .markdown import strip_markdown_markup
 from .models import PruneResult, PruneRules, WhitespaceMode
 from .normalize import normalize_for_prefix_match
 from .similarity import prune_similar_sentences
@@ -93,7 +92,6 @@ class PrunerConfig:
             "enabled": True,
             "front_enabled": True,
             "end_enabled": True,
-            "markdown_enabled": True,
             "whitespace_enabled": True,
             "similarity_enabled": True,
         }
@@ -114,9 +112,9 @@ class PrunerConfig:
 class Pruner:
     """Orchestrates the light response pruning pipeline.
 
-    Applies markdown stripping, front/end prefix trimming, whitespace
-    compaction, and near-duplicate sentence removal against a set of rules,
-    returning a structured PruneResult.
+    Applies front/end prefix trimming, whitespace compaction, and
+    near-duplicate sentence removal against a set of rules, returning a
+    structured PruneResult.
     """
 
     def __init__(self, *, rules: PruneRules, config: PrunerConfig | None = None) -> None:
@@ -196,7 +194,7 @@ class Pruner:
     def prune(self, text: str) -> PruneResult:
         """Run the configured pruning stages over ``text``.
 
-        Stages run in order (markdown, front, end, whitespace, similarity) and
+        Stages run in order (front, end, whitespace, similarity) and
         each is skipped when disabled in the config. A safety guard prevents
         trimming that would leave the text empty.
 
@@ -225,13 +223,6 @@ class Pruner:
             )
 
         working_text = text
-        markdown_changed = False
-        if (
-            self.config.response_pruning["enabled"]
-            and self.config.response_pruning["markdown_enabled"]
-        ):
-            working_text = strip_markdown_markup(text)
-            markdown_changed = working_text != text
         front_offset = 0
         matched_front_prefixes: list[str] = []
         matched_end_prefixes: list[str] = []
@@ -290,13 +281,7 @@ class Pruner:
         return PruneResult(
             original_text=text,
             pruned_text=working_text,
-            changed=(
-                markdown_changed
-                or trimmed_front
-                or trimmed_end
-                or whitespace_changed
-                or similarity_changed
-            ),
+            changed=(trimmed_front or trimmed_end or whitespace_changed or similarity_changed),
             trimmed_front=trimmed_front,
             trimmed_end=trimmed_end,
             matched_front_prefixes=matched_front_prefixes,

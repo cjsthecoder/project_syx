@@ -22,7 +22,6 @@ from .config import (
     validate_rules,
 )
 from .exceptions import PrunerConfigError, PrunerError, PrunerInputError
-from .markdown import strip_markdown_markup
 from .models import EndRuleSection, FrontRuleSection, PruneResult, PruneRules
 from .normalize import normalize_for_prefix_match
 from .pruner import Pruner, PrunerConfig, prune_response
@@ -49,7 +48,6 @@ __all__ = [
     "normalize_for_prefix_match",
     "prune_response",
     "prune_similar_sentences",
-    "strip_markdown_markup",
     "validate_rules",
     "compact_whitespace",
 ]

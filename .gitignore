@@ -19,6 +19,7 @@ idea_prompt.txt
 output.txt
 research_output.txt
 research.txt
+dependencies.md
 tools/agent_interface/
 
 # Virtual environments

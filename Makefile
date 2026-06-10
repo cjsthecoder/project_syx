@@ -503,7 +503,7 @@ setup-env:
 		echo "GENERATE_DEBUG_FILES=true"; \
 		echo "# Enable debug file generation (e.g., debug_context.txt)"; \
 		echo ""; \
-		echo "VITE_SHOW_DEBUG_VALUES=false"; \
+		echo "VITE_SHOW_DEBUG_VALUES=true"; \
 		echo "# Frontend: show stats/debug values bar in chat UI"; \
 		echo ""; \
 	} > .env

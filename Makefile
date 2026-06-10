@@ -302,9 +302,6 @@ setup-env:
 		echo "PORT=8000"; \
 		echo "# Server port"; \
 		echo ""; \
-		echo "RELOAD=true"; \
-		echo "# Enable auto-reload in development"; \
-		echo ""; \
 		echo "CORS_ORIGINS=[\"http://localhost:3000\",\"http://localhost:5173\"]"; \
 		echo "# Allowed browser origins for API"; \
 		echo ""; \

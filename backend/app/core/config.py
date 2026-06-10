@@ -68,7 +68,6 @@ class Settings(BaseSettings):
     # Server Configuration
     host: str = Field(default="0.0.0.0", description="Server host")
     port: int = Field(default=8000, gt=0, le=65535, description="Server port")
-    reload: bool = Field(default=True, description="Enable auto-reload in development")
 
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Global logging level (legacy)")

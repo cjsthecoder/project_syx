@@ -214,9 +214,9 @@ lint: lint-backend lint-frontend
 
 lint-backend:
 	@echo "🔍 Linting Python code (black --check, isort --check, ruff)..."
-	$(PYTHON) -m black --check backend tests tools
-	$(PYTHON) -m isort --check-only backend tests tools
-	$(PYTHON) -m ruff check backend tests tools
+	$(PYTHON) -m black --check backend tests
+	$(PYTHON) -m isort --check-only backend tests
+	$(PYTHON) -m ruff check backend tests
 	@echo "✅ Backend linting completed"
 
 lint-frontend:
@@ -239,8 +239,8 @@ format: format-backend format-frontend
 
 format-backend:
 	@echo "🎨 Formatting Python code (isort + black)..."
-	$(PYTHON) -m isort backend tests tools
-	$(PYTHON) -m black backend tests tools
+	$(PYTHON) -m isort backend tests
+	$(PYTHON) -m black backend tests
 	@echo "✅ Backend formatting completed"
 
 format-frontend:

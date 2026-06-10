@@ -63,6 +63,21 @@ def test_front_pruning_blocks_empty_result() -> None:
     assert result.blocked_by_safety is True
 
 
+def test_front_pruning_noop_when_no_leading_sentence_span() -> None:
+    # Text without terminal punctuation yields no leading sentence span, so the
+    # front-trim loop breaks immediately and the text is returned unchanged.
+    pruner = Pruner.from_rules(
+        {"front": {"prefix": ["got it"], "cut_mode": "sentence"}},
+        config=PrunerConfig(whitespace_mode="off"),
+    )
+
+    result = pruner.prune("got it with no terminating punctuation")
+
+    assert result.pruned_text == "got it with no terminating punctuation"
+    assert result.changed is False
+    assert result.trimmed_front is False
+
+
 def test_end_pruning_removes_matching_paragraph_to_end() -> None:
     pruner = Pruner.from_rules({"end": {"prefix": ["let me know"], "cut_mode": "paragraph_to_end"}})
     text = "The substantive answer stays.\n\nLet me know if you want more examples."
@@ -283,6 +298,13 @@ def test_prune_similar_sentences_preserves_protected_sentences() -> None:
         "FR-1.0.1 The library shall preserve this requirement."
     )
 
+    assert prune_similar_sentences(text) == text
+
+
+def test_prune_similar_sentences_returns_text_without_sentence_spans() -> None:
+    # Non-empty text with no terminal punctuation produces no sentence spans, so
+    # the input is returned unchanged.
+    text = "no terminal punctuation so no sentence spans"
     assert prune_similar_sentences(text) == text
 
 

@@ -59,7 +59,7 @@ def _load_dreams_module(monkeypatch):
     debug_module.write_debug_file = lambda *_args, **_kwargs: None  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.utils.debug_utils", debug_module)
 
-    module_path = Path(__file__).resolve().parents[1] / "backend" / "app" / "dream" / "dreams.py"
+    module_path = Path(__file__).resolve().parents[2] / "backend" / "app" / "dream" / "dreams.py"
     spec = importlib.util.spec_from_file_location("app.dream.dreams", module_path)
     assert spec is not None
     module = importlib.util.module_from_spec(spec)

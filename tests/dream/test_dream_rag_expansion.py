@@ -29,7 +29,7 @@ def _ensure_module(monkeypatch, name: str) -> types.ModuleType:
 
 
 def _load_module(monkeypatch, module_name: str, relative_path: str) -> types.ModuleType:
-    module_path = Path(__file__).resolve().parents[1] / relative_path
+    module_path = Path(__file__).resolve().parents[2] / relative_path
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     assert spec is not None
     module = importlib.util.module_from_spec(spec)

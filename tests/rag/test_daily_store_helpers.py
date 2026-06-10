@@ -68,7 +68,7 @@ def _load_daily_store(monkeypatch):
     monkeypatch.setitem(sys.modules, "app.utils.debug_utils", debug_utils_module)
 
     syx_module_path = (
-        Path(__file__).resolve().parents[1] / "backend" / "app" / "rag" / "syx_memory_artifact.py"
+        Path(__file__).resolve().parents[2] / "backend" / "app" / "rag" / "syx_memory_artifact.py"
     )
     syx_spec = importlib.util.spec_from_file_location(
         "app.rag.syx_memory_artifact", syx_module_path
@@ -79,7 +79,7 @@ def _load_daily_store(monkeypatch):
     assert syx_spec.loader is not None
     syx_spec.loader.exec_module(syx_module)
 
-    module_path = Path(__file__).resolve().parents[1] / "backend" / "app" / "rag" / "daily_store.py"
+    module_path = Path(__file__).resolve().parents[2] / "backend" / "app" / "rag" / "daily_store.py"
     spec = importlib.util.spec_from_file_location("app.rag.daily_store", module_path)
     assert spec is not None
     module = importlib.util.module_from_spec(spec)

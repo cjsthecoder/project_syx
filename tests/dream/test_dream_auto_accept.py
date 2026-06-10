@@ -69,7 +69,7 @@ def _load_auto_accept_module(monkeypatch, *, append_ok=True, tagger_raises=False
     monkeypatch.setitem(sys.modules, "app.rag.daily_store", daily_module)
 
     syx_module_path = (
-        Path(__file__).resolve().parents[1] / "backend" / "app" / "rag" / "syx_memory_artifact.py"
+        Path(__file__).resolve().parents[2] / "backend" / "app" / "rag" / "syx_memory_artifact.py"
     )
     syx_spec = importlib.util.spec_from_file_location(
         "app.rag.syx_memory_artifact", syx_module_path
@@ -120,7 +120,7 @@ def _load_auto_accept_module(monkeypatch, *, append_ok=True, tagger_raises=False
     monkeypatch.setitem(sys.modules, "app.utils.dream_summary", dream_summary_module)
 
     module_path = (
-        Path(__file__).resolve().parents[1] / "backend" / "app" / "dream" / "auto_accept.py"
+        Path(__file__).resolve().parents[2] / "backend" / "app" / "dream" / "auto_accept.py"
     )
     spec = importlib.util.spec_from_file_location("app.dream.auto_accept", module_path)
     assert spec is not None

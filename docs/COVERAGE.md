@@ -99,8 +99,8 @@ This was the root cause of an `AttributeError: module 'numpy' has no attribute
   `app/tracking/` directory is excluded via `[tool.coverage.run] omit` in
   `pyproject.toml`. Keep that list narrow and justified.
 - When running coverage from the `backend/` directory, pass the config explicitly:
-  `--cov-config=../pyproject.toml` (the `Makefile` `coverage-backend` target and the
-  ad-hoc command in `questions.txt` already do this), otherwise the `omit` list is
+  `--cov-config=../pyproject.toml` (the `Makefile` `coverage-backend` target), 
+  otherwise the `omit` list is
   not discovered.
 - Generate viewer-friendly reports (`term-missing`, `html`, `xml`, `lcov`) via
   `make coverage-backend` for line-level inspection.

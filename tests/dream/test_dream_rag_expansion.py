@@ -166,6 +166,7 @@ def test_questions_agent_uses_expanded_dream_rag(monkeypatch):
     debug_module.safe_dream_purpose = lambda purpose: purpose  # type: ignore[attr-defined]
     debug_module.write_dream_prompt_to_execute = lambda **_kwargs: None  # type: ignore[attr-defined]
     debug_module.write_dream_response_usage_debug = lambda **_kwargs: None  # type: ignore[attr-defined]
+    debug_module.write_dream_context_summary_debug = lambda **_kwargs: None  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.dream.debug", debug_module)
 
     debug_utils_module = types.ModuleType("app.utils.debug_utils")
@@ -243,6 +244,7 @@ def test_research_agent_adds_synthesis_expanded_context(monkeypatch):
     debug_module.safe_dream_purpose = lambda purpose: purpose  # type: ignore[attr-defined]
     debug_module.write_dream_prompt_to_execute = lambda **_kwargs: None  # type: ignore[attr-defined]
     debug_module.write_dream_response_usage_debug = lambda **_kwargs: None  # type: ignore[attr-defined]
+    debug_module.write_dream_context_summary_debug = lambda **_kwargs: None  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.dream.debug", debug_module)
 
     debug_utils_module = types.ModuleType("app.utils.debug_utils")
@@ -308,6 +310,7 @@ def test_dream_context_topic_enrichment_uses_expanded_adapter(monkeypatch):
     debug_module.safe_dream_purpose = lambda purpose: purpose  # type: ignore[attr-defined]
     debug_module.write_dream_prompt_to_execute = lambda **_kwargs: None  # type: ignore[attr-defined]
     debug_module.write_dream_response_usage_debug = lambda **_kwargs: None  # type: ignore[attr-defined]
+    debug_module.write_dream_context_summary_debug = lambda **_kwargs: None  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.dream.debug", debug_module)
 
     prompts_module = types.ModuleType("app.dream.prompts")

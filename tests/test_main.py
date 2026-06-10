@@ -132,7 +132,8 @@ def test_redoc():
 
 
 @patch("app.api.chat.get_llm_client")
-def test_chat_stream_contract(mock_get_llm_client):
+@patch("app.api.chat.validate_openai_key", return_value=True)
+def test_chat_stream_contract(_mock_validate_openai_key, mock_get_llm_client):
     """Streaming endpoint returns plain text tokens and completion marker."""
 
     class _FakeClient:
@@ -750,6 +751,18 @@ def test_health_check_unhealthy_on_exception(monkeypatch):
     result = asyncio.run(main.health_check())
     assert result.status == "unhealthy"
     assert "error" in result.dependencies
+
+
+def test_health_check_degraded_when_openai_key_missing(monkeypatch):
+    from app.core import llm_service
+
+    monkeypatch.setattr(main, "validate_openai_key", lambda: False)
+    monkeypatch.setattr(llm_service, "get_llm_health", lambda: {"status": "unhealthy"})
+
+    result = asyncio.run(main.health_check())
+
+    assert result.status == "degraded"
+    assert result.dependencies == {"openai": "missing", "llm": "unhealthy"}
 
 
 # --- LoggingRedirect ----------------------------------------------------------

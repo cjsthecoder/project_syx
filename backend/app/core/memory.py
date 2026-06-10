@@ -1046,7 +1046,6 @@ class MemoryManager:
         Returns:
             List of relevant memories
         """
-        # TODO: Implement FAISS-based search.
         logger.info(f"Memory search requested: '{query}' (stub - not yet implemented)")
 
         return [
@@ -1071,7 +1070,6 @@ class MemoryManager:
         Returns:
             Cleanup statistics
         """
-        # TODO: Implement memory pruning.
         logger.info("Memory cleanup requested (stub - not yet implemented)")
 
         return {

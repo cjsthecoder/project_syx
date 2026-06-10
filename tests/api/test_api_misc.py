@@ -63,6 +63,8 @@ def test_models_returns_whitelist(models_client):
     assert resp.status_code == 200
     body = resp.json()
     assert isinstance(body["models"], list)
+    assert isinstance(body["default"], str)
+    assert body["default"] in body["models"]
 
 
 # ---------------------------------------------------------------------------

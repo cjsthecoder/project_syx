@@ -18,11 +18,15 @@ router = APIRouter()
 
 @router.get("/models")
 async def get_models() -> JSONResponse:
-    """Return the list of selectable chat models.
+    """Return the list of selectable chat models and the default selection.
 
     Returns:
-        JSON object ``{"models": [...]}`` containing the configured
-        whitelist of available model identifiers.
+        JSON object ``{"models": [...], "default": "<model_name>"}`` containing
+        the configured whitelist of available model identifiers and the default
+        model (``MODEL_NAME``) the UI should pre-select.
     """
     settings = get_settings()
-    return JSONResponse(status_code=200, content={"models": settings.available_models})
+    return JSONResponse(
+        status_code=200,
+        content={"models": settings.available_models, "default": settings.model_name},
+    )

@@ -193,15 +193,19 @@ export default function App() {
 
   const loadModels = useCallback(async () => {
     try {
-      const data = await api<{ models: string[] }>('/models')
+      const data = await api<{ models: string[]; default?: string }>('/models')
       if (Array.isArray(data.models) && data.models.length) {
         setModels(data.models)
-        if (!data.models.includes(model)) setModel(data.models[0])
+        // Pre-select the backend default (MODEL_NAME) when it is whitelisted,
+        // otherwise fall back to the first available model.
+        const preferred =
+          data.default && data.models.includes(data.default) ? data.default : data.models[0]
+        setModel(preferred)
       }
     } catch (e) {
       console.warn('loadModels failed', e)
     }
-  }, [model])
+  }, [])
 
   useEffect(() => {
     // Async mount loader: state is set after an await, not a synchronous cascade.

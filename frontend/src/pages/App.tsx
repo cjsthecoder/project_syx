@@ -381,13 +381,13 @@ export default function App() {
       {showDebugValues && (
         <div className="px-4 py-2 border-b text-sm w-full flex justify-center">
           <div className="flex flex-wrap gap-8 items-center text-center">
-            <div>Files: {fmtMB(stats?.storage_bytes)}</div>
-            <div>FAISS index: {fmtMB(stats?.index_size_bytes)}</div>
-            <div>Tokens indexed: {stats?.tokens_indexed ?? '—'}</div>
-            <div>Context tokens: {stats?.context_tokens ?? '—'}</div>
-            <div>Daily index: {fmtMB(stats?.daily_index_size_bytes)}</div>
-            <div>Daily tokens: {stats?.daily_tokens_indexed ?? '—'}</div>
-            <div>Active pairs: {stats?.active_pairs ?? '—'}</div>
+            <div>RAG Files: {fmtMB(stats?.storage_bytes)}</div>
+            <div>LTM Index: {fmtMB(stats?.index_size_bytes)}</div>
+            <div>LTM Indexed: {stats?.tokens_indexed ?? '—'}</div>
+            <div>Daily Index: {fmtMB(stats?.daily_index_size_bytes)}</div>
+            <div>Daily Tokens: {stats?.daily_tokens_indexed ?? '—'}</div>
+            <div>Active Pairs: {stats?.active_pairs ?? '—'}</div>
+            <div>Active Tokens: {stats?.active_pair_tokens ?? '—'}</div>
           </div>
         </div>
       )}

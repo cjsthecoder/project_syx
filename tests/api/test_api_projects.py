@@ -502,10 +502,12 @@ class _FakeMemoryManager:
 
 def test_project_stats_happy(client, db, temp_memory_root, monkeypatch):
     pid = _make_project(db, name="Stats")
+    sleep_upload = temp_memory_root / pid / "uploads" / "sleep" / "sleep_2026-06-11.md"
+    sleep_upload.parent.mkdir(parents=True)
+    sleep_upload.write_text("sleep generated long term memory", encoding="utf-8")
     mm = _FakeMemoryManager(history=[{"content": "hello world"}])
     monkeypatch.setattr(projects_module, "start_daily_cache_rebuild", lambda *a, **k: None)
     monkeypatch.setattr(projects_module, "get_memory_manager", lambda: mm)
-    monkeypatch.setattr(projects_module, "get_last_context_tokens", lambda pid: 0)
     monkeypatch.setattr(
         projects_module,
         "daily_stats",
@@ -520,10 +522,9 @@ def test_project_stats_happy(client, db, temp_memory_root, monkeypatch):
     body = resp.json()
     assert body["project_id"] == pid
     assert body["active_pairs"] == 3
+    assert body["active_pair_tokens"] > 0
+    assert body["tokens_indexed"] > 0
     assert body["daily_vector_count"] == 4
-    # context_tokens was 0 -> recomputed from history and cached.
-    assert body["context_tokens"] > 0
-    assert mm.set_calls and mm.set_calls[0][0] == pid
 
 
 def test_project_stats_warm_failure_is_logged(client, db, monkeypatch, caplog):
@@ -535,11 +536,12 @@ def test_project_stats_warm_failure_is_logged(client, db, monkeypatch, caplog):
         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("warm down")),
     )
     monkeypatch.setattr(projects_module, "get_memory_manager", lambda: mm)
-    monkeypatch.setattr(projects_module, "get_last_context_tokens", lambda pid: 5)
     monkeypatch.setattr(projects_module, "daily_stats", lambda pid: {})
     resp = client.get(f"/projects/{pid}/stats")
     assert resp.status_code == 200
-    assert resp.json()["context_tokens"] == 5  # used cached value as-is
+    body = resp.json()
+    assert body["active_pairs"] == 3
+    assert body["active_pair_tokens"] == 0
 
 
 def test_get_chats_happy(client, monkeypatch):
@@ -1063,7 +1065,6 @@ def test_project_stats_index_getsize_failure_logged(
     (faiss_dir / "index.faiss").write_text("x", encoding="utf-8")
     monkeypatch.setattr(projects_module, "start_daily_cache_rebuild", lambda *a, **k: None)
     monkeypatch.setattr(projects_module, "get_memory_manager", lambda: _FakeMemoryManager())
-    monkeypatch.setattr(projects_module, "get_last_context_tokens", lambda pid: 5)
     monkeypatch.setattr(projects_module, "daily_stats", lambda pid: {})
 
     def boom_getsize(_p):
@@ -1076,7 +1077,31 @@ def test_project_stats_index_getsize_failure_logged(
     assert any("Failed reading file size" in r.message for r in caplog.records)
 
 
-def test_project_stats_context_recompute_failure_left_zero(client, db, monkeypatch):
+def test_project_stats_ltm_token_read_failure_logged(
+    client, db, temp_memory_root, monkeypatch, caplog
+):
+    import logging
+
+    caplog.set_level(logging.INFO)
+    pid = _make_project(db, name="StatsLtmRead")
+    upload = temp_memory_root / pid / "uploads" / "sleep" / "sleep.md"
+    upload.parent.mkdir(parents=True)
+    upload.write_text("sleep text", encoding="utf-8")
+    monkeypatch.setattr(projects_module, "start_daily_cache_rebuild", lambda *a, **k: None)
+    monkeypatch.setattr(projects_module, "get_memory_manager", lambda: _FakeMemoryManager())
+    monkeypatch.setattr(projects_module, "daily_stats", lambda pid: {})
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("read down")
+
+    monkeypatch.setattr(projects_module, "read_file_text", boom)
+    resp = client.get(f"/projects/{pid}/stats")
+    assert resp.status_code == 200
+    assert resp.json()["tokens_indexed"] == 0
+    assert any("Failed reading LTM source tokens" in r.message for r in caplog.records)
+
+
+def test_project_stats_active_memory_failure_left_zero(client, db, monkeypatch):
     pid = _make_project(db, name="StatsRecompute")
 
     class _BadHistoryMM(_FakeMemoryManager):
@@ -1088,12 +1113,11 @@ def test_project_stats_context_recompute_failure_left_zero(client, db, monkeypat
 
     monkeypatch.setattr(projects_module, "start_daily_cache_rebuild", lambda *a, **k: None)
     monkeypatch.setattr(projects_module, "get_memory_manager", lambda: _BadHistoryMM())
-    monkeypatch.setattr(projects_module, "get_last_context_tokens", lambda pid: 0)
     monkeypatch.setattr(projects_module, "daily_stats", lambda pid: {})
     resp = client.get(f"/projects/{pid}/stats")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["context_tokens"] == 0  # recompute failed -> left at zero
+    assert body["active_pair_tokens"] == 0  # active memory read failed -> left at zero
     assert body["active_pairs"] == 0  # count failed -> zero
 
 

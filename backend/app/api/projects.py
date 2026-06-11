@@ -32,7 +32,7 @@ from sqlmodel import select
 from ..core.config import get_settings
 from ..core.database import get_session
 from ..core.db_models import ChatMessage, File, Project
-from ..core.memory import _prune_assistant_for_tagger, get_last_context_tokens, get_memory_manager
+from ..core.memory import _prune_assistant_for_tagger, get_memory_manager
 from ..core.models import ProjectRequest
 from ..core.personality import (
     load_project_personality,
@@ -56,6 +56,8 @@ from ..rag.daily_store import (
     start_daily_cache_rebuild,
 )
 from ..rag.manager import rebuild_faiss_index
+from ..rag.manager_index_io import uploads_relative_doc_id
+from ..rag.manager_rebuild import read_file_text
 from ..rag.syx_memory_artifact import (
     generate_memory_id,
     render_artifact_header,
@@ -1033,22 +1035,83 @@ async def delete_project(project_id: str) -> JSONResponse:
         )
 
 
+def _get_active_memory_stats(project_id: str) -> Dict[str, int]:
+    """Return active working-memory pair and token counts for project stats.
+
+    Args:
+        project_id: Project whose active working memory should be measured.
+
+    Returns:
+        A dict with ``active_pairs`` and ``active_pair_tokens``. Failures are
+        logged and return zeros so stats remain best-effort.
+    """
+    try:
+        mm = get_memory_manager()
+        history = mm.get_project_history(project_id) or []
+        combined_text = "\n".join((m.get("content") or "") for m in history)
+        active_pair_tokens = int(count_tokens(combined_text)) if combined_text.strip() else 0
+        return {
+            "active_pairs": int(mm.get_active_pair_count(project_id)),
+            "active_pair_tokens": active_pair_tokens,
+        }
+    except Exception as exc:
+        logger.info(
+            "[PROJECT] Failed reading active memory stats project_id=%s detail=%s",
+            project_id,
+            exc,
+        )
+        return {"active_pairs": 0, "active_pair_tokens": 0}
+
+
+def _count_ltm_source_tokens(project_id: str) -> int:
+    """Count tokens in the actual LTM upload sources for project stats.
+
+    This walks ``memory/{project}/uploads`` rather than summing ``File`` rows so
+    generated sleep/dream uploads are included alongside user-uploaded files.
+
+    Args:
+        project_id: Project whose LTM source tree should be measured.
+
+    Returns:
+        Best-effort token count across supported LTM source files.
+    """
+    uploads_dir = os.path.join(get_settings().memory_root, project_id, "uploads")
+    if not os.path.isdir(uploads_dir):
+        return 0
+
+    total_tokens = 0
+    for root, _, filenames in os.walk(uploads_dir):
+        for name in filenames:
+            file_path = os.path.join(root, name)
+            try:
+                artifact_path = uploads_relative_doc_id(uploads_dir, file_path)
+                for raw_text, _meta in read_file_text(file_path, artifact_path=artifact_path):
+                    total_tokens += int(count_tokens(raw_text or ""))
+            except Exception as exc:
+                logger.info(
+                    "[PROJECT] Failed reading LTM source tokens project_id=%s file=%s detail=%s",
+                    project_id,
+                    file_path,
+                    exc,
+                )
+    return int(total_tokens)
+
+
 @router.get("/projects/{project_id}/stats")
 async def project_stats(project_id: str) -> JSONResponse:
     """Return aggregate storage and memory statistics for a project.
 
-    Warms the daily in-memory cache, then computes storage and indexed-token
-    totals from the DB, FAISS index size on disk, working-memory context
-    tokens (recomputed and cached when missing), daily-store stats, and the
-    active pair count.
+    Warms the daily in-memory cache, then computes DB-tracked upload storage,
+    LTM source tokens, FAISS index size on disk, active working-memory pair
+    stats, and daily-store stats.
 
     Args:
         project_id: Project to report statistics for.
 
     Returns:
         A 200 ``JSONResponse`` with ``storage_bytes``, ``index_size_bytes``,
-        ``tokens_indexed``, ``context_tokens``, ``file_count``, daily-store
-        metrics, and ``active_pairs``.
+        ``tokens_indexed``, ``file_count``, daily-store metrics,
+        ``active_pairs``, and ``active_pair_tokens``.
     """
     # Lazily warm Daily in-memory cache on first project-scoped request.
     try:
@@ -1059,12 +1122,13 @@ async def project_stats(project_id: str) -> JSONResponse:
             project_id,
             exc,
         )
-    # storage and tokens from DB
+    # User-upload storage metadata comes from DB rows; LTM tokens are counted
+    # from uploads/ so generated sleep/dream sources are included.
     with get_session() as session:
         rows = session.exec(select(File).where(File.project_id == project_id)).all()
         storage_bytes = sum(r.size_bytes for r in rows)
-        tokens_indexed = sum(r.token_count for r in rows)
         file_count = len(rows)
+    tokens_indexed = _count_ltm_source_tokens(project_id)
     # index size
     base = os.path.join(get_settings().memory_root, project_id, "faiss")
     index_size = 0
@@ -1080,29 +1144,9 @@ async def project_stats(project_id: str) -> JSONResponse:
                         os.path.join(root, n),
                         exc,
                     )
-    # context tokens from memory manager
-    context_tokens = get_last_context_tokens(project_id)
-    # If missing/zero, recompute from stored working memory for this project (excludes any RAG system prompts)
-    if not context_tokens:
-        try:
-            mm = get_memory_manager()
-            history = mm.get_project_history(project_id) or []
-            combined_text = "\n".join((m.get("content") or "") for m in history)
-            if combined_text.strip():
-                context_tokens = int(count_tokens(combined_text))
-                # cache for future stats calls
-                mm.set_last_context_tokens(project_id, int(context_tokens))
-        except Exception:
-            # On any failure, leave as zero
-            pass
     # daily stats
     dstat = daily_stats(project_id)
-    # active pairs from memory manager
-    try:
-        mm2 = get_memory_manager()
-        active_pairs = mm2.get_active_pair_count(project_id)
-    except Exception:
-        active_pairs = 0
+    active_memory_stats = _get_active_memory_stats(project_id)
     return JSONResponse(
         status_code=200,
         content={
@@ -1110,12 +1154,12 @@ async def project_stats(project_id: str) -> JSONResponse:
             "storage_bytes": storage_bytes,
             "index_size_bytes": index_size,
             "tokens_indexed": tokens_indexed,
-            "context_tokens": context_tokens,
             "file_count": file_count,
             "daily_index_size_bytes": dstat.get("daily_index_size_bytes", 0),
             "daily_tokens_indexed": dstat.get("daily_tokens_indexed", 0),
             "daily_vector_count": dstat.get("daily_vector_count", 0),
-            "active_pairs": active_pairs,
+            "active_pairs": active_memory_stats["active_pairs"],
+            "active_pair_tokens": active_memory_stats["active_pair_tokens"],
         },
     )
 

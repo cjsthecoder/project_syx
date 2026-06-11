@@ -63,12 +63,12 @@ export type ProjectStats = {
   storage_bytes: number
   index_size_bytes: number
   tokens_indexed: number
-  context_tokens: number
   file_count: number
   daily_index_size_bytes?: number
   daily_tokens_indexed?: number
   daily_vector_count?: number
   active_pairs?: number
+  active_pair_tokens?: number
 }
 
 export type ProjectInfo = {

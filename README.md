@@ -1,11 +1,76 @@
 # Syx
 
 [![CI](https://github.com/cjsthecoder/project_syx/actions/workflows/ci.yml/badge.svg)](https://github.com/cjsthecoder/project_syx/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/cjsthecoder/project_syx/releases)
+[![Python](https://img.shields.io/badge/python-3.13-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## Project Overview
-Syx is a modular system that provides a web-based chat interface backed by a FastAPI server and provider-selectable LLM and embedding factories.  
+Experimental local AI memory system for long-running projects, RAG-backed chat, sleep-cycle consolidation, dream-cycle synthesis, and read-only coding-agent memory access.
 
-## Setup (Python venv)
+> [!WARNING]
+> Syx is a research prototype intended for local or trusted environments. It is not production-hardened. Do not expose it directly to the public internet or to untrusted users.
+>
+> Memory artifacts, uploaded files, chat history, logs, and agent query results may contain sensitive information.
+
+## Background & Project Story
+
+Syx started as an idea about AI memory and became a working local prototype through an AI-assisted engineering process. For the narrative path from concept to implementation, see [Project History](docs/background/Project_History.md). For how requirements, deltas, and AI coding agents were used to build it, see [AI-Assisted Engineering](docs/ai_assisted_engineering.md).
+
+## What It Is
+
+Syx is a modular AI chat and memory framework with a React web interface, a FastAPI backend, provider-selectable LLM and embedding factories, project-scoped file upload, FAISS-backed retrieval, and a memory lifecycle that moves from active chat context into durable project memory.
+
+At a high level, Syx is built around:
+
+- A web-based chat interface for project-aware conversations.
+- Configurable LLM and embedding providers.
+- Project-specific uploads and FAISS-backed retrieval.
+- Daily memory that captures rolled-off chat context.
+- Sleep cycles that consolidate memory into long-term artifacts.
+- Experimental Dream cycles that synthesize unresolved questions and higher-level insights after Sleep.
+- Markdown memory artifacts intended for human review, git diffing, and agent-readable context.
+- A local read-only agent-memory interface for trusted tools that need project context.
+
+## Why This Approach
+
+Syx is opinionated. It is not meant to replace every RAG tool, vector database, note-taking system, or agent framework.
+
+The core idea behind Syx is that long-running AI project memory needs more than a place to store embeddings. In my experience building and using this project, the most useful behavior came from preserving months of project-specific conversations, decisions, corrections, and abandoned paths, then making that history available again when needed.
+
+That experience shaped the design. Syx treats memory as a lifecycle:
+
+* active chat context
+* rolled-off Daily memory
+* durable markdown artifacts
+* Sleep-cycle consolidation
+* long-term RAG retrieval
+* Dream-cycle synthesis
+* agent-readable memory access
+
+Other systems may focus on larger context windows, vector search, file-based note organization, summarization, agent orchestration, or chat UI. Those are all useful pieces. Syx is focused on testing a different idea: long-running project memory needs a lifecycle.
+
+In my experience using long project chats, the power of accumulated context is real. But long context is not the same thing as durable memory. As a project grows, important decisions can be buried, old assumptions can linger, useful details compete with noise, and the model may not reliably know which parts of the history still matter.
+
+Syx treats that as a memory lifecycle problem, not only a context-size problem. It explores how durable project memory can be captured, consolidated, searched, reviewed, and eventually maintained over time.
+
+This is still a research prototype, and these are design opinions rather than claims that Syx is the only right approach. The goal is to make those ideas concrete enough to test.
+
+## Mission
+
+Syx explores AI memory as a lifecycle, not just a vector search problem.
+
+The project is a local research prototype for long-running AI project memory: active context, daily memory rolloff, long-term retrieval, sleep-cycle consolidation, dream-cycle synthesis, markdown memory artifacts, and read-only memory access for coding agents.
+
+The goal is not to claim that Syx is AGI or production-ready software. The goal is to test practical ideas about how AI systems can preserve, retrieve, consolidate, and refine context over time.
+
+## Current Status
+
+Syx is preparing for its initial open source release. It is an active software project and research framework, not a hosted product, production service, or finalized memory standard.
+
+The repository currently includes the web app, backend API, project storage, upload/RAG flow, Daily memory, Sleep cycle, experimental Dream cycle, instrumentation support, Docker deployment, and automated backend/frontend tests.
+
+## Quickstart
+
 Use a local virtual environment to isolate Python dependencies.
 
 ```bash
@@ -18,96 +83,162 @@ source venv/bin/activate
 # 3) Install backend dependencies
 pip install -r requirements.txt
 
-# 4) Install frontend dependencies (optional here; `make install` also does this)
+# 4) Install frontend dependencies
 cd frontend && npm install && cd ..
 
-# 5) Build frontend and run the app
+# 5) Create or update local environment config
+make setup-env
+
+# 6) Add your OpenAI API key to .env
+# OPENAI_API_KEY=your-openai-api-key-here
+
+# 7) Build frontend and run the app
 make build
 make run
 ```
 
-Notes:
-- If you forget to activate your venv, `make run` will auto-create and use `./venv` for you.
-- You can also run a full setup via: `make setup`.
+Open the app at `http://localhost:8000`.
 
-## Logging level
-Set log level via the `LOG_LEVEL` environment variable (e.g., DEBUG, INFO):
+API docs are available at `http://localhost:8000/api/docs`, and health checks are available at `http://localhost:8000/health`.
+
+## Docker
+
+Run Syx in a container with bind-mounted data and a mounted `.env` file. Secrets are not baked into the image.
 
 ```bash
-export LOG_LEVEL=DEBUG
+# Prepare host directories for persistent data
+make docker-setup
+
+# Build and run
+docker compose up -d
 ```
 
-Or add it to your `.env` file alongside other settings (generate with `make setup-env`).
+Data is stored on the host under `./data/memory`, `./data/db`, `./runtime/logs`, and `./runtime/runs`, so it survives container rebuilds and can be backed up separately.
 
-## Configuration source of truth
-- Runtime defaults are defined in `backend/app/core/config.py` (`Settings`).
-- `make setup-env` mirrors those runtime defaults when generating `.env`.
-- If a `.env` value differs from `config.py`, `.env` intentionally overrides runtime defaults.
+## Configuration
 
-## Key environment variables
-- OPENAI_API_KEY
-- LLM_PROVIDER (default openai)
-- MODEL_NAME (default gpt-5.5)
-- LLM_MINI_MODEL (default gpt-5-mini)
-- MODEL_TEMPERATURE (default 1.0)
-- MODEL_MAX_TOKENS (default 32000)
-- BUILDER_MODEL (default gpt-5-mini)
-- TAGGER_MODEL (default gpt-5-mini)
-- DREAM_MODEL (default gpt-5.5)
-- LOG_LEVEL (default INFO)
-- DB_PATH
-- MAX_UPLOAD_MB, MAX_BATCH_MB, STORAGE_LIMIT_MB
-- EMBEDDING_PROVIDER (default openai; `openai|sentence_transformers`)
-- EMBEDDING_MODEL (used by openai provider)
-- SENTENCE_TRANSFORMERS_MODEL_ID (used by sentence_transformers provider; default `BAAI/bge-m3`)
-- CHUNK_SIZE (default 800), CHUNK_OVERLAP (default 100)
-- RAG_ON_CHAT, BASE_TOP_K (default 5), RETRIEVAL_MULTIPLIER
-- AVAILABLE_MODELS (optional JSON array)
+Runtime defaults are defined in `backend/app/core/config.py` through `Settings`. The `make setup-env` target mirrors those defaults when generating `.env`.
 
-## Docker (Ubuntu, Python 3.13.3)
+Start from `.env.example`, then set at least:
 
-Run Syx in a container with bind-mounted data and a mounted `.env` (no secrets in the image).
+- `OPENAI_API_KEY`
+- `LLM_PROVIDER`
+- `MODEL_NAME`
+- `LLM_MINI_MODEL`
+- `BUILDER_MODEL`
+- `TAGGER_MODEL`
+- `DREAM_MODEL`
+- `EMBEDDING_PROVIDER`
+- `EMBEDDING_MODEL` or `SENTENCE_TRANSFORMERS_MODEL_ID`
 
-1. **Create host directories** for persistence (run once):
-   ```bash
-   make docker-data-dirs
-   ```
-   Optionally set permissions: `make docker-data-permissions`, or run the full prep: `make docker-setup`.
+For the full environment template, see `.env.example`. Runtime defaults are defined in `backend/app/core/config.py`.
 
-2. **Ensure `.env` exists** at repo root with at least `OPENAI_API_KEY` and any other settings (see Key environment variables above). The container mounts this file at `/app/.env` read-only.
+## Core Concepts
 
-3. **Build and run**:
-   ```bash
-   docker compose up -d
-   ```
-   App: http://localhost:8000 — API docs: http://localhost:8000/api/docs — Health: http://localhost:8000/health.
+- **Projects**: isolate chat history, uploaded files, memory artifacts, and retrieval indexes by project.
+- **File Upload + RAG**: stores uploaded `.txt` and `.md` documents, chunks them, embeds them, and rebuilds a project FAISS index.
+- **Daily Memory**: captures older chat turns as durable, human-readable project memory.
+- **Sleep Cycle**: consolidates Daily memory into timestamped long-term artifacts and refreshes retrieval state.
+- **Dream Cycle**: runs after Sleep to synthesize unresolved questions, research prompts, or higher-level insights.
+- **Agent Memory Interface**: exposes local project memory search for trusted external agent tools.
+- **AI-Assisted Engineering Process**: documents how requirements and deltas are used to keep AI-assisted implementation aligned with project intent.
 
-4. **Bind mounts**: Data is stored on the host under `./data/memory`, `./data/db`, `./runtime/logs`, and `./runtime/runs`, so it survives container rebuilds and is easy to back up. If you use a different host or port, set `CORS_ORIGINS` in `.env` to include that origin.
+## Architecture
 
-# Organization Verification Required for Streaming
+Syx combines a Vite/React frontend with a FastAPI backend that serves both API routes and the built static frontend. The backend owns provider factories, project persistence, memory artifacts, RAG indexing, Sleep/Dream orchestration, instrumentation, and local agent-facing memory access.
 
-Some OpenAI models require your organization to be verified before streaming responses is allowed.
+See `docs/architecture.md` for the full architecture guide.
 
-## Why Verification Is Needed
+## Documentation
 
-Certain models (including newer GPT-5 series models) will return errors if streaming is requested before the organization is verified. This typically appears as:
+Start with the onboarding and project docs:
 
+- `README.md` — public landing page and quickstart.
+- `ROADMAP.md` — shipped scope, near-term work, later ideas, and non-goals.
+- `CHANGELOG.md` — release history.
+- `CONTRIBUTING.md` — local setup, testing, documentation, and PR expectations.
+- `SUPPORT.md` — questions, bug reports, feature requests, and support boundaries.
+- `SECURITY.md` — vulnerability reporting and local/trusted-environment assumptions.
+- `docs/ai_assisted_engineering.md` — how requirements and deltas guide AI-assisted development.
+
+Architecture and memory-system guides:
+
+- `docs/architecture.md` — system architecture.
+- `docs/memory_lifecycle.md` — chat, Daily memory, Sleep, Dream, and RAG artifact lifecycle.
+- `docs/sleep_cycle.md` — Sleep behavior, scheduling, locking, outputs, and verification.
+- `docs/dream_cycle.md` — Dream behavior, generated outputs, and configuration.
+- `docs/agent_interface.md` — local agent-memory access.
+
+Specification and testing references:
+
+- `docs/REQUIREMENTS.md` — consolidated as-built specification.
+- `docs/DELTAS.md` — active change layer for newer or superseding requirements.
+- `docs/COVERAGE.md` — testing and coverage policy.
+
+Background material:
+
+- `docs/background/Project_History.md` — development history and original project essays.
+
+## Repository Layout
+
+```text
+backend/app/              FastAPI backend, provider factories, memory, RAG, Sleep, Dream
+frontend/                 React + Vite frontend
+tests/                    Backend pytest suite
+docs/                     Architecture, lifecycle, requirements, deltas, and public docs
+tools/                    Local helper tools, including agent memory search tooling
+data/                     Generated local database, memory, uploads, and FAISS data
+runtime/                  Generated logs, run artifacts, and lock/state files
+backend/app/static/       Built frontend assets served by FastAPI
 ```
-Your organization must be verified to stream this model.
+
+Generated and local-only files should generally not be edited or committed:
+`data/`, `runtime/`, `.env`, coverage outputs, debug artifacts, generated memory
+artifacts with private content, and built static assets unless a release process
+or maintainer explicitly requires them.
+
+## Development
+
+Run backend tests:
+
+```bash
+make test
 ```
 
-## Verification Steps
+Run frontend tests:
 
-1. Sign in to your OpenAI account.
-2. Navigate to **Settings → Organization → General**.
-3. Click **Verify Organization**.
-4. Submit a valid government-issued ID and a portrait photo.
-5. Verification usually completes within about 30 minutes.
+```bash
+make test-frontend
+```
 
-## Notes
+Run the full CI-style check locally:
 
-* If verification is pending, you can temporarily disable streaming (`STREAMING_ENABLED=false`) or use a model that does not require verification.
-* Verification is required even when using these models through external platforms such as Azure.
+```bash
+make ci
+```
 
+For coverage expectations and test-writing policy, see `docs/COVERAGE.md`.
 
-Refer to the `docs/` specification documents for full details.
+## Security
+
+Syx is designed for local development and trusted local deployments. Do not commit `.env`, API keys, generated memory, runtime logs, or private project data.
+
+See `SECURITY.md` for vulnerability reporting and current security assumptions.
+
+## Contributing
+
+Contributions should follow the repository setup, testing, documentation, and secret-handling rules.
+
+See `CONTRIBUTING.md`.
+
+## Support
+
+See `SUPPORT.md` for how to ask questions, report bugs, or request features.
+
+## Roadmap
+
+See `ROADMAP.md` for shipped scope, near-term work, future ideas, and non-goals.
+
+## License
+
+MIT — see `LICENSE`.

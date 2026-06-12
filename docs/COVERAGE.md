@@ -1,8 +1,10 @@
 # Test Coverage Rules & Conventions
 
-This document captures the working policy we are applying as we raise backend test
-coverage for open-sourcing. It is descriptive of what we have actually done so far,
-not aspirational. Update it as the policy evolves.
+This document captures the Syx testing and coverage policy. It is descriptive of
+the standards the project expects contributors to follow, not a checklist for
+padding metrics. It also keeps living notes from real coverage work so future
+contributors understand why the conventions exist. Update it as the policy
+evolves.
 
 ## Goal
 

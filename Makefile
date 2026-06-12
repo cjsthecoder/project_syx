@@ -301,6 +301,12 @@ setup-env:
 		echo "MODEL_MAX_TOKENS=128000"; \
 		echo "# Max tokens in a single model response"; \
 		echo ""; \
+		echo "LLM_REQUEST_TIMEOUT_S=120.0"; \
+		echo "# Timeout in seconds for primary LLM HTTP requests"; \
+		echo ""; \
+		echo "LLM_MINI_REQUEST_TIMEOUT_S=30.0"; \
+		echo "# Timeout in seconds for mini/helper LLM HTTP requests"; \
+		echo ""; \
 		echo "AVAILABLE_MODELS=[\"gpt-5.5\",\"gpt-5.4\",\"gpt-5.4-mini\",\"gpt-5.4-nano\",\"gpt-5.2\",\"gpt-5.1\",\"gpt-5\",\"gpt-5-mini\",\"gpt-5-nano\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4o-mini\"]"; \
 		echo "# Whitelisted chat models for the UI selector"; \
 		echo ""; \
@@ -340,8 +346,10 @@ setup-env:
 		echo "MEMORY_ROOT=../data/memory"; \
 		echo "RUNS_DIR=../runtime/runs"; \
 		echo "LOGS_DIR=../runtime/logs"; \
+		echo "LOG_FILE_PREFIX=syx_"; \
 		echo "LOCK_DIR=../runtime/state"; \
 		echo "# Runtime and storage roots"; \
+		echo "# (the test suite overrides LOGS_DIR to ../runtime/logs/tests and LOG_FILE_PREFIX to test_)"; \
 		echo ""; \
 		echo "MAX_UPLOAD_MB=10"; \
 		echo "# Max size per uploaded file (MB)"; \
@@ -353,7 +361,7 @@ setup-env:
 		echo "# Per-project storage cap (MB)"; \
 		echo ""; \
 		echo "# === Embeddings + Indexing ==="; \
-		echo "EMBEDDING_PROVIDER=sentence_transformers"; \
+		echo "EMBEDDING_PROVIDER=openai"; \
 		echo "# Embedding provider selector (openai|sentence_transformers)"; \
 		echo ""; \
 		echo "EMBEDDING_MODEL=text-embedding-3-large"; \
@@ -370,6 +378,9 @@ setup-env:
 		echo ""; \
 		echo "MAX_EMBED_TOKENS_PER_REQUEST=180000"; \
 		echo "# Safety cap: max total tokens per embeddings API request (headroom under provider cap)"; \
+		echo ""; \
+		echo "EMBEDDING_REQUEST_TIMEOUT_S=45.0"; \
+		echo "# Timeout in seconds for embedding provider HTTP requests"; \
 		echo ""; \
 		echo "RAG_EMBED_REBUILD_WORKERS=3"; \
 		echo "# Parallel workers for LTM embedding during rebuild (range 1-8)"; \
@@ -414,6 +425,12 @@ setup-env:
 		echo ""; \
 		echo "DEFAULT_PERSONALITY_PROMPT_PATH=backend/app/config/defaults/personality.json"; \
 		echo "# Default personality JSON file path"; \
+		echo ""; \
+		echo "SYSTEM_PROMPT_MAX_BYTES=65536"; \
+		echo "# Max size of system_prompt.txt in bytes"; \
+		echo ""; \
+		echo "PERSONALITY_MAX_BYTES=8192"; \
+		echo "# Max size of personality.json in bytes"; \
 		echo ""; \
 		echo "# === Sleep Cycle + Verification ==="; \
 		echo "ENABLE_SCHEDULER=true"; \
@@ -485,9 +502,6 @@ setup-env:
 		echo "RESPONSE_PRUNING_END_ENABLED=true"; \
 		echo "# Enable response-pruning trailing paragraph trimming"; \
 		echo ""; \
-		echo "RESPONSE_PRUNING_MARKDOWN_ENABLED=false"; \
-		echo "# Enable response-pruning markdown cleanup"; \
-		echo ""; \
 		echo "RESPONSE_PRUNING_WHITESPACE_ENABLED=true"; \
 		echo "# Enable response-pruning whitespace cleanup"; \
 		echo ""; \
@@ -498,7 +512,7 @@ setup-env:
 		echo "ENABLE_DREAM=true"; \
 		echo "# Enable Dream orchestrator"; \
 		echo ""; \
-		echo "AUTO_ACCEPT_DREAMS=true"; \
+		echo "AUTO_ACCEPT_DREAMS=false"; \
 		echo "# Automatically persist all pending dream.json items during sleep"; \
 		echo ""; \
 		echo "DREAM_MODEL=gpt-5.5"; \
@@ -509,10 +523,10 @@ setup-env:
 		echo "# Dream agent configuration"; \
 		echo ""; \
 		echo "# === Debug / Observability ==="; \
-		echo "GENERATE_DEBUG_FILES=true"; \
+		echo "GENERATE_DEBUG_FILES=false"; \
 		echo "# Enable debug file generation (e.g., dreaming/*_context_summary.txt)"; \
 		echo ""; \
-		echo "VITE_SHOW_DEBUG_VALUES=true"; \
+		echo "VITE_SHOW_DEBUG_VALUES=false"; \
 		echo "# Frontend: show stats/debug values bar in chat UI"; \
 		echo ""; \
 	} > .env

@@ -1,5 +1,24 @@
 # Syx
 
+> **Requirements and active deltas**
+>
+> This file is the consolidated as-built specification for Syx. It captures the
+> requirements that have already been folded into the project's baseline and was
+> used to drive AI-assisted implementation.
+>
+> `docs/DELTAS.md` is the active change layer for newer engineering decisions,
+> migrations, or requirement updates that have not yet been rolled into this
+> consolidated baseline. When this file and `docs/DELTAS.md` conflict, follow
+> `docs/DELTAS.md` for current implementation work. Once a delta is fully
+> incorporated, it may be folded back into this file so `REQUIREMENTS.md`
+> remains the readable as-built baseline.
+>
+> Current active delta note: `DELTA-A` supersedes older generated Daily, Sleep,
+> and Dream `.txt` memory artifact names in this file. New generated memory
+> artifacts use `.md` names such as `daily.md`, `sleep_summary.md`,
+> `dream_summary.md`, and `uploads/sleep/sleep_{cycle_ts}.md`. Existing `.txt`
+> uploads or historical files may still be ingested as normal documents.
+
 ## Project Overview
 Syx is a modular system that provides a web-based chat interface backed by a FastAPI server and provider-based LLM/embedding factories.  
 
@@ -206,7 +225,10 @@ These upgrades make Syx a multi-project, persistent knowledge system.
   1. Upload → save to `memory/{project_id}/uploads/`.  
   2. Process synchronously and embed via the embedding provider factory (`backend.app.embedding.factory`, entry point `get_embedding_client()`).  
   3. Store vectors in FAISS index at `memory/{project_id}/faiss/`.  
-- **Formats:** `.txt`, `.md`, `.pdf`.  
+- **Formats:** `.txt`, `.md`.
+- **PDF status:** PDF ingestion was specified historically but is not implemented in
+  the current as-built system. Runtime upload handling rejects PDFs; PDF parsing is
+  future scope unless a later delta reintroduces it.
 - **Invariant:** Runtime embedding calls MUST resolve through `embedding.factory`; request-path modules MUST NOT instantiate embedding provider SDK clients directly.
 - **Invariant:** Embedding provider/model swaps are configuration-driven (`EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `SENTENCE_TRANSFORMERS_MODEL_ID`) and MUST NOT require endpoint-level refactors.
 - **Success Criteria:** Uploaded content retrievable via future `/query_rag`.
@@ -215,10 +237,10 @@ These upgrades make Syx a multi-project, persistent knowledge system.
   - Embedding model: `text-embedding-3-large` (3072D)
   - Chunking: size `800`, overlap `100` using `RecursiveCharacterTextSplitter`
   - Metadata per chunk: `project_id`, `filename`, `page_number`, `chunk_id`, `timestamp`, `doc_id`, `chunk_seq`
-    - `doc_id` identifies the source document for adjacency purposes (for PDFs: `(filename, page_number)`; for other formats: `filename`). Required for FR-2.3-3.4.1 compliance.
+    - `doc_id` identifies the source document for adjacency purposes. For current text and markdown uploads, this is `filename`. Required for FR-2.3-3.4.1 compliance.
     - `chunk_seq` is a monotonic, gap-free integer sequence within a `doc_id`, enabling O(1) adjacency resolution (`prev = chunk_seq - 1`, `next = chunk_seq + 1`). Required for FR-2.3-3.4.1 compliance.
   - Reindex behavior: recreate FAISS index on each upload for consistency
-  - PDF parsing: `pypdf`
+  - PDF parsing: not implemented in the current as-built system
 
 ---
 
@@ -379,11 +401,11 @@ The backend must validate that a project is selected for all file actions.
 - If active project deleted, fallback to Main
 
 #### Files and Uploads
-- Allowed types: `.txt`, `.md`, `.pdf`
+- Allowed types: `.txt`, `.md`
 - Drag-and-drop and multi-file upload supported
 - Limits: `MAX_UPLOAD_MB` per file; `MAX_BATCH_MB` per request; `STORAGE_LIMIT_MB` per project
 - Upload handling: synchronous; rebuild FAISS immediately after successful upload
-- File metadata (DB): `id`, `project_id`, `filename`, `size_bytes`, `content_type`, `created_at`, `embedding_status` (pending|indexed|failed), `page_count` (PDF pages or 1), `token_count`
+- File metadata (DB): `id`, `project_id`, `filename`, `size_bytes`, `content_type`, `created_at`, `embedding_status` (pending|indexed|failed), `page_count` (1 for current text/markdown uploads), `token_count`
 - `uploaded_at` in responses maps to DB `created_at` (no DB column rename)
 - Token counting: use `tiktoken` on extracted text during indexing
 - File delete: `DELETE /projects/{id}/files/{file_id}` removes disk file and DB row, then synchronously rebuilds FAISS
@@ -775,9 +797,8 @@ After selection, the pipeline rehydrates `kept_candidates` into semantically com
 ###### FR-2.3-3.4.1 — Chunk Adjacency & Full-Chunk Return
 - The system MUST maintain a stable chunk adjacency index enabling deterministic O(1) lookup of the previous and next chunk of any retrieved chunk.
 - Adjacency is defined only within the same source document.
-  - For PDFs, adjacency is defined only within the same `(filename, page_number)`; each such pair is treated as its own source document. No cross-page adjacency.
 - Canonical model is a per-document linear sequence:
-  - `doc_id` identifies the source document (for PDFs: `(filename, page_number)`).
+  - `doc_id` identifies the source document.
   - `chunk_seq` is a monotonic, gap-free integer sequence within a `doc_id`.
   - `prev` / `next` resolve structurally as `chunk_seq - 1` / `chunk_seq + 1` within the same `doc_id`.
 - Retrieved candidates MUST carry sufficient metadata (`source_document_id` / `doc_id` and `chunk_index` / `chunk_seq`) to deterministically derive neighbors without semantic inference.
@@ -904,7 +925,6 @@ Ensure logs are readable for inspection and troubleshooting. Use the standard ap
 #### FR-2.3.5 — Environment Variables
 
 - `CHAT_HISTORY_LIMIT_PAIRS=10` — number of prompt/response pairs kept in working memory.
-- `DAILY_RAG_ENABLED=true` — global default toggle for Daily RAG; per-project toggle overrides.
 - `BASE_TOP_K` — baseline retrieval size consumed by FR-2.3-3.1; `PER_SOURCE_K = ceil(BASE_TOP_K * retrieval_multiplier)` where `retrieval_multiplier` comes from `route_policy.json` (FR-2.3-3.3).
 - `RAG_CONTEXT_MAX_TOKENS` — final prompt context token cap enforced during prompt assembly (downstream of FR-2.3-3.4.3).
 
@@ -957,7 +977,6 @@ FR-2.3.1.1 — Mini Model Router + Query Builder
 FR-2.3.1.2 — Routing Logic
 • If rag=false or route="CHITCHAT", skip retrieval and reply directly via chat model (still include in‑memory history).
 • Else embed standalone + 2–3 paraphrases + 1 HYDE and run topic‑aware RAG lookup.
-• If `confidence < BUILDER_CONFIDENCE_MIN`, perform conservative retrieval (standalone only; skip paraphrases/HYDE).
 • If the builder fails/times out/returns invalid JSON: log a warning and skip RAG entirely (answer directly).
 
 FR-2.3.1.3 — Topic and Entity Extraction
@@ -973,7 +992,6 @@ Rules:
 
 FR-2.3.1.8 — Environment Variables
 BUILDER_MODEL=gpt-4o-mini
-BUILDER_CONFIDENCE_MIN=0.75
 BUILDER_MAX_TOKENS=512
 BUILDER_CACHE=True
 
@@ -1240,6 +1258,11 @@ Example layout (using shadcn/ui):
 
 
 ## Version 2.7 — Cleanup & Sleep Prep
+
+> **Active delta note:** This section uses the original generated Daily artifact
+> names from the consolidated baseline. `docs/DELTAS.md` currently supersedes
+> those names for generated Daily memory artifacts: `daily.txt` is now
+> `daily.md` for newly generated human-readable Daily memory.
 
 ### Purpose
 Finalize the 2.x foundation by polishing UI behavior and adding infrastructure needed for the upcoming 3.0 Sleep Cycle. This version adds a daily text export, a global sleep lock (to safely pause interactions), and a user-facing **Remember / Forget** toggle that controls whether a chat pair is persisted to daily memory.
@@ -1542,6 +1565,11 @@ Provide a stable framework for triggering and managing the Sleep Cycle automatic
 
 ## Version 3.2 — Daily Consolidation Pipeline (Deterministic)
 
+> **Active delta note:** This section uses the original generated `.txt`
+> artifact names. `docs/DELTAS.md` currently supersedes those names for newly
+> generated memory artifacts: `daily.txt` is now `daily.md`, and
+> `sleep_summary.txt` is now `sleep_summary.md`.
+
 ### Overview
 Version 3.2 performs nightly consolidation of daily memory for each project with a non-empty `daily.txt`. Consolidation is **deterministic** and **prompt-less**: no LLM pruning or formatting passes are performed at sleep time. Semantic enrichment (topics/intent/type/semantic_handle/questions) already happened at pair-roll-off via the tagger (FR-3.4.2) and was persisted into `daily.txt`, `daily.json`, and the in-memory Daily FAISS cache; sleep only rolls those enriched artifacts forward.
 
@@ -1601,6 +1629,13 @@ Convert each project's tag-enriched `daily.txt` into a per-cycle `sleep_summary.
 
 
 ## Version 3.3 — RAG Rebuild and Verification (Per-Cycle Artifacts)
+
+> **Active delta note:** This section uses the original generated `.txt`
+> artifact names. `docs/DELTAS.md` currently supersedes those names for newly
+> generated Sleep and Dream artifacts: `sleep_summary.txt` is now
+> `sleep_summary.md`, `dream_summary.txt` is now `dream_summary.md`,
+> `uploads/sleep/*.txt` is now `uploads/sleep/*.md`, and
+> `uploads/dream/*.txt` is now `uploads/dream/*.md`.
 
 ### Overview
 Version 3.3 completes the Sleep Cycle by writing per-cycle artifacts from Sleep and Dream into the project's uploads tree and rebuilding the FAISS index once per cycle. There is no cumulative `sleep_summary_all.txt`; each sleep/dream cycle produces its own timestamped file so the RAG index treats every cycle as an independent, verifiable upload.
@@ -1920,8 +1955,6 @@ Improve responsiveness and perceived latency during the “Awake Phase” by str
 #### FR-3.5.8 — Configuration
 - Env flags (add to `.env` via Makefile):
   - `STREAMING_ENABLED=true`
-  - `STREAM_FLUSH_MS=50` (flush cadence for chunks)
-  - `STREAM_TIMEOUT_MS=60000` (overall stream timeout)
 - If `STREAMING_ENABLED=false`, `/chat/stream` returns HTTP 503 with `{ "error": "Streaming disabled" }`.
 
 ---
@@ -1979,7 +2012,6 @@ The consolidated output of this pass is an in-memory list `[{ question, topic, r
 - Execution model:
   - Dream executes synchronously within the Sleep cycle thread (no ThreadPoolExecutor).
   - When `ENABLE_DREAM=false`, Dream is skipped entirely.
-  - `MAX_WORKERS` is deprecated and unused.
 - Submission timing:
   - For each project, after Sleep produces `sleep_summary.txt` (FR-3.2.3) and **before** the per-cycle merge/rebuild sequence (FR-3.3) runs for that project, call `dream(project_id)` synchronously and wait for completion. Sleep holds the maintenance lock until Dream (including all Dream agents) completes for that project.
 - Inputs:
@@ -2005,9 +2037,9 @@ The consolidated output of this pass is an in-memory list `[{ question, topic, r
 
 ### FR-4.1.1.1 — Dream Debug Artifacts
 
-When `GENERATE_DEBUG_FILES=true`, the Dream pipeline SHOULD write human-readable per-stage debug files into the project's Dream workspace directory so that deterministic decisions made in FR-4.1.1 (and downstream Dream agents) are auditable without re-running the pipeline.
+When `GENERATE_DEBUG_FILES=true`, the Dream pipeline SHOULD write human-readable per-stage debug files into the project's timestamped Dream debug artifact directory so that deterministic decisions made in FR-4.1.1 (and downstream Dream agents) are auditable without re-running the pipeline.
 
-- Directory: `memory/{project}/dream_work/` (create lazily; tolerate a pre-existing directory).
+- Directory: `memory/{project}/debug/dreaming/` (create lazily; tolerate a pre-existing directory).
 - File format: plain `.txt` with labeled sections. Files SHOULD use a consistent structure such as:
   ```
   [INPUT]
@@ -2020,14 +2052,15 @@ When `GENERATE_DEBUG_FILES=true`, the Dream pipeline SHOULD write human-readable
   <the artifact forwarded to the next stage>
   ```
 - Suggested files (non-exhaustive; add as needed per agent):
-  - `debug_open_questions_input.txt` — raw parsed `open_questions.jsonl` records consumed by FR-4.1.1.
-  - `debug_open_questions_consolidated.txt` — post-consolidation list with filter/dedup/invalid counters.
-  - `debug_<agent>_input.txt` / `debug_<agent>_output.txt` — per-agent inputs and outputs for downstream Dream agents (Questions Agent, Context Builder, Idea Agent, Dream Writer).
+  - `debug/dreaming/{timestamp}_questions_in.txt` — raw parsed `open_questions.jsonl` records consumed by FR-4.1.1.
+  - `debug/dreaming/{timestamp}_questions_out.txt` — post-consolidation Questions Agent output.
+  - `debug/dreaming/{timestamp}_{stage}.txt` — per-agent inputs, decisions, and outputs for downstream Dream agents (Context Builder, Idea Agent, Research Agent, Dream Writer).
   - `debug/dreaming/{timestamp}_{purpose}_prompt_to_execute.txt` — exact Dream LLM API submission payload rendered as system/user prompt sections for every Dream agent call, including estimated prompt tokens and requested output cap.
   - `debug/dreaming/{timestamp}_{purpose}_response_usage.txt` — Dream LLM response text and provider-reported prompt/completion/total token usage for every successful Dream agent call.
+- Dream agents SHALL NOT write duplicate root-level debug files such as `debug/debug_idea_prompt.txt`, `debug/debug_idea_raw_response.txt`, `debug/debug_questions.txt`, `debug/debug_research.txt`, `debug/debug_context.txt`, or `debug/debug_context_summary.txt`.
 - Writes MUST be best-effort: a debug-write failure MUST NOT abort Dream execution and MUST be logged at WARNING level.
-- When `GENERATE_DEBUG_FILES` is false or unset, no files under `dream_work/` are created by Dream.
-- This FR does not replace agent-specific debug artifacts (e.g., NFR-4.2.1.9 for the Idea Agent); it establishes the common directory, naming convention, and gating flag.
+- When `GENERATE_DEBUG_FILES` is false or unset, no files under `debug/dreaming/` are created by Dream.
+- This FR establishes the common Dream debug directory, naming convention, and gating flag used by agent-specific debug artifacts.
 
 # Version 4.1.2 Requirements
 
@@ -2142,7 +2175,7 @@ The Questions Agent MUST return an in-memory Python dictionary of the form:
 * When `GENERATE_DEBUG_FILES=true`, the system SHALL write:
 
   ```
-  memory/{project_id}/debug_questions.txt
+  memory/{project_id}/debug/dreaming/{timestamp}_questions_out.txt
   ```
 
   containing a pretty-printed JSON dump of the returned questions dictionary.
@@ -2312,7 +2345,7 @@ The final block is a single concatenated string.
 
 * The context block is built by calling `build_dream_context(project_id, questions_data)` from `dream.py` after the questions agent completes. The context is stored in a simple process‑local variable for the duration of the Dream task (no TTL, no cross‑run cache) and can be reused by later agents within the same task.
 
-* No new persistent files are created by the Dream Context Builder in this version (debug files such as `debug_context.txt` are allowed).
+* No new persistent files are created by the Dream Context Builder in this version except timestamped debug artifacts under `memory/{project_id}/debug/dreaming/` when `GENERATE_DEBUG_FILES=true`.
 
 * All errors inside the context builder must be caught. On failure, log an error and return a minimal context containing only the DAILY MEMORY section (derived from `sleep_summary.txt`).
 
@@ -2642,9 +2675,9 @@ All exceptions SHALL be logged but SHALL NOT escape the Dream pipeline.
 
 ## NFR-4.2.1.9 Debug File Generation
 When `GENERATE_DEBUG_FILES=true`, the Idea Agent SHALL use the shared debug helper (the same pattern used by the Dream Context Builder) to write:
-- `debug_idea_prompt.txt`
-- `debug_idea_raw_response.txt`
-into the project’s debug directory under `memory/{project_id}/`.
+- `debug/dreaming/{timestamp}_idea_agent_prompt_to_execute.txt`
+- `debug/dreaming/{timestamp}_idea_agent_response_usage.txt`
+into the project's debug directory under `memory/{project_id}/`.
 
 Debug writes SHALL NOT occur inline inside `idea_agent.py`.
 When `GENERATE_DEBUG_FILES` is false or unset, no debug files SHALL be created.
@@ -2877,7 +2910,7 @@ If `GENERATE_DEBUG_FILES` is true:
 * The system SHALL write:
 
 ```
-memory/{project_id}/debug_research.txt
+memory/{project_id}/debug/dreaming/{timestamp}_research.txt
 ```
 
 Contents:
@@ -2895,7 +2928,7 @@ where the structure mirrors exactly the dictionary returned by `run_research_age
 
 File semantics:
 
-* `debug_research.txt` SHALL be overwritten on each Dream run (no append across nights).
+* `{timestamp}_research.txt` SHALL be written as a per-run artifact under `debug/dreaming/` (no append across nights).
 * Multiple research entries for the same topic MAY appear in the items list; no deduplication is required.
 
 ## 4.3.8 Error Handling

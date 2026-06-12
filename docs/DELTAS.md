@@ -1,10 +1,37 @@
 # Engineering Deltas
 
+## How To Read This File
+
+`docs/REQUIREMENTS.md` is the consolidated as-built specification for Syx.
+This file is the active change layer: it records newer engineering decisions,
+migrations, or requirement updates that have not yet been fully rolled into the
+requirements baseline.
+
+When `docs/REQUIREMENTS.md` and this file conflict, follow this file for current
+implementation work. Once a delta is fully incorporated into
+`docs/REQUIREMENTS.md`, it can be removed from this active layer or retained only
+as design history.
+
+## Delta Status Summary
+
+This summary is intended for public readers who need the current state without
+reading every detailed requirement section first.
+
+| Delta | Public status | Notes |
+| --- | --- | --- |
+| `DELTA-A.1` Markdown Artifact Naming Cutover | Implemented in current code | New generated Daily, Sleep, and Dream memory artifacts use `.md` names. Existing `.txt` files may remain as normal RAG-ingested documents. |
+| `DELTA-A.2` Source-Neutral Memory IDs and Syx Entry Boundaries | Implemented in current code | Generated memory artifacts include stable IDs and Syx begin/end boundaries for entry-level parsing. |
+| `DELTA-A.3` Syx Boundary Metadata in RAG Chunk Indexing | Implemented in current code | RAG indexing preserves available Syx boundary metadata for downstream retrieval and expansion. |
+| `DELTA-A.4` Agent Memory Search Endpoint and CLI Bridge | Implemented in current code | The local read-only `/agent/memory/search` endpoint and CLI/tooling bridge exist. |
+| `DELTA-A.5` Agent Full-Entry Expansion | Implemented in current code | Agent memory search can expand bounded Syx results into complete memory entries. |
+| `DELTA-A.6` External Agent Memory Add Endpoint | Future-facing | Captured as planned write-back work; not part of the current public endpoint surface. |
+| `DELTA-A.7` Cursor MCP Wrapper | Future-facing | Captured as planned MCP wrapper work. Current tooling uses local CLI/scripts. |
+
 # DELTA-A — Markdown-Based Syx Memory Artifacts
 
 ## Status
 
-Draft
+Accepted
 
 ## Intent
 
@@ -102,7 +129,7 @@ This makes Syx usable as an external memory substrate for Cursor. Cursor can sea
 
 ## Status
 
-Draft
+Accepted
 
 ## Intent
 
@@ -359,7 +386,7 @@ Tests SHOULD verify:
 
 ## Status
 
-Draft
+Accepted
 
 ## Intent
 
@@ -928,7 +955,7 @@ The goal of A.3 is to make Syx-bounded memory entries first-class indexing regio
 
 ## Status
 
-Draft
+Accepted
 
 ## Intent
 
@@ -1346,7 +1373,7 @@ Tests SHOULD cover:
 
 ## Status
 
-Draft
+Accepted
 
 ## Intent
 
@@ -1442,7 +1469,7 @@ The prompt-shaped retrieval text MAY be reconstructed by clients, CLI tools, or 
 }
 ```
 
-For unbounded, ordinary upload, PDF-derived, or legacy results, `result_mode` SHALL be:
+For unbounded ordinary upload or legacy results, `result_mode` SHALL be:
 
 ```text
 unbounded_chunk_group
@@ -1773,7 +1800,7 @@ If a future retrieval path produces non-contiguous collapsed chunks, that path S
 `result_mode` SHOULD use:
 
 - `bounded_entry` when Syx boundary metadata is available
-- `unbounded_chunk_group` when the result is ordinary upload, legacy text, PDF-derived text, or otherwise unbounded
+- `unbounded_chunk_group` when the result is ordinary upload, legacy text, or otherwise unbounded
 
 Structured metadata SHOULD be exposed separately from `text`.
 
@@ -2102,7 +2129,7 @@ Tests SHOULD cover:
 
 ## Status
 
-Draft
+Accepted
 
 ## Intent
 
@@ -2130,7 +2157,7 @@ when Syx boundary metadata is available, and:
 result_mode: unbounded_chunk_group
 ```
 
-for ordinary uploads, legacy text, PDF-derived text, or otherwise unbounded results.
+for ordinary uploads, legacy text, or otherwise unbounded results.
 
 A.4 snippet text may still be partial because it reflects the current expanded chunk/group payload.
 
@@ -2630,38 +2657,3 @@ Tests SHOULD cover:
 15. No memory is written.
 16. Normal chat behavior is unchanged.
 
-# DELTA-DREAM-DEBUG-1 — Dream Debug Artifact De-Duplication
-
-## Status
-
-Draft
-
-## Intent
-
-Keep Dream debug output under the timestamped `debug/dreaming/` artifact
-structure and stop emitting duplicate root-level Dream debug files.
-
-## Requirements
-
-Dream agents SHALL write prompt and response debug artifacts through the
-Dream-specific timestamped debug helpers, using paths such as:
-
-```text
-debug/dreaming/<timestamp>_idea_agent_prompt_to_execute.txt
-debug/dreaming/<timestamp>_idea_agent_response_usage.txt
-debug/dreaming/<timestamp>_context_summary.txt
-```
-
-Dream agents SHALL NOT write duplicate root-level debug files such as:
-
-```text
-debug/debug_idea_prompt.txt
-debug/debug_idea_raw_response.txt
-debug/debug_questions.txt
-debug/debug_research.txt
-debug/debug_context.txt
-debug/debug_context_summary.txt
-```
-
-Historical requirements that name those root-level duplicate files are
-superseded by this delta.

@@ -16,7 +16,7 @@ List the commands you ran.
 
 ```bash
 
-````
+```
 
 ## Documentation
 

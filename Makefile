@@ -526,7 +526,7 @@ setup-env:
 		echo "GENERATE_DEBUG_FILES=false"; \
 		echo "# Enable debug file generation (e.g., dreaming/*_context_summary.txt)"; \
 		echo ""; \
-		echo "VITE_SHOW_DEBUG_VALUES=false"; \
+		echo "VITE_SHOW_DEBUG_VALUES=true"; \
 		echo "# Frontend: show stats/debug values bar in chat UI"; \
 		echo ""; \
 	} > .env

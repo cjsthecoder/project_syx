@@ -2,14 +2,14 @@
 
 ## How To Read This File
 
-`docs/REQUIREMENTS.md` is the consolidated as-built specification for Syx.
+[`docs/REQUIREMENTS.md`](REQUIREMENTS.md) is the consolidated as-built specification for Syx.
 This file is the active change layer: it records newer engineering decisions,
 migrations, or requirement updates that have not yet been fully rolled into the
 requirements baseline.
 
-When `docs/REQUIREMENTS.md` and this file conflict, follow this file for current
+When [`docs/REQUIREMENTS.md`](REQUIREMENTS.md) and this file conflict, follow this file for current
 implementation work. Once a delta is fully incorporated into
-`docs/REQUIREMENTS.md`, it can be removed from this active layer or retained only
+[`docs/REQUIREMENTS.md`](REQUIREMENTS.md), it can be removed from this active layer or retained only
 as design history.
 
 ## Delta Status Summary

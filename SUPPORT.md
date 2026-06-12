@@ -59,7 +59,7 @@ This project does not currently promise:
 
 Syx is intended for local or trusted environments only. Do not expose the API directly to the public internet or to untrusted users.
 
-For security concerns, see `SECURITY.md`.
+For security concerns, see [`SECURITY.md`](SECURITY.md).
 
 ## Maintainer Availability
 

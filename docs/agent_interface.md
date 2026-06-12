@@ -2,7 +2,7 @@
 
 Syx includes a local agent-memory search interface so trusted external tools can query project memory without running the normal chat response pipeline.
 
-This interface is intended for local development and trusted local agent workflows. It is not a public API and is not production-hardened. Read `SECURITY.md` before exposing any Syx endpoint outside a trusted environment.
+This interface is intended for local development and trusted local agent workflows. It is not a public API and is not production-hardened. Read [`SECURITY.md`](../SECURITY.md) before exposing any Syx endpoint outside a trusted environment.
 
 ## What It Does
 
@@ -36,7 +36,7 @@ The endpoint does **not**:
 
 The current public interface is read-only search.
 
-Write-back is not part of the current public endpoint. `docs/DELTAS.md` describes future work for controlled agent memory add/write-back, but this document describes the interface that exists now.
+Write-back is not part of the current public endpoint. [`docs/DELTAS.md`](DELTAS.md) describes future work for controlled agent memory add/write-back, but this document describes the interface that exists now.
 
 ## Endpoint Request
 

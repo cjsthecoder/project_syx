@@ -2,7 +2,7 @@
 
 Syx is a local AI chat and memory system built around a React frontend, a FastAPI backend, project-scoped persistence, FAISS-backed retrieval, and a memory lifecycle that moves information from active chat into durable markdown artifacts.
 
-This document is a readable system overview. For detailed behavioral requirements, see `docs/REQUIREMENTS.md` and `docs/DELTAS.md`. When those files conflict, `docs/DELTAS.md` is the current source of truth.
+This document is a readable system overview. For detailed behavioral requirements, see [`docs/REQUIREMENTS.md`](REQUIREMENTS.md) and [`docs/DELTAS.md`](DELTAS.md). When those files conflict, [`docs/DELTAS.md`](DELTAS.md) is the current source of truth.
 
 ## System Shape
 
@@ -176,7 +176,7 @@ Daily memory is the bridge between active chat and long-term project memory.
 - An in-memory FAISS Daily index.
 - Append and rebuild operations for rolled-off chat pairs.
 
-Per `docs/DELTAS.md`, markdown artifacts are the current readable carrier format for new Daily, Sleep, and Dream memory artifacts. Structured metadata remains authoritative for identity, provenance, lifecycle state, and future expansion.
+Per [`docs/DELTAS.md`](DELTAS.md), markdown artifacts are the current readable carrier format for new Daily, Sleep, and Dream memory artifacts. Structured metadata remains authoritative for identity, provenance, lifecycle state, and future expansion.
 
 ## Sleep Cycle
 
@@ -241,7 +241,7 @@ This avoids running separate frontend and backend servers for normal use. During
 
 The local agent-memory interface lives under `backend/app/agent_interface/`.
 
-It provides a read-only search endpoint for trusted local tools that need project memory context. The request contract includes an `agent_token`, but current token validation is a local-development stub. See `SECURITY.md` before using this interface outside a trusted local environment.
+It provides a read-only search endpoint for trusted local tools that need project memory context. The request contract includes an `agent_token`, but current token validation is a local-development stub. See [`SECURITY.md`](../SECURITY.md) before using this interface outside a trusted local environment.
 
 ## Generated Data Boundaries
 

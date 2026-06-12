@@ -4,13 +4,13 @@ Thanks for wanting to help. Syx is an open source AI memory and chatbot framewor
 
 Syx is also a requirements-driven project. For anything larger than a typo or small bug fix, please read the project specifications before changing behavior:
 
-- `docs/REQUIREMENTS.md` is the consolidated as-built specification.
-- `docs/DELTAS.md` is the active change layer for newer engineering decisions,
+- [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md) is the consolidated as-built specification.
+- [`docs/DELTAS.md`](docs/DELTAS.md) is the active change layer for newer engineering decisions,
   migrations, or requirement updates that have not yet been rolled into the
   requirements baseline.
-- If those documents conflict, `docs/DELTAS.md` wins for current implementation work.
+- If those documents conflict, [`docs/DELTAS.md`](docs/DELTAS.md) wins for current implementation work.
 
-For testing and coverage expectations, read `docs/COVERAGE.md` before adding or changing tests. It is the authoritative policy for what counts as meaningful test coverage in this project.
+For testing and coverage expectations, read [`docs/COVERAGE.md`](docs/COVERAGE.md) before adding or changing tests. It is the authoritative policy for what counts as meaningful test coverage in this project.
 
 ## Getting Started
 
@@ -85,7 +85,7 @@ Do not commit generated or private local state from `data/`, `runtime/`, `.env`,
 ## Development Workflow
 
 1. Open an issue or discussion for meaningful behavior changes.
-2. Check `docs/DELTAS.md` and `docs/REQUIREMENTS.md` before implementing.
+2. Check [`docs/DELTAS.md`](docs/DELTAS.md) and [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md) before implementing.
 3. If the change overlaps with or supersedes existing documented behavior, update or propose a delta first.
 4. Create a feature branch from `main`.
 5. Make the smallest focused change that satisfies the requirement.
@@ -126,7 +126,7 @@ Backend tests run from the `backend/` working directory and import modules throu
 
 ## Coverage Policy
 
-`docs/COVERAGE.md` is the authoritative testing and coverage policy.
+[`docs/COVERAGE.md`](docs/COVERAGE.md) is the authoritative testing and coverage policy.
 
 The short version:
 
@@ -205,10 +205,10 @@ Documentation changes are part of the implementation when behavior changes.
 
 Use these documents intentionally:
 
-- `README.md` for onboarding and the public landing page.
-- `docs/DELTAS.md` for current behavior changes and overrides.
-- `docs/REQUIREMENTS.md` for baseline requirements.
-- `docs/COVERAGE.md` for testing and coverage rules.
+- [`README.md`](README.md) for onboarding and the public landing page.
+- [`docs/DELTAS.md`](docs/DELTAS.md) for current behavior changes and overrides.
+- [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md) for baseline requirements.
+- [`docs/COVERAGE.md`](docs/COVERAGE.md) for testing and coverage rules.
 - Focused docs under `docs/` for architecture, memory lifecycle, Sleep, Dream, and agent interfaces.
 
 If a change alters documented behavior, update the relevant doc in the same PR.
@@ -227,7 +227,7 @@ Do not commit:
 
 Syx is intended for local development and trusted deployments. Treat generated memory and debug files as potentially sensitive.
 
-See `SECURITY.md` for vulnerability reporting and current security assumptions.
+See [`SECURITY.md`](SECURITY.md) for vulnerability reporting and current security assumptions.
 
 ## PR Guidelines
 
@@ -261,8 +261,8 @@ This matters especially when commits are created through agentic coding tools or
 
 Use GitHub issues for bug reports and feature requests. Use discussions, if enabled, for questions, design ideas, and broader project conversation.
 
-See `SUPPORT.md` for support expectations.
+See [`SUPPORT.md`](SUPPORT.md) for support expectations.
 
 ## License
 
-Syx is MIT licensed. Contributions are accepted under the same license. See `LICENSE`.
+Syx is MIT licensed. Contributions are accepted under the same license. See [`LICENSE`](LICENSE).

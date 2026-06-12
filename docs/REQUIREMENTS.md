@@ -6,10 +6,10 @@
 > requirements that have already been folded into the project's baseline and was
 > used to drive AI-assisted implementation.
 >
-> `docs/DELTAS.md` is the active change layer for newer engineering decisions,
+> [`docs/DELTAS.md`](DELTAS.md) is the active change layer for newer engineering decisions,
 > migrations, or requirement updates that have not yet been rolled into this
-> consolidated baseline. When this file and `docs/DELTAS.md` conflict, follow
-> `docs/DELTAS.md` for current implementation work. Once a delta is fully
+> consolidated baseline. When this file and [`docs/DELTAS.md`](DELTAS.md) conflict, follow
+> [`docs/DELTAS.md`](DELTAS.md) for current implementation work. Once a delta is fully
 > incorporated, it may be folded back into this file so `REQUIREMENTS.md`
 > remains the readable as-built baseline.
 >
@@ -1260,7 +1260,7 @@ Example layout (using shadcn/ui):
 ## Version 2.7 — Cleanup & Sleep Prep
 
 > **Active delta note:** This section uses the original generated Daily artifact
-> names from the consolidated baseline. `docs/DELTAS.md` currently supersedes
+> names from the consolidated baseline. [`docs/DELTAS.md`](DELTAS.md) currently supersedes
 > those names for generated Daily memory artifacts: `daily.txt` is now
 > `daily.md` for newly generated human-readable Daily memory.
 
@@ -1566,7 +1566,7 @@ Provide a stable framework for triggering and managing the Sleep Cycle automatic
 ## Version 3.2 — Daily Consolidation Pipeline (Deterministic)
 
 > **Active delta note:** This section uses the original generated `.txt`
-> artifact names. `docs/DELTAS.md` currently supersedes those names for newly
+> artifact names. [`docs/DELTAS.md`](DELTAS.md) currently supersedes those names for newly
 > generated memory artifacts: `daily.txt` is now `daily.md`, and
 > `sleep_summary.txt` is now `sleep_summary.md`.
 
@@ -1631,7 +1631,7 @@ Convert each project's tag-enriched `daily.txt` into a per-cycle `sleep_summary.
 ## Version 3.3 — RAG Rebuild and Verification (Per-Cycle Artifacts)
 
 > **Active delta note:** This section uses the original generated `.txt`
-> artifact names. `docs/DELTAS.md` currently supersedes those names for newly
+> artifact names. [`docs/DELTAS.md`](DELTAS.md) currently supersedes those names for newly
 > generated Sleep and Dream artifacts: `sleep_summary.txt` is now
 > `sleep_summary.md`, `dream_summary.txt` is now `dream_summary.md`,
 > `uploads/sleep/*.txt` is now `uploads/sleep/*.md`, and

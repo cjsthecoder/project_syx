@@ -2,7 +2,7 @@
 
 The Sleep cycle is Syx's memory-consolidation maintenance phase. It moves active project chat into Daily memory, turns Daily memory into per-cycle long-term artifacts, runs Dream when enabled, rebuilds retrieval indexes, and clears consumed staging state.
 
-For the broader memory flow, see `docs/memory_lifecycle.md`.
+For the broader memory flow, see [`docs/memory_lifecycle.md`](memory_lifecycle.md).
 
 ## What Sleep Is For
 
@@ -157,7 +157,7 @@ Sleep calls Dream for each processed project. Dream failures are logged but do n
 
 If `AUTO_ACCEPT_DREAMS=true`, Sleep also attempts to process pending `dream.json` items into Dream memory and `dream_summary.md`.
 
-See `docs/dream_cycle.md` for Dream-specific details.
+See [`docs/dream_cycle.md`](dream_cycle.md) for Dream-specific details.
 
 ## Merge and FAISS Rebuild
 

@@ -88,7 +88,7 @@ Does this change broaden the accepted scope of FR-004?
 
 ## REQUIREMENTS.md
 
-`docs/REQUIREMENTS.md` is the consolidated as-built specification for Syx.
+[`docs/REQUIREMENTS.md`](REQUIREMENTS.md) is the consolidated as-built specification for Syx.
 
 It describes accepted system behavior, functional requirements, technical requirements, architecture expectations, configuration rules, and acceptance criteria.
 
@@ -106,7 +106,7 @@ During development, this file serves several purposes:
 
 ## DELTAS.md
 
-`docs/DELTAS.md` exists because new requirements often touch existing requirements.
+[`docs/DELTAS.md`](DELTAS.md) exists because new requirements often touch existing requirements.
 
 `REQUIREMENTS.md` describes the accepted as-built system. That is useful for stable behavior, but it creates a specific AI-assisted engineering problem: when a new change overlaps older requirements, the coding assistant needs to know exactly what is changing without being invited to reinterpret or rewrite the entire baseline.
 
@@ -285,9 +285,9 @@ Contributors do not need to use AI tools. But if they do, they should still trea
 
 Before opening a pull request that changes behavior:
 
-* Read `docs/REQUIREMENTS.md`.
-* Read `docs/DELTAS.md`.
-* Check focused docs such as `docs/architecture.md`, `docs/memory_lifecycle.md`, `docs/sleep_cycle.md`, `docs/dream_cycle.md`, and `docs/agent_interface.md`.
+* Read [`docs/REQUIREMENTS.md`](REQUIREMENTS.md).
+* Read [`docs/DELTAS.md`](DELTAS.md).
+* Check focused docs such as [`docs/architecture.md`](architecture.md), [`docs/memory_lifecycle.md`](memory_lifecycle.md), [`docs/sleep_cycle.md`](sleep_cycle.md), [`docs/dream_cycle.md`](dream_cycle.md), and [`docs/agent_interface.md`](agent_interface.md).
 * Update tests when behavior changes.
 * Update docs when requirements, configuration, public APIs, or workflows change.
 * Do not commit private runtime data, memory artifacts, logs, debug files, generated indexes, `.env` files, or secrets.
@@ -312,4 +312,4 @@ The goal is the opposite: make the project easier to change by keeping intent, i
 
 If a future change would make a reader ask “which document is true?”, clarify that before implementation.
 
-Either fold the accepted behavior into `docs/REQUIREMENTS.md`, or write a clear delta in `docs/DELTAS.md` that explains what changed, what it supersedes, and what must not be broadened.
+Either fold the accepted behavior into [`docs/REQUIREMENTS.md`](REQUIREMENTS.md), or write a clear delta in [`docs/DELTAS.md`](DELTAS.md) that explains what changed, what it supersedes, and what must not be broadened.

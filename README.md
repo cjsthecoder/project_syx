@@ -117,9 +117,9 @@ Data is stored on the host under `./data/memory`, `./data/db`, `./runtime/logs`,
 
 ## Configuration
 
-Runtime defaults are defined in `backend/app/core/config.py` through `Settings`. The `make setup-env` target mirrors those defaults when generating `.env`.
+Runtime defaults are defined in [`backend/app/core/config.py`](backend/app/core/config.py) through `Settings`. The `make setup-env` target mirrors those defaults when generating `.env`.
 
-Start from `.env.example`, then set at least:
+Start from [`.env.example`](.env.example), then set at least:
 
 - `OPENAI_API_KEY`
 - `LLM_PROVIDER`
@@ -131,7 +131,7 @@ Start from `.env.example`, then set at least:
 - `EMBEDDING_PROVIDER`
 - `EMBEDDING_MODEL` or `SENTENCE_TRANSFORMERS_MODEL_ID`
 
-For the full environment template, see `.env.example`. Runtime defaults are defined in `backend/app/core/config.py`.
+For the full environment template, see [`.env.example`](.env.example). Runtime defaults are defined in [`backend/app/core/config.py`](backend/app/core/config.py).
 
 ## Core Concepts
 
@@ -147,37 +147,37 @@ For the full environment template, see `.env.example`. Runtime defaults are defi
 
 Syx combines a Vite/React frontend with a FastAPI backend that serves both API routes and the built static frontend. The backend owns provider factories, project persistence, memory artifacts, RAG indexing, Sleep/Dream orchestration, instrumentation, and local agent-facing memory access.
 
-See `docs/architecture.md` for the full architecture guide.
+See [`docs/architecture.md`](docs/architecture.md) for the full architecture guide.
 
 ## Documentation
 
 Start with the onboarding and project docs:
 
-- `README.md` — public landing page and quickstart.
-- `ROADMAP.md` — shipped scope, near-term work, later ideas, and non-goals.
-- `CHANGELOG.md` — release history.
-- `CONTRIBUTING.md` — local setup, testing, documentation, and PR expectations.
-- `SUPPORT.md` — questions, bug reports, feature requests, and support boundaries.
-- `SECURITY.md` — vulnerability reporting and local/trusted-environment assumptions.
-- `docs/ai_assisted_engineering.md` — how requirements and deltas guide AI-assisted development.
+- [`README.md`](README.md) — public landing page and quickstart.
+- [`ROADMAP.md`](ROADMAP.md) — shipped scope, near-term work, later ideas, and non-goals.
+- [`CHANGELOG.md`](CHANGELOG.md) — release history.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — local setup, testing, documentation, and PR expectations.
+- [`SUPPORT.md`](SUPPORT.md) — questions, bug reports, feature requests, and support boundaries.
+- [`SECURITY.md`](SECURITY.md) — vulnerability reporting and local/trusted-environment assumptions.
+- [`docs/ai_assisted_engineering.md`](docs/ai_assisted_engineering.md) — how requirements and deltas guide AI-assisted development.
 
 Architecture and memory-system guides:
 
-- `docs/architecture.md` — system architecture.
-- `docs/memory_lifecycle.md` — chat, Daily memory, Sleep, Dream, and RAG artifact lifecycle.
-- `docs/sleep_cycle.md` — Sleep behavior, scheduling, locking, outputs, and verification.
-- `docs/dream_cycle.md` — Dream behavior, generated outputs, and configuration.
-- `docs/agent_interface.md` — local agent-memory access.
+- [`docs/architecture.md`](docs/architecture.md) — system architecture.
+- [`docs/memory_lifecycle.md`](docs/memory_lifecycle.md) — chat, Daily memory, Sleep, Dream, and RAG artifact lifecycle.
+- [`docs/sleep_cycle.md`](docs/sleep_cycle.md) — Sleep behavior, scheduling, locking, outputs, and verification.
+- [`docs/dream_cycle.md`](docs/dream_cycle.md) — Dream behavior, generated outputs, and configuration.
+- [`docs/agent_interface.md`](docs/agent_interface.md) — local agent-memory access.
 
 Specification and testing references:
 
-- `docs/REQUIREMENTS.md` — consolidated as-built specification.
-- `docs/DELTAS.md` — active change layer for newer or superseding requirements.
-- `docs/COVERAGE.md` — testing and coverage policy.
+- [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md) — consolidated as-built specification.
+- [`docs/DELTAS.md`](docs/DELTAS.md) — active change layer for newer or superseding requirements.
+- [`docs/COVERAGE.md`](docs/COVERAGE.md) — testing and coverage policy.
 
 Background material:
 
-- `docs/background/Project_History.md` — development history and original project essays.
+- [`docs/background/Project_History.md`](docs/background/Project_History.md) — development history and original project essays.
 
 ## Repository Layout
 
@@ -217,28 +217,28 @@ Run the full CI-style check locally:
 make ci
 ```
 
-For coverage expectations and test-writing policy, see `docs/COVERAGE.md`.
+For coverage expectations and test-writing policy, see [`docs/COVERAGE.md`](docs/COVERAGE.md).
 
 ## Security
 
 Syx is designed for local development and trusted local deployments. Do not commit `.env`, API keys, generated memory, runtime logs, or private project data.
 
-See `SECURITY.md` for vulnerability reporting and current security assumptions.
+See [`SECURITY.md`](SECURITY.md) for vulnerability reporting and current security assumptions.
 
 ## Contributing
 
 Contributions should follow the repository setup, testing, documentation, and secret-handling rules.
 
-See `CONTRIBUTING.md`.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Support
 
-See `SUPPORT.md` for how to ask questions, report bugs, or request features.
+See [`SUPPORT.md`](SUPPORT.md) for how to ask questions, report bugs, or request features.
 
 ## Roadmap
 
-See `ROADMAP.md` for shipped scope, near-term work, future ideas, and non-goals.
+See [`ROADMAP.md`](ROADMAP.md) for shipped scope, near-term work, future ideas, and non-goals.
 
 ## License
 
-MIT — see `LICENSE`.
+MIT — see [`LICENSE`](LICENSE).

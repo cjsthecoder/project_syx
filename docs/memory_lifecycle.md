@@ -2,7 +2,7 @@
 
 Syx treats memory as a lifecycle, not a single vector store. Information starts in active chat, rolls into Daily memory, is consolidated by Sleep, may be interpreted by Dream, and is finally indexed into long-term project retrieval.
 
-This document describes the current operational flow. `docs/DELTAS.md` overrides older behavior in `docs/REQUIREMENTS.md`, especially around markdown artifacts.
+This document describes the current operational flow. [`docs/DELTAS.md`](DELTAS.md) overrides older behavior in [`docs/REQUIREMENTS.md`](REQUIREMENTS.md), especially around markdown artifacts.
 
 ## Lifecycle Summary
 
@@ -142,7 +142,7 @@ Normal retrieval can merge Daily results and long-term memory results so chat ca
 
 ## Markdown Artifact Rules
 
-Per `docs/DELTAS.md`, Syx now generates markdown memory artifacts for new Daily, Sleep, and Dream outputs.
+Per [`docs/DELTAS.md`](DELTAS.md), Syx now generates markdown memory artifacts for new Daily, Sleep, and Dream outputs.
 
 Current rule:
 

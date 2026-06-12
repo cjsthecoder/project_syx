@@ -2,7 +2,7 @@
 
 This roadmap describes the public direction for Syx at the time of the initial open source release. It is intentionally high level. Priorities may change as the project is tested by real usage, contributor feedback, and new research questions.
 
-For how Syx uses `docs/REQUIREMENTS.md` and `docs/DELTAS.md` during AI-assisted development, see `docs/ai_assisted_engineering.md`.
+For how Syx uses [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md) and [`docs/DELTAS.md`](docs/DELTAS.md) during AI-assisted development, see [`docs/ai_assisted_engineering.md`](docs/ai_assisted_engineering.md).
 
 ## Shipped Scope
 
@@ -95,6 +95,6 @@ Syx is not currently trying to be:
 
 ## How To Read This Roadmap
 
-If you want to contribute, start with `CONTRIBUTING.md`, `docs/COVERAGE.md`, `docs/REQUIREMENTS.md`, and `docs/DELTAS.md`.
+If you want to contribute, start with [`CONTRIBUTING.md`](CONTRIBUTING.md), [`docs/COVERAGE.md`](docs/COVERAGE.md), [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md), and [`docs/DELTAS.md`](docs/DELTAS.md).
 
 For behavior changes that overlap existing requirements, discuss the direction before implementation. Significant changes should either update the consolidated requirements or add a new active delta that explains the change and what older behavior it supersedes.

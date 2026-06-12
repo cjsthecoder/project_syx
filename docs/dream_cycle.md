@@ -288,7 +288,7 @@ Treat the following as sensitive:
 - Research outputs
 - RAG context used for Dream
 
-For project-level security guidance, see `SECURITY.md`.
+For project-level security guidance, see [`SECURITY.md`](../SECURITY.md).
 
 ## How to Verify Dream Ran
 
@@ -312,6 +312,6 @@ Depending on settings and whether Dream produced/accepted items:
 
 ## Relationship to Other Docs
 
-- `docs/memory_lifecycle.md` explains where Dream fits in the overall memory flow.
-- `docs/sleep_cycle.md` explains how Sleep invokes Dream.
-- `docs/agent_interface.md` explains how external local tools can later retrieve Dream artifacts through RAG.
+- [`docs/memory_lifecycle.md`](memory_lifecycle.md) explains where Dream fits in the overall memory flow.
+- [`docs/sleep_cycle.md`](sleep_cycle.md) explains how Sleep invokes Dream.
+- [`docs/agent_interface.md`](agent_interface.md) explains how external local tools can later retrieve Dream artifacts through RAG.

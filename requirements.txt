@@ -17,7 +17,7 @@ rapidfuzz==3.14.5
 python-multipart==0.0.27
 
 # Testing dependencies
-pytest==9.0.3
+pytest==9.1.0
 
 # Development dependencies (formatting + linting)
 black==26.3.1

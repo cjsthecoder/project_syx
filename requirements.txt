@@ -28,7 +28,7 @@ ruff==0.15.16
 # faiss-cpu: pin to a version available for Python 3.13 on macOS
 faiss-cpu==1.14.3
 tiktoken==0.13.0
-filelock==3.28.0
+filelock==3.29.4
 
 # Database support (V2)
 sqlmodel==0.0.38

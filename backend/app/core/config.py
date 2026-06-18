@@ -50,8 +50,6 @@ class Settings(BaseSettings):
     # OpenAI Configuration
     openai_api_key: str = Field(default="", description="OpenAI API key")
     llm_provider: str = Field(default="openai", description="LLM provider selector (openai)")
-    model_name: str = Field(default="gpt-5.5", description="Primary chat model name")
-    llm_mini_model: str = Field(default="gpt-5-mini", description="Default model for mini client")
     llm_models_registry_path: str = Field(
         default="",
         description="Optional path to the app-owned LLM model registry JSON",
@@ -128,25 +126,6 @@ class Settings(BaseSettings):
         description="Worker count for parallel LTM embedding during rebuild (RAG_EMBED_REBUILD_WORKERS)",
     )
 
-    # Model list for selector
-    available_models: list[str] = Field(
-        default=[
-            "gpt-5.5",
-            "gpt-5.4",
-            "gpt-5.4-mini",
-            "gpt-5.4-nano",
-            "gpt-5.2",
-            "gpt-5.1",
-            "gpt-5",
-            "gpt-5-mini",
-            "gpt-5-nano",
-            "gpt-4.1",
-            "gpt-4.1-mini",
-            "gpt-4o-mini",
-        ],
-        description="Whitelisted chat models",
-    )
-
     # RAG-on-chat controls
     rag_on_chat: bool = Field(default=True, description="Enable retrieval injection during chat")
     # Retrieval-stage limits are controlled by BASE_TOP_K + RETRIEVAL_MULTIPLIER (not route config).
@@ -175,10 +154,6 @@ class Settings(BaseSettings):
     )
 
     # Builder and reranking
-    builder_model: str = Field(
-        default="gpt-5-mini", description="LLM used for query builder/router"
-    )
-    tagger_model: str = Field(default="gpt-5-mini", description="LLM used for tagging")
     builder_max_tokens: int = Field(default=1024, gt=0, description="Max tokens for builder output")
     tagger_current_response_middle_cut_percent: int = Field(
         default=50,
@@ -310,7 +285,6 @@ class Settings(BaseSettings):
         description="Automatically persist all pending dream.json items during the sleep cycle",
     )
     # Dream agent configuration
-    dream_model: str = Field(default="gpt-5.5", description="Dream LLM model")
     dream_temperature: float = Field(
         default=1.0, ge=0.0, le=2.0, description="Dream LLM temperature"
     )

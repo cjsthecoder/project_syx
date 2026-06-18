@@ -46,10 +46,23 @@ def test_selection_rejects_model_from_wrong_provider(settings_override):
         registry.resolve_runtime_llm_models("openai/claude-sonnet")
 
 
-def test_missing_selected_provider_fails_clearly(settings_override):
+def test_anthropic_registry_resolves_provider_scoped_defaults(settings_override):
     settings_override(llm_provider="anthropic")
-    with pytest.raises(registry.LLMModelRegistryError, match="not defined"):
-        registry.resolve_runtime_llm_models()
+    resolved = registry.resolve_runtime_llm_models()
+    assert resolved.selection_value == "anthropic/claude-sonnet-4-6"
+    assert resolved.main_model == "claude-sonnet-4-6"
+    assert resolved.mini_model == "claude-haiku-4-5-20251001"
+    assert resolved.builder_model == "claude-haiku-4-5-20251001"
+    assert resolved.tagger_model == "claude-haiku-4-5-20251001"
+    assert resolved.dream_model == "claude-sonnet-4-6"
+
+
+def test_anthropic_frontier_model_selection(settings_override):
+    settings_override(llm_provider="anthropic")
+    resolved = registry.resolve_runtime_llm_models("anthropic/claude-opus-4-8")
+    assert resolved.selection_value == "anthropic/claude-opus-4-8"
+    assert resolved.main_model == "claude-opus-4-8"
+    assert resolved.builder_model == "claude-haiku-4-5-20251001"
 
 
 def test_malformed_registry_file_fails_clearly(tmp_path):

@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from ..core.config import get_settings, validate_openai_key
+from ..core.config import active_llm_key_status, get_settings, validate_active_llm_key
 from ..core.llm_service import generate_chat_response, get_llm_health
 from ..core.memory import get_memory_manager, set_last_context_tokens
 from ..core.models import ChatRequest, ChatResponse
@@ -51,9 +51,6 @@ _TURN_SEQ = 0
 _TURN_SEQ_LOCK = threading.Lock()
 
 LLM_NOT_CONFIGURED_CODE = "llm_not_configured"
-LLM_NOT_CONFIGURED_MESSAGE = (
-    "OpenAI API key is not configured. Set OPENAI_API_KEY and restart the server."
-)
 
 
 def _next_turn_id() -> int:
@@ -81,22 +78,34 @@ def _require_llm_configured(*, endpoint: str, project_id: Optional[str]) -> None
 
     Raises:
         HTTPException: 503 with a stable ``llm_not_configured`` code when the
-            OpenAI API key is missing or still set to the documented placeholder.
+            active provider API key is missing or still set to a documented
+            placeholder.
     """
-    if validate_openai_key():
+    key_status = active_llm_key_status()
+    if validate_active_llm_key():
         return
+    message = (
+        f"{key_status['setting']} is not configured for LLM_PROVIDER="
+        f"{key_status['provider']}. Set {key_status['setting']} and restart the server."
+    )
     logger.warning(
-        "chat.llm_not_configured; operation=preflight endpoint=%s project_id=%s",
+        "chat.llm_not_configured; operation=preflight endpoint=%s project_id=%s provider=%s setting=%s",
         endpoint,
         project_id,
+        key_status["provider"],
+        key_status["setting"],
     )
     raise HTTPException(
         status_code=503,
         detail={
             "success": False,
-            "error": LLM_NOT_CONFIGURED_MESSAGE,
+            "error": message,
             "error_code": LLM_NOT_CONFIGURED_CODE,
-            "details": {"dependency": "openai", "setting": "OPENAI_API_KEY"},
+            "details": {
+                "dependency": key_status["dependency"],
+                "setting": key_status["setting"],
+                "provider": key_status["provider"],
+            },
         },
     )
 

@@ -33,7 +33,7 @@ Do not commit:
 - Private project data or memory artifacts.
 - Runtime logs or debug files containing prompts, responses, retrieved context, or uploads.
 
-Use `.env.example` and `make setup-env` as templates only. After generating `.env`, set your own `OPENAI_API_KEY` locally.
+Use `.env.example` and `make setup-env` as templates only. After generating `.env`, set your own provider API key locally.
 
 If a secret is accidentally committed, rotate it immediately. Removing it from a later commit is not enough, because it may remain in Git history.
 

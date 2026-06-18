@@ -65,7 +65,7 @@ def _response_with_extra_usage(text="ok", model="gpt-5.5"):
 def mock_openai_key():
     """Make the LLM provider construct without a real key.
 
-    `validate_openai_key()` reads from the cached Settings object, not the live
+    `validate_active_llm_key()` reads from the cached Settings object, not the live
     environment, so patching os.environ alone is not enough in a clean CI
     environment. Patch the validator directly and reset the provider singleton
     so the tests are hermetic regardless of whether a key is configured.
@@ -73,7 +73,7 @@ def mock_openai_key():
     reset_llm_provider()
     with (
         patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-123"}),
-        patch("app.core.llm_service.validate_openai_key", return_value=True),
+        patch("app.core.llm_service.validate_active_llm_key", return_value=True),
     ):
         yield
     reset_llm_provider()
@@ -81,15 +81,15 @@ def mock_openai_key():
 
 def test_llm_provider_initialization(mock_openai_key):
     """Test LLM provider initialization."""
-    with patch("app.core.llm_service.validate_openai_key", return_value=True):
+    with patch("app.core.llm_service.validate_active_llm_key", return_value=True):
         provider = LLMProvider()
         assert provider is not None
 
 
 def test_llm_provider_without_key():
     """Test LLM provider without API key."""
-    with patch("app.core.llm_service.validate_openai_key", return_value=False):
-        with pytest.raises(ValueError, match="OpenAI API key"):
+    with patch("app.core.llm_service.validate_active_llm_key", return_value=False):
+        with pytest.raises(ValueError, match="OPENAI_API_KEY"):
             LLMProvider()
 
 
@@ -218,7 +218,7 @@ def test_generate_research_response_uses_provider_research_boundary(
 
 def test_get_llm_provider_singleton(mock_openai_key):
     """Test that get_llm_provider returns a singleton."""
-    with patch("app.core.llm_service.validate_openai_key", return_value=True):
+    with patch("app.core.llm_service.validate_active_llm_key", return_value=True):
         provider1 = get_llm_provider()
         provider2 = get_llm_provider()
         assert provider1 is provider2
@@ -291,7 +291,7 @@ def test_generate_response_finalize_error_is_logged(mock_openai_key, monkeypatch
 
 
 def test_get_model_info_shape(mock_openai_key):
-    with patch("app.core.llm_service.validate_openai_key", return_value=True):
+    with patch("app.core.llm_service.validate_active_llm_key", return_value=True):
         info = LLMProvider().get_model_info()
     assert set(info.keys()) == {"model_name", "temperature", "max_tokens", "api_key_configured"}
 
@@ -311,7 +311,7 @@ def test_health_check_healthy(mock_openai_key, monkeypatch):
         text="pong", model="gpt-5.5", usage=_empty_usage()
     )
     monkeypatch.setattr(llm_service, "get_llm_client", lambda: client)
-    with patch("app.core.llm_service.validate_openai_key", return_value=True):
+    with patch("app.core.llm_service.validate_active_llm_key", return_value=True):
         status = LLMProvider().health_check()
     assert status == {"status": "healthy", "model": "gpt-5.5"}
 
@@ -322,7 +322,7 @@ def test_health_check_no_response(mock_openai_key, monkeypatch):
         text=None, model="gpt-5.5", usage=_empty_usage()
     )
     monkeypatch.setattr(llm_service, "get_llm_client", lambda: client)
-    with patch("app.core.llm_service.validate_openai_key", return_value=True):
+    with patch("app.core.llm_service.validate_active_llm_key", return_value=True):
         status = LLMProvider().health_check()
     assert status["status"] == "unhealthy"
     assert status["error"] == "No response from model"
@@ -334,7 +334,7 @@ def test_get_llm_health_delegates_to_provider(mock_openai_key, monkeypatch):
         text="pong", model="gpt-5.5", usage=_empty_usage()
     )
     monkeypatch.setattr(llm_service, "get_llm_client", lambda: client)
-    with patch("app.core.llm_service.validate_openai_key", return_value=True):
+    with patch("app.core.llm_service.validate_active_llm_key", return_value=True):
         assert llm_service.get_llm_health()["status"] == "healthy"
 
 
@@ -342,7 +342,7 @@ def test_health_check_exception(mock_openai_key, monkeypatch):
     client = MagicMock()
     client.generate_chat.side_effect = RuntimeError("network down")
     monkeypatch.setattr(llm_service, "get_llm_client", lambda: client)
-    with patch("app.core.llm_service.validate_openai_key", return_value=True):
+    with patch("app.core.llm_service.validate_active_llm_key", return_value=True):
         status = LLMProvider().health_check()
     assert status["status"] == "unhealthy"
     assert "network down" in status["error"]

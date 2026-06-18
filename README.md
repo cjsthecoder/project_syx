@@ -89,8 +89,9 @@ cd frontend && npm install && cd ..
 # 5) Create or update local environment config
 make setup-env
 
-# 6) Add your OpenAI API key to .env
+# 6) Add your provider API key to .env
 # OPENAI_API_KEY=your-openai-api-key-here
+# ANTHROPIC_API_KEY=your-anthropic-api-key-here
 
 # 7) Build frontend and run the app
 make build
@@ -122,6 +123,7 @@ Runtime defaults are defined in [`backend/app/core/config.py`](backend/app/core/
 Start from [`.env.example`](.env.example), then set at least:
 
 - `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY` when `LLM_PROVIDER=anthropic`
 - `LLM_PROVIDER`
 - `EMBEDDING_PROVIDER`
 - `EMBEDDING_MODEL` or `SENTENCE_TRANSFORMERS_MODEL_ID`

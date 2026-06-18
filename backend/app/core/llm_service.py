@@ -25,7 +25,7 @@ from ..llm_model.factory import get_llm_client
 from ..llm_model.registry import get_active_llm_models
 from ..tracking import get_instrumentation
 from ..utils.tokens import count_tokens
-from .config import get_settings, validate_openai_key
+from .config import active_llm_key_status, get_settings, validate_active_llm_key
 
 logger = logging.getLogger(__name__)
 
@@ -92,11 +92,15 @@ class LLMProvider:
         """Initialize the provider from settings.
 
         Raises:
-            ValueError: If the OpenAI API key is missing or invalid.
+            ValueError: If the active provider API key is missing or invalid.
         """
         self.settings = get_settings()
-        if not validate_openai_key():
-            raise ValueError("OpenAI API key is not configured or invalid")
+        key_status = active_llm_key_status()
+        if not validate_active_llm_key():
+            raise ValueError(
+                f"{key_status['setting']} is not configured or invalid for "
+                f"LLM_PROVIDER={key_status['provider']}"
+            )
 
     def generate_response(
         self,
@@ -253,7 +257,7 @@ class LLMProvider:
             "model_name": get_active_llm_models().main_model,
             "temperature": self.settings.model_temperature,
             "max_tokens": self.settings.model_max_tokens,
-            "api_key_configured": validate_openai_key(),
+            "api_key_configured": validate_active_llm_key(),
         }
 
     def health_check(self) -> Dict[str, str]:

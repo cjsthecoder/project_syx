@@ -282,9 +282,12 @@ setup-env:
 		echo "# Syx AGI Chatbot Framework - Environment Variables"; \
 		echo "# Edit values as needed. Comments are placed after each variable to avoid parser conflicts."; \
 		echo ""; \
-		echo "# === Core: OpenAI + Chat Model ==="; \
+		echo "# === Core: LLM Providers + Chat Model ==="; \
 		echo "#OPENAI_API_KEY=your-openai-api-key-here"; \
 		echo "# OpenAI API key used for chat and embeddings"; \
+		echo ""; \
+		echo "#ANTHROPIC_API_KEY=your-anthropic-api-key-here"; \
+		echo "# Anthropic API key used when LLM_PROVIDER=anthropic"; \
 		echo ""; \
 		echo "LLM_PROVIDER=openai"; \
 		echo "# LLM provider selector; model defaults are resolved from backend/app/config/llm_models.json"; \
@@ -514,7 +517,7 @@ setup-env:
 		echo "# Frontend: show stats/debug values bar in chat UI"; \
 		echo ""; \
 	} > .env
-	@echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
+	@echo "✅ Created .env with defaults (update provider API keys)"
 
 unlock-sleep:
 	@rm -f runtime/state/sleep.lock 2>/dev/null || true
@@ -566,7 +569,7 @@ docker-rebuild:
 setup: setup-env install build
 	@echo "🎉 Syx setup completed!"
 	@echo "   Next steps:"
-	@echo "   1. Edit .env file with your OpenAI API key"
+	@echo "   1. Edit .env file with your provider API key"
 	@echo "   2. Run 'make run' to start the server"
 
 # Generate architecture docs (PNG) from diagrams script

@@ -2879,7 +2879,7 @@ Tests SHOULD cover:
 
 ### Status
 
-Planned
+Implemented
 
 ### Intent
 
@@ -2892,10 +2892,28 @@ Add an Anthropic-backed LLM provider implementation behind the B.1.1 provider-ag
 3. Anthropic request and response envelopes SHALL be normalized into the same project `LLMResponse` and `LLMUsage` structures used by existing code.
 4. Provider-specific preflight checks SHALL replace OpenAI-only key validation for chat startup and request handling.
 5. Main, mini, builder, tagger, and Dream model configuration SHALL use the provider-scoped model resolution defined in B.1.2 before Anthropic is enabled for those paths.
+6. B.1.3 SHALL use `ANTHROPIC_API_KEY` for Anthropic credentials.
+7. The Anthropic registry entry SHALL use:
+   - main: `claude-sonnet-4-6`
+   - mini/helper: `claude-haiku-4-5-20251001`
+   - builder: `claude-haiku-4-5-20251001`
+   - tagger: `claude-haiku-4-5-20251001`
+   - Dream: `claude-sonnet-4-6`
+8. The Anthropic registry entry SHALL also expose selectable frontier models:
+   - `claude-fable-5`
+   - `claude-opus-4-8`
+9. Anthropic remote research SHOULD use Anthropic's server-side web search tool when available behind `generate_response_research`.
 
 ### Non-Goals
 
 B.1.3 does not require changing the B.1.2 provider/model selection contract.
+
+### Acceptance Criteria
+
+1. `LLM_PROVIDER=anthropic` constructs an Anthropic provider through `llm_model.factory`.
+2. Anthropic chat, streaming, prompt/response, and research calls return normalized `LLMResponse` and `LLMUsage` envelopes.
+3. Chat preflight and app health validate the active provider key instead of assuming OpenAI.
+4. `/models` exposes Anthropic provider-qualified model choices without changing the B.1.2 response shape.
 
 ## B.1.4 Advanced Provider-Aware Model Selection
 

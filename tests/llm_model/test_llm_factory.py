@@ -45,6 +45,10 @@ class _FakeLLMProvider:
         raise NotImplementedError
 
 
+class _FakeAnthropicProvider(_FakeLLMProvider):
+    pass
+
+
 class _FakeEmbeddingProvider:
     def __init__(self, *, api_key=None):
         self.api_key = api_key
@@ -58,6 +62,7 @@ class _FakeSTProvider:
 @pytest.fixture
 def fake_llm(monkeypatch):
     monkeypatch.setattr(llm_factory, "OpenAILLMProvider", _FakeLLMProvider)
+    monkeypatch.setattr(llm_factory, "AnthropicLLMProvider", _FakeAnthropicProvider)
     llm_factory.reset_llm_runtime_state()
     yield llm_factory
     llm_factory.reset_llm_runtime_state()
@@ -122,8 +127,16 @@ def test_reset_llm_clients_forces_new_instance(fake_llm):
     assert first is not second
 
 
+def test_anthropic_provider_constructs_from_registry(fake_llm, settings_override):
+    settings_override(llm_provider="anthropic", anthropic_api_key="sk-ant")
+    client = fake_llm.get_llm_client()
+    assert isinstance(client, _FakeAnthropicProvider)
+    assert client.api_key == "sk-ant"
+    assert client.default_model == "claude-sonnet-4-6"
+
+
 def test_unknown_provider_fails_registry_preflight(fake_llm, settings_override):
-    settings_override(llm_provider="anthropic")
+    settings_override(llm_provider="unknown")
     with pytest.raises(LLMModelRegistryError, match="not defined"):
         fake_llm.get_llm_client()
 

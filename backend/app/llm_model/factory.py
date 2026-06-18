@@ -15,6 +15,7 @@ from typing import Optional
 
 from ..core.config import get_settings
 from .base import LLMClient
+from .providers.anthropic_provider import AnthropicLLMProvider
 from .providers.openai_provider import OpenAILLMProvider
 from .registry import (
     LLMModelRegistryError,
@@ -33,14 +34,18 @@ _MINI_CLIENT: Optional[LLMClient] = None
 def _provider_client(*, provider: str, default_model: str, timeout_s: float) -> LLMClient:
     """Construct a concrete provider client for a supported factory provider key.
 
-    Provider SDK imports remain behind this factory/provider boundary. B.1.2
-    ships with OpenAI only; B.1.3 adds Anthropic by registering another
-    provider implementation here.
+    Provider SDK imports remain behind this factory/provider boundary.
     """
     settings = get_settings()
     if provider == "openai":
         return OpenAILLMProvider(
             api_key=settings.openai_api_key,
+            default_model=default_model,
+            timeout_s=float(timeout_s),
+        )
+    if provider == "anthropic":
+        return AnthropicLLMProvider(
+            api_key=settings.anthropic_api_key,
             default_model=default_model,
             timeout_s=float(timeout_s),
         )

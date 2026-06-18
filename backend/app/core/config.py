@@ -47,9 +47,12 @@ class Settings(BaseSettings):
         "extra": "ignore",
     }
 
-    # OpenAI Configuration
+    # LLM provider credentials and runtime configuration
     openai_api_key: str = Field(default="", description="OpenAI API key")
-    llm_provider: str = Field(default="openai", description="LLM provider selector (openai)")
+    anthropic_api_key: str = Field(default="", description="Anthropic API key")
+    llm_provider: str = Field(
+        default="openai", description="LLM provider selector (openai|anthropic)"
+    )
     llm_models_registry_path: str = Field(
         default="",
         description="Optional path to the app-owned LLM model registry JSON",
@@ -431,6 +434,54 @@ def validate_openai_key() -> bool:
         configured; False otherwise.
     """
     return bool(settings.openai_api_key and settings.openai_api_key != "your-openai-api-key-here")
+
+
+def validate_anthropic_key() -> bool:
+    """Validate that Anthropic API key is set and not empty.
+
+    Returns:
+        True if a non-empty key that is not the documented placeholder is
+        configured; False otherwise.
+    """
+    return bool(
+        settings.anthropic_api_key and settings.anthropic_api_key != "your-anthropic-api-key-here"
+    )
+
+
+def get_active_llm_provider_id() -> str:
+    """Return the configured LLM provider id in normalized form."""
+    return str(settings.llm_provider or "openai").strip().lower()
+
+
+def validate_active_llm_key() -> bool:
+    """Validate the API key for the configured LLM provider.
+
+    Returns:
+        True when the active provider's credential is present and not a
+        documented placeholder.
+    """
+    provider = get_active_llm_provider_id()
+    if provider == "anthropic":
+        return validate_anthropic_key()
+    return validate_openai_key()
+
+
+def active_llm_key_status() -> dict[str, str]:
+    """Return provider-aware credential status metadata for health/preflight."""
+    provider = get_active_llm_provider_id()
+    if provider == "anthropic":
+        return {
+            "provider": provider,
+            "setting": "ANTHROPIC_API_KEY",
+            "dependency": "anthropic",
+            "status": "configured" if validate_anthropic_key() else "missing",
+        }
+    return {
+        "provider": provider,
+        "setting": "OPENAI_API_KEY",
+        "dependency": "openai",
+        "status": "configured" if validate_openai_key() else "missing",
+    }
 
 
 def get_model_config() -> dict:

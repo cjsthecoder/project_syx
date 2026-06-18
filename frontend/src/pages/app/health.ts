@@ -12,7 +12,7 @@ import { RequestError, extractErrorCode } from '@/pages/app/request'
 
 export const LLM_NOT_CONFIGURED_CODE = 'llm_not_configured'
 export const LLM_NOT_CONFIGURED_MESSAGE =
-  'OpenAI API key is not configured. Set OPENAI_API_KEY in the backend environment and restart the server.'
+  'The active LLM provider API key is not configured. Set the provider API key in the backend environment and restart the server.'
 
 export type AppHealthResponse = {
   status: string
@@ -26,7 +26,9 @@ export type AppHealthResponse = {
  * @returns A user-facing warning when chat cannot use the configured LLM.
  */
 export function messageForAppHealth(health: AppHealthResponse): string | null {
-  if (health.dependencies?.openai === 'missing') {
+  const llmProviderMissing =
+    health.dependencies?.openai === 'missing' || health.dependencies?.anthropic === 'missing'
+  if (llmProviderMissing) {
     return LLM_NOT_CONFIGURED_MESSAGE
   }
   return null
@@ -35,7 +37,7 @@ export function messageForAppHealth(health: AppHealthResponse): string | null {
 /**
  * Load app health and return the current persistent LLM notice, if any.
  *
- * @returns A warning message when `/health` reports the OpenAI key is missing.
+ * @returns A warning message when `/health` reports the active LLM key is missing.
  */
 export async function loadAppHealth(): Promise<string | null> {
   const health = await api<AppHealthResponse>('/health')

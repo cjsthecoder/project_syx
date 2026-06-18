@@ -23,6 +23,12 @@ describe('messageForAppHealth', () => {
     )
   })
 
+  it('returns the persistent LLM warning when Anthropic is missing', () => {
+    expect(messageForAppHealth({ status: 'degraded', dependencies: { anthropic: 'missing' } })).toBe(
+      LLM_NOT_CONFIGURED_MESSAGE,
+    )
+  })
+
   it('returns null when OpenAI is configured', () => {
     expect(messageForAppHealth({ status: 'healthy', dependencies: { openai: 'configured' } })).toBeNull()
   })

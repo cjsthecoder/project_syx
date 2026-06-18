@@ -36,7 +36,7 @@ from .api import llm_models, projects, sleep
 from .api.sleep import start_sleep_cycle_async
 
 # Import our modules
-from .core.config import get_settings, validate_openai_key
+from .core.config import active_llm_key_status, get_settings, validate_active_llm_key
 from .core.database import get_session, init_db
 from .core.db_models import Project
 from .core.models import HealthResponse
@@ -554,15 +554,18 @@ async def health_check():
         check itself raises.
     """
     try:
-        # Check OpenAI API key
-        api_key_status = "configured" if validate_openai_key() else "missing"
+        key_status = active_llm_key_status()
+        api_key_status = key_status["status"]
 
         # Check LLM health
         from .core.llm_service import get_llm_health
 
         llm_health = get_llm_health()
 
-        dependencies = {"openai": api_key_status, "llm": llm_health["status"]}
+        dependencies = {
+            key_status["dependency"]: api_key_status,
+            "llm": llm_health["status"],
+        }
 
         return HealthResponse(
             status="healthy" if api_key_status == "configured" else "degraded",
@@ -686,8 +689,14 @@ def run_server() -> None:
     import uvicorn
 
     # Validate configuration
-    if not validate_openai_key():
-        logger.warning("OpenAI API key not configured. Set OPENAI_API_KEY environment variable.")
+    if not validate_active_llm_key():
+        key_status = active_llm_key_status()
+        logger.warning(
+            "%s not configured for LLM_PROVIDER=%s. Set %s environment variable.",
+            key_status["setting"],
+            key_status["provider"],
+            key_status["setting"],
+        )
         logger.info("You can still run the server, but chat functionality will not work.")
 
     # Get configuration from settings

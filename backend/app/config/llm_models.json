@@ -24,6 +24,23 @@
         "tagger": "gpt-5-mini",
         "dream": "gpt-5.5"
       }
+    },
+    "anthropic": {
+      "label": "Anthropic",
+      "factory_provider": "anthropic",
+      "default_model": "claude-sonnet-4-6",
+      "models": [
+        { "id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6" },
+        { "id": "claude-haiku-4-5-20251001", "label": "Claude Haiku 4.5" },
+        { "id": "claude-fable-5", "label": "Claude Fable 5" },
+        { "id": "claude-opus-4-8", "label": "Claude Opus 4.8" }
+      ],
+      "roles": {
+        "mini": "claude-haiku-4-5-20251001",
+        "builder": "claude-haiku-4-5-20251001",
+        "tagger": "claude-haiku-4-5-20251001",
+        "dream": "claude-sonnet-4-6"
+      }
     }
   }
 }

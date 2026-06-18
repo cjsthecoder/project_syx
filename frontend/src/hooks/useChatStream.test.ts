@@ -58,7 +58,7 @@ describe('useChatStream', () => {
           new Response(
             JSON.stringify({
               detail: {
-                error: 'OpenAI API key is not configured',
+                error: 'ANTHROPIC_API_KEY is not configured',
                 error_code: 'llm_not_configured',
               },
             }),

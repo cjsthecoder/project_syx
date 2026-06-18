@@ -257,9 +257,9 @@ class ErrorResponse(BaseModel):
         json_schema_extra={
             "example": {
                 "success": False,
-                "error": "OpenAI API key not configured",
+                "error": "LLM provider API key not configured",
                 "error_code": "MISSING_API_KEY",
-                "details": {"field": "openai_api_key"},
+                "details": {"field": "provider_api_key"},
                 "timestamp": "2024-01-01T12:00:00Z",
             }
         }

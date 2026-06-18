@@ -48,7 +48,7 @@ To generate a local `.env` file:
 make setup-env
 ```
 
-Then edit `.env` and set your own `OPENAI_API_KEY` before running the app. Never commit `.env` or real API keys.
+Then edit `.env` and set your provider API key before running the app. Never commit `.env` or real API keys.
 
 Run the unified app:
 

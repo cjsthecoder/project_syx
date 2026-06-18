@@ -123,9 +123,9 @@ def test_validate_openai_key(settings_override):
 
 
 def test_get_model_config_shape(settings_override):
-    settings_override(model_name="gpt-x", model_temperature=0.5, model_max_tokens=1234)
+    settings_override(llm_provider="openai", model_temperature=0.5, model_max_tokens=1234)
     cfg = get_model_config()
-    assert cfg == {"model_name": "gpt-x", "temperature": 0.5, "max_tokens": 1234}
+    assert cfg == {"model_name": "gpt-5.5", "temperature": 0.5, "max_tokens": 1234}
 
 
 def test_get_response_pruning_stage_config_keys(settings_override):

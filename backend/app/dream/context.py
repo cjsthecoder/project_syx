@@ -21,6 +21,7 @@ from app.utils.debug_utils import write_debug_file
 
 from ..core.config import get_settings
 from ..core.llm_service import generate_text_response
+from ..llm_model.registry import get_active_llm_models
 from ..utils.tokens import count_tokens
 from .debug import (
     safe_dream_purpose,
@@ -193,7 +194,7 @@ def _get_project_context_summary(project_id: str) -> str:
     write_dream_context_summary_debug(project_id=project_id, summary_prompt=summary_prompt)
     purpose = "context_summary"
     max_tokens = int(settings.dream_max_tokens)
-    model = str(settings.dream_model)
+    model = get_active_llm_models().dream_model
     write_dream_prompt_to_execute(
         project_id=project_id,
         prompt=summary_prompt,

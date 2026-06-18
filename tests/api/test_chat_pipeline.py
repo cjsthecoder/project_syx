@@ -27,7 +27,6 @@ def _settings(**overrides):
         rag_on_chat=True,
         base_top_k=5,
         log_preview_max_chars=80,
-        available_models=["gpt-test", "gpt-mini"],
     )
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -500,11 +499,13 @@ def test_apply_rag_guidance_handles_bad_base_type(caplog):
 
 
 def test_enforce_model_whitelist_none_allowed():
-    _pipeline().enforce_model_whitelist(None)  # no raise
+    resolved = _pipeline().enforce_model_whitelist(None)
+    assert resolved.selection_value == "openai/gpt-5.5"
 
 
 def test_enforce_model_whitelist_allowed():
-    _pipeline().enforce_model_whitelist("gpt-test")  # no raise
+    resolved = _pipeline().enforce_model_whitelist("openai/gpt-5-mini")
+    assert resolved.main_model == "gpt-5-mini"
 
 
 def test_enforce_model_whitelist_rejected():

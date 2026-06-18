@@ -1,0 +1,29 @@
+{
+  "providers": {
+    "openai": {
+      "label": "OpenAI",
+      "factory_provider": "openai",
+      "default_model": "gpt-5.5",
+      "models": [
+        { "id": "gpt-5.5", "label": "GPT-5.5" },
+        { "id": "gpt-5.4", "label": "GPT-5.4" },
+        { "id": "gpt-5.4-mini", "label": "GPT-5.4 Mini" },
+        { "id": "gpt-5.4-nano", "label": "GPT-5.4 Nano" },
+        { "id": "gpt-5.2", "label": "GPT-5.2" },
+        { "id": "gpt-5.1", "label": "GPT-5.1" },
+        { "id": "gpt-5", "label": "GPT-5" },
+        { "id": "gpt-5-mini", "label": "GPT-5 Mini" },
+        { "id": "gpt-5-nano", "label": "GPT-5 Nano" },
+        { "id": "gpt-4.1", "label": "GPT-4.1" },
+        { "id": "gpt-4.1-mini", "label": "GPT-4.1 Mini" },
+        { "id": "gpt-4o-mini", "label": "GPT-4o Mini" }
+      ],
+      "roles": {
+        "mini": "gpt-5-mini",
+        "builder": "gpt-5-mini",
+        "tagger": "gpt-5-mini",
+        "dream": "gpt-5.5"
+      }
+    }
+  }
+}

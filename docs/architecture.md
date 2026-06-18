@@ -80,14 +80,9 @@ Syx keeps LLM and embedding provider selection behind factory modules:
 - `backend/app/llm_model/factory.py`
 - `backend/app/embedding/factory.py`
 
-Runtime code should call factory entry points instead of directly constructing provider SDK clients. This keeps provider/model changes configuration-driven through environment settings such as:
+Runtime code should call factory entry points instead of directly constructing provider SDK clients. LLM model roles are resolved from `backend/app/config/llm_models.json`, selected at startup by `LLM_PROVIDER` and at request time by provider-qualified model values such as `openai/gpt-5.5`. Provider/model changes remain configuration-driven through settings such as:
 
 - `LLM_PROVIDER`
-- `MODEL_NAME`
-- `LLM_MINI_MODEL`
-- `BUILDER_MODEL`
-- `TAGGER_MODEL`
-- `DREAM_MODEL`
 - `EMBEDDING_PROVIDER`
 - `EMBEDDING_MODEL`
 - `SENTENCE_TRANSFORMERS_MODEL_ID`
@@ -212,7 +207,7 @@ The current Dream pipeline can:
 - Write debug artifacts when enabled.
 - Produce items that can later be reviewed or persisted.
 
-Dream is controlled by settings such as `ENABLE_DREAM`, `AUTO_ACCEPT_DREAMS`, `DREAM_MODEL`, `DREAM_TEMPERATURE`, `DREAM_MAX_TOKENS`, and `DREAM_ENABLE_REMOTE_RESEARCH`.
+Dream uses the registry-resolved Dream model for the active provider. It is controlled by settings such as `ENABLE_DREAM`, `AUTO_ACCEPT_DREAMS`, `DREAM_TEMPERATURE`, `DREAM_MAX_TOKENS`, and `DREAM_ENABLE_REMOTE_RESEARCH`.
 
 Dream is experimental. It is part of the current architecture, but its behavior should be understood as a research feature rather than a production workflow.
 

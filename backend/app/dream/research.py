@@ -15,6 +15,7 @@ import logging
 
 from ..core.config import get_settings
 from ..core.llm_service import generate_research_response
+from ..llm_model.registry import get_active_llm_models
 from ..utils.tokens import count_tokens as _count_tokens
 from ..utils.tokens import trim_to_tokens as _trim_to_tokens
 
@@ -45,10 +46,11 @@ def fetch_remote_research(query: str) -> str:
         tokens), or an empty string on failure.
     """
     settings = get_settings()
+    dream_model = get_active_llm_models().dream_model
     try:
         response = generate_research_response(
             f"Perform web research to gather concise factual context for: {query}",
-            override_model=settings.dream_model,
+            override_model=dream_model,
             system_prompt=None,
             temperature_override=float(settings.dream_temperature),
             max_output_tokens=int(settings.dream_max_tokens),

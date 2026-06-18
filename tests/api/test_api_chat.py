@@ -88,6 +88,15 @@ class FakePipeline:
 
     def enforce_model_whitelist(self, requested_model):
         FakePipeline.enforced_models.append(requested_model)
+        return SimpleNamespace(
+            provider_id="openai",
+            selection_value=requested_model or "openai/gpt-test",
+            main_model="gpt-test",
+            mini_model="gpt-mini",
+            builder_model="gpt-mini",
+            tagger_model="gpt-mini",
+            dream_model="gpt-test",
+        )
 
     def previous_pair_text(self, conversation_history):
         return "PREV_PAIR"

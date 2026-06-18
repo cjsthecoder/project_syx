@@ -158,9 +158,11 @@ def test_build_run_config_snapshot_shape():
     cfg = _build_run_config(_fake_settings(), _fake_route_policy(), "abc123", True)
     snap = cfg["config_snapshot"]
     assert snap["models_configured"] == {
-        "main_model": "main-model",
-        "builder_model": "builder-model",
-        "tagger_model": "tagger-model",
+        "provider": "openai",
+        "main_model": "gpt-5.5",
+        "builder_model": "gpt-5-mini",
+        "tagger_model": "gpt-5-mini",
+        "dream_model": "gpt-5.5",
     }
     assert snap["retrieval_static"]["base_top_k"] == 8
     assert snap["retrieval_static"]["embedding_model"] == "embed-model"

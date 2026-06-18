@@ -55,7 +55,10 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=200000, description="User message")
     project_id: Optional[str] = Field(default=None, description="Project context (stub)")
     conversation_id: Optional[str] = Field(default=None, description="Conversation ID for context")
-    model: Optional[str] = Field(default=None, description="Override model for this request")
+    model: Optional[str] = Field(
+        default=None,
+        description="Provider-qualified model selection for this request, e.g. openai/gpt-5.5",
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -63,7 +66,7 @@ class ChatRequest(BaseModel):
                 "message": "Hello, how can you help me today?",
                 "project_id": "default",
                 "conversation_id": "conv_123",
-                "model": "gpt-5.1",
+                "model": "openai/gpt-5.1",
             }
         }
     )

@@ -117,17 +117,12 @@ Data is stored on the host under `./data/memory`, `./data/db`, `./runtime/logs`,
 
 ## Configuration
 
-Runtime defaults are defined in [`backend/app/core/config.py`](backend/app/core/config.py) through `Settings`. The `make setup-env` target mirrors those defaults when generating `.env`.
+Runtime defaults are defined in [`backend/app/core/config.py`](backend/app/core/config.py) through `Settings`. LLM provider/model defaults live in [`backend/app/config/llm_models.json`](backend/app/config/llm_models.json), and the `make setup-env` target mirrors the normal setup path when generating `.env`.
 
 Start from [`.env.example`](.env.example), then set at least:
 
 - `OPENAI_API_KEY`
 - `LLM_PROVIDER`
-- `MODEL_NAME`
-- `LLM_MINI_MODEL`
-- `BUILDER_MODEL`
-- `TAGGER_MODEL`
-- `DREAM_MODEL`
 - `EMBEDDING_PROVIDER`
 - `EMBEDDING_MODEL` or `SENTENCE_TRANSFORMERS_MODEL_ID`
 

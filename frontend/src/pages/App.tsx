@@ -103,8 +103,8 @@ export default function App() {
     setError(null)
   }, [setProjectSummary])
 
-  const [model, setModel] = useState('gpt-5.5')
-  const [models, setModels] = useState<ModelItem[]>(['gpt-5.5'])
+  const [model, setModel] = useState('openai/gpt-5.5')
+  const [models, setModels] = useState<ModelItem[]>(['openai/gpt-5.5'])
   const chatEnabled = !llmUnavailableMessage
 
   // UI state
@@ -200,8 +200,7 @@ export default function App() {
       const data = await api<{ models: string[]; default?: string }>('/models')
       if (Array.isArray(data.models) && data.models.length) {
         setModels(data.models)
-        // Pre-select the backend default (MODEL_NAME) when it is whitelisted,
-        // otherwise fall back to the first available model.
+        // Values carry provider identity, e.g. "openai/gpt-5.5".
         const preferred =
           data.default && data.models.includes(data.default) ? data.default : data.models[0]
         setModel(preferred)

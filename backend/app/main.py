@@ -45,6 +45,7 @@ from .core.route_policy import load_and_validate_route_policy
 from .core.state import clear_stale_lock, init_from_disk, is_sleeping, release_lock
 from .embedding.factory import get_embedding_client
 from .llm_model.factory import get_llm_client, get_llm_client_mini
+from .llm_model.registry import LLMModelRegistryError
 from .rag.manager import rebuild_faiss_index
 from .tracking import get_instrumentation, init_instrumentation
 from .utils.logging import get_logger, setup_logging
@@ -115,6 +116,9 @@ def _build_run_config(settings, route_policy, git_commit: str, git_dirty: bool) 
         startup configuration.
     """
     s = settings
+    from .llm_model.registry import get_active_llm_models
+
+    runtime_models = get_active_llm_models()
     route_policy_snapshot = {}
     for route_name, route_pol in route_policy.items():
         route_policy_snapshot[str(route_name)] = {
@@ -129,9 +133,11 @@ def _build_run_config(settings, route_policy, git_commit: str, git_dirty: bool) 
     return {
         "config_snapshot": {
             "models_configured": {
-                "main_model": str(s.model_name),
-                "builder_model": str(s.builder_model),
-                "tagger_model": str(s.tagger_model),
+                "provider": runtime_models.provider_id,
+                "main_model": runtime_models.main_model,
+                "builder_model": runtime_models.builder_model,
+                "tagger_model": runtime_models.tagger_model,
+                "dream_model": runtime_models.dream_model,
             },
             "prompt_budgeting": {
                 "model_context_window_tokens": None,
@@ -219,6 +225,9 @@ def _init_factory_clients() -> None:
     try:
         get_llm_client()
         get_llm_client_mini()
+    except LLMModelRegistryError as exc:
+        logger.error("[INIT] LLM model registry preflight failed: %s", exc, exc_info=True)
+        raise
     except Exception as exc:
         logger.warning("[INIT] LLM factory startup initialization failed: %s", exc, exc_info=True)
     try:

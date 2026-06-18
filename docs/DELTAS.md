@@ -2758,6 +2758,8 @@ Draft
 
 Make main and helper model selection provider-scoped so a user can switch supported providers without manually editing each model environment variable.
 
+The UI model selector SHALL carry provider identity as part of the selection. Selecting a model from a provider SHALL select the provider, make that model the main chat model, and resolve mini/helper, builder, tagger, and Dream defaults from the same provider's registry entry.
+
 The model/provider inventory SHALL live in an app-owned JSON registry, not in `.env`.
 
 ### Requirements
@@ -2783,16 +2785,20 @@ The model/provider inventory SHALL live in an app-owned JSON registry, not in `.
    - builder/router model
    - tagger model
    - Dream model
-6. `LLM_PROVIDER` SHALL select the active provider by provider id.
-7. When `LLM_PROVIDER` selects a provider, Syx SHALL resolve all default runtime model roles from that provider's registry entry unless the user has explicitly configured a compatible role-specific override.
-8. `.env.example` and `make setup-env` SHALL NOT hard-code `AVAILABLE_MODELS` as the source of truth for the UI selector once the registry is implemented.
-9. `AVAILABLE_MODELS` SHALL be removed, deprecated, or treated only as an explicit advanced override after the registry exists. The default path SHALL be registry-driven.
-10. The defaults for `BUILDER_MODEL`, `TAGGER_MODEL`, and `DREAM_MODEL` SHALL be compatible with the selected provider without requiring manual `.env` edits after provider selection.
-11. The mini client SHALL not be treated as a provider-independent OpenAI-only fallback. Its default model SHALL be resolved from the selected provider's helper-model defaults.
-12. The system SHALL expose enough configuration metadata for local setup tooling to generate a coherent `.env` template for the selected provider.
-13. If a role-specific model override is configured but does not belong to the selected provider's allowed model set, startup or request preflight SHALL fail clearly with a provider/model compatibility error.
-14. Provider-scoped defaults SHALL preserve the current OpenAI defaults when `LLM_PROVIDER=openai`.
-15. If the registry is missing, malformed, or lacks the selected provider, startup SHALL fail clearly before accepting chat requests.
+6. `LLM_PROVIDER` SHALL select the startup/default provider by provider id.
+7. The UI model selector SHALL expose provider-aware model choices from the registry. It SHOULD present providers first and then provider-scoped models (for example, a provider dropdown whose hover/menu exposes that provider's models, or an equivalent grouped selector).
+8. The model selection value sent to the backend SHALL include both provider id and model id. A compact string form such as `provider/model` is acceptable if it is parsed and validated explicitly; a structured `{ provider, model }` contract is also acceptable if the request/response schemas are updated accordingly.
+9. When the UI selects a provider/model pair, Syx SHALL treat the selected provider as the runtime provider for that chat request/session, treat the selected model as the main chat model, and resolve mini/helper, builder, tagger, and Dream model defaults from that provider's registry entry unless the user has explicitly configured compatible role-specific overrides.
+10. A requested chat model SHALL be valid only when it belongs to the selected provider's selectable main chat models. Model ids from other registry providers SHALL be rejected unless a later requirement introduces cross-provider per-request routing.
+11. When only `LLM_PROVIDER` is configured and no UI provider/model selection is supplied, Syx SHALL resolve the default main model and all runtime model roles from the selected provider's registry entry.
+12. `.env.example` and `make setup-env` SHALL NOT hard-code `AVAILABLE_MODELS` as the source of truth for the UI selector once the registry is implemented.
+13. `AVAILABLE_MODELS` SHALL be removed, deprecated, or treated only as an explicit advanced override after the registry exists. The default path SHALL be registry-driven.
+14. Main, mini/helper, builder, tagger, and Dream model defaults SHALL be resolved from the selected provider's registry entry. The normal setup path SHALL NOT require `MODEL_NAME`, `LLM_MINI_MODEL`, `BUILDER_MODEL`, `TAGGER_MODEL`, or `DREAM_MODEL`.
+15. The mini client SHALL not be treated as a provider-independent OpenAI-only fallback. Its default model SHALL be resolved from the selected provider's helper-model defaults.
+16. The system SHALL expose enough configuration metadata for local setup tooling to generate a coherent `.env` template for the selected provider.
+17. If a role-specific model override is configured but does not belong to the selected provider's allowed model set, startup or request preflight SHALL fail clearly with a provider/model compatibility error.
+18. Provider-scoped defaults SHALL preserve the current OpenAI defaults when `LLM_PROVIDER=openai`.
+19. If the registry is missing, malformed, or lacks the selected provider, startup SHALL fail clearly before accepting chat requests.
 
 ### Registry Shape
 
@@ -2834,11 +2840,13 @@ OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...
 ```
 
-Role-specific environment variables such as `MODEL_NAME`, `LLM_MINI_MODEL`, `BUILDER_MODEL`, `TAGGER_MODEL`, and `DREAM_MODEL` MAY remain as explicit advanced overrides, but the default setup path SHALL not require them for a supported provider.
+Role-specific environment variables such as `MODEL_NAME`, `LLM_MINI_MODEL`, `BUILDER_MODEL`, `TAGGER_MODEL`, and `DREAM_MODEL` are no longer part of the normal setup path once the registry exists. `LLM_PROVIDER` selects the startup/default provider, and the registry supplies the provider's default runtime model set.
+
+When a provider/model pair is supplied by the UI, that selection takes precedence over the startup `LLM_PROVIDER`/`MODEL_NAME` pair for the main chat model and provider-scoped runtime model set.
 
 ### Non-Goals
 
-B.1.2 does not require runtime provider switching without restart.
+B.1.2 does not require maintaining multiple provider clients hot in memory before a provider/model pair is selected.
 
 B.1.2 does not require the UI to expose builder, tagger, Dream, or mini model controls.
 
@@ -2850,9 +2858,11 @@ Tests SHOULD cover:
 
 - OpenAI provider resolves the existing OpenAI main/helper defaults.
 - Anthropic provider resolves Anthropic-compatible main/helper defaults once Anthropic support exists.
-- `/models` reads selectable model data from the registry rather than `AVAILABLE_MODELS`.
-- `BUILDER_MODEL`, `TAGGER_MODEL`, and `DREAM_MODEL` overrides are honored when compatible with the selected provider.
-- incompatible helper-model overrides fail clearly.
+- `/models` reads provider-aware selectable model data from the registry rather than `AVAILABLE_MODELS`.
+- UI model selection carries provider id and model id to the backend.
+- selected provider/model pairs resolve a coherent provider-scoped runtime model set.
+- model validation rejects a model id that does not belong to the selected provider.
+- normal setup does not require `MODEL_NAME`, `LLM_MINI_MODEL`, `BUILDER_MODEL`, `TAGGER_MODEL`, or `DREAM_MODEL`.
 - generated local environment defaults stay internally coherent for the selected provider.
 - malformed or missing registry entries fail clearly.
 
@@ -2860,9 +2870,9 @@ Tests SHOULD cover:
 
 1. Provider selection determines a coherent default model set for all runtime LLM roles.
 2. Helper model defaults are no longer accidentally tied to OpenAI when another provider is selected.
-3. Users can switch to a supported provider using documented provider-level configuration without manually editing each helper model.
+3. Users can switch to a supported provider/model pair from the UI without manually editing each helper model.
 4. Existing OpenAI defaults and behavior remain unchanged unless explicitly overridden.
-5. The UI model inventory is registry-driven, not `.env` `AVAILABLE_MODELS` driven.
+5. The UI model inventory is provider-aware and registry-driven, not `.env` `AVAILABLE_MODELS` driven.
 6. `make setup-env` and `.env.example` no longer present `AVAILABLE_MODELS` as the normal source of selectable chat models.
 
 ## B.1.3 Anthropic Provider Support
@@ -2885,11 +2895,9 @@ Add an Anthropic-backed LLM provider implementation behind the B.1.1 provider-ag
 
 ### Non-Goals
 
-B.1.3 does not require the UI to mix OpenAI and Anthropic models in one selector.
+B.1.3 does not require changing the B.1.2 provider/model selection contract.
 
-Per-model provider routing is deferred until B.1.4.
-
-## B.1.4 Provider-Aware Model Selection
+## B.1.4 Advanced Provider-Aware Model Selection
 
 ### Status
 
@@ -2897,46 +2905,33 @@ Future-facing
 
 ### Intent
 
-Allow model selection to carry provider identity when Syx needs to expose models from multiple providers at the same time.
+Refine provider-aware model selection beyond the B.1.2 baseline when Syx needs richer multi-provider UX, per-request routing, or concurrent provider clients.
 
 ### Notes
 
-The current `/models` response returns model id strings and a default model id. That works when one configured provider owns the model list. It is not sufficient if the UI should show OpenAI and Anthropic models together.
+B.1.2 introduces the required baseline: registry-backed provider/model choices and a backend contract that carries provider id plus model id. B.1.4 is reserved for advanced behavior beyond that baseline.
 
 ### Requirements
 
-1. `/models` SHALL return provider-aware model metadata from the B.1.2 registry.
-2. The response SHALL include:
-   - providers
-   - provider labels
-   - model ids
-   - model labels
-   - default provider
-   - default model for each provider
-   - active provider selected by `LLM_PROVIDER`
-3. The frontend SHALL display providers distinctly from models.
-4. The frontend SHOULD use either:
-   - a provider dropdown plus a model dropdown scoped to that provider
-   - or a grouped model selector that visibly groups models by provider
-5. If provider choice affects helper-model defaults for the running server, the UI SHALL make that clear to the user.
-6. The chat request contract SHALL include enough information for the backend to validate the selected model against the intended provider.
-7. If Syx remains single-provider-per-server for B.1, the UI SHALL only allow the active provider and its models.
-8. Multi-provider-in-one-running-server behavior SHALL NOT be assumed unless a later requirement explicitly introduces provider routing per request.
+1. Syx MAY add richer provider metadata such as credential status, provider health, model capabilities, context limits, or research/tool support.
+2. Syx MAY support caching multiple provider clients concurrently, keyed by provider and role.
+3. Syx MAY add per-request provider routing for conversations that intentionally switch providers within one server process.
+4. Syx MAY add UI affordances for comparing providers, pinning provider/model defaults per project, or exposing helper-role defaults for advanced users.
+5. Any advanced behavior SHALL preserve the B.1.2 provider/model selection contract or explicitly migrate it with backward-compatible API handling.
 
 ### Future Work
 
-A later provider-aware selector may need:
+A later advanced provider-aware selector may need:
 
-- structured model entries such as `{ id, provider, label }`
-- provider-aware whitelist validation
 - provider-specific credential status in health checks
 - provider-specific client caching keyed by provider
 - clear behavior for helper models that are not selected by the UI
+- per-project persisted provider/model preferences
+- explicit model capability metadata
 
 ### Acceptance Criteria
 
-1. The frontend model selector is populated from the provider registry exposed by the backend.
-2. The UI no longer depends on a flat `.env` `AVAILABLE_MODELS` list.
-3. Provider identity is visible or otherwise unambiguous wherever model selection spans more than one provider.
-4. The backend rejects mismatched provider/model selections clearly.
+1. Advanced provider metadata is exposed without regressing the B.1.2 selection contract.
+2. Concurrent provider-client caching, if added, is keyed by provider and role.
+3. Per-request provider routing, if added, validates provider/model compatibility clearly.
 

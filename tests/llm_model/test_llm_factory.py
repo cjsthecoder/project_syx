@@ -23,6 +23,7 @@ import app.embedding
 import app.llm_model.factory as llm_factory
 import pytest
 from app.llm_model.base import LLMClient
+from app.llm_model.registry import LLMModelRegistryError
 
 
 class _FakeLLMProvider:
@@ -57,9 +58,9 @@ class _FakeSTProvider:
 @pytest.fixture
 def fake_llm(monkeypatch):
     monkeypatch.setattr(llm_factory, "OpenAILLMProvider", _FakeLLMProvider)
-    llm_factory.reset_llm_clients()
+    llm_factory.reset_llm_runtime_state()
     yield llm_factory
-    llm_factory.reset_llm_clients()
+    llm_factory.reset_llm_runtime_state()
 
 
 @pytest.fixture
@@ -89,13 +90,13 @@ def fake_embedding(monkeypatch):
 
 
 def test_llm_client_is_cached_singleton(fake_llm, settings_override):
-    settings_override(model_name="gpt-main")
+    settings_override(llm_provider="openai")
     c1 = fake_llm.get_llm_client()
     c2 = fake_llm.get_llm_client()
     assert c1 is c2
     assert isinstance(c1, LLMClient)
     assert isinstance(c1, _FakeLLMProvider)
-    assert c1.default_model == "gpt-main"
+    assert c1.default_model == "gpt-5.5"
 
 
 def test_llm_factory_public_return_types_are_provider_agnostic():
@@ -104,14 +105,14 @@ def test_llm_factory_public_return_types_are_provider_agnostic():
 
 
 def test_main_and_mini_clients_are_distinct(fake_llm, settings_override):
-    settings_override(model_name="gpt-main", llm_mini_model="gpt-mini")
+    settings_override(llm_provider="openai")
     main = fake_llm.get_llm_client()
     mini = fake_llm.get_llm_client_mini()
     assert main is not mini
     assert isinstance(main, LLMClient)
     assert isinstance(mini, LLMClient)
-    assert main.default_model == "gpt-main"
-    assert mini.default_model == "gpt-mini"
+    assert main.default_model == "gpt-5.5"
+    assert mini.default_model == "gpt-5-mini"
 
 
 def test_reset_llm_clients_forces_new_instance(fake_llm):
@@ -121,14 +122,20 @@ def test_reset_llm_clients_forces_new_instance(fake_llm):
     assert first is not second
 
 
-def test_unknown_provider_falls_back_to_openai(fake_llm, settings_override, caplog):
+def test_unknown_provider_fails_registry_preflight(fake_llm, settings_override):
     settings_override(llm_provider="anthropic")
-    client = fake_llm.get_llm_client()
-    assert isinstance(client, _FakeLLMProvider)
-    assert any(
-        "Unsupported LLM provider 'anthropic'; falling back to openai" in r.message
-        for r in caplog.records
-    )
+    with pytest.raises(LLMModelRegistryError, match="not defined"):
+        fake_llm.get_llm_client()
+
+
+def test_request_selection_resets_cached_clients(fake_llm, settings_override):
+    settings_override(llm_provider="openai")
+    first = fake_llm.get_llm_client()
+    selected = fake_llm.select_llm_model_for_request("openai/gpt-5-mini")
+    second = fake_llm.get_llm_client()
+    assert selected.main_model == "gpt-5-mini"
+    assert first is not second
+    assert second.default_model == "gpt-5-mini"
 
 
 def test_embedding_openai_requires_key(fake_embedding, settings_override):

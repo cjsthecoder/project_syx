@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from ..core.config import get_settings
 from ..llm_model.factory import get_llm_client_mini
+from ..llm_model.registry import get_active_llm_models
 from ..tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
 
@@ -542,14 +543,15 @@ def _write_tagger_success_debug(
         raw: The raw model response text.
     """
     try:
+        runtime_models = get_active_llm_models()
         if project_id:
             ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
             fname = f"{ts}_tagger.txt"
             body = (
                 f"# timestamp: {ts}\n"
                 f"# project_id: {project_id}\n"
-                f"# model: {settings.builder_model}\n"
-                f"# tagger_model: {settings.tagger_model}\n"
+                f"# model: {runtime_models.builder_model}\n"
+                f"# tagger_model: {runtime_models.tagger_model}\n"
                 f"# success: true\n"
                 "\n"
                 "====== TAGGER PROMPT (SYSTEM) ======\n"
@@ -584,15 +586,15 @@ def _write_tagger_failure_debug(
         error: The exception that caused the failure.
     """
     try:
-        settings = get_settings()
+        runtime_models = get_active_llm_models()
         if project_id:
             ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
             fname = f"{ts}_tagger.txt"
             body = (
                 f"# timestamp: {ts}\n"
                 f"# project_id: {project_id}\n"
-                f"# model: {settings.builder_model}\n"
-                f"# tagger_model: {settings.tagger_model}\n"
+                f"# model: {runtime_models.builder_model}\n"
+                f"# tagger_model: {runtime_models.tagger_model}\n"
                 f"# success: false\n"
                 f"# error: {str(error)}\n"
                 "\n"
@@ -642,16 +644,17 @@ def tag_pair(
     """
     try:
         settings = get_settings()
+        tagger_model = get_active_llm_models().tagger_model
         instr = get_instrumentation()
         invocation_id = instr.start_invocation(
             purpose="tagger",
-            model=settings.tagger_model,
+            model=tagger_model,
             meta={"project_id": project_id or ""},
         )
         t0 = time.perf_counter()
         usage: Dict[str, Any] = {
             "purpose": "tagger",
-            "model": settings.tagger_model,
+            "model": tagger_model,
             "prompt_tokens_reported": 0,
             "completion_tokens_reported": 0,
             "total_tokens_reported": 0,
@@ -660,7 +663,7 @@ def tag_pair(
         user_prompt = _build_tagger_prompt(user_text, assistant_text, previous_pair_text, settings)
 
         response = get_llm_client_mini().generate_response(
-            model=settings.tagger_model,
+            model=tagger_model,
             system_prompt=_SYS_PROMPT,
             user_prompt=user_prompt,
             max_output_tokens=int(settings.builder_max_tokens),

@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     llm_provider: str = Field(default="openai", description="LLM provider selector (openai)")
     model_name: str = Field(default="gpt-5.5", description="Primary chat model name")
     llm_mini_model: str = Field(default="gpt-5-mini", description="Default model for mini client")
+    llm_models_registry_path: str = Field(
+        default="",
+        description="Optional path to the app-owned LLM model registry JSON",
+    )
     model_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Model temperature")
     model_max_tokens: int = Field(default=128000, gt=0, description="Maximum tokens per response")
     llm_request_timeout_s: float = Field(
@@ -462,8 +466,10 @@ def get_model_config() -> dict:
         A dict with ``model_name``, ``temperature``, and ``max_tokens`` for the
         primary chat model.
     """
+    from ..llm_model.registry import get_active_llm_models
+
     return {
-        "model_name": settings.model_name,
+        "model_name": get_active_llm_models().main_model,
         "temperature": settings.model_temperature,
         "max_tokens": settings.model_max_tokens,
     }

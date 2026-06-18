@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional
 
 from ..llm_model.base import LLMResponse
 from ..llm_model.factory import get_llm_client
+from ..llm_model.registry import get_active_llm_models
 from ..tracking import get_instrumentation
 from ..utils.tokens import count_tokens
 from .config import get_settings, validate_openai_key
@@ -131,7 +132,8 @@ class LLMProvider:
         """
         invocation_id = ""
         invoke_start = time.perf_counter()
-        used_model = str(override_model or self.settings.model_name)
+        runtime_models = get_active_llm_models()
+        used_model = str(override_model or runtime_models.main_model)
 
         try:
             messages = _build_messages(
@@ -170,7 +172,7 @@ class LLMProvider:
 
             response = get_llm_client().generate_chat(
                 messages=messages,
-                model=override_model or self.settings.model_name,
+                model=override_model or runtime_models.main_model,
                 temperature=(
                     temperature_override
                     if temperature_override is not None
@@ -248,7 +250,7 @@ class LLMProvider:
             ``api_key_configured`` boolean.
         """
         return {
-            "model_name": self.settings.model_name,
+            "model_name": get_active_llm_models().main_model,
             "temperature": self.settings.model_temperature,
             "max_tokens": self.settings.model_max_tokens,
             "api_key_configured": validate_openai_key(),
@@ -265,7 +267,7 @@ class LLMProvider:
         try:
             test = get_llm_client().generate_chat(
                 messages=[{"role": "user", "content": "Hello"}],
-                model=self.settings.model_name,
+                model=get_active_llm_models().main_model,
                 temperature=1.0,
                 max_completion_tokens=32,
             )
@@ -431,10 +433,10 @@ def _call_text_client(
     research: bool,
 ) -> LLMResponse:
     """Dispatch to the standard or research-capable provider method."""
-    settings = get_settings()
+    runtime_models = get_active_llm_models()
     if research:
         return get_llm_client().generate_response_research(
-            model=override_model or settings.model_name,
+            model=override_model or runtime_models.main_model,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=temperature_override,
@@ -442,7 +444,7 @@ def _call_text_client(
         )
 
     return get_llm_client().generate_response(
-        model=override_model or settings.model_name,
+        model=override_model or runtime_models.main_model,
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         temperature=temperature_override,
@@ -466,10 +468,9 @@ def _generate_text_response(
     research: bool = False,
 ) -> LLMResponse:
     """Generate a text response through the shared LLM factory."""
-    settings = get_settings()
     invocation_id = ""
     invoke_start = time.perf_counter()
-    used_model = str(override_model or settings.model_name)
+    used_model = str(override_model or get_active_llm_models().main_model)
 
     try:
         invocation_id = _start_text_invocation(

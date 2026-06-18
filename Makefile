@@ -287,13 +287,7 @@ setup-env:
 		echo "# OpenAI API key used for chat and embeddings"; \
 		echo ""; \
 		echo "LLM_PROVIDER=openai"; \
-		echo "# LLM provider selector"; \
-		echo ""; \
-		echo "MODEL_NAME=gpt-5.5"; \
-		echo "# Main runtime chat model selected by llm factory"; \
-		echo ""; \
-		echo "LLM_MINI_MODEL=gpt-5-mini"; \
-		echo "# Mini runtime model selected by llm factory"; \
+		echo "# LLM provider selector; model defaults are resolved from backend/app/config/llm_models.json"; \
 		echo ""; \
 		echo "MODEL_TEMPERATURE=1.0"; \
 		echo "# Sampling temperature (0.0–2.0)"; \
@@ -306,9 +300,6 @@ setup-env:
 		echo ""; \
 		echo "LLM_MINI_REQUEST_TIMEOUT_S=30.0"; \
 		echo "# Timeout in seconds for mini/helper LLM HTTP requests"; \
-		echo ""; \
-		echo "AVAILABLE_MODELS=[\"gpt-5.5\",\"gpt-5.4\",\"gpt-5.4-mini\",\"gpt-5.4-nano\",\"gpt-5.2\",\"gpt-5.1\",\"gpt-5\",\"gpt-5-mini\",\"gpt-5-nano\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4o-mini\"]"; \
-		echo "# Whitelisted chat models for the UI selector"; \
 		echo ""; \
 		echo "# === Server + CORS ==="; \
 		echo "HOST=0.0.0.0"; \
@@ -403,12 +394,6 @@ setup-env:
 		echo "# Number of prompt/response pairs kept in working memory"; \
 		echo ""; \
 		echo "# === Query Builder + Reranking ==="; \
-		echo "BUILDER_MODEL=gpt-5-mini"; \
-		echo "# LLM for query builder/router"; \
-		echo ""; \
-		echo "TAGGER_MODEL=gpt-5-mini"; \
-		echo "# LLM used for tagging"; \
-		echo ""; \
 		echo "BUILDER_MAX_TOKENS=1024"; \
 		echo "# Max tokens for builder output"; \
 		echo ""; \
@@ -515,7 +500,6 @@ setup-env:
 		echo "AUTO_ACCEPT_DREAMS=false"; \
 		echo "# Automatically persist all pending dream.json items during sleep"; \
 		echo ""; \
-		echo "DREAM_MODEL=gpt-5.5"; \
 		echo "DREAM_TEMPERATURE=1.0"; \
 		echo "DREAM_MAX_TOKENS=32000"; \
 		echo "DREAM_ENABLE_REMOTE_RESEARCH=true"; \

@@ -46,7 +46,7 @@ When `ENABLE_DREAM=false`, the Dream orchestrator returns without running any Dr
 
 Related settings:
 
-- `DREAM_MODEL`
+- Dream model defaults from `backend/app/config/llm_models.json`
 - `DREAM_TEMPERATURE`
 - `DREAM_MAX_TOKENS`
 - `DREAM_ENABLE_REMOTE_RESEARCH`

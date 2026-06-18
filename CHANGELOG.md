@@ -6,6 +6,24 @@ This project uses `CHANGELOG.md` for release-by-release summaries. Longer
 narrative release notes can be added separately later if a release needs more
 context than this format should carry.
 
+## 0.1.1 - Multi-Provider Release Prep - 2026-06-18
+
+### Added
+
+- Provider-agnostic LLM factory boundary with app code depending on shared LLM
+  interfaces instead of concrete provider implementations.
+- App-owned provider/model registry for coherent OpenAI and Anthropic runtime
+  model sets across chat, helper, builder, tagger, and Dream roles.
+- Anthropic provider support behind the existing LLM factory and runtime
+  routing boundary.
+
+### Changed
+
+- Local setup and model-selection documentation now favor registry-driven
+  provider defaults over hard-coded model inventory in environment files.
+- RAG route score thresholds are tuned to keep retrieval useful while filtering
+  weaker candidates.
+
 ## 0.1.0 - Initial Public Release - 2026-06-12
 
 ### Added

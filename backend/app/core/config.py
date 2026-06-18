@@ -47,11 +47,16 @@ class Settings(BaseSettings):
         "extra": "ignore",
     }
 
-    # OpenAI Configuration
+    # LLM provider credentials and runtime configuration
     openai_api_key: str = Field(default="", description="OpenAI API key")
-    llm_provider: str = Field(default="openai", description="LLM provider selector (openai)")
-    model_name: str = Field(default="gpt-5.5", description="Primary chat model name")
-    llm_mini_model: str = Field(default="gpt-5-mini", description="Default model for mini client")
+    anthropic_api_key: str = Field(default="", description="Anthropic API key")
+    llm_provider: str = Field(
+        default="openai", description="LLM provider selector (openai|anthropic)"
+    )
+    llm_models_registry_path: str = Field(
+        default="",
+        description="Optional path to the app-owned LLM model registry JSON",
+    )
     model_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="Model temperature")
     model_max_tokens: int = Field(default=128000, gt=0, description="Maximum tokens per response")
     llm_request_timeout_s: float = Field(
@@ -124,25 +129,6 @@ class Settings(BaseSettings):
         description="Worker count for parallel LTM embedding during rebuild (RAG_EMBED_REBUILD_WORKERS)",
     )
 
-    # Model list for selector
-    available_models: list[str] = Field(
-        default=[
-            "gpt-5.5",
-            "gpt-5.4",
-            "gpt-5.4-mini",
-            "gpt-5.4-nano",
-            "gpt-5.2",
-            "gpt-5.1",
-            "gpt-5",
-            "gpt-5-mini",
-            "gpt-5-nano",
-            "gpt-4.1",
-            "gpt-4.1-mini",
-            "gpt-4o-mini",
-        ],
-        description="Whitelisted chat models",
-    )
-
     # RAG-on-chat controls
     rag_on_chat: bool = Field(default=True, description="Enable retrieval injection during chat")
     # Retrieval-stage limits are controlled by BASE_TOP_K + RETRIEVAL_MULTIPLIER (not route config).
@@ -171,10 +157,6 @@ class Settings(BaseSettings):
     )
 
     # Builder and reranking
-    builder_model: str = Field(
-        default="gpt-5-mini", description="LLM used for query builder/router"
-    )
-    tagger_model: str = Field(default="gpt-5-mini", description="LLM used for tagging")
     builder_max_tokens: int = Field(default=1024, gt=0, description="Max tokens for builder output")
     tagger_current_response_middle_cut_percent: int = Field(
         default=50,
@@ -306,7 +288,6 @@ class Settings(BaseSettings):
         description="Automatically persist all pending dream.json items during the sleep cycle",
     )
     # Dream agent configuration
-    dream_model: str = Field(default="gpt-5.5", description="Dream LLM model")
     dream_temperature: float = Field(
         default=1.0, ge=0.0, le=2.0, description="Dream LLM temperature"
     )
@@ -455,6 +436,54 @@ def validate_openai_key() -> bool:
     return bool(settings.openai_api_key and settings.openai_api_key != "your-openai-api-key-here")
 
 
+def validate_anthropic_key() -> bool:
+    """Validate that Anthropic API key is set and not empty.
+
+    Returns:
+        True if a non-empty key that is not the documented placeholder is
+        configured; False otherwise.
+    """
+    return bool(
+        settings.anthropic_api_key and settings.anthropic_api_key != "your-anthropic-api-key-here"
+    )
+
+
+def get_active_llm_provider_id() -> str:
+    """Return the configured LLM provider id in normalized form."""
+    return str(settings.llm_provider or "openai").strip().lower()
+
+
+def validate_active_llm_key() -> bool:
+    """Validate the API key for the configured LLM provider.
+
+    Returns:
+        True when the active provider's credential is present and not a
+        documented placeholder.
+    """
+    provider = get_active_llm_provider_id()
+    if provider == "anthropic":
+        return validate_anthropic_key()
+    return validate_openai_key()
+
+
+def active_llm_key_status() -> dict[str, str]:
+    """Return provider-aware credential status metadata for health/preflight."""
+    provider = get_active_llm_provider_id()
+    if provider == "anthropic":
+        return {
+            "provider": provider,
+            "setting": "ANTHROPIC_API_KEY",
+            "dependency": "anthropic",
+            "status": "configured" if validate_anthropic_key() else "missing",
+        }
+    return {
+        "provider": provider,
+        "setting": "OPENAI_API_KEY",
+        "dependency": "openai",
+        "status": "configured" if validate_openai_key() else "missing",
+    }
+
+
 def get_model_config() -> dict:
     """Get model configuration for main runtime LLM client.
 
@@ -462,8 +491,10 @@ def get_model_config() -> dict:
         A dict with ``model_name``, ``temperature``, and ``max_tokens`` for the
         primary chat model.
     """
+    from ..llm_model.registry import get_active_llm_models
+
     return {
-        "model_name": settings.model_name,
+        "model_name": get_active_llm_models().main_model,
         "temperature": settings.model_temperature,
         "max_tokens": settings.model_max_tokens,
     }

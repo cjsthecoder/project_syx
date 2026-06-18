@@ -1,0 +1,46 @@
+{
+  "providers": {
+    "openai": {
+      "label": "OpenAI",
+      "factory_provider": "openai",
+      "default_model": "gpt-5.5",
+      "models": [
+        { "id": "gpt-5.5", "label": "GPT-5.5" },
+        { "id": "gpt-5.4", "label": "GPT-5.4" },
+        { "id": "gpt-5.4-mini", "label": "GPT-5.4 Mini" },
+        { "id": "gpt-5.4-nano", "label": "GPT-5.4 Nano" },
+        { "id": "gpt-5.2", "label": "GPT-5.2" },
+        { "id": "gpt-5.1", "label": "GPT-5.1" },
+        { "id": "gpt-5", "label": "GPT-5" },
+        { "id": "gpt-5-mini", "label": "GPT-5 Mini" },
+        { "id": "gpt-5-nano", "label": "GPT-5 Nano" },
+        { "id": "gpt-4.1", "label": "GPT-4.1" },
+        { "id": "gpt-4.1-mini", "label": "GPT-4.1 Mini" },
+        { "id": "gpt-4o-mini", "label": "GPT-4o Mini" }
+      ],
+      "roles": {
+        "mini": "gpt-5-mini",
+        "builder": "gpt-5-mini",
+        "tagger": "gpt-5-mini",
+        "dream": "gpt-5.5"
+      }
+    },
+    "anthropic": {
+      "label": "Anthropic",
+      "factory_provider": "anthropic",
+      "default_model": "claude-sonnet-4-6",
+      "models": [
+        { "id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6" },
+        { "id": "claude-haiku-4-5-20251001", "label": "Claude Haiku 4.5" },
+        { "id": "claude-fable-5", "label": "Claude Fable 5" },
+        { "id": "claude-opus-4-8", "label": "Claude Opus 4.8" }
+      ],
+      "roles": {
+        "mini": "claude-haiku-4-5-20251001",
+        "builder": "claude-haiku-4-5-20251001",
+        "tagger": "claude-haiku-4-5-20251001",
+        "dream": "claude-sonnet-4-6"
+      }
+    }
+  }
+}

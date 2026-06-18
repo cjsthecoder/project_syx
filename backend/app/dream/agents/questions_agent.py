@@ -19,6 +19,7 @@ from typing import Any, Dict, List
 
 from ...core.config import get_settings
 from ...core.llm_service import generate_text_response
+from ...llm_model.registry import get_active_llm_models
 from ..debug import (
     safe_dream_purpose,
     write_dream_prompt_to_execute,
@@ -136,7 +137,7 @@ def _run_open_question_pipeline(
     # Call Dream LLM through the shared core LLM runtime.
     purpose = "questions_agent"
     max_tokens = int(settings.dream_max_tokens)
-    model = str(settings.dream_model)
+    model = get_active_llm_models().dream_model
     write_dream_prompt_to_execute(
         project_id=project_id,
         prompt=prompt,

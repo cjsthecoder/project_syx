@@ -14,85 +14,122 @@ import logging
 from typing import Optional
 
 from ..core.config import get_settings
+from .base import LLMClient
+from .providers.anthropic_provider import AnthropicLLMProvider
 from .providers.openai_provider import OpenAILLMProvider
+from .registry import (
+    LLMModelRegistryError,
+    RuntimeLLMModels,
+    get_active_llm_models,
+    reset_llm_model_registry_cache,
+    set_active_llm_model_selection,
+)
 
 logger = logging.getLogger(__name__)
 
-_MAIN_CLIENT: Optional[OpenAILLMProvider] = None
-_MINI_CLIENT: Optional[OpenAILLMProvider] = None
+_MAIN_CLIENT: Optional[LLMClient] = None
+_MINI_CLIENT: Optional[LLMClient] = None
 
 
-def _new_provider(*, default_model: str, timeout_s: float) -> OpenAILLMProvider:
-    """Build an OpenAI LLM provider for the given default model and timeout.
+def _provider_client(*, provider: str, default_model: str, timeout_s: float) -> LLMClient:
+    """Construct a concrete provider client for a supported factory provider key.
 
-    Only ``openai`` is currently supported; any other configured
-    ``LLM_PROVIDER`` value is logged and falls back to OpenAI.
+    Provider SDK imports remain behind this factory/provider boundary.
+    """
+    settings = get_settings()
+    if provider == "openai":
+        return OpenAILLMProvider(
+            api_key=settings.openai_api_key,
+            default_model=default_model,
+            timeout_s=float(timeout_s),
+        )
+    if provider == "anthropic":
+        return AnthropicLLMProvider(
+            api_key=settings.anthropic_api_key,
+            default_model=default_model,
+            timeout_s=float(timeout_s),
+        )
+    raise LLMModelRegistryError(f"Unsupported LLM factory provider '{provider}'")
+
+
+def _new_provider(*, models: RuntimeLLMModels, default_model: str, timeout_s: float) -> LLMClient:
+    """Build a provider-agnostic LLM client for the resolved runtime model set.
 
     Args:
-        default_model: Model used when a request does not specify one.
+        models: Provider-scoped runtime model set resolved from the registry.
+        default_model: Role-specific model used when a request does not specify one.
         timeout_s: Per-request timeout in seconds.
 
     Returns:
-        A configured ``OpenAILLMProvider`` instance.
+        A configured provider client satisfying ``LLMClient``.
     """
-    settings = get_settings()
-    provider = str(getattr(settings, "llm_provider", "openai") or "openai").strip().lower()
-    if provider != "openai":
-        logger.warning("Unsupported LLM provider '%s'; falling back to openai", provider)
     logger.info(
-        "Creating LLM provider instance provider=%s default_model=%s timeout_s=%.2f",
-        "openai",
+        "Creating LLM provider instance provider=%s factory_provider=%s default_model=%s timeout_s=%.2f",
+        models.provider_id,
+        models.factory_provider,
         str(default_model),
         float(timeout_s),
     )
-    return OpenAILLMProvider(
-        api_key=settings.openai_api_key, default_model=default_model, timeout_s=float(timeout_s)
+    return _provider_client(
+        provider=models.factory_provider,
+        default_model=default_model,
+        timeout_s=float(timeout_s),
     )
 
 
-def get_llm_client() -> OpenAILLMProvider:
+def get_llm_client() -> LLMClient:
     """Return the cached main LLM client, creating it on first use.
 
-    Uses ``MODEL_NAME`` as the default model and ``LLM_REQUEST_TIMEOUT_S`` for
-    the request timeout.
+    Uses the registry-resolved main chat model as the default model and
+    ``LLM_REQUEST_TIMEOUT_S`` for the request timeout.
 
     Returns:
-        The process-wide main ``OpenAILLMProvider`` instance.
+        The process-wide main provider-agnostic ``LLMClient`` instance.
     """
     global _MAIN_CLIENT
     if _MAIN_CLIENT is None:
         settings = get_settings()
-        default_model = str(settings.model_name)
+        models = get_active_llm_models()
+        default_model = models.main_model
         timeout_s = float(getattr(settings, "llm_request_timeout_s", 120.0) or 120.0)
-        _MAIN_CLIENT = _new_provider(default_model=default_model, timeout_s=timeout_s)
+        _MAIN_CLIENT = _new_provider(
+            models=models,
+            default_model=default_model,
+            timeout_s=timeout_s,
+        )
         logger.info(
             "Initialized main LLM client provider=%s model=%s timeout_s=%.2f",
-            str(getattr(settings, "llm_provider", "openai") or "openai"),
+            models.provider_id,
             default_model,
             timeout_s,
         )
     return _MAIN_CLIENT
 
 
-def get_llm_client_mini() -> OpenAILLMProvider:
+def get_llm_client_mini() -> LLMClient:
     """Return the cached mini LLM client, creating it on first use.
 
     The mini client targets the smaller/faster model used for auxiliary tasks
-    (e.g., tagging, builder). Defaults to ``LLM_MINI_MODEL`` (falling back to
-    ``BUILDER_MODEL``) with the ``LLM_MINI_REQUEST_TIMEOUT_S`` timeout.
+    (e.g., tagging, builder). Defaults to the registry-resolved mini/helper
+    role with the ``LLM_MINI_REQUEST_TIMEOUT_S`` timeout.
 
     Returns:
-        The process-wide mini ``OpenAILLMProvider`` instance.
+        The process-wide mini provider-agnostic ``LLMClient`` instance.
     """
     global _MINI_CLIENT
     if _MINI_CLIENT is None:
         settings = get_settings()
-        default_model = str(getattr(settings, "llm_mini_model", settings.builder_model))
+        models = get_active_llm_models()
+        default_model = models.mini_model
         timeout_s = float(getattr(settings, "llm_mini_request_timeout_s", 30.0) or 30.0)
-        _MINI_CLIENT = _new_provider(default_model=default_model, timeout_s=timeout_s)
+        _MINI_CLIENT = _new_provider(
+            models=models,
+            default_model=default_model,
+            timeout_s=timeout_s,
+        )
         logger.info(
             "Initialized mini LLM client provider=%s model=%s timeout_s=%.2f",
-            str(getattr(settings, "llm_provider", "openai") or "openai"),
+            models.provider_id,
             default_model,
             timeout_s,
         )
@@ -107,3 +144,28 @@ def reset_llm_clients() -> None:
     global _MAIN_CLIENT, _MINI_CLIENT
     _MAIN_CLIENT = None
     _MINI_CLIENT = None
+
+
+def reset_llm_runtime_state() -> None:
+    """Clear cached LLM clients and registry-resolved active model selection."""
+    reset_llm_clients()
+    reset_llm_model_registry_cache()
+
+
+def select_llm_model_for_request(selection: Optional[str]) -> RuntimeLLMModels:
+    """Resolve and activate the provider/model selection for a request.
+
+    Args:
+        selection: Optional provider-qualified model string. ``None`` resolves
+            the startup/default provider selection from the registry.
+
+    Returns:
+        The active provider-scoped runtime model set.
+
+    Raises:
+        LLMModelRegistryError: If the selection or registry is invalid.
+    """
+    models, changed = set_active_llm_model_selection(selection)
+    if changed:
+        reset_llm_clients()
+    return models

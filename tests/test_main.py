@@ -132,8 +132,8 @@ def test_redoc():
 
 
 @patch("app.api.chat.get_llm_client")
-@patch("app.api.chat.validate_openai_key", return_value=True)
-def test_chat_stream_contract(_mock_validate_openai_key, mock_get_llm_client):
+@patch("app.api.chat.validate_active_llm_key", return_value=True)
+def test_chat_stream_contract(_mock_validate_active_llm_key, mock_get_llm_client):
     """Streaming endpoint returns plain text tokens and completion marker."""
 
     class _FakeClient:
@@ -158,9 +158,11 @@ def test_build_run_config_snapshot_shape():
     cfg = _build_run_config(_fake_settings(), _fake_route_policy(), "abc123", True)
     snap = cfg["config_snapshot"]
     assert snap["models_configured"] == {
-        "main_model": "main-model",
-        "builder_model": "builder-model",
-        "tagger_model": "tagger-model",
+        "provider": "openai",
+        "main_model": "gpt-5.5",
+        "builder_model": "gpt-5-mini",
+        "tagger_model": "gpt-5-mini",
+        "dream_model": "gpt-5.5",
     }
     assert snap["retrieval_static"]["base_top_k"] == 8
     assert snap["retrieval_static"]["embedding_model"] == "embed-model"
@@ -746,23 +748,32 @@ def test_serve_react_app_json_when_not_built(monkeypatch):
 
 def test_health_check_unhealthy_on_exception(monkeypatch):
     monkeypatch.setattr(
-        main, "validate_openai_key", lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+        main, "active_llm_key_status", lambda: (_ for _ in ()).throw(RuntimeError("boom"))
     )
     result = asyncio.run(main.health_check())
     assert result.status == "unhealthy"
     assert "error" in result.dependencies
 
 
-def test_health_check_degraded_when_openai_key_missing(monkeypatch):
+def test_health_check_degraded_when_provider_key_missing(monkeypatch):
     from app.core import llm_service
 
-    monkeypatch.setattr(main, "validate_openai_key", lambda: False)
+    monkeypatch.setattr(
+        main,
+        "active_llm_key_status",
+        lambda: {
+            "provider": "anthropic",
+            "setting": "ANTHROPIC_API_KEY",
+            "dependency": "anthropic",
+            "status": "missing",
+        },
+    )
     monkeypatch.setattr(llm_service, "get_llm_health", lambda: {"status": "unhealthy"})
 
     result = asyncio.run(main.health_check())
 
     assert result.status == "degraded"
-    assert result.dependencies == {"openai": "missing", "llm": "unhealthy"}
+    assert result.dependencies == {"anthropic": "missing", "llm": "unhealthy"}
 
 
 # --- LoggingRedirect ----------------------------------------------------------
@@ -864,7 +875,17 @@ def test_flush_and_close_log_handlers_logs_flush_and_close_failures(_isolated_ro
 def _patch_run_server(monkeypatch, *, log_level, api_key_ok):
     import uvicorn
 
-    monkeypatch.setattr(main, "validate_openai_key", lambda: api_key_ok)
+    monkeypatch.setattr(main, "validate_active_llm_key", lambda: api_key_ok)
+    monkeypatch.setattr(
+        main,
+        "active_llm_key_status",
+        lambda: {
+            "provider": "openai",
+            "setting": "OPENAI_API_KEY",
+            "dependency": "openai",
+            "status": "configured" if api_key_ok else "missing",
+        },
+    )
     monkeypatch.setattr(main, "settings", SimpleNamespace(host="127.0.0.1", port=8123))
     monkeypatch.setattr(main, "get_settings", lambda: SimpleNamespace(log_level=log_level))
     flushed = []

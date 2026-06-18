@@ -9,7 +9,7 @@ root for full license information.
 Unit tests for app.dream.research.
 
 Token helpers are exercised directly; fetch_remote_research fakes the LLM
-boundary (generate_text_response) so neither the network nor a model is hit.
+boundary (generate_research_response) so neither the network nor a model is hit.
 """
 
 from types import SimpleNamespace
@@ -34,7 +34,7 @@ def test_fetch_remote_research_returns_text(monkeypatch):
     monkeypatch.setattr(dream_research, "get_settings", _settings)
     monkeypatch.setattr(
         dream_research,
-        "generate_text_response",
+        "generate_research_response",
         lambda *a, **k: SimpleNamespace(text="research blob"),
     )
     assert dream_research.fetch_remote_research("topic") == "research blob"
@@ -46,6 +46,6 @@ def test_fetch_remote_research_returns_empty_on_failure(monkeypatch, caplog):
     def _boom(*a, **k):
         raise RuntimeError("tool down")
 
-    monkeypatch.setattr(dream_research, "generate_text_response", _boom)
+    monkeypatch.setattr(dream_research, "generate_research_response", _boom)
     assert dream_research.fetch_remote_research("topic") == ""
     assert any("Remote research failed" in r.message for r in caplog.records)

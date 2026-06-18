@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
 from ..llm_model.factory import get_llm_client_mini
+from ..llm_model.registry import get_active_llm_models
 from ..tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
 from .config import get_settings
@@ -397,15 +398,16 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
     raw = ""
     data: Optional[Dict[str, Any]] = None
     instr = get_instrumentation()
+    builder_model = get_active_llm_models().builder_model
     invocation_id = instr.start_invocation(
         purpose="router",
-        model=settings.builder_model,
+        model=builder_model,
         meta={"project_id": project_id},
     )
     t0 = time.perf_counter()
     usage: Dict[str, Any] = {
         "purpose": "router",
-        "model": settings.builder_model,
+        "model": builder_model,
         "prompt_tokens_reported": 0,
         "completion_tokens_reported": 0,
         "total_tokens_reported": 0,
@@ -422,7 +424,7 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
             (user_text[:cap] + ("…" if len(user_text) > cap else "")),
         )
         response = get_llm_client_mini().generate_response(
-            model=settings.builder_model,
+            model=builder_model,
             system_prompt=_SYS_PROMPT,
             user_prompt=user,
             max_output_tokens=int(settings.builder_max_tokens),
@@ -449,7 +451,7 @@ def build_query(project_id: str, history_summary: str, user_text: str) -> Option
             user_prompt=user,
             raw_response=raw,
             data=data,
-            model=settings.builder_model,
+            model=builder_model,
         )
         data2 = _filter_route_only(data)
         if settings.builder_cache:

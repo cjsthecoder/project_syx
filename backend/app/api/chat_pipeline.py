@@ -24,6 +24,8 @@ from ..core.memory import get_memory_manager
 from ..core.personality import load_project_personality, load_project_system_prompt
 from ..core.query_builder import build_query, format_contextual_turn
 from ..core.route_policy import RoutePolicy, get_route_policy
+from ..llm_model.factory import select_llm_model_for_request
+from ..llm_model.registry import LLMModelRegistryError, RuntimeLLMModels
 from ..rag.manager import merge_daily_and_main
 from ..tracking import get_instrumentation
 from ..utils.debug_utils import write_debug_file
@@ -582,21 +584,23 @@ class ChatPipeline:
             logger.warning("chat.pipeline apply_rag_guidance failed detail=%s", exc)
             return base_system_prompt
 
-    def enforce_model_whitelist(self, requested_model: Optional[str]) -> None:
-        """Validate a requested model against the configured whitelist.
+    def enforce_model_whitelist(self, requested_model: Optional[str]) -> RuntimeLLMModels:
+        """Validate and activate a provider-qualified model selection.
 
         Args:
-            requested_model: Model id from the request; ``None`` uses the
-                default and is always allowed.
+            requested_model: Provider-qualified model selection from the request;
+                ``None`` uses the startup provider's registry default.
+
+        Returns:
+            The activated provider-scoped runtime model set.
 
         Raises:
-            HTTPException: 400 when the requested model is not in
-                ``settings.available_models``.
+            HTTPException: 400 when the requested provider/model is invalid.
         """
-        if not requested_model:
-            return
-        if requested_model not in self.settings.available_models:
-            raise HTTPException(status_code=400, detail={"error": "Model not allowed"})
+        try:
+            return select_llm_model_for_request(requested_model)
+        except LLMModelRegistryError as exc:
+            raise HTTPException(status_code=400, detail={"error": str(exc)}) from exc
 
     def build_llm_messages(
         self,

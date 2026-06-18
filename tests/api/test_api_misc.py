@@ -58,13 +58,14 @@ def models_client():
     return TestClient(app)
 
 
-def test_models_returns_whitelist(models_client):
+def test_models_returns_provider_qualified_registry_values(models_client):
     resp = models_client.get("/models")
     assert resp.status_code == 200
     body = resp.json()
     assert isinstance(body["models"], list)
-    assert isinstance(body["default"], str)
+    assert body["default"] == "openai/gpt-5.5"
     assert body["default"] in body["models"]
+    assert all("/" in model for model in body["models"])
 
 
 # ---------------------------------------------------------------------------

@@ -14,10 +14,13 @@ Covers field validators, derived-config helpers, and model/key resolution.
 import pytest
 from app.core.config import (
     Settings,
+    active_llm_key_status,
     compute_per_source_k,
     get_active_embedding_model,
     get_model_config,
     get_response_pruning_stage_config,
+    validate_active_llm_key,
+    validate_anthropic_key,
     validate_openai_key,
 )
 from pydantic import ValidationError
@@ -122,10 +125,27 @@ def test_validate_openai_key(settings_override):
     assert validate_openai_key() is True
 
 
+def test_validate_anthropic_key(settings_override):
+    settings_override(anthropic_api_key="")
+    assert validate_anthropic_key() is False
+    settings_override(anthropic_api_key="your-anthropic-api-key-here")
+    assert validate_anthropic_key() is False
+    settings_override(anthropic_api_key="sk-ant-real-looking-key")
+    assert validate_anthropic_key() is True
+
+
+def test_validate_active_llm_key_uses_active_provider(settings_override):
+    settings_override(llm_provider="anthropic", anthropic_api_key="sk-ant")
+    assert validate_active_llm_key() is True
+    status = active_llm_key_status()
+    assert status["dependency"] == "anthropic"
+    assert status["setting"] == "ANTHROPIC_API_KEY"
+
+
 def test_get_model_config_shape(settings_override):
-    settings_override(model_name="gpt-x", model_temperature=0.5, model_max_tokens=1234)
+    settings_override(llm_provider="openai", model_temperature=0.5, model_max_tokens=1234)
     cfg = get_model_config()
-    assert cfg == {"model_name": "gpt-x", "temperature": 0.5, "max_tokens": 1234}
+    assert cfg == {"model_name": "gpt-5.5", "temperature": 0.5, "max_tokens": 1234}
 
 
 def test_get_response_pruning_stage_config_keys(settings_override):

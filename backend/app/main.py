@@ -36,7 +36,7 @@ from .api import llm_models, projects, sleep
 from .api.sleep import start_sleep_cycle_async
 
 # Import our modules
-from .core.config import get_settings, validate_openai_key
+from .core.config import active_llm_key_status, get_settings, validate_active_llm_key
 from .core.database import get_session, init_db
 from .core.db_models import Project
 from .core.models import HealthResponse
@@ -45,6 +45,7 @@ from .core.route_policy import load_and_validate_route_policy
 from .core.state import clear_stale_lock, init_from_disk, is_sleeping, release_lock
 from .embedding.factory import get_embedding_client
 from .llm_model.factory import get_llm_client, get_llm_client_mini
+from .llm_model.registry import LLMModelRegistryError
 from .rag.manager import rebuild_faiss_index
 from .tracking import get_instrumentation, init_instrumentation
 from .utils.logging import get_logger, setup_logging
@@ -115,6 +116,9 @@ def _build_run_config(settings, route_policy, git_commit: str, git_dirty: bool) 
         startup configuration.
     """
     s = settings
+    from .llm_model.registry import get_active_llm_models
+
+    runtime_models = get_active_llm_models()
     route_policy_snapshot = {}
     for route_name, route_pol in route_policy.items():
         route_policy_snapshot[str(route_name)] = {
@@ -129,9 +133,11 @@ def _build_run_config(settings, route_policy, git_commit: str, git_dirty: bool) 
     return {
         "config_snapshot": {
             "models_configured": {
-                "main_model": str(s.model_name),
-                "builder_model": str(s.builder_model),
-                "tagger_model": str(s.tagger_model),
+                "provider": runtime_models.provider_id,
+                "main_model": runtime_models.main_model,
+                "builder_model": runtime_models.builder_model,
+                "tagger_model": runtime_models.tagger_model,
+                "dream_model": runtime_models.dream_model,
             },
             "prompt_budgeting": {
                 "model_context_window_tokens": None,
@@ -219,6 +225,9 @@ def _init_factory_clients() -> None:
     try:
         get_llm_client()
         get_llm_client_mini()
+    except LLMModelRegistryError as exc:
+        logger.error("[INIT] LLM model registry preflight failed: %s", exc, exc_info=True)
+        raise
     except Exception as exc:
         logger.warning("[INIT] LLM factory startup initialization failed: %s", exc, exc_info=True)
     try:
@@ -545,15 +554,18 @@ async def health_check():
         check itself raises.
     """
     try:
-        # Check OpenAI API key
-        api_key_status = "configured" if validate_openai_key() else "missing"
+        key_status = active_llm_key_status()
+        api_key_status = key_status["status"]
 
         # Check LLM health
         from .core.llm_service import get_llm_health
 
         llm_health = get_llm_health()
 
-        dependencies = {"openai": api_key_status, "llm": llm_health["status"]}
+        dependencies = {
+            key_status["dependency"]: api_key_status,
+            "llm": llm_health["status"],
+        }
 
         return HealthResponse(
             status="healthy" if api_key_status == "configured" else "degraded",
@@ -677,8 +689,14 @@ def run_server() -> None:
     import uvicorn
 
     # Validate configuration
-    if not validate_openai_key():
-        logger.warning("OpenAI API key not configured. Set OPENAI_API_KEY environment variable.")
+    if not validate_active_llm_key():
+        key_status = active_llm_key_status()
+        logger.warning(
+            "%s not configured for LLM_PROVIDER=%s. Set %s environment variable.",
+            key_status["setting"],
+            key_status["provider"],
+            key_status["setting"],
+        )
         logger.info("You can still run the server, but chat functionality will not work.")
 
     # Get configuration from settings

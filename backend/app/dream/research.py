@@ -14,7 +14,8 @@ research fetch used to enrich Dream reasoning.
 import logging
 
 from ..core.config import get_settings
-from ..core.llm_service import generate_text_response
+from ..core.llm_service import generate_research_response
+from ..llm_model.registry import get_active_llm_models
 from ..utils.tokens import count_tokens as _count_tokens
 from ..utils.tokens import trim_to_tokens as _trim_to_tokens
 
@@ -32,7 +33,7 @@ def trim_to_tokens(text: str, max_tokens: int) -> str:
 
 
 def fetch_remote_research(query: str) -> str:
-    """Fetch remote research via the OpenAI web_search tool using the Responses API.
+    """Fetch remote research through the provider-agnostic LLM boundary.
 
     Best-effort: LLM/tool failures are logged and return an empty string rather
     than raising.
@@ -45,12 +46,12 @@ def fetch_remote_research(query: str) -> str:
         tokens), or an empty string on failure.
     """
     settings = get_settings()
+    dream_model = get_active_llm_models().dream_model
     try:
-        response = generate_text_response(
+        response = generate_research_response(
             f"Perform web research to gather concise factual context for: {query}",
-            override_model=settings.dream_model,
+            override_model=dream_model,
             system_prompt=None,
-            tools=[{"type": "web_search"}],
             temperature_override=float(settings.dream_temperature),
             max_output_tokens=int(settings.dream_max_tokens),
             purpose="dream:remote_research",

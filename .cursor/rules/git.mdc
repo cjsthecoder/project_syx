@@ -1,0 +1,31 @@
+---
+description: Git branching, commit, push, and PR workflow for Syx
+alwaysApply: true
+---
+
+# Git Workflow
+
+- Never add, commit, push, merge, rebase, or delete branches unless the user explicitly asks.
+- Before committing, run `make ci` and verify all checks pass. If `make ci` cannot run, tell the user exactly what failed or was unavailable.
+- Do not push directly to `main`; it is protected and changes should go through pull requests.
+
+## Branching
+
+- For major delta work, use one long-lived feature branch per major delta or major version.
+- Name major delta branches from the delta title in lowercase kebab case, for example:
+  `delta-b-multi-provider-llm-model-support`.
+- Keep all related sub-version work for that major delta on the same branch until the user wants it split or merged.
+- Create a new branch before starting a different major delta, unrelated feature, or risky experiment.
+
+## Commits
+
+- Commit each completed sub-version separately, for example one commit for `B.1.1`, another for `B.1.2`, and so on.
+- Commit messages should identify the kind of change and the sub-version when useful, for example:
+  `feat: implement B.1.1 provider-agnostic LLM boundary`.
+- Keep each commit reviewable: include code, tests, docs, and generated artifacts needed for that sub-version, but avoid unrelated cleanup.
+
+## Pushes And PRs
+
+- Push feature branches with upstream tracking, for example `git push -u origin HEAD`.
+- If a pushed branch needs renaming, push the new branch, update upstream tracking, then delete the old remote branch only when the user approves or requested the rename.
+- Open pull requests from feature branches into `main`; do not force-push or rewrite published history unless the user explicitly requests it.

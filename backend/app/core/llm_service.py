@@ -10,8 +10,9 @@ LLM service layer for the Syx chatbot runtime.
 
 Orchestration on top of the ``llm_model`` provider boundary: builds prompts,
 records instrumentation, and exposes the high-level ``generate_chat_response`` /
-``generate_text_response`` / ``get_llm_health`` API consumed by the API and
-dream layers (factory-based, no LangChain).
+``generate_text_response`` / ``generate_research_response`` /
+``get_llm_health`` API consumed by the API and dream layers (factory-based, no
+LangChain).
 """
 
 
@@ -21,9 +22,10 @@ from typing import Any, Dict, List, Optional
 
 from ..llm_model.base import LLMResponse
 from ..llm_model.factory import get_llm_client
+from ..llm_model.registry import get_active_llm_models
 from ..tracking import get_instrumentation
 from ..utils.tokens import count_tokens
-from .config import get_settings, validate_openai_key
+from .config import active_llm_key_status, get_settings, validate_active_llm_key
 
 logger = logging.getLogger(__name__)
 
@@ -90,11 +92,15 @@ class LLMProvider:
         """Initialize the provider from settings.
 
         Raises:
-            ValueError: If the OpenAI API key is missing or invalid.
+            ValueError: If the active provider API key is missing or invalid.
         """
         self.settings = get_settings()
-        if not validate_openai_key():
-            raise ValueError("OpenAI API key is not configured or invalid")
+        key_status = active_llm_key_status()
+        if not validate_active_llm_key():
+            raise ValueError(
+                f"{key_status['setting']} is not configured or invalid for "
+                f"LLM_PROVIDER={key_status['provider']}"
+            )
 
     def generate_response(
         self,
@@ -130,7 +136,8 @@ class LLMProvider:
         """
         invocation_id = ""
         invoke_start = time.perf_counter()
-        used_model = str(override_model or self.settings.model_name)
+        runtime_models = get_active_llm_models()
+        used_model = str(override_model or runtime_models.main_model)
 
         try:
             messages = _build_messages(
@@ -169,7 +176,7 @@ class LLMProvider:
 
             response = get_llm_client().generate_chat(
                 messages=messages,
-                model=override_model or self.settings.model_name,
+                model=override_model or runtime_models.main_model,
                 temperature=(
                     temperature_override
                     if temperature_override is not None
@@ -247,10 +254,10 @@ class LLMProvider:
             ``api_key_configured`` boolean.
         """
         return {
-            "model_name": self.settings.model_name,
+            "model_name": get_active_llm_models().main_model,
             "temperature": self.settings.model_temperature,
             "max_tokens": self.settings.model_max_tokens,
-            "api_key_configured": validate_openai_key(),
+            "api_key_configured": validate_active_llm_key(),
         }
 
     def health_check(self) -> Dict[str, str]:
@@ -264,7 +271,7 @@ class LLMProvider:
         try:
             test = get_llm_client().generate_chat(
                 messages=[{"role": "user", "content": "Hello"}],
-                model=self.settings.model_name,
+                model=get_active_llm_models().main_model,
                 temperature=1.0,
                 max_completion_tokens=32,
             )
@@ -335,7 +342,123 @@ def generate_chat_response(
     )
 
 
-def generate_text_response(
+def _start_text_invocation(
+    *,
+    user_prompt: str,
+    system_prompt: Optional[str],
+    purpose: str,
+    used_model: str,
+    instrument: bool,
+) -> str:
+    """Record text prompt assembly and start an instrumentation invocation."""
+    if not instrument:
+        return ""
+
+    instr = get_instrumentation()
+    instr.record_stage(
+        "prompt_assembly",
+        {
+            "module": "llm",
+            "purpose": str(purpose or "main"),
+            "prompt_system_tokens_est": int(_estimate_tokens(system_prompt or "")),
+            "prompt_other_tokens_est": int(_estimate_tokens(user_prompt or "")),
+            "message_count": 1 + (1 if system_prompt else 0),
+        },
+    )
+    return instr.start_invocation(
+        purpose=str(purpose or "main"),
+        model=used_model,
+        meta={"streaming": False, "api": "responses"},
+    )
+
+
+def _finish_text_invocation_success(
+    *,
+    invocation_id: str,
+    response: LLMResponse,
+    purpose: str,
+    invoke_start: float,
+) -> None:
+    """Finalize a successful instrumented text invocation."""
+    if not invocation_id:
+        return
+
+    usage_payload = {
+        "purpose": str(purpose or "main"),
+        "model": response.model,
+        "prompt_tokens_reported": int(response.usage.prompt_tokens_reported),
+        "completion_tokens_reported": int(response.usage.completion_tokens_reported),
+        "total_tokens_reported": int(response.usage.total_tokens_reported),
+        "usage_is_estimate": bool(response.usage.usage_is_estimate),
+    }
+    if response.usage.extra_usage:
+        usage_payload["extra_usage"] = response.usage.extra_usage
+    get_instrumentation().end_invocation(
+        invocation_id,
+        usage=usage_payload,
+        timing={"ttlt_ms": int((time.perf_counter() - invoke_start) * 1000.0)},
+    )
+
+
+def _finish_text_invocation_failure(
+    *,
+    invocation_id: str,
+    purpose: str,
+    used_model: str,
+    invoke_start: float,
+) -> None:
+    """Finalize a failed instrumented text invocation with zeroed usage."""
+    if not invocation_id:
+        return
+
+    get_instrumentation().end_invocation(
+        invocation_id,
+        usage={
+            "purpose": str(purpose or "main"),
+            "model": used_model,
+            "prompt_tokens_reported": 0,
+            "completion_tokens_reported": 0,
+            "total_tokens_reported": 0,
+            "usage_is_estimate": True,
+        },
+        timing={"ttlt_ms": int((time.perf_counter() - invoke_start) * 1000.0)},
+    )
+
+
+def _call_text_client(
+    *,
+    user_prompt: str,
+    system_prompt: Optional[str],
+    override_model: Optional[str],
+    temperature_override: Optional[float],
+    max_output_tokens: Optional[int],
+    reasoning_effort: Optional[str],
+    require_json_object: bool,
+    research: bool,
+) -> LLMResponse:
+    """Dispatch to the standard or research-capable provider method."""
+    runtime_models = get_active_llm_models()
+    if research:
+        return get_llm_client().generate_response_research(
+            model=override_model or runtime_models.main_model,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature_override,
+            max_output_tokens=max_output_tokens,
+        )
+
+    return get_llm_client().generate_response(
+        model=override_model or runtime_models.main_model,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        temperature=temperature_override,
+        max_output_tokens=max_output_tokens,
+        reasoning_effort=reasoning_effort,
+        require_json_object=require_json_object,
+    )
+
+
+def _generate_text_response(
     user_prompt: str,
     *,
     system_prompt: Optional[str] = None,
@@ -344,99 +467,50 @@ def generate_text_response(
     max_output_tokens: Optional[int] = None,
     reasoning_effort: Optional[str] = None,
     require_json_object: bool = False,
-    tools: Optional[List[Dict[str, Any]]] = None,
     purpose: str = "main",
     instrument: bool = True,
+    research: bool = False,
 ) -> LLMResponse:
-    """Generate a non-chat text response through the shared LLM factory.
-
-    Args:
-        user_prompt: Primary user prompt text.
-        system_prompt: Optional system instructions.
-        override_model: Model name overriding the configured default.
-        temperature_override: Temperature overriding the provider default.
-        max_output_tokens: Maximum output tokens for the completion.
-        reasoning_effort: Optional reasoning-effort hint passed to the client.
-        require_json_object: Whether to constrain output to a JSON object.
-        tools: Optional tool/function definitions made available to the model.
-        purpose: Instrumentation purpose label for this invocation.
-        instrument: Whether to record instrumentation for this call.
-
-    Returns:
-        The raw ``LLMResponse`` from the factory client.
-
-    Raises:
-        Exception: Re-raised from the underlying client after instrumentation is
-            finalized and the failure is logged.
-    """
-    settings = get_settings()
+    """Generate a text response through the shared LLM factory."""
     invocation_id = ""
     invoke_start = time.perf_counter()
-    used_model = str(override_model or settings.model_name)
+    used_model = str(override_model or get_active_llm_models().main_model)
 
     try:
-        instr = get_instrumentation()
-        if instrument:
-            instr.record_stage(
-                "prompt_assembly",
-                {
-                    "module": "llm",
-                    "purpose": str(purpose or "main"),
-                    "prompt_system_tokens_est": int(_estimate_tokens(system_prompt or "")),
-                    "prompt_other_tokens_est": int(_estimate_tokens(user_prompt or "")),
-                    "message_count": 1 + (1 if system_prompt else 0),
-                },
-            )
-            invocation_id = instr.start_invocation(
-                purpose=str(purpose or "main"),
-                model=used_model,
-                meta={"streaming": False, "api": "responses"},
-            )
-
-        response = get_llm_client().generate_response(
-            model=override_model or settings.model_name,
-            system_prompt=system_prompt,
+        invocation_id = _start_text_invocation(
             user_prompt=user_prompt,
-            temperature=temperature_override,
+            system_prompt=system_prompt,
+            purpose=purpose,
+            used_model=used_model,
+            instrument=instrument,
+        )
+        response = _call_text_client(
+            user_prompt=user_prompt,
+            system_prompt=system_prompt,
+            override_model=override_model,
+            temperature_override=temperature_override,
             max_output_tokens=max_output_tokens,
             reasoning_effort=reasoning_effort,
             require_json_object=require_json_object,
-            tools=tools,
+            research=research,
         )
 
-        if instrument and invocation_id:
-            usage_payload = {
-                "purpose": str(purpose or "main"),
-                "model": response.model,
-                "prompt_tokens_reported": int(response.usage.prompt_tokens_reported),
-                "completion_tokens_reported": int(response.usage.completion_tokens_reported),
-                "total_tokens_reported": int(response.usage.total_tokens_reported),
-                "usage_is_estimate": bool(response.usage.usage_is_estimate),
-            }
-            if response.usage.extra_usage:
-                usage_payload["extra_usage"] = response.usage.extra_usage
-            instr.end_invocation(
-                invocation_id,
-                usage=usage_payload,
-                timing={"ttlt_ms": int((time.perf_counter() - invoke_start) * 1000.0)},
-            )
+        _finish_text_invocation_success(
+            invocation_id=invocation_id,
+            response=response,
+            purpose=purpose,
+            invoke_start=invoke_start,
+        )
 
         return response
     except Exception as exc:
         try:
-            if instrument and invocation_id:
-                get_instrumentation().end_invocation(
-                    invocation_id,
-                    usage={
-                        "purpose": str(purpose or "main"),
-                        "model": used_model,
-                        "prompt_tokens_reported": 0,
-                        "completion_tokens_reported": 0,
-                        "total_tokens_reported": 0,
-                        "usage_is_estimate": True,
-                    },
-                    timing={"ttlt_ms": int((time.perf_counter() - invoke_start) * 1000.0)},
-                )
+            _finish_text_invocation_failure(
+                invocation_id=invocation_id,
+                purpose=purpose,
+                used_model=used_model,
+                invoke_start=invoke_start,
+            )
         except Exception as finalize_exc:
             logger.warning(
                 "llm.generate_text_response failed ending invocation invocation_id=%s detail=%s",
@@ -450,6 +524,91 @@ def generate_text_response(
             exc,
         )
         raise
+
+
+def generate_text_response(
+    user_prompt: str,
+    *,
+    system_prompt: Optional[str] = None,
+    override_model: Optional[str] = None,
+    temperature_override: Optional[float] = None,
+    max_output_tokens: Optional[int] = None,
+    reasoning_effort: Optional[str] = None,
+    require_json_object: bool = False,
+    purpose: str = "main",
+    instrument: bool = True,
+) -> LLMResponse:
+    """Generate a non-chat text response through the shared LLM factory.
+
+    Args:
+        user_prompt: Primary user prompt text.
+        system_prompt: Optional system instructions.
+        override_model: Model name overriding the configured default.
+        temperature_override: Temperature overriding the provider default.
+        max_output_tokens: Maximum output tokens for the completion.
+        reasoning_effort: Optional reasoning-effort hint passed to the client.
+        require_json_object: Whether to constrain output to a JSON object.
+        purpose: Instrumentation purpose label for this invocation.
+        instrument: Whether to record instrumentation for this call.
+
+    Returns:
+        The raw ``LLMResponse`` from the factory client.
+
+    Raises:
+        Exception: Re-raised from the underlying client after instrumentation is
+            finalized and the failure is logged.
+    """
+    return _generate_text_response(
+        user_prompt,
+        system_prompt=system_prompt,
+        override_model=override_model,
+        temperature_override=temperature_override,
+        max_output_tokens=max_output_tokens,
+        reasoning_effort=reasoning_effort,
+        require_json_object=require_json_object,
+        purpose=purpose,
+        instrument=instrument,
+    )
+
+
+def generate_research_response(
+    user_prompt: str,
+    *,
+    system_prompt: Optional[str] = None,
+    override_model: Optional[str] = None,
+    temperature_override: Optional[float] = None,
+    max_output_tokens: Optional[int] = None,
+    purpose: str = "main",
+    instrument: bool = True,
+) -> LLMResponse:
+    """Generate a researched text response through the provider boundary.
+
+    Args:
+        user_prompt: Primary research prompt text.
+        system_prompt: Optional system instructions.
+        override_model: Model name overriding the configured default.
+        temperature_override: Temperature overriding the provider default.
+        max_output_tokens: Maximum output tokens for the completion.
+        purpose: Instrumentation purpose label for this invocation.
+        instrument: Whether to record instrumentation for this call.
+
+    Returns:
+        The raw ``LLMResponse`` from the factory client's research capability.
+
+    Raises:
+        Exception: Re-raised from the underlying client after instrumentation is
+            finalized and the failure is logged.
+    """
+    return _generate_text_response(
+        user_prompt,
+        system_prompt=system_prompt,
+        override_model=override_model,
+        temperature_override=temperature_override,
+        max_output_tokens=max_output_tokens,
+        purpose=purpose,
+        instrument=instrument,
+        research=True,
+    )
 
 
 def get_llm_health() -> Dict[str, str]:

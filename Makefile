@@ -282,18 +282,15 @@ setup-env:
 		echo "# Syx AGI Chatbot Framework - Environment Variables"; \
 		echo "# Edit values as needed. Comments are placed after each variable to avoid parser conflicts."; \
 		echo ""; \
-		echo "# === Core: OpenAI + Chat Model ==="; \
+		echo "# === Core: LLM Providers + Chat Model ==="; \
 		echo "#OPENAI_API_KEY=your-openai-api-key-here"; \
 		echo "# OpenAI API key used for chat and embeddings"; \
 		echo ""; \
+		echo "#ANTHROPIC_API_KEY=your-anthropic-api-key-here"; \
+		echo "# Anthropic API key used when LLM_PROVIDER=anthropic"; \
+		echo ""; \
 		echo "LLM_PROVIDER=openai"; \
-		echo "# LLM provider selector"; \
-		echo ""; \
-		echo "MODEL_NAME=gpt-5.5"; \
-		echo "# Main runtime chat model selected by llm factory"; \
-		echo ""; \
-		echo "LLM_MINI_MODEL=gpt-5-mini"; \
-		echo "# Mini runtime model selected by llm factory"; \
+		echo "# LLM provider selector; model defaults are resolved from backend/app/config/llm_models.json"; \
 		echo ""; \
 		echo "MODEL_TEMPERATURE=1.0"; \
 		echo "# Sampling temperature (0.0–2.0)"; \
@@ -306,9 +303,6 @@ setup-env:
 		echo ""; \
 		echo "LLM_MINI_REQUEST_TIMEOUT_S=30.0"; \
 		echo "# Timeout in seconds for mini/helper LLM HTTP requests"; \
-		echo ""; \
-		echo "AVAILABLE_MODELS=[\"gpt-5.5\",\"gpt-5.4\",\"gpt-5.4-mini\",\"gpt-5.4-nano\",\"gpt-5.2\",\"gpt-5.1\",\"gpt-5\",\"gpt-5-mini\",\"gpt-5-nano\",\"gpt-4.1\",\"gpt-4.1-mini\",\"gpt-4o-mini\"]"; \
-		echo "# Whitelisted chat models for the UI selector"; \
 		echo ""; \
 		echo "# === Server + CORS ==="; \
 		echo "HOST=0.0.0.0"; \
@@ -403,12 +397,6 @@ setup-env:
 		echo "# Number of prompt/response pairs kept in working memory"; \
 		echo ""; \
 		echo "# === Query Builder + Reranking ==="; \
-		echo "BUILDER_MODEL=gpt-5-mini"; \
-		echo "# LLM for query builder/router"; \
-		echo ""; \
-		echo "TAGGER_MODEL=gpt-5-mini"; \
-		echo "# LLM used for tagging"; \
-		echo ""; \
 		echo "BUILDER_MAX_TOKENS=1024"; \
 		echo "# Max tokens for builder output"; \
 		echo ""; \
@@ -515,7 +503,6 @@ setup-env:
 		echo "AUTO_ACCEPT_DREAMS=false"; \
 		echo "# Automatically persist all pending dream.json items during sleep"; \
 		echo ""; \
-		echo "DREAM_MODEL=gpt-5.5"; \
 		echo "DREAM_TEMPERATURE=1.0"; \
 		echo "DREAM_MAX_TOKENS=32000"; \
 		echo "DREAM_ENABLE_REMOTE_RESEARCH=true"; \
@@ -523,14 +510,14 @@ setup-env:
 		echo "# Dream agent configuration"; \
 		echo ""; \
 		echo "# === Debug / Observability ==="; \
-		echo "GENERATE_DEBUG_FILES=false"; \
+		echo "GENERATE_DEBUG_FILES=true"; \
 		echo "# Enable debug file generation (e.g., dreaming/*_context_summary.txt)"; \
 		echo ""; \
 		echo "VITE_SHOW_DEBUG_VALUES=true"; \
 		echo "# Frontend: show stats/debug values bar in chat UI"; \
 		echo ""; \
 	} > .env
-	@echo "✅ Created .env with defaults (update OPENAI_API_KEY)"
+	@echo "✅ Created .env with defaults (update provider API keys)"
 
 unlock-sleep:
 	@rm -f runtime/state/sleep.lock 2>/dev/null || true
@@ -582,7 +569,7 @@ docker-rebuild:
 setup: setup-env install build
 	@echo "🎉 Syx setup completed!"
 	@echo "   Next steps:"
-	@echo "   1. Edit .env file with your OpenAI API key"
+	@echo "   1. Edit .env file with your provider API key"
 	@echo "   2. Run 'make run' to start the server"
 
 # Generate architecture docs (PNG) from diagrams script

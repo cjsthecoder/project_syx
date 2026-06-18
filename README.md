@@ -1,7 +1,7 @@
 # Syx
 
 [![CI](https://github.com/cjsthecoder/project_syx/actions/workflows/ci.yml/badge.svg)](https://github.com/cjsthecoder/project_syx/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/cjsthecoder/project_syx/releases)
+[![Version](https://img.shields.io/badge/version-0.1-blue)](https://github.com/cjsthecoder/project_syx/releases)
 [![Python](https://img.shields.io/badge/python-3.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -89,8 +89,9 @@ cd frontend && npm install && cd ..
 # 5) Create or update local environment config
 make setup-env
 
-# 6) Add your OpenAI API key to .env
+# 6) Add your provider API key to .env
 # OPENAI_API_KEY=your-openai-api-key-here
+# ANTHROPIC_API_KEY=your-anthropic-api-key-here
 
 # 7) Build frontend and run the app
 make build
@@ -117,17 +118,13 @@ Data is stored on the host under `./data/memory`, `./data/db`, `./runtime/logs`,
 
 ## Configuration
 
-Runtime defaults are defined in [`backend/app/core/config.py`](backend/app/core/config.py) through `Settings`. The `make setup-env` target mirrors those defaults when generating `.env`.
+Runtime defaults are defined in [`backend/app/core/config.py`](backend/app/core/config.py) through `Settings`. LLM provider/model defaults live in [`backend/app/config/llm_models.json`](backend/app/config/llm_models.json), and the `make setup-env` target mirrors the normal setup path when generating `.env`.
 
 Start from [`.env.example`](.env.example), then set at least:
 
 - `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY` when `LLM_PROVIDER=anthropic`
 - `LLM_PROVIDER`
-- `MODEL_NAME`
-- `LLM_MINI_MODEL`
-- `BUILDER_MODEL`
-- `TAGGER_MODEL`
-- `DREAM_MODEL`
 - `EMBEDDING_PROVIDER`
 - `EMBEDDING_MODEL` or `SENTENCE_TRANSFORMERS_MODEL_ID`
 

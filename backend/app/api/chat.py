@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from ..core.config import get_settings, validate_openai_key
+from ..core.config import active_llm_key_status, get_settings, validate_active_llm_key
 from ..core.llm_service import generate_chat_response, get_llm_health
 from ..core.memory import get_memory_manager, set_last_context_tokens
 from ..core.models import ChatRequest, ChatResponse
@@ -51,9 +51,6 @@ _TURN_SEQ = 0
 _TURN_SEQ_LOCK = threading.Lock()
 
 LLM_NOT_CONFIGURED_CODE = "llm_not_configured"
-LLM_NOT_CONFIGURED_MESSAGE = (
-    "OpenAI API key is not configured. Set OPENAI_API_KEY and restart the server."
-)
 
 
 def _next_turn_id() -> int:
@@ -81,22 +78,34 @@ def _require_llm_configured(*, endpoint: str, project_id: Optional[str]) -> None
 
     Raises:
         HTTPException: 503 with a stable ``llm_not_configured`` code when the
-            OpenAI API key is missing or still set to the documented placeholder.
+            active provider API key is missing or still set to a documented
+            placeholder.
     """
-    if validate_openai_key():
+    key_status = active_llm_key_status()
+    if validate_active_llm_key():
         return
+    message = (
+        f"{key_status['setting']} is not configured for LLM_PROVIDER="
+        f"{key_status['provider']}. Set {key_status['setting']} and restart the server."
+    )
     logger.warning(
-        "chat.llm_not_configured; operation=preflight endpoint=%s project_id=%s",
+        "chat.llm_not_configured; operation=preflight endpoint=%s project_id=%s provider=%s setting=%s",
         endpoint,
         project_id,
+        key_status["provider"],
+        key_status["setting"],
     )
     raise HTTPException(
         status_code=503,
         detail={
             "success": False,
-            "error": LLM_NOT_CONFIGURED_MESSAGE,
+            "error": message,
             "error_code": LLM_NOT_CONFIGURED_CODE,
-            "details": {"dependency": "openai", "setting": "OPENAI_API_KEY"},
+            "details": {
+                "dependency": key_status["dependency"],
+                "setting": key_status["setting"],
+                "provider": key_status["provider"],
+            },
         },
     )
 
@@ -394,6 +403,9 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         )
 
         pipeline = ChatPipeline(settings)
+        runtime_models = pipeline.enforce_model_whitelist(request.model)
+        model_name = runtime_models.main_model
+        selected_model = runtime_models.selection_value
         memory_manager = get_memory_manager() if request.project_id else None
         prepared = _prepare_prompts(
             pipeline,
@@ -409,7 +421,6 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         rag_system_prompt = prepared.rag_system_prompt
         primary_ns = prepared.primary_ns
         rag_turn_metrics = prepared.rag_metrics
-        pipeline.enforce_model_whitelist(request.model)
         # Log LLM request
         try:
             logger.debug(
@@ -422,13 +433,13 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         except Exception as exc:  # pragma: no cover - defensive guard around debug logging only
             logger.debug("chat.prompt size logging failed message_id=%s detail=%s", msg_id, exc)
         llm_logger.log_llm_request(
-            model=(request.model or settings.model_name),
+            model=selected_model,
             message_length=len(request.message),
             conversation_id=request.conversation_id,
         )
 
         logger.debug(
-            f"Chat: model={request.model or 'default'} message_len={len(request.message)} conv_id={request.conversation_id}"
+            f"Chat: model={selected_model} message_len={len(request.message)} conv_id={request.conversation_id}"
         )
         # Prompt debug snapshot (best-effort; no-op unless GENERATE_DEBUG_FILES=true)
         try:
@@ -439,7 +450,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
                 rag_system_prompt=rag_system_prompt,
                 conversation_history=conversation_history,
                 user_prompt=request.message,
-                model=(request.model or settings.model_name),
+                model=selected_model,
             )
         except Exception as exc:
             logger.warning(
@@ -456,7 +467,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             base_system_prompt=base_system_prompt,
             assistant_hint=assistant_hint,
             rag_system_prompt=rag_system_prompt,
-            override_model=request.model,
+            override_model=model_name,
             temperature_override=personality_creativity,
         )
         t_model1 = time.time()
@@ -467,7 +478,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
 
         # Log LLM response
         llm_logger.log_llm_response(
-            model=llm_response.get("llm_model", settings.model_name),
+            model=llm_response.get("llm_model", selected_model),
             response_length=len(llm_response["response"]),
             tokens_used=llm_response.get("tokens_used"),
             conversation_id=request.conversation_id,
@@ -540,6 +551,8 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
 
         return response
 
+    except HTTPException:
+        raise
     except Exception as e:
         # Log error
         request_logger.log_error(endpoint="/chat", error=e, user_id=request.conversation_id)
@@ -581,7 +594,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         try:
             if "turn_started" in locals() and turn_started:
                 _resp_text = None
-                _model_id = request.model or settings.model_name
+                _model_id = locals().get("selected_model", request.model or "")
                 if isinstance(locals().get("llm_response"), dict):
                     _resp_text = str(locals()["llm_response"].get("response") or "")
                     _model_id = str(locals()["llm_response"].get("llm_model") or _model_id)
@@ -655,6 +668,9 @@ async def chat_stream(request: ChatRequest):
         )
 
         pipeline = ChatPipeline(settings)
+        runtime_models = pipeline.enforce_model_whitelist(request.model)
+        model_name = runtime_models.main_model
+        selected_model = runtime_models.selection_value
         prepared = _prepare_prompts(
             pipeline,
             project_id=request.project_id,
@@ -668,7 +684,6 @@ async def chat_stream(request: ChatRequest):
         rag_system_prompt = prepared.rag_system_prompt
         primary_ns = prepared.primary_ns
         rag_turn_metrics = prepared.rag_metrics
-        pipeline.enforce_model_whitelist(request.model)
         # Persist user immediately (streaming semantics)
         pipeline.persist_user(request.project_id, request.message)
         prev_pair = pipeline.previous_pair_text(conversation_history)
@@ -684,6 +699,7 @@ async def chat_stream(request: ChatRequest):
                         base_system_prompt=base_system_prompt,
                         assistant_hint=assistant_hint,
                         rag_system_prompt=rag_system_prompt,
+                        override_model=model_name,
                     )
                     text = (resp or {}).get("response") or ""
                     # Persist assistant once complete
@@ -729,7 +745,7 @@ async def chat_stream(request: ChatRequest):
                 rag_system_prompt=rag_system_prompt,
                 conversation_history=conversation_history,
                 user_prompt=(request.message or ""),
-                model=(request.model or settings.model_name),
+                model=selected_model,
                 msgs=msgs,
             )
         except Exception as exc:
@@ -749,10 +765,9 @@ async def chat_stream(request: ChatRequest):
             first_token_ts = None
             provider_usage: Optional[dict] = None
             try:
-                model_name = request.model or settings.model_name
                 invocation_id = instr.start_invocation(
                     purpose="main",
-                    model=model_name,
+                    model=selected_model,
                     meta={"streaming": True},
                 )
                 for piece, usage_obj in get_llm_client().stream_chat(
@@ -792,7 +807,7 @@ async def chat_stream(request: ChatRequest):
                             invocation_id,
                             usage={
                                 "purpose": "main",
-                                "model": (request.model or settings.model_name),
+                                "model": selected_model,
                                 **usage_payload,
                             },
                             timing={
@@ -839,7 +854,7 @@ async def chat_stream(request: ChatRequest):
                                 streaming=True,
                                 prompt_text=request.message,
                                 response_text=final_text,
-                                model_id=str(request.model or settings.model_name),
+                                model_id=selected_model,
                                 extra={"response_len": len(final_text)},
                             )
                         )
@@ -853,6 +868,31 @@ async def chat_stream(request: ChatRequest):
                     )
 
         return StreamingResponse(token_stream(), media_type="text/plain; charset=utf-8")
+    except HTTPException as e:
+        try:
+            if turn_started and not turn_closed:
+                instr.end_turn(
+                    output_meta=_turn_end_meta(
+                        rag_turn_metrics,
+                        turn_id=turn_id,
+                        project_id=request.project_id,
+                        conversation_id=request.conversation_id,
+                        streaming=True,
+                        prompt_text=request.message,
+                        response_text=None,
+                        model_id=locals().get("selected_model", str(request.model or "")),
+                        extra={"error": str(e.detail)},
+                    )
+                )
+                turn_closed = True
+        except Exception as exc:
+            logger.warning(
+                "chat.stream error turn_end failed; operation=end_turn project_id=%s turn_id=%s detail=%s",
+                request.project_id,
+                turn_id,
+                exc,
+            )
+        raise
     except Exception as e:
         try:
             if turn_started and not turn_closed:
@@ -865,7 +905,7 @@ async def chat_stream(request: ChatRequest):
                         streaming=True,
                         prompt_text=request.message,
                         response_text=None,
-                        model_id=str(request.model or settings.model_name),
+                        model_id=locals().get("selected_model", str(request.model or "")),
                         extra={"error": str(e)},
                     )
                 )

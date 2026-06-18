@@ -60,6 +60,18 @@ def settings_override(monkeypatch):
     return _override
 
 
+@pytest.fixture(autouse=True)
+def reset_llm_runtime_state():
+    """Reset provider/model registry and LLM client globals between tests."""
+    from app.llm_model.factory import reset_llm_runtime_state as _reset_llm_runtime_state
+
+    _reset_llm_runtime_state()
+    try:
+        yield
+    finally:
+        _reset_llm_runtime_state()
+
+
 @pytest.fixture
 def temp_memory_root(tmp_path, settings_override):
     """Point ``settings.memory_root`` at a fresh temp directory.

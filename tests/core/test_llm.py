@@ -17,6 +17,7 @@ from app.core.llm_service import (
     LLMProvider,
     _build_messages,
     generate_chat_response,
+    generate_research_response,
     generate_text_response,
     get_llm_provider,
     reset_llm_provider,
@@ -182,6 +183,37 @@ def test_generate_text_response(mock_get_client, mock_openai_key):
     assert result.text == '{"answer": "ok"}'
     assert result.usage.total_tokens_reported == 13
     mock_client.generate_response.assert_called_once()
+
+
+@patch("app.core.llm_service.get_llm_client")
+def test_generate_research_response_uses_provider_research_boundary(
+    mock_get_client, mock_openai_key
+):
+    """Test researched text generation through the provider-agnostic research method."""
+    mock_client = MagicMock()
+    mock_client.generate_response_research.return_value = LLMResponse(
+        text="research blob",
+        model="gpt-5.5",
+        usage=LLMUsage(
+            prompt_tokens_reported=8,
+            completion_tokens_reported=5,
+            total_tokens_reported=13,
+            usage_is_estimate=False,
+        ),
+    )
+    mock_get_client.return_value = mock_client
+
+    result = generate_research_response(
+        "Research this",
+        override_model="gpt-5.5",
+        temperature_override=1.0,
+        max_output_tokens=256,
+        purpose="dream:remote_research",
+    )
+
+    assert result.text == "research blob"
+    mock_client.generate_response_research.assert_called_once()
+    mock_client.generate_response.assert_not_called()
 
 
 def test_get_llm_provider_singleton(mock_openai_key):

@@ -11,7 +11,7 @@ Provider-agnostic LLM client interfaces and data envelopes.
 
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, runtime_checkable
 
 Message = Dict[str, str]
 
@@ -107,11 +107,11 @@ class LLMChatClient(Protocol):
 
 
 class LLMResponsesClient(Protocol):
-    """Contract for OpenAI Responses-API-style LLM backends.
+    """Contract for prompt/response-style LLM backends.
 
     Boundary for system/user prompt generation with optional reasoning effort,
-    strict JSON-object output, and tool definitions, returning the normalized
-    ``LLMResponse``. Used by the tagger/builder and dream pipelines.
+    strict JSON-object output, returning the normalized ``LLMResponse``. Used by
+    the tagger/builder and dream pipelines.
     """
 
     def generate_response(
@@ -123,13 +123,12 @@ class LLMResponsesClient(Protocol):
         max_output_tokens: Optional[int] = None,
         reasoning_effort: Optional[str] = None,
         require_json_object: bool = False,
-        tools: Optional[List[Dict[str, Any]]] = None,
         temperature: Optional[float] = None,
     ) -> LLMResponse:
         """Generate a response from a system/user prompt pair.
 
-        Supports optional reasoning effort, strict JSON-object output, and tool
-        definitions, returning the result as an ``LLMResponse``.
+        Supports optional reasoning effort and strict JSON-object output,
+        returning the result as an ``LLMResponse``.
 
         Args:
             model: Optional model override; defaults to the backend's default.
@@ -138,10 +137,51 @@ class LLMResponsesClient(Protocol):
             max_output_tokens: Optional cap on generated tokens.
             reasoning_effort: Optional reasoning effort hint (e.g., "low").
             require_json_object: When True, request a strict JSON-object response.
-            tools: Optional tool definitions to expose to the model.
             temperature: Optional sampling temperature.
 
         Returns:
             An ``LLMResponse`` with the output text, model, and token usage.
         """
         ...
+
+
+class LLMResearchClient(Protocol):
+    """Contract for provider-backed response generation with remote research.
+
+    Application code asks for research as an LLM capability instead of passing a
+    provider-specific tool schema. Concrete providers decide how to implement
+    the capability, or fail clearly if unsupported.
+    """
+
+    def generate_response_research(
+        self,
+        *,
+        model: Optional[str],
+        system_prompt: Optional[str],
+        user_prompt: str,
+        max_output_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+    ) -> LLMResponse:
+        """Generate a response that may use provider-supported remote research.
+
+        Args:
+            model: Optional model override; defaults to the backend's default.
+            system_prompt: Optional system instructions.
+            user_prompt: User prompt text.
+            max_output_tokens: Optional cap on generated tokens.
+            temperature: Optional sampling temperature.
+
+        Returns:
+            An ``LLMResponse`` with the output text, model, and token usage.
+        """
+        ...
+
+
+@runtime_checkable
+class LLMClient(LLMChatClient, LLMResponsesClient, LLMResearchClient, Protocol):
+    """Combined provider-agnostic LLM contract returned by the factory.
+
+    The factory exposes this protocol so application code can use chat,
+    prompt/response, streaming, and research capabilities without importing or
+    depending on concrete provider classes.
+    """

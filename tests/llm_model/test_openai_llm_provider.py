@@ -435,6 +435,24 @@ def test_generate_response_sets_all_optional_kwargs():
     assert resp.text == "result"
 
 
+def test_generate_response_research_enables_openai_web_search_tool():
+    mock_openai = MagicMock()
+    client = mock_openai.return_value
+    client.responses.create.return_value = _ok_response("research result")
+    with patch.object(provider_mod, "OpenAI", mock_openai):
+        provider = _provider(mock_openai)
+        resp = provider.generate_response_research(
+            model="m",
+            system_prompt=None,
+            user_prompt="research this",
+            max_output_tokens=64,
+            temperature=0.3,
+        )
+    kwargs = client.responses.create.call_args.kwargs
+    assert kwargs["tools"] == [{"type": "web_search"}]
+    assert resp.text == "research result"
+
+
 def test_generate_response_input_fallback_to_flat_string():
     mock_openai = MagicMock()
     client = mock_openai.return_value

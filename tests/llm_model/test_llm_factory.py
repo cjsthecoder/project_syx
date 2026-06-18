@@ -17,10 +17,12 @@ import importlib.util
 import os
 import sys
 import types
+from typing import get_type_hints
 
 import app.embedding
 import app.llm_model.factory as llm_factory
 import pytest
+from app.llm_model.base import LLMClient
 
 
 class _FakeLLMProvider:
@@ -28,6 +30,18 @@ class _FakeLLMProvider:
         self.api_key = api_key
         self.default_model = default_model
         self.timeout_s = timeout_s
+
+    def generate_chat(self, **_kwargs):
+        raise NotImplementedError
+
+    def stream_chat(self, **_kwargs):
+        raise NotImplementedError
+
+    def generate_response(self, **_kwargs):
+        raise NotImplementedError
+
+    def generate_response_research(self, **_kwargs):
+        raise NotImplementedError
 
 
 class _FakeEmbeddingProvider:
@@ -79,8 +93,14 @@ def test_llm_client_is_cached_singleton(fake_llm, settings_override):
     c1 = fake_llm.get_llm_client()
     c2 = fake_llm.get_llm_client()
     assert c1 is c2
+    assert isinstance(c1, LLMClient)
     assert isinstance(c1, _FakeLLMProvider)
     assert c1.default_model == "gpt-main"
+
+
+def test_llm_factory_public_return_types_are_provider_agnostic():
+    assert get_type_hints(llm_factory.get_llm_client)["return"] is LLMClient
+    assert get_type_hints(llm_factory.get_llm_client_mini)["return"] is LLMClient
 
 
 def test_main_and_mini_clients_are_distinct(fake_llm, settings_override):
@@ -88,6 +108,8 @@ def test_main_and_mini_clients_are_distinct(fake_llm, settings_override):
     main = fake_llm.get_llm_client()
     mini = fake_llm.get_llm_client_mini()
     assert main is not mini
+    assert isinstance(main, LLMClient)
+    assert isinstance(mini, LLMClient)
     assert main.default_model == "gpt-main"
     assert mini.default_model == "gpt-mini"
 
@@ -99,10 +121,14 @@ def test_reset_llm_clients_forces_new_instance(fake_llm):
     assert first is not second
 
 
-def test_unknown_provider_falls_back_to_openai(fake_llm, settings_override):
+def test_unknown_provider_falls_back_to_openai(fake_llm, settings_override, caplog):
     settings_override(llm_provider="anthropic")
     client = fake_llm.get_llm_client()
     assert isinstance(client, _FakeLLMProvider)
+    assert any(
+        "Unsupported LLM provider 'anthropic'; falling back to openai" in r.message
+        for r in caplog.records
+    )
 
 
 def test_embedding_openai_requires_key(fake_embedding, settings_override):

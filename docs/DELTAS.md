@@ -26,6 +26,7 @@ reading every detailed requirement section first.
 | `DELTA-A.5` Agent Full-Entry Expansion | Implemented in current code | Agent memory search can expand bounded Syx results into complete memory entries. |
 | `DELTA-A.6` External Agent Memory Add Endpoint | Future-facing | Captured as planned write-back work; not part of the current public endpoint surface. |
 | `DELTA-A.7` Cursor MCP Wrapper | Future-facing | Captured as planned MCP wrapper work. Current tooling uses local CLI/scripts. |
+| `DELTA-B.1` Multi-Provider LLM Model Support | Draft | Refactor the LLM factory boundary and move provider/model role defaults into an app-owned registry so OpenAI, Anthropic, and future providers can be selected coherently. |
 
 # DELTA-A — Markdown-Based Syx Memory Artifacts
 
@@ -2656,4 +2657,286 @@ Tests SHOULD cover:
 14. Docstore reconstruction is treated as fallback.
 15. No memory is written.
 16. Normal chat behavior is unchanged.
+
+# DELTA-B — Multi-Provider LLM Model Support
+
+## Status
+
+Accepted
+
+## Intent
+
+Allow Syx to support multiple LLM providers and model families behind one provider-agnostic runtime boundary.
+
+The first target is Anthropic support alongside the existing OpenAI support. Before adding Anthropic-specific code, the LLM factory must stop leaking the concrete OpenAI provider type into the application boundary.
+
+## Background
+
+Syx currently has provider-oriented package structure under `backend/app/llm_model/`, but the factory still returns `OpenAILLMProvider` directly:
+
+```python
+def get_llm_client() -> OpenAILLMProvider:
+```
+
+That means the current implementation centralizes construction, but it does not fully enforce a provider-agnostic application contract. Runtime code can still become coupled to OpenAI-shaped behavior, and adding Anthropic would layer a second provider onto an abstraction that already leaks the first provider.
+
+The UI model selector currently selects a model id from `/models`. It does not select a provider. Helper models such as builder and tagger are configured by environment variables (`BUILDER_MODEL`, `TAGGER_MODEL`, and mini-client defaults) rather than by the UI.
+
+That creates a multi-provider problem: switching from OpenAI to Anthropic cannot require the user to manually rewrite every helper-model environment variable. Main chat, mini/helper defaults, builder, tagger, and Dream model choices must be resolved as a coherent provider-scoped model set.
+
+## Core Decision
+
+Syx SHALL support multiple LLM providers through explicit provider interfaces and a factory/registry boundary.
+
+Application code SHALL depend on provider-agnostic LLM interfaces, not concrete provider classes.
+
+Provider-specific SDK imports and request/response adaptation SHALL remain behind provider implementation modules.
+
+## B.1.1 Provider-Agnostic Factory Boundary
+
+### Intent
+
+Refactor the current LLM factory so it returns provider-agnostic interfaces instead of `OpenAILLMProvider`.
+
+This is a prerequisite for Anthropic support.
+
+### Requirements
+
+1. `backend/app/llm_model/factory.py` SHALL NOT expose concrete provider classes in public return types for `get_llm_client()` or `get_llm_client_mini()`.
+2. The factory SHALL return a provider-agnostic interface that supports the current runtime call surface:
+   - `generate_chat`
+   - `stream_chat`
+   - `generate_response`
+3. The provider-agnostic factory return type SHALL be a new combined protocol in `backend/app/llm_model/base.py` that includes `generate_chat`, `stream_chat`, and `generate_response`.
+4. Provider-specific request shapes SHALL NOT leak into application code. In particular, OpenAI-shaped tool payloads such as `tools=[{"type": "web_search"}]` SHALL remain behind the provider implementation boundary rather than becoming the provider-agnostic application contract.
+5. Remote/web research SHALL be represented as a provider-agnostic LLM capability, such as `generate_response_research`, so callers can request research without knowing how a concrete provider implements it.
+6. Concrete provider classes such as `OpenAILLMProvider` SHALL remain implementation details behind the factory boundary.
+7. Existing main and mini client caching behavior SHALL be preserved unless explicitly superseded by a later B.1 requirement.
+8. `reset_llm_clients()` SHALL continue to clear all cached LLM clients used by the factory.
+9. Unsupported `LLM_PROVIDER` values SHALL fail clearly or be handled by an explicitly documented fallback policy. Silent provider fallback SHOULD NOT be introduced for multi-provider support.
+10. Existing OpenAI runtime behavior SHALL remain unchanged after the factory boundary refactor.
+
+### Non-Goals
+
+B.1.1 does not:
+
+- add Anthropic API calls
+- add Anthropic configuration
+- change the UI model selector
+- make provider selection per-model in the UI
+- change builder, tagger, or Dream model routing
+- change request or response shapes for chat endpoints
+
+### Test Targets
+
+Tests SHOULD cover:
+
+- `get_llm_client()` returns an object satisfying the provider-agnostic LLM interface
+- `get_llm_client_mini()` returns an object satisfying the provider-agnostic LLM interface
+- OpenAI remains the default provider when `LLM_PROVIDER=openai`
+- main and mini clients remain separately cached
+- `reset_llm_clients()` clears both cached clients
+- unsupported provider handling is explicit and deterministic
+- application call sites do not import or require `OpenAILLMProvider`
+- application call sites do not pass OpenAI-shaped tool payloads for research
+
+### Acceptance Criteria
+
+1. Factory public return types are provider-agnostic.
+2. OpenAI-specific SDK and provider implementation details remain behind the provider module boundary.
+3. Existing OpenAI chat, streaming, builder, tagger, and Dream paths continue to use the same call contracts, with OpenAI-specific research/tool adaptation hidden behind the provider boundary.
+4. Existing tests for the OpenAI factory path continue to pass.
+5. The codebase is ready for an Anthropic provider implementation without changing application call sites again.
+
+## B.1.2 Provider Model Registry and Runtime Model Sets
+
+### Status
+
+Draft
+
+### Intent
+
+Make main and helper model selection provider-scoped so a user can switch supported providers without manually editing each model environment variable.
+
+The model/provider inventory SHALL live in an app-owned JSON registry, not in `.env`.
+
+### Requirements
+
+1. Syx SHALL add an app-owned LLM model registry JSON file under `backend/app/config/`.
+2. The default registry path SHOULD be:
+
+   ```text
+   backend/app/config/llm_models.json
+   ```
+
+3. The model registry SHALL define a provider-scoped runtime model set for each supported LLM provider.
+4. Each provider entry SHALL include:
+   - provider id
+   - provider display label
+   - provider implementation key used by the factory
+   - selectable main chat models
+   - default main chat model
+   - role defaults for helper/runtime model roles
+5. The runtime model roles SHALL include at least:
+   - main chat model
+   - mini/default helper model
+   - builder/router model
+   - tagger model
+   - Dream model
+6. `LLM_PROVIDER` SHALL select the active provider by provider id.
+7. When `LLM_PROVIDER` selects a provider, Syx SHALL resolve all default runtime model roles from that provider's registry entry unless the user has explicitly configured a compatible role-specific override.
+8. `.env.example` and `make setup-env` SHALL NOT hard-code `AVAILABLE_MODELS` as the source of truth for the UI selector once the registry is implemented.
+9. `AVAILABLE_MODELS` SHALL be removed, deprecated, or treated only as an explicit advanced override after the registry exists. The default path SHALL be registry-driven.
+10. The defaults for `BUILDER_MODEL`, `TAGGER_MODEL`, and `DREAM_MODEL` SHALL be compatible with the selected provider without requiring manual `.env` edits after provider selection.
+11. The mini client SHALL not be treated as a provider-independent OpenAI-only fallback. Its default model SHALL be resolved from the selected provider's helper-model defaults.
+12. The system SHALL expose enough configuration metadata for local setup tooling to generate a coherent `.env` template for the selected provider.
+13. If a role-specific model override is configured but does not belong to the selected provider's allowed model set, startup or request preflight SHALL fail clearly with a provider/model compatibility error.
+14. Provider-scoped defaults SHALL preserve the current OpenAI defaults when `LLM_PROVIDER=openai`.
+15. If the registry is missing, malformed, or lacks the selected provider, startup SHALL fail clearly before accepting chat requests.
+
+### Registry Shape
+
+The registry SHOULD use a shape close to:
+
+```json
+{
+  "providers": {
+    "openai": {
+      "label": "OpenAI",
+      "factory_provider": "openai",
+      "default_model": "gpt-5.5",
+      "models": [
+        { "id": "gpt-5.5", "label": "GPT-5.5" },
+        { "id": "gpt-5-mini", "label": "GPT-5 Mini" }
+      ],
+      "roles": {
+        "mini": "gpt-5-mini",
+        "builder": "gpt-5-mini",
+        "tagger": "gpt-5-mini",
+        "dream": "gpt-5.5"
+      }
+    }
+  }
+}
+```
+
+The exact JSON schema MAY evolve during implementation, but the registry SHALL remain the canonical source for provider-owned default model lists and role defaults.
+
+### Environment Policy
+
+`.env` SHOULD carry provider selection and credentials, not the default model inventory.
+
+Recommended baseline:
+
+```text
+LLM_PROVIDER=openai
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+```
+
+Role-specific environment variables such as `MODEL_NAME`, `LLM_MINI_MODEL`, `BUILDER_MODEL`, `TAGGER_MODEL`, and `DREAM_MODEL` MAY remain as explicit advanced overrides, but the default setup path SHALL not require them for a supported provider.
+
+### Non-Goals
+
+B.1.2 does not require runtime provider switching without restart.
+
+B.1.2 does not require the UI to expose builder, tagger, Dream, or mini model controls.
+
+B.1.2 does not implement the Anthropic SDK provider; that belongs to B.1.3.
+
+### Test Targets
+
+Tests SHOULD cover:
+
+- OpenAI provider resolves the existing OpenAI main/helper defaults.
+- Anthropic provider resolves Anthropic-compatible main/helper defaults once Anthropic support exists.
+- `/models` reads selectable model data from the registry rather than `AVAILABLE_MODELS`.
+- `BUILDER_MODEL`, `TAGGER_MODEL`, and `DREAM_MODEL` overrides are honored when compatible with the selected provider.
+- incompatible helper-model overrides fail clearly.
+- generated local environment defaults stay internally coherent for the selected provider.
+- malformed or missing registry entries fail clearly.
+
+### Acceptance Criteria
+
+1. Provider selection determines a coherent default model set for all runtime LLM roles.
+2. Helper model defaults are no longer accidentally tied to OpenAI when another provider is selected.
+3. Users can switch to a supported provider using documented provider-level configuration without manually editing each helper model.
+4. Existing OpenAI defaults and behavior remain unchanged unless explicitly overridden.
+5. The UI model inventory is registry-driven, not `.env` `AVAILABLE_MODELS` driven.
+6. `make setup-env` and `.env.example` no longer present `AVAILABLE_MODELS` as the normal source of selectable chat models.
+
+## B.1.3 Anthropic Provider Support
+
+### Status
+
+Planned
+
+### Intent
+
+Add an Anthropic-backed LLM provider implementation behind the B.1.1 provider-agnostic factory boundary.
+
+### Requirements
+
+1. Syx SHALL add configuration for Anthropic credentials without reusing OpenAI-specific settings names.
+2. `LLM_PROVIDER=anthropic` SHALL construct an Anthropic provider through the same factory boundary used by OpenAI.
+3. Anthropic request and response envelopes SHALL be normalized into the same project `LLMResponse` and `LLMUsage` structures used by existing code.
+4. Provider-specific preflight checks SHALL replace OpenAI-only key validation for chat startup and request handling.
+5. Main, mini, builder, tagger, and Dream model configuration SHALL use the provider-scoped model resolution defined in B.1.2 before Anthropic is enabled for those paths.
+
+### Non-Goals
+
+B.1.3 does not require the UI to mix OpenAI and Anthropic models in one selector.
+
+Per-model provider routing is deferred until B.1.4.
+
+## B.1.4 Provider-Aware Model Selection
+
+### Status
+
+Future-facing
+
+### Intent
+
+Allow model selection to carry provider identity when Syx needs to expose models from multiple providers at the same time.
+
+### Notes
+
+The current `/models` response returns model id strings and a default model id. That works when one configured provider owns the model list. It is not sufficient if the UI should show OpenAI and Anthropic models together.
+
+### Requirements
+
+1. `/models` SHALL return provider-aware model metadata from the B.1.2 registry.
+2. The response SHALL include:
+   - providers
+   - provider labels
+   - model ids
+   - model labels
+   - default provider
+   - default model for each provider
+   - active provider selected by `LLM_PROVIDER`
+3. The frontend SHALL display providers distinctly from models.
+4. The frontend SHOULD use either:
+   - a provider dropdown plus a model dropdown scoped to that provider
+   - or a grouped model selector that visibly groups models by provider
+5. If provider choice affects helper-model defaults for the running server, the UI SHALL make that clear to the user.
+6. The chat request contract SHALL include enough information for the backend to validate the selected model against the intended provider.
+7. If Syx remains single-provider-per-server for B.1, the UI SHALL only allow the active provider and its models.
+8. Multi-provider-in-one-running-server behavior SHALL NOT be assumed unless a later requirement explicitly introduces provider routing per request.
+
+### Future Work
+
+A later provider-aware selector may need:
+
+- structured model entries such as `{ id, provider, label }`
+- provider-aware whitelist validation
+- provider-specific credential status in health checks
+- provider-specific client caching keyed by provider
+- clear behavior for helper models that are not selected by the UI
+
+### Acceptance Criteria
+
+1. The frontend model selector is populated from the provider registry exposed by the backend.
+2. The UI no longer depends on a flat `.env` `AVAILABLE_MODELS` list.
+3. Provider identity is visible or otherwise unambiguous wherever model selection spans more than one provider.
+4. The backend rejects mismatched provider/model selections clearly.
 

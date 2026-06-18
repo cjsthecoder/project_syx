@@ -483,3 +483,37 @@ class OpenAILLMProvider:
             model=str(model or self._default_model),
             usage=_safe_usage_from_responses(getattr(resp, "usage", None)),
         )
+
+    def generate_response_research(
+        self,
+        *,
+        model: Optional[str],
+        system_prompt: Optional[str],
+        user_prompt: str,
+        max_output_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+    ) -> LLMResponse:
+        """Generate a response with OpenAI-hosted web search enabled.
+
+        This keeps the OpenAI Responses API tool schema inside the provider
+        implementation so application code requests research as a provider-
+        agnostic capability.
+
+        Args:
+            model: Optional model override; defaults to the provider's default.
+            system_prompt: Optional system instructions.
+            user_prompt: User prompt text.
+            max_output_tokens: Optional cap on generated tokens.
+            temperature: Optional sampling temperature.
+
+        Returns:
+            An ``LLMResponse`` with the researched output text, model, and usage.
+        """
+        return self.generate_response(
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_output_tokens=max_output_tokens,
+            tools=[{"type": "web_search"}],
+            temperature=temperature,
+        )

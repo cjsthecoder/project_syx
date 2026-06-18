@@ -523,7 +523,7 @@ setup-env:
 		echo "# Dream agent configuration"; \
 		echo ""; \
 		echo "# === Debug / Observability ==="; \
-		echo "GENERATE_DEBUG_FILES=false"; \
+		echo "GENERATE_DEBUG_FILES=true"; \
 		echo "# Enable debug file generation (e.g., dreaming/*_context_summary.txt)"; \
 		echo ""; \
 		echo "VITE_SHOW_DEBUG_VALUES=true"; \

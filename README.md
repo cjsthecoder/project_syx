@@ -1,7 +1,7 @@
 # Syx
 
 [![CI](https://github.com/cjsthecoder/project_syx/actions/workflows/ci.yml/badge.svg)](https://github.com/cjsthecoder/project_syx/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/cjsthecoder/project_syx/releases)
+[![Version](https://img.shields.io/badge/version-0.1-blue)](https://github.com/cjsthecoder/project_syx/releases)
 [![Python](https://img.shields.io/badge/python-3.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 

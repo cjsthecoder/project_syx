@@ -6,20 +6,27 @@ root for full license information.
 """
 
 """
-Tests for route policy minimum-score defaults.
+Tests for route policy minimum-score configuration.
 
-Verifies that ``load_and_validate_route_policy`` exposes the expected
-per-route ``min_score`` thresholds for each retrieval category.
+Verifies that the live route policy config satisfies the retrieval-selection
+contract without freezing tunable calibration values in the test suite.
 """
-from app.core.route_policy import load_and_validate_route_policy
+from app.core.route_policy import EXPECTED_ROUTES, load_and_validate_route_policy
 
 
-def test_route_policy_loads_min_score_defaults():
+def test_route_policy_live_config_is_valid():
     policy = load_and_validate_route_policy()
 
-    assert policy["CHITCHAT"].min_score == 0
-    assert policy["DIRECT"].min_score == 0.82
-    assert policy["PROCEDURAL"].min_score == 0.80
-    assert policy["EXPLORATORY"].min_score == 0.78
-    assert policy["SYNTHESIS"].min_score == 0.78
-    assert policy["OTHER"].min_score == 0.80
+    assert set(policy) == set(EXPECTED_ROUTES)
+    assert policy["CHITCHAT"].retrieval_multiplier == 0
+
+    for route, route_policy in policy.items():
+        assert route_policy.retrieval_multiplier >= 0
+        assert route_policy.max_keep >= 0
+        assert 0 <= route_policy.min_score <= 1
+        assert route_policy.expansion_max_before >= 0
+        assert route_policy.expansion_max_after >= 0
+
+        if route != "CHITCHAT":
+            assert route_policy.retrieval_multiplier > 0
+            assert route_policy.max_keep > 0

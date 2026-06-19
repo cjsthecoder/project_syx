@@ -26,10 +26,12 @@ it. Update `docs/COVERAGE.md` when the policy evolves.
 
 ## `# pragma: no cover`
 
-Only pragma genuinely untestable code (defensive guards, re-export shims, truly
-unreachable safety branches), and always add an inline comment justifying it.
+Only pragma genuinely untestable code (defensive guards and truly unreachable
+safety branches), and always add an inline comment justifying it.
 Never pragma real business logic, parsing, retrieval/index assembly, or any
-branch a caller can reach with valid input — write a test instead.
+branch a caller can reach with valid input — write a test instead. Do not
+pragma thin re-export shims; update callers to the authoritative module and
+delete the shim.
 
 ## Running coverage
 

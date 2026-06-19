@@ -22,8 +22,6 @@ Acceptable to pragma:
 - **Defensive guards against Python-internal / practically-unreachable states**
   (e.g. a `try/except` around a dict lookup that can only fail if an invariant is
   already violated).
-- **Thin re-export shims** whose statements are only exercised via the preferred
-  import path (e.g. `app/llm_model/llm_client.py`).
 - **Truly unreachable branches** that exist for safety but cannot occur given the
   surrounding logic (e.g. `if not pairs:` where every key in the map provably has
   at least one entry — see `manager_index_io.build_ltm_adjacency_lists`).
@@ -33,6 +31,8 @@ Not acceptable to pragma:
 - Real business logic, retrieval/index assembly, parsing, scope/heading rules,
   cache lifecycle decisions, or any branch a caller can reach with valid input.
   Write a test instead.
+- Thin re-export shims or compatibility alias modules for internal import paths.
+  Update callers to the authoritative module and delete the shim.
 
 When a pragma'd `except Exception` turns out to be reachable (e.g. an `int()` that
 can raise `TypeError`/`ValueError` on real input), **remove the pragma and narrow

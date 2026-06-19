@@ -17,6 +17,7 @@ import importlib.util
 import os
 import sys
 import types
+from pathlib import Path
 from typing import get_type_hints
 
 import app.embedding
@@ -107,6 +108,12 @@ def test_llm_client_is_cached_singleton(fake_llm, settings_override):
 def test_llm_factory_public_return_types_are_provider_agnostic():
     assert get_type_hints(llm_factory.get_llm_client)["return"] is LLMClient
     assert get_type_hints(llm_factory.get_llm_client_mini)["return"] is LLMClient
+
+
+def test_legacy_llm_client_shim_is_not_present():
+    shim_path = Path(llm_factory.__file__).with_name("llm_client.py")
+
+    assert not shim_path.exists()
 
 
 def test_main_and_mini_clients_are_distinct(fake_llm, settings_override):

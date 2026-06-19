@@ -50,3 +50,14 @@ alwaysApply: true
 - Prefer:
   - `logger.warning("append_assistant_message failed; project_id=%s", project_id, exc_info=exc)`
   - or `logger.exception("...")` for stack trace
+
+## No re-export shims or compatibility alias modules
+
+- Do not add thin compatibility modules that only re-export moved functions,
+  classes, or constants.
+- When an import path changes inside the active codebase, update all call sites
+  to the authoritative module and delete the old module.
+- Do not use `# pragma: no cover` to hide re-export shims from coverage. If a
+  module has no real behavior, remove it instead.
+- Temporary compatibility layers are allowed only for shipped public APIs or
+  persisted external integrations, and must include a clear removal plan.

@@ -389,6 +389,21 @@ setup-env:
 		echo "RETRIEVAL_MULTIPLIER=2.0"; \
 		echo "# PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER)"; \
 		echo ""; \
+		echo "RETRIEVAL_PRUNING_ENABLED=true"; \
+		echo "# Enable retrieval-only context pruning before prompt assembly"; \
+		echo ""; \
+		echo "RETRIEVAL_PRUNING_SIMILARITY_THRESHOLD=85"; \
+		echo "# Similarity threshold for duplicate-sentence retrieval pruning (0-100)"; \
+		echo ""; \
+		echo "RETRIEVAL_PRUNING_WHITESPACE_MODE=preserve_code"; \
+		echo "# Retrieval-pruning whitespace mode: off|compact_prose|preserve_code"; \
+		echo ""; \
+		echo "RETRIEVAL_PRUNING_WHITESPACE_ENABLED=true"; \
+		echo "# Enable retrieval-pruning whitespace cleanup"; \
+		echo ""; \
+		echo "RETRIEVAL_PRUNING_SIMILARITY_ENABLED=true"; \
+		echo "# Enable retrieval-pruning duplicate-sentence similarity scan"; \
+		echo ""; \
 		echo "AGENT_MEMORY_MAX_ENTRY_CHARS=25000"; \
 		echo "# Max serialized agent memory snippet size for full-entry expansion"; \
 		echo ""; \

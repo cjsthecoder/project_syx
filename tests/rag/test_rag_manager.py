@@ -151,6 +151,74 @@ def test_merge_min_score_gating(monkeypatch, temp_memory_root):
     assert "c3" not in out["context_text"]
 
 
+def test_merge_prunes_retrieved_syx_scaffold(monkeypatch, temp_memory_root, settings_override):
+    settings_override(
+        retrieval_pruning_enabled=True,
+        retrieval_pruning_whitespace_enabled=False,
+        retrieval_pruning_similarity_enabled=False,
+    )
+    _patch_route_policy(monkeypatch, min_score=0.0)
+    text = """<!-- end syx:memory_id=mem_20260610_182007_bb74e748 -->
+## Chat Pair: noisy generated heading
+memory_id: mem_20260610_182007_bb74e748
+topics:
+  - retrieval cleanup
+Useful retrieved content."""
+    monkeypatch.setattr(
+        manager, "canonical_retrieve_candidates", lambda *a, **k: [_ltm_cand(text, 0.9)]
+    )
+
+    out = merge_daily_and_main("p1", "q", daily_enabled=False, max_keep=1, route="OTHER")
+
+    assert "end syx" not in out["context_text"]
+    assert "## Chat Pair" not in out["context_text"]
+    assert "memory_id:" not in out["context_text"]
+    assert "retrieval cleanup" not in out["context_text"]
+    assert "Useful retrieved content." in out["context_text"]
+    assert out["retrieval_pruning_changed"] is True
+    assert out["retrieval_pruning_boundary_markers_removed"] == 1
+    assert out["retrieval_pruning_entry_headings_removed"] == 1
+    assert out["retrieval_pruning_metadata_lines_removed"] == 3
+    assert out["retrieval_pruning_tokens_saved_structural"] > 0
+    assert out["retrieval_pruning_tokens_saved_similarity"] == 0
+
+
+def test_merge_can_disable_retrieval_pruning(monkeypatch, temp_memory_root, settings_override):
+    settings_override(retrieval_pruning_enabled=False)
+    _patch_route_policy(monkeypatch, min_score=0.0)
+    text = "memory_id: mem_20260610_182007_bb74e748\nUseful retrieved content."
+    monkeypatch.setattr(
+        manager, "canonical_retrieve_candidates", lambda *a, **k: [_ltm_cand(text, 0.9)]
+    )
+
+    out = merge_daily_and_main("p1", "q", daily_enabled=False, max_keep=1, route="OTHER")
+
+    assert "memory_id:" in out["context_text"]
+    assert "Useful retrieved content." in out["context_text"]
+    assert out["retrieval_pruning_changed"] is False
+
+
+def test_retrieval_pruner_debug_includes_route(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        manager,
+        "write_debug_file",
+        lambda project_id, rel_path, body: calls.append((project_id, rel_path, body)),
+    )
+
+    manager._write_retrieval_pruner_debug(
+        project_id="p1",
+        route="DIRECT",
+        original_candidates=[_ltm_cand("memory_id: x\nUseful", 0.9)],
+        pruned_candidates=[_ltm_cand("Useful", 0.9)],
+        totals=manager.RetrievalPruneTotals(changed=True, metadata_lines_removed=1),
+    )
+
+    assert len(calls) == 1
+    assert calls[0][1].endswith("_retrieval_light_pruner.txt")
+    assert "# route: DIRECT\n" in calls[0][2]
+
+
 # --- Background LTM rebuild scheduler -------------------------------------
 #
 # rebuild_faiss_index itself is exercised in test_manager_rebuild_helpers.py;

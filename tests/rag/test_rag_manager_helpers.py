@@ -220,8 +220,11 @@ def test_assemble_context_prompt_builds_headers_and_buckets():
     ]
     out = _assemble_context_prompt(kept)
     assert out.context_text.startswith("Context:\n---\n")
-    assert "source=ltm" in out.context_text
-    assert "source=daily" in out.context_text
+    assert "Snippet 1 (source=ltm, score=0.9000)" in out.context_text
+    assert "Snippet 2 (source=daily, score=0.8000)" in out.context_text
+    assert "file=f.txt" not in out.context_text
+    assert "chunk_index=" not in out.context_text
+    assert "cos=" not in out.context_text
     assert out.main_texts == ["main text"]
     assert out.daily_texts == ["daily text"]
     assert out.tokens_used > 0

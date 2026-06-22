@@ -46,6 +46,7 @@ from .manager_index_io import normalize_rows as _normalize_rows
 from .manager_index_io import safe_load_json as _safe_load_json
 from .manager_rebuild import count_tokens as _count_tokens
 from .manager_rebuild import rebuild_faiss_index
+from .retrieval_pruner import RetrievalPruneTotals, prune_retrieval_candidates
 
 _LTM_REBUILDING: Set[str] = set()
 _LTM_REBUILD_LOCK = threading.Lock()
@@ -1676,6 +1677,155 @@ def _write_retrieval_debug_artifacts(
         )
 
 
+def _is_retrieval_pruning_enabled(settings: Any) -> bool:
+    """Return the effective retrieval-pruning enabled flag.
+
+    Args:
+        settings: App settings carrying retrieval/response pruning config.
+
+    Returns:
+        ``retrieval_pruning_enabled`` when explicitly set, otherwise the
+        response-pruning enabled value.
+    """
+    explicit = getattr(settings, "retrieval_pruning_enabled", None)
+    if explicit is None:
+        return bool(getattr(settings, "response_pruning_enabled", True))
+    return bool(explicit)
+
+
+def _render_retrieval_pruner_candidates(candidates: List[Dict[str, Any]]) -> str:
+    """Render candidate text bodies for a debug before/after dump."""
+    chunks: List[str] = []
+    for idx, candidate in enumerate(candidates or [], start=1):
+        md = candidate.get("metadata") if isinstance(candidate.get("metadata"), dict) else {}
+        chunks.extend(
+            [
+                f"--- Candidate {idx} source={candidate.get('source')} "
+                f"file={md.get('filename')} chunk_index={md.get('chunk_index')} ---",
+                str(candidate.get("text") or ""),
+                "",
+            ]
+        )
+    return "\n".join(chunks).rstrip()
+
+
+def _write_retrieval_pruner_debug(
+    *,
+    project_id: str,
+    route: Optional[str],
+    original_candidates: List[Dict[str, Any]],
+    pruned_candidates: List[Dict[str, Any]],
+    totals: RetrievalPruneTotals,
+    error: Optional[Exception] = None,
+) -> None:
+    """Write a best-effort retrieval-pruner before/after debug file."""
+    try:
+        if not project_id:
+            return
+        ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        original_text = _render_retrieval_pruner_candidates(original_candidates)
+        pruned_text = _render_retrieval_pruner_candidates(pruned_candidates)
+        start_tokens = int(_count_tokens(original_text))
+        finished_tokens = int(_count_tokens(pruned_text))
+        body = (
+            f"# timestamp: {ts}\n"
+            f"# project_id: {project_id}\n"
+            f"# route: {route or 'OTHER'}\n"
+            f"# success: {str(error is None).lower()}\n"
+            f"# start_tokens: {start_tokens}\n"
+            f"# finished_tokens: {finished_tokens}\n"
+            f"# tokens_saved: {start_tokens - finished_tokens}\n"
+            f"# changed: {str(bool(totals.changed)).lower()}\n"
+            f"# whitespace_enabled: {str(bool(totals.whitespace_enabled)).lower()}\n"
+            f"# similarity_enabled: {str(bool(totals.similarity_enabled)).lower()}\n"
+            f"# similarity_threshold: {int(totals.similarity_threshold)}\n"
+            f"# metadata_blocks_removed: {int(totals.metadata_blocks_removed)}\n"
+            f"# metadata_lines_removed: {int(totals.metadata_lines_removed)}\n"
+            f"# boundary_markers_removed: {int(totals.boundary_markers_removed)}\n"
+            f"# entry_headings_removed: {int(totals.entry_headings_removed)}\n"
+            "# artifact_front_matter_blocks_removed: "
+            f"{int(totals.artifact_front_matter_blocks_removed)}\n"
+            f"# similar_sentences_removed: {int(totals.similar_sentences_removed)}\n"
+            f"# tokens_saved_structural: {int(totals.tokens_saved_structural)}\n"
+            f"# tokens_saved_whitespace: {int(totals.tokens_saved_whitespace)}\n"
+            f"# tokens_saved_similarity: {int(totals.tokens_saved_similarity)}\n"
+        )
+        if error is not None:
+            body += f"# error: {str(error)}\n"
+        body += (
+            "\n"
+            "====== RETRIEVAL LIGHT PRUNER ORIGINAL ======\n"
+            + original_text
+            + "\n\n====== RETRIEVAL LIGHT PRUNER PRUNED ======\n"
+            + pruned_text
+            + "\n"
+        )
+        write_debug_file(project_id, f"rag/retrieval/{ts}_retrieval_light_pruner.txt", body)
+    except Exception as exc:  # pragma: no cover - debug-only best-effort guard
+        logger.warning(
+            "RAG: failed writing retrieval pruner debug project=%s detail=%s",
+            project_id,
+            exc,
+            exc_info=True,
+        )
+
+
+def _apply_retrieval_pruning(
+    *,
+    project_id: str,
+    route: Optional[str],
+    candidates: List[Dict[str, Any]],
+    settings: Any,
+) -> Tuple[List[Dict[str, Any]], RetrievalPruneTotals]:
+    """Prune retrieved snippet text before final context prompt assembly."""
+    empty_totals = RetrievalPruneTotals()
+    if not _is_retrieval_pruning_enabled(settings):
+        return candidates, empty_totals
+    try:
+        pruned_candidates, totals = prune_retrieval_candidates(
+            candidates,
+            whitespace_enabled=bool(
+                getattr(settings, "retrieval_pruning_whitespace_enabled", True)
+            ),
+            whitespace_mode=str(
+                getattr(settings, "retrieval_pruning_whitespace_mode", "preserve_code")
+            ),
+            similarity_enabled=bool(
+                getattr(settings, "retrieval_pruning_similarity_enabled", True)
+            ),
+            similarity_threshold=int(
+                getattr(settings, "retrieval_pruning_similarity_threshold", 90)
+            ),
+        )
+        pruned_candidates = [
+            candidate for candidate in pruned_candidates if str(candidate.get("text") or "").strip()
+        ]
+        _write_retrieval_pruner_debug(
+            project_id=project_id,
+            route=route,
+            original_candidates=candidates,
+            pruned_candidates=pruned_candidates,
+            totals=totals,
+        )
+        return pruned_candidates, totals
+    except Exception as exc:
+        logger.warning(
+            "RAG: retrieval pruning failed; project=%s detail=%s",
+            project_id,
+            exc,
+            exc_info=True,
+        )
+        _write_retrieval_pruner_debug(
+            project_id=project_id,
+            route=route,
+            original_candidates=candidates,
+            pruned_candidates=candidates,
+            totals=empty_totals,
+            error=exc,
+        )
+        return candidates, empty_totals
+
+
 def _assemble_context_prompt(kept_candidates: List[Dict[str, Any]]) -> _PromptAssembly:
     """Assemble kept chunks into a prompt ``Context:`` block with snippet headers.
 
@@ -1701,13 +1851,7 @@ def _assemble_context_prompt(kept_candidates: List[Dict[str, Any]]) -> _PromptAs
     for idx, c in enumerate(kept_candidates):
         txt = c.get("text") or ""
         src = c.get("source") or "unknown"
-        # Canonical retrieval currently stores `score` as score01 (cosine mapped from [-1,1] -> [0,1]).
-        # For human-readable prompt headers, show both:
-        #   cos = 2*score01 - 1
-        #   score01 = score
         score01 = float(c.get("score") or 0.0)
-        cos = (2.0 * float(score01)) - 1.0
-        md = (c.get("metadata") or {}) if isinstance(c.get("metadata"), dict) else {}
 
         t = _count_tokens(txt)
         if src == "daily":
@@ -1718,15 +1862,7 @@ def _assemble_context_prompt(kept_candidates: List[Dict[str, Any]]) -> _PromptAs
             main_scores.append(score01)
         tokens_used_total += t
 
-        extra_header_fields = _snippet_header_metadata_fields(md)
-        extra_header = "".join(f", {key}={value}" for key, value in extra_header_fields)
-        # Candidate header (keeps ordering explicit; show cos + score for troubleshooting).
-        if src == "ltm":
-            chunk_index = md.get("chunk_index") if isinstance(md, dict) else None
-            header = f"Snippet {idx+1} (source=ltm, cos={cos:.4f}, score={score01:.4f}, file={md.get('filename')}, page={md.get('page_number')}, chunk_index={chunk_index}{extra_header})\n"
-        else:
-            chunk_index = md.get("chunk_index") if isinstance(md, dict) else None
-            header = f"Snippet {idx+1} (source=daily, cos={cos:.4f}, score={score01:.4f}, route={md.get('route')}, chunk_index={chunk_index}{extra_header})\n"
+        header = f"Snippet {idx+1} (source={src}, score={score01:.4f})\n"
         pieces.append(header + txt)
 
     context_text = ("Context:\n---\n" + "\n\n---\n".join(pieces)) if pieces else ""
@@ -1880,6 +2016,13 @@ def merge_daily_and_main(
         audit=audit,
     )
 
+    kept_candidates, pruning_totals = _apply_retrieval_pruning(
+        project_id=project_id,
+        route=route,
+        candidates=kept_candidates,
+        settings=settings,
+    )
+
     # Prompt assembly stage (after ordering + selection).
     assembled = _assemble_context_prompt(kept_candidates)
     main_hits = int(len(assembled.main_scores))
@@ -1909,6 +2052,34 @@ def merge_daily_and_main(
                 "kept_candidates": kept_count,
                 "expanded_unique_chunks_after_merge": int(audit.unique_keyed_count),
                 "adjacent_bonus": int(adjacent_bonus),
+                "retrieval_pruning_changed": bool(pruning_totals.changed),
+                "retrieval_pruning_metadata_blocks_removed": int(
+                    pruning_totals.metadata_blocks_removed
+                ),
+                "retrieval_pruning_metadata_lines_removed": int(
+                    pruning_totals.metadata_lines_removed
+                ),
+                "retrieval_pruning_boundary_markers_removed": int(
+                    pruning_totals.boundary_markers_removed
+                ),
+                "retrieval_pruning_entry_headings_removed": int(
+                    pruning_totals.entry_headings_removed
+                ),
+                "retrieval_pruning_artifact_front_matter_blocks_removed": int(
+                    pruning_totals.artifact_front_matter_blocks_removed
+                ),
+                "retrieval_pruning_similar_sentences_removed": int(
+                    pruning_totals.similar_sentences_removed
+                ),
+                "retrieval_pruning_tokens_saved_structural": int(
+                    pruning_totals.tokens_saved_structural
+                ),
+                "retrieval_pruning_tokens_saved_whitespace": int(
+                    pruning_totals.tokens_saved_whitespace
+                ),
+                "retrieval_pruning_tokens_saved_similarity": int(
+                    pruning_totals.tokens_saved_similarity
+                ),
                 "main_hits": int(main_hits),
                 "daily_hits": int(daily_hits),
                 "total_hits": int(main_hits + daily_hits),
@@ -1936,6 +2107,20 @@ def merge_daily_and_main(
         "selected_candidates": int(len(selected_candidates)),
         "kept_candidates": kept_count,
         "expanded_unique_chunks_after_merge": int(audit.unique_keyed_count),
+        "retrieval_pruning_changed": bool(pruning_totals.changed),
+        "retrieval_pruning_metadata_blocks_removed": int(pruning_totals.metadata_blocks_removed),
+        "retrieval_pruning_metadata_lines_removed": int(pruning_totals.metadata_lines_removed),
+        "retrieval_pruning_boundary_markers_removed": int(pruning_totals.boundary_markers_removed),
+        "retrieval_pruning_entry_headings_removed": int(pruning_totals.entry_headings_removed),
+        "retrieval_pruning_artifact_front_matter_blocks_removed": int(
+            pruning_totals.artifact_front_matter_blocks_removed
+        ),
+        "retrieval_pruning_similar_sentences_removed": int(
+            pruning_totals.similar_sentences_removed
+        ),
+        "retrieval_pruning_tokens_saved_structural": int(pruning_totals.tokens_saved_structural),
+        "retrieval_pruning_tokens_saved_whitespace": int(pruning_totals.tokens_saved_whitespace),
+        "retrieval_pruning_tokens_saved_similarity": int(pruning_totals.tokens_saved_similarity),
         "min_score": float(min_score),
     }
 

@@ -27,6 +27,7 @@ reading every detailed requirement section first.
 | `DELTA-A.6` External Agent Memory Add Endpoint | Future-facing | Captured as planned write-back work; not part of the current public endpoint surface. |
 | `DELTA-A.7` Cursor MCP Wrapper | Future-facing | Captured as planned MCP wrapper work. Current tooling uses local CLI/scripts. |
 | `DELTA-B.1` Multi-Provider LLM Model Support | Draft | Refactor the LLM factory boundary and move provider/model role defaults into an app-owned registry so OpenAI, Anthropic, and future providers can be selected coherently. |
+| `DELTA-C.1` Retrieval Light Pruner | Draft | Add a retrieval-only pruning pass that removes Syx scaffolding from retrieved context before prompt injection without changing stored memory or response pruning. |
 
 # DELTA-A — Markdown-Based Syx Memory Artifacts
 
@@ -2914,3 +2915,93 @@ B.1.3 does not require changing the B.1.2 provider/model selection contract.
 2. Anthropic chat, streaming, prompt/response, and research calls return normalized `LLMResponse` and `LLMUsage` envelopes.
 3. Chat preflight and app health validate the active provider key instead of assuming OpenAI.
 4. `/models` exposes Anthropic provider-qualified model choices without changing the B.1.2 response shape.
+
+# DELTA-C — Retrieval Context Pruning
+
+## C.1 Retrieval Light Pruner
+
+### Status
+
+Implemented
+
+### Intent
+
+Reduce low-value Syx scaffolding in retrieved RAG context before it is injected into chat prompts, without changing stored memory, indexing behavior, or the existing assistant-response light pruner.
+
+### Requirements
+
+1. Syx SHALL add a retrieval-only pruning pass that runs after retrieval selection, expansion, dedupe, ordering, overlap trimming, and snippet-group collapse, and before final RAG context string assembly.
+2. Retrieval pruning SHALL operate on retrieved snippet text only. It SHALL NOT mutate stored Daily memory, uploaded artifacts, FAISS docstores, metadata records, or assistant response persistence.
+3. Retrieval pruning SHALL be separate from the existing assistant-response light pruner. Existing response pruning behavior for tagger input and Daily roll-off SHALL remain unchanged.
+4. Syx SHALL add `RETRIEVAL_PRUNING_ENABLED`. When unset, it SHOULD default to the effective value of `RESPONSE_PRUNING_ENABLED`.
+5. Retrieval pruning SHALL defensively remove Syx boundary marker lines from retrieved snippet text, including:
+   - `<!-- begin syx:memory_id=... -->`
+   - `<!-- end syx:memory_id=... -->`
+6. Retrieval pruning SHALL remove generated Syx metadata blocks when present, including:
+   - `### Syx Metadata`
+   - the following blank separator when present
+   - opening and closing `` ```yaml `` fence lines
+   - all metadata lines inside the block through the closing fence
+7. Retrieval pruning SHALL also remove known Syx metadata lines individually, because chunks may begin or end inside a metadata block. This includes at least:
+   - `memory_id:`
+   - `entry_type:`
+   - `source:`
+   - `source_agent:`
+   - `source_scope:`
+   - `current_scope:`
+   - `timestamp:`
+   - `route:`
+   - `keep:`
+   - `topics:`
+   - `intent:`
+   - `type:`
+   - `semantic_handle:`
+   - `day_sequence:`
+8. Retrieval pruning SHALL remove legacy hash-prefixed Syx metadata lines individually, including at least:
+   - `#timestamp:`
+   - `#route:`
+   - `#keep:`
+   - `#topics:`
+   - `#intent:`
+   - `#type:`
+   - `#semantic_handle:`
+9. Retrieval pruning SHALL remove generated artifact and entry headings that are Syx scaffolding, including at least:
+   - `# Dream Memory ...`
+   - `# Sleep Memory: ...`
+   - `## Memory Entry: ...`
+   - `## Chat Pair: ...`
+   - `## Dream Output: ...`
+   - other headings derived from known Syx `entry_type` labels
+10. Retrieval pruning SHALL remove Syx artifact front matter blocks when present at snippet boundaries or when the block clearly contains Syx artifact keys, including `syx_artifact_type`, `project_id`, `memory_date`, and `format_version`.
+11. When removing `topics:` or `#topics:`, retrieval pruning SHALL remove following indented list item lines only while they match the Syx metadata list shape, and SHALL stop when non-list content is reached.
+12. Retrieval pruning SHALL preserve useful retrieved content headings and markers that are not Syx scaffolding, including `[RESEARCH]`, `### Key findings`, `### Conditions / assumptions`, and `### Limitations / risks`.
+13. Retrieval pruning SHALL avoid removing arbitrary user-authored markdown headings.
+14. Retrieval pruning MAY apply retrieval-specific whitespace compaction and duplicate sentence cleanup after structural Syx cleanup. These controls SHOULD be separately configurable from assistant-response pruning.
+15. Retrieval pruning SHALL write a best-effort debug file under `debug/rag/` when debug files are enabled. The file name SHOULD follow `[timestamp]_retrieval_light_pruner.txt`.
+16. The retrieval pruning debug file SHALL include before/after text and a summary header with at least:
+   - `timestamp`
+   - `project_id`
+   - `success`
+   - `start_tokens`
+   - `finished_tokens`
+   - `tokens_saved`
+   - `changed`
+   - `metadata_blocks_removed`
+   - `metadata_lines_removed`
+   - `boundary_markers_removed`
+   - `entry_headings_removed`
+   - `artifact_front_matter_blocks_removed`
+
+### Non-Goals
+
+C.1 does not change memory artifact rendering, Daily memory persistence, sleep/dream consolidation, RAG ranking, retrieval scoring, candidate selection, or the existing assistant-response pruning pipeline.
+
+### Acceptance Criteria
+
+1. Retrieved RAG context no longer includes Syx begin/end memory boundary comments when retrieval pruning is enabled.
+2. Retrieved RAG context no longer includes `### Syx Metadata` YAML blocks or standalone Syx metadata lines when retrieval pruning is enabled.
+3. Generated Syx entry headings are removed without stripping ordinary user-authored markdown headings.
+4. Existing response pruning debug files and tagger/Daily roll-off behavior remain unchanged.
+5. Retrieval pruning can be disabled independently through `RETRIEVAL_PRUNING_ENABLED=false`.
+6. Debug output shows token savings and removal counts for retrieval-pruned snippets.
+

@@ -140,6 +140,31 @@ class Settings(BaseSettings):
         gt=0.0,
         description="Per-source K multiplier (PER_SOURCE_K = ceil(BASE_TOP_K * RETRIEVAL_MULTIPLIER))",
     )
+    retrieval_pruning_enabled: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Enable retrieval-only context pruning; when unset, defaults to "
+            "response_pruning_enabled"
+        ),
+    )
+    retrieval_pruning_similarity_threshold: int = Field(
+        default=90,
+        ge=0,
+        le=100,
+        description="Similarity threshold for duplicate-sentence retrieval pruning",
+    )
+    retrieval_pruning_whitespace_mode: str = Field(
+        default="preserve_code",
+        description="Retrieval-pruning whitespace mode: off, compact_prose, or preserve_code",
+    )
+    retrieval_pruning_whitespace_enabled: bool = Field(
+        default=True,
+        description="Enable retrieval-pruning whitespace cleanup",
+    )
+    retrieval_pruning_similarity_enabled: bool = Field(
+        default=True,
+        description="Enable retrieval-pruning duplicate-sentence similarity scan",
+    )
     agent_memory_max_entry_chars: int = Field(
         default=25_000,
         gt=0,
@@ -346,9 +371,9 @@ class Settings(BaseSettings):
                 return value
         return value
 
-    @field_validator("response_pruning_whitespace_mode")
+    @field_validator("response_pruning_whitespace_mode", "retrieval_pruning_whitespace_mode")
     @classmethod
-    def _validate_response_pruning_whitespace_mode(cls, value: str) -> str:
+    def _validate_pruning_whitespace_mode(cls, value: str) -> str:
         """Validate whitespace mode against the supported set.
 
         Args:
@@ -364,8 +389,7 @@ class Settings(BaseSettings):
         normalized = str(value or "").strip()
         if normalized not in {"off", "compact_prose", "preserve_code"}:
             raise ValueError(
-                "response_pruning_whitespace_mode must be one of: "
-                "off, compact_prose, preserve_code"
+                "pruning whitespace mode must be one of: off, compact_prose, preserve_code"
             )
         return normalized
 
@@ -397,6 +421,25 @@ def get_response_pruning_stage_config() -> dict[str, bool]:
         "end_enabled": bool(settings.response_pruning_end_enabled),
         "whitespace_enabled": bool(settings.response_pruning_whitespace_enabled),
         "similarity_enabled": bool(settings.response_pruning_similarity_enabled),
+    }
+
+
+def get_retrieval_pruning_stage_config() -> dict[str, bool]:
+    """Return retrieval-pruning stage toggles.
+
+    Returns:
+        A mapping with ``enabled`` resolved from ``retrieval_pruning_enabled``;
+        when that setting is unset, it inherits ``response_pruning_enabled``.
+    """
+    enabled = (
+        bool(settings.response_pruning_enabled)
+        if settings.retrieval_pruning_enabled is None
+        else bool(settings.retrieval_pruning_enabled)
+    )
+    return {
+        "enabled": enabled,
+        "whitespace_enabled": bool(settings.retrieval_pruning_whitespace_enabled),
+        "similarity_enabled": bool(settings.retrieval_pruning_similarity_enabled),
     }
 
 

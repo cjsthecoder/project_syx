@@ -39,4 +39,4 @@ alembic==1.18.4
 beautifulsoup4==4.14.3
 
 # Background task processing (V3)
-APScheduler==3.11.2
+APScheduler==3.11.3

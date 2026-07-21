@@ -36,7 +36,7 @@ sqlmodel==0.0.39
 alembic==1.18.5
 
 # Tooling scripts (chat import/extract utilities)
-beautifulsoup4==4.14.3
+beautifulsoup4==4.15.0
 
 # Background task processing (V3)
 APScheduler==3.11.3

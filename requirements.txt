@@ -6,7 +6,7 @@ uvicorn[standard]==0.52.1
 
 # LLM provider SDKs
 openai==3.3.1
-anthropic==0.120.2
+anthropic==1.0.0
 sentence-transformers==6.0.0
 
 # Data validation and serialization

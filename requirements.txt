@@ -32,7 +32,7 @@ tiktoken==0.14.0
 filelock==3.32.4
 
 # Database support (V2)
-sqlmodel==0.0.39
+sqlmodel==0.0.42
 alembic==1.19.1
 
 # Tooling scripts (chat import/extract utilities)

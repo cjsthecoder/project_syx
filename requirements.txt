@@ -2,7 +2,7 @@
 
 # FastAPI and ASGI server
 fastapi==0.141.1
-uvicorn[standard]==0.52.4
+uvicorn[standard]==0.53.0
 
 # LLM provider SDKs
 openai==3.13.0

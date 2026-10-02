@@ -27,7 +27,7 @@ ruff==0.16.8
 
 # Future dependencies (for V2-V4)
 # faiss-cpu: pin to a version available for Python 3.13 on macOS
-faiss-cpu==1.15.0
+faiss-cpu==1.15.1
 tiktoken==0.14.0
 filelock==4.0.3
 

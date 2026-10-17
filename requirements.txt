@@ -5,7 +5,7 @@ fastapi==0.142.2
 uvicorn[standard]==0.54.0
 
 # LLM provider SDKs
-openai==3.26.1
+openai==3.31.0
 anthropic==1.12.1
 sentence-transformers==6.1.0
 
